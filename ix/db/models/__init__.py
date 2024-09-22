@@ -51,9 +51,9 @@ class EconomicCalendar(Document):
 
 class Strategy(Document):
     code: Annotated[str, Indexed(unique=True)]
-    data: dict
+    data: dict | None = {}
 
 
 class Regime(Document):
     code: Annotated[str, Indexed(unique=True)]
-    data: dict[datetime, str]
+    data: dict[datetime, str] | None = {}
