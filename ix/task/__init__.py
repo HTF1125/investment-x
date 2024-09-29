@@ -56,12 +56,11 @@ def run():
         else:
             # If timeseries exists, update its data field
             existing_data = pd.Series(ts.data)
-            logger.debug(f"Existing data for {ticker.code}: {existing_data.tail()}")
 
             # Combine the existing data with the new data, prioritizing existing data
             combined_data = existing_data.combine_first(data)
             ts.set({"data": combined_data.to_dict()})
-            logger.debug(f"Updated timeseries for {ticker.code}")
+            logger.debug(f"update data for {ticker.code}: {combined_data.tail()}")
 
     logger.debug("Timeseries update process completed.")
 

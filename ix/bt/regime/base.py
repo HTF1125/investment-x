@@ -64,9 +64,9 @@ class Regime:
             raise TypeError("Index is not sorted in ascending order")
 
     def get_states(self) -> pd.Series:
-        if self.__record__.data is None:
+        if self.record.data is None:
             self.refresh()
-        states = pd.Series(self.__record__.data)
+        states = pd.Series(self.record.data)
         states = states.sort_index()
         states.name = "states"
         states.index.name = "date"
@@ -153,7 +153,7 @@ class RealRate(Regime):
 
     def fit(self) -> pd.Series:
         try:
-            code: Dict[str, str] = {"FPRI12MO Index": "RealRate"}
+            code = {"FPRI12MO Index": "RealRate"}
             data = db.get_pxs(code)
 
             # Calculate signal

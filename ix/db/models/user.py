@@ -1,15 +1,7 @@
 from bunnet import Document
+# from pydantic import BaseModel, EmailStr
 
 
 class User(Document):
-
-    username: str
+    # email: EmailStr
     password: str
-
-    class Settings:
-        collection = "user"
-
-        # indexes = [
-        #     {"fields" : ["username"],
-        #      "unique" : True,}
-        # ]
