@@ -7,13 +7,13 @@ class UsOecdLeading(Regime):
 
     TICKERS = {"OEUSKLAC Index": "UsOecdLeading"}
     EWM_SPAN = 3
-    SPLIT = 50
-    THRESHOLD = 00
+    SPLIT = 0
+    THRESHOLD = 0
 
     def fit(self):
         data = db.get_pxs(codes=self.TICKERS)
         data["Difference"] = data["UsOecdLeading"].diff()
-        smoothed = data["Difference"].ewm(span=self.EWM_SPAN).mean().dropna()
+        smoothed = data["Difference"].ewm(span=self.EWM_SPAN).mean()
         expanding = smoothed > (self.SPLIT + self.THRESHOLD)
         contracting = smoothed < (self.SPLIT - self.THRESHOLD)
         uptrending = smoothed.sub(smoothed.shift(1)) > 0

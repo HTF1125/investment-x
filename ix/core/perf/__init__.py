@@ -4,6 +4,49 @@ import numpy as np
 import pandas as pd
 
 
+
+
+def get_period_performances(pxs):
+
+    pxs = pxs.resample("D").last().ffill()
+
+    # Determine the as-of date
+    asofdate = pxs.index[-1]
+
+    # Define date offsets
+    date_offsets = {
+        "1D": pd.offsets.BusinessDay(1),
+        "1W": pd.DateOffset(days=7),
+        "1M": pd.DateOffset(months=1),
+        "3M": pd.DateOffset(months=3),
+        "6M": pd.DateOffset(months=6),
+        "1Y": pd.DateOffset(years=1),
+        "3Y": pd.DateOffset(years=3),
+        "MTD": pd.offsets.MonthBegin(),
+        "YTD": pd.offsets.YearBegin()
+    }
+
+    # Calculate reference dates
+    dates = {key: asofdate - offset for key, offset in date_offsets.items()}
+
+    # Get as-of-date prices
+    asofdate_px = pxs.loc[asofdate]
+
+    # Calculate performance
+    performance = pd.DataFrame({
+        key: (asofdate_px / pxs.loc[date] - 1) * 100
+        for key, date in dates.items()
+    }).T
+
+    # Add as-of-date prices as the top row
+    performance = pd.concat([
+        pd.DataFrame(asofdate_px).T.rename(index={asofdate: 'level'}),
+        performance
+    ])
+
+    return performance
+
+
 def to_pri_return(
     px: pd.Series,
     periods: int = 1,
