@@ -89,8 +89,8 @@ async def get_pxlast(code: str) -> db.Timeseries:
     return ts
 
 
-@router.get("/performance/{group}")
-async def get_performance(group: str = "local-indicies") -> list[dict]:
+@router.get("/performance")
+async def get_performance(asofdate: str, group: str = "local-indicies") -> list[dict]:
 
     if group == "local-indices":
         # Example usage
@@ -195,6 +195,6 @@ async def get_performance(group: str = "local-indicies") -> list[dict]:
         }
 
     # Assuming 'ix' is your data source object
-    pxs = db.get_pxs(tickers).dropna(how="all")
+    pxs = db.get_pxs(tickers).dropna(how="all").loc[:asofdate]
     period_performances = get_period_performances(pxs=pxs).T.round(2)
     return period_performances.reset_index().to_dict("records")

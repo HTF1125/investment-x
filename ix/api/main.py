@@ -5,11 +5,38 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from dotenv import load_dotenv
 from . import routers
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+from contextlib import asynccontextmanager
+
+from ix import task
+
 
 load_dotenv()
 
-app = FastAPI()
+# Create a scheduler
+scheduler = AsyncIOScheduler()
 
+
+# Define your scheduled task
+async def scheduled_task():
+    task.run()
+
+
+# Set up the lifespan event to start and stop the scheduler
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start the scheduler when the app starts
+    scheduler.start()
+    yield
+    # Shut down the scheduler when the app stops
+    scheduler.shutdown()
+
+
+# Create the FastAPI app with the lifespan
+app = FastAPI(lifespan=lifespan)
+# Add the job to the scheduler
+scheduler.add_job(scheduled_task, IntervalTrigger(hours=2))
 # Include the routers
 app.include_router(routers.data.router, prefix="/api")
 
@@ -34,16 +61,15 @@ app.mount(
     name="static",
 )
 
+
 @app.get("/api/health")
 async def health_check():
     try:
         # You can add more checks here, like database connectivity
-        return JSONResponse(
-            content={"status": "healthy"},
-            status_code=200
-        )
+        return JSONResponse(content={"status": "healthy"}, status_code=200)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+
 
 @app.get("/{full_path:path}")
 async def serve_react_app(full_path: str):
@@ -62,3 +88,9 @@ async def serve_react_app(full_path: str):
 
     # If even index.html is not found, raise a 404 error
     raise HTTPException(status_code=404, detail="File not found")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
