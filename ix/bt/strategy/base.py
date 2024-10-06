@@ -4,7 +4,7 @@ from ix import db
 from ix.misc import get_logger, as_date
 
 
-logger = get_logger("test")
+logger = get_logger(__name__)
 
 
 class Book:

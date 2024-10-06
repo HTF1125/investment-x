@@ -1,5 +1,5 @@
 import pandas as pd
-from ix.db.models import Timeseries
+from ix.db.models import TickerNew
 
 
 def get_pxs(
@@ -23,21 +23,21 @@ def get_pxs(
 
     if codes is None:
         # Fetch all prices if no specific codes are provided
-        for price in Timeseries.find_many({"field": field}).run():
-            data = pd.Series(price.data)
-            data.name = price.code
-            px_data.append(data)
+        for ticker in TickerNew.find_all().run():
+            px_last = pd.Series(data=ticker.px_last, name=ticker.code)
+            px_data.append(px_last)
     else:
         # Fetch prices for the specified codes
         for code in codes:
-            timeseries = Timeseries.find_one({"code": code, "field": field}).run()
-            if timeseries is None:
+            ticker = TickerNew.find_one({"code": code}).run()
+            if ticker is None:
                 continue
-            data = pd.Series(timeseries.data)
-            data.name = code
-            px_data.append(data)
+            px_last = pd.Series(data=ticker.px_last, name=ticker.code)
+            px_data.append(px_last)
 
     out = pd.concat(px_data, axis=1)
+    out.index = pd.to_datetime(out.index)
+    out = out.sort_index()
     if start:
         out = out.loc[start:]
     return out

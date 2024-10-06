@@ -2,7 +2,7 @@ import pandas as pd
 from ix.misc import get_yahoo_data
 from ix.misc import get_bloomberg_data
 from ix.misc import get_logger
-from ix.db.models import Ticker, Timeseries
+from ix.db.models import Ticker, Timeseries, TickerNew
 
 logger = get_logger(__name__)
 
@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 def run():
     logger.debug("Initialization complete.")
 
-    for ticker in Ticker.find_all():
+    for ticker in TickerNew.find_all():
         data = None
 
         if ticker.source == "YAHOO":
@@ -38,29 +38,8 @@ def run():
             logger.debug(f"No data found for {ticker.code}, skipping.")
             continue
 
-        # Prepare payload for Timeseries lookup
-        payload = {"code": ticker.code, "field": "PxLast"}
-
-        # Try to find an existing Timeseries entry with the same code and field
-        ts = Timeseries.find_one(payload).run()
-
-        if ts is None:
-            # If no existing timeseries, create a new one
-            ts = Timeseries(
-                data=data.to_dict(),
-                code=ticker.code,
-                field="PxLast",
-            )
-            Timeseries.insert_one(ts)
-            logger.debug(f"Created new timeseries for {ticker.code}")
-        else:
-            # If timeseries exists, update its data field
-            existing_data = pd.Series(ts.data)
-
-            # Combine the existing data with the new data, prioritizing existing data
-            combined_data = existing_data.combine_first(data)
-            ts.set({"data": combined_data.to_dict()})
-            logger.debug(f"update data for {ticker.code}: {combined_data.tail()}")
+        data = data.combine_first(pd.Series(ticker.px_last))
+        ticker.set({"px_last": data.to_dict()})
 
     logger.debug("Timeseries update process completed.")
 
