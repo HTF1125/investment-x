@@ -1,5 +1,5 @@
 import pandas as pd
-from ix.db.models import TickerNew
+from ix.db.models import Ticker
 
 
 def get_pxs(
@@ -23,13 +23,13 @@ def get_pxs(
 
     if codes is None:
         # Fetch all prices if no specific codes are provided
-        for ticker in TickerNew.find_all().run():
+        for ticker in Ticker.find_all().run():
             px_last = pd.Series(data=ticker.px_last, name=ticker.code)
             px_data.append(px_last)
     else:
         # Fetch prices for the specified codes
         for code in codes:
-            ticker = TickerNew.find_one({"code": code}).run()
+            ticker = Ticker.find_one({"code": code}).run()
             if ticker is None:
                 continue
             px_last = pd.Series(data=ticker.px_last, name=ticker.code)

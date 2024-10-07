@@ -1,8 +1,6 @@
-from typing import Annotated
-from bunnet import Document, Indexed
-from datetime import datetime
 
-from .ticker import Ticker, TimeseriesNew, TickerNew
+
+from .ticker import Ticker, TickerNew
 from .strategy import Strategy
 from .regime import Regime
 from .economic_calendar import EconomicCalendar
@@ -16,18 +14,9 @@ def all_models():
     return [
         Ticker,
         TickerNew,
-        Timeseries,
-        TimeseriesNew,
         EconomicCalendar,
         Strategy,
         Regime,
         User,
     ]
 
-    bloomberg: str | None = None
-
-
-class Timeseries(Document):
-    code: Annotated[str, Indexed(unique=True)]
-    field: str
-    data: dict[datetime, float]

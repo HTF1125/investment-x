@@ -79,16 +79,6 @@ async def get_all_pxlast():
     return data.to_dict("records")
 
 
-@router.get("/pxlast/{code}")
-async def get_pxlast(code: str) -> db.Timeseries:
-    ts = db.Timeseries.find_one({"code": code, "field": "PxLast"}).run()
-    if not ts:
-        raise HTTPException(
-            status_code=404, detail=f"Ticker with code {code} not found"
-        )
-    return ts
-
-
 @router.get("/performance")
 async def get_performance(asofdate: str, group: str = "local-indicies") -> list[dict]:
 
