@@ -9,6 +9,10 @@ def today() -> pd.Timestamp:
     return pd.Timestamp("today")
 
 
+def yesterday() -> pd.Timestamp:
+    return today() - pd.DateOffset(days=1)
+
+
 def lastyear() -> pd.Timestamp:
     return pd.Timestamp("today") - pd.DateOffset(years=1)
 

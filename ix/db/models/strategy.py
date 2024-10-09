@@ -7,6 +7,7 @@ class Book(BaseModel):
     d: list[str] = []
     v: list[float] = []
     l: list[float] = []
+    b: list[float] = []
     s: list[dict[str, float]] = []
     c: list[dict[str, float]] = []
     w: list[dict[str, float]] = []

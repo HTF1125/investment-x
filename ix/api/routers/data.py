@@ -72,17 +72,31 @@ def get_regimes() -> list[db.Regime]:
     raise
 
 
-@router.get("/strategies/summary")
+@router.get("/strategies/summary", response_model=db.StrategySummary)
 async def get_strategies_summary() -> list[db.StrategySummary]:
     strategies = db.Strategy.find_all().to_list()
+    if not strategies:
+        raise HTTPException(status_code=404, detail="Strategy not found")
     return strategies
 
-@router.get("/strategies/{code}")
-async def get_strategy(code: str) -> db.Strategy:
+
+from pydantic import BaseModel
+
+
+class StrategyPerformanceData(BaseModel):
+    d: list[str]
+    v: list[float]
+    b: list[float]
+
+
+@router.get("/strategies/{code}/performance", response_model=StrategyPerformanceData)
+async def get_strategy_performance(code: str) -> StrategyPerformanceData:
     strategy = db.Strategy.find_one(db.Strategy.code == code).run()
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
-    return strategy
+    return StrategyPerformanceData(
+        d=strategy.book.d, v=strategy.book.v, b=strategy.book.b
+    )
 
 
 @router.get("/pxlast")

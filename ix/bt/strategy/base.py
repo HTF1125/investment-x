@@ -10,14 +10,16 @@ logger = get_logger(__name__)
 
 class Strategy:
 
+    principal: int = 10_000
     assets: list[str] = ["SPY", "AGG", "TLT"]
+    bm_assets: dict[str, float] = {"SPY": 1.00}
     start: str = "2000-1-1"
     frequency: int = 1
 
-    def __init__(self, principal: int = 10_000) -> None:
+    def __init__(self) -> None:
         self.d = self.start
-        self.v = principal
-        self.l = principal
+        self.v = self.principal
+        self.l = self.principal
         self.p = pd.Series(dtype=float)
         self.w = pd.Series(dtype=float)
         self.s = pd.Series(dtype=float)
@@ -37,7 +39,6 @@ class Strategy:
             self.s = pd.Series(self.db.book.s[-1])
             self.c = pd.Series(self.db.book.c[-1])
             self.a = pd.Series(self.db.book.a[-1])
-
         self.initialize()
 
     def save(self):
@@ -76,6 +77,10 @@ class Strategy:
             self.record()
             if idx % self.frequency == 0:
                 self.a = self.clean_weight(self.allocate())
+
+        b = db.get_pxs(codes=list(self.bm_assets)).reindex(self.dates).ffill()
+        self.db.book.b = list(b.pct_change().sum(axis=1).add(1).cumprod().mul(self.principal).values)
+        print(self.db.book.b)
         return self
 
     def record(self) -> None:
@@ -135,4 +140,8 @@ class Strategy:
 
     @property
     def nav(self) -> pd.Series:
-        return pd.Series(data=self.db.book.v, index=self.dates, name="Net Asset Value")
+        return pd.Series(data=self.db.book.v, index=self.dates, name="Strategy")
+
+    @property
+    def bm(self) -> pd.Series:
+        return pd.Series(data=self.db.book.b, index=self.dates, name="Benchmark")

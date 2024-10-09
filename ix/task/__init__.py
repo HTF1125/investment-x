@@ -2,6 +2,7 @@ import pandas as pd
 from ix.misc import get_yahoo_data
 from ix.misc import get_bloomberg_data
 from ix.misc import get_logger
+from ix.misc import yesterday
 from ix.db.models import Ticker
 
 logger = get_logger(__name__)
@@ -38,12 +39,10 @@ def run():
             logger.debug(f"No data found for {ticker.code}, skipping.")
             continue
 
-        data = data.combine_first(pd.Series(ticker.px_last))
+        data = data.combine_first(pd.Series(ticker.px_last)).loc[: yesterday()]
         ticker.set({"px_last": data.to_dict()})
 
     logger.debug("Timeseries update process completed.")
-
-
 
 
 def update_economic_calendar():
