@@ -2,7 +2,7 @@ import pandas as pd
 from ix.misc import get_yahoo_data
 from ix.misc import get_bloomberg_data
 from ix.misc import get_logger
-from ix.db.models import Ticker, TickerNew
+from ix.db.models import Ticker
 
 logger = get_logger(__name__)
 
@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 def run():
     logger.debug("Initialization complete.")
 
-    for ticker in TickerNew.find_all():
+    for ticker in Ticker.find_all():
         data = None
 
         if ticker.source == "YAHOO":

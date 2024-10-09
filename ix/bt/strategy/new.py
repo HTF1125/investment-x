@@ -3,8 +3,11 @@ from ix.db import get_pxs
 from ix.bt.strategy import Strategy
 
 
-class SectorRotationMom90(Strategy):
+import pandas as pd
+import numpy as np
 
+
+class SectorRotationMom90(Strategy):
     assets = [
         "XLY",
         "XLP",
@@ -19,21 +22,30 @@ class SectorRotationMom90(Strategy):
         "XLRE",
         "SPY",
     ]
-    start = "2000-1-1"
+    start = "2000-01-01"
     frequency = 20
+    momentum_window = 90
+    min_assets = 2
 
     def initialize(self) -> None:
-        self.mom = self.pxs.pct_change(90)
+        self.mom = self.pxs.pct_change(self.momentum_window)
 
     def allocate(self) -> pd.Series:
         momentum = self.mom.loc[str(self.d)]
-        momentum = momentum.sub(min(momentum.loc["SPY"], 0))
-        momentum = momentum[momentum > 0]
-        # top_momentum = momentum.sort_values().iloc[:3]
-        top_momentum = momentum[momentum > 0]
-        if len(top_momentum) < 2:
-            return pd.Series({"SPY": 1})
-        allocation = pd.Series(1 / len(top_momentum), index=top_momentum.index)
+        spy_momentum = momentum.get("SPY", 0)
+
+        # Adjust momentum relative to SPY
+        adjusted_momentum = momentum.sub(min(spy_momentum, 0))
+
+        # Filter positive momentum
+        positive_momentum = adjusted_momentum[adjusted_momentum > 0]
+
+        if len(positive_momentum) < self.min_assets:
+            return pd.Series({"SPY": 1.0})
+
+        # Normalize allocations
+        allocation = positive_momentum / positive_momentum.sum()
+
         return allocation
 
 

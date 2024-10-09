@@ -1,51 +1,11 @@
 import numpy as np
 import pandas as pd
 from ix import db
+from ix.db.models.strategy import Book
 from ix.misc import get_logger, as_date
-
+from ix.core import to_ann_return, to_ann_volatility
 
 logger = get_logger(__name__)
-
-
-class Book:
-
-    def __init__(self) -> None:
-
-        self.data = {
-            "d": [],
-            "v": [],
-            "s": [],
-            "c": [],
-            "w": [],
-            "a": [],
-            "l": [],
-        }
-
-    @property
-    def d(self) -> pd.DatetimeIndex:
-        d = pd.to_datetime(self.data["d"])
-        return d
-
-    @property
-    def v(self) -> pd.Series:
-        v = pd.Series(data=self.data["v"], index=self.d)
-        return v
-
-    @property
-    def l(self) -> pd.Series:
-        l = pd.Series(data=self.data["l"], index=self.d)
-        return l
-
-    @property
-    def w(self) -> pd.DataFrame:
-        w = pd.DataFrame(data=self.data["w"], index=self.d)
-        return w
-
-    @property
-    def a(self) -> pd.DataFrame:
-        a = pd.DataFrame(data=self.data["a"], index=self.d)
-        a = a.sort_index().dropna(how="all")
-        return a
 
 
 class Strategy:
@@ -64,37 +24,30 @@ class Strategy:
         self.c = pd.Series(dtype=float)
         self.a = pd.Series(dtype=float)
         self.pxs = db.get_pxs(self.assets)
-        self.book = Book()
-        try:
-            strategy = db.Strategy.find_one({"code": self.__class__.__name__}).run()
-            if strategy is not None:
-                data = strategy.data
-                self.book.data = data
-                d = self.book.data["d"][-1]
-                d = pd.Timestamp(d) + pd.DateOffset(days=1)
-                self.d = d
-                self.v = self.book.data["v"][-1]
-                self.l = self.book.data["l"][-1]
-                self.p = self.book.data["p"][-1]
-                self.w = self.book.data["w"][-1]
-                self.s = self.book.data["s"][-1]
-                self.c = self.book.data["c"][-1]
-                self.a = self.book.data["a"][-1]
-            self.initialize()
-        except Exception as e:
-            print(e)
+        code = self.__class__.__name__
+        self.db = (
+            db.Strategy.find_one({"code": code}).run()
+            or db.Strategy(code=code).create()
+        )
+        if self.db.book.d:
+            self.d = pd.Timestamp(self.db.book.d[-1]) + pd.DateOffset(days=1)
+            self.v = self.db.book.v[-1]
+            self.l = self.db.book.l[-1]
+            self.w = pd.Series(self.db.book.w[-1])
+            self.s = pd.Series(self.db.book.s[-1])
+            self.c = pd.Series(self.db.book.c[-1])
+            self.a = pd.Series(self.db.book.a[-1])
 
-    def dump(self):
-        try:
-            strategy = db.Strategy.find_one({"code": self.__class__.__name__}).run()
-            if strategy is None:
-                db.Strategy.insert_one(
-                    db.Strategy(code=self.__class__.__name__, data=self.book.data)
-                )
-            else:
-                strategy.update({"data": self.book.data}).run()
-        except Exception as e:
-            print(e)
+        self.initialize()
+
+    def save(self):
+        self.db.last_updated = as_date(self.d, "%Y-%m-%d")
+        if self.db.book.v:
+            if len(self.db.book.v) >= 252:
+                self.db.ann_return = to_ann_return(self.nav)
+                self.db.ann_volatility = to_ann_volatility(self.nav)
+            self.db.nav_history = self.nav.iloc[-30:].to_list()
+        self.db.save()
 
     def initialize(self):
         raise NotImplementedError(
@@ -113,6 +66,7 @@ class Strategy:
 
     def sim(self) -> "Strategy":
         for idx, (self.d, self.p) in enumerate(self.pxs.loc[self.d :].iterrows(), 0):
+            print(self.d)
             self.mtm()
             if not self.a.empty:
                 self.c = self.a.mul(self.v).dropna()
@@ -126,13 +80,13 @@ class Strategy:
 
     def record(self) -> None:
         d = as_date(self.d, "%Y-%m-%d")
-        self.book.data["d"].append(d)
-        self.book.data["v"].append(self.v)
-        self.book.data["l"].append(self.l)
-        self.book.data["s"].append(self.s.dropna().to_dict())
-        self.book.data["w"].append(self.w.dropna().to_dict())
-        self.book.data["c"].append(self.c.dropna().to_dict())
-        self.book.data["a"].append(self.a.dropna().to_dict())
+        self.db.book.d.append(d)
+        self.db.book.v.append(self.v)
+        self.db.book.l.append(self.l)
+        self.db.book.s.append(self.s.dropna().to_dict())
+        self.db.book.w.append(self.w.dropna().to_dict())
+        self.db.book.c.append(self.c.dropna().to_dict())
+        self.db.book.a.append(self.a.dropna().to_dict())
         self.a = pd.Series(dtype=float)
 
     @staticmethod
@@ -174,3 +128,11 @@ class Strategy:
         # !!! Error may occur when there are two max weights???
         weight.iloc[int(np.argmax(weight))] += np.round(residual, decimals=decimals)
         return weight
+
+    @property
+    def dates(self) -> pd.DatetimeIndex:
+        return pd.DatetimeIndex(self.db.book.d)
+
+    @property
+    def nav(self) -> pd.Series:
+        return pd.Series(data=self.db.book.v, index=self.dates, name="Net Asset Value")

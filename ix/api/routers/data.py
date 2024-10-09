@@ -72,6 +72,19 @@ def get_regimes() -> list[db.Regime]:
     raise
 
 
+@router.get("/strategies/summary")
+async def get_strategies_summary() -> list[db.StrategySummary]:
+    strategies = db.Strategy.find_all().to_list()
+    return strategies
+
+@router.get("/strategies/{code}")
+async def get_strategy(code: str) -> db.Strategy:
+    strategy = db.Strategy.find_one(db.Strategy.code == code).run()
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    return strategy
+
+
 @router.get("/pxlast")
 async def get_all_pxlast():
     data = db.get_pxs().loc["2020":].stack().reset_index()

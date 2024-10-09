@@ -1,7 +1,7 @@
 
 
-from .ticker import Ticker, TickerNew
-from .strategy import Strategy
+from .ticker import Ticker
+from .strategy import Strategy, StrategySummary
 from .regime import Regime
 from .economic_calendar import EconomicCalendar
 from .user import *
@@ -13,7 +13,6 @@ def all_models():
     """
     return [
         Ticker,
-        TickerNew,
         EconomicCalendar,
         Strategy,
         Regime,

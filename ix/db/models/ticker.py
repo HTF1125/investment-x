@@ -15,18 +15,3 @@ class Ticker(Document):
     px_last: dict[date, float] = {}
     px_volume: dict[date, float] = {}
 
-
-
-
-class TickerNew(Document):
-
-    code: Annotated[str, Indexed(unique=True)]
-    name: str | None = None
-    exchange: str | None = None
-    market: str | None = None
-    source: str = "YAHOO"
-    bloomberg: str | None = None
-    fred: str | None = None
-    yahoo: str | None = None
-    px_last: dict[date, float] = {}
-    px_volume: dict[date, float] = {}
