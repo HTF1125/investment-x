@@ -9,54 +9,6 @@ router = APIRouter(
 )
 
 
-@router.get("/tickers")
-def get_tickers() -> list[db.Ticker]:
-    tickers = db.Ticker.find_all().to_list()
-    return tickers
-
-
-@router.get("/ticker/{code}")
-def get_ticker(code: str) -> db.Ticker:
-    ticker = db.Ticker.find_one({"code": code}).run()
-    if not ticker:
-        raise HTTPException(status_code=400, detail="Ticker not found")
-    return ticker
-
-
-# Define the POST route to add a new ticker
-@router.post("/ticker/add", response_model=db.Ticker)
-def add_ticker(ticker: db.Ticker):
-    # Check if the ticker already exists
-    existing_ticker = db.Ticker.find_one({"code": ticker.code})
-    if existing_ticker:
-        raise HTTPException(status_code=400, detail="Ticker already exists")
-    db.Ticker.insert_one(ticker)
-    return ticker
-
-
-@router.post(
-    "/ticker/update",
-)
-def mod_ticker(ticker: db.Ticker):
-    # Check if the ticker already exists
-    existing_ticker = db.Ticker.find_one({"code": ticker.code}).run()
-    if not existing_ticker:
-        raise HTTPException(status_code=404, detail="Ticker not found")
-
-    existing_ticker.set(ticker.model_dump())
-
-    return {"message": "update complete"}
-
-
-@router.post("/ticker/delete")
-def del_ticker(code: str):
-    # Check if the ticker already exists
-    existing_ticker = db.Ticker.find_one({"code": code}).run()
-    if not existing_ticker:
-        raise HTTPException(status_code=400, detail="Ticker not found")
-    db.Ticker.delete(existing_ticker)
-    return {"message": f"Ticker with code {code} has been deleted successfully"}
-
 
 @router.get("/economic_calendar")
 def get_economic_calendar() -> list[db.EconomicCalendar]:

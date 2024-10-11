@@ -3,7 +3,7 @@ from ix.misc import get_yahoo_data
 from ix.misc import get_bloomberg_data
 from ix.misc import get_logger
 from ix.misc import yesterday
-from ix.db.models import Ticker
+from ix import db
 
 logger = get_logger(__name__)
 
@@ -11,7 +11,12 @@ logger = get_logger(__name__)
 def run():
     logger.debug("Initialization complete.")
 
-    for ticker in Ticker.find_all():
+    for ticker in db.Ticker.find_all():
+
+        key = {"ticker": ticker}
+        px_last = db.PxLast.find_one(key).run()
+        if px_last is None:
+            px_last = db.PxLast(ticker=ticker).create()
         data = None
 
         if ticker.source == "YAHOO":
@@ -40,7 +45,7 @@ def run():
             continue
 
         data = data.combine_first(pd.Series(ticker.px_last)).loc[: yesterday()]
-        ticker.set({"px_last": data.to_dict()})
+        px_last.set({"data": data.to_dict()})
 
     logger.debug("Timeseries update process completed.")
 

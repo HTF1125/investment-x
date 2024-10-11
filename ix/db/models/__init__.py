@@ -1,21 +1,24 @@
+import sys
+import inspect
+from bunnet import Document
 
-
-from .ticker import Ticker
-from .strategy import Strategy, StrategySummary
-from .regime import Regime
-from .economic_calendar import EconomicCalendar
+# Import all modules (keep these imports)
+from .ticker import *
+from .strategy import *
+from .regime import *
+from .economic_calendar import *
 from .user import *
 
 
 def all_models():
     """
-    Returns a list of all document models for easy reference.
+    Dynamically returns a list of all document models for easy reference.
     """
-    return [
-        Ticker,
-        EconomicCalendar,
-        Strategy,
-        Regime,
-        User,
-    ]
+    current_module = sys.modules[__name__]
 
+    models = []
+    for _, obj in inspect.getmembers(current_module):
+        if inspect.isclass(obj) and issubclass(obj, Document) and obj != Document:
+            models.append(obj)
+
+    return models

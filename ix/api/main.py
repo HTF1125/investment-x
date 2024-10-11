@@ -4,13 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from dotenv import load_dotenv
-from . import routers
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
 
 from ix import task
-
+from ix.api import routers
 
 load_dotenv()
 
@@ -36,7 +35,7 @@ async def lifespan(app: FastAPI):
 # Create the FastAPI app with the lifespan
 app = FastAPI(lifespan=lifespan)
 # Add the job to the scheduler
-scheduler.add_job(scheduled_task, IntervalTrigger(hours=2))
+scheduler.add_job(scheduled_task, IntervalTrigger(hours=1))
 # Include the routers
 app.include_router(routers.data.router, prefix="/api")
 
