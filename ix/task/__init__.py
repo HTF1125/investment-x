@@ -13,10 +13,9 @@ def run():
 
     for ticker in db.Ticker.find_all():
 
-        key = {"ticker": ticker}
-        px_last = db.PxLast.find_one(key).run()
+        px_last = db.PxLast.find_one(db.PxLast.code==ticker.code).run()
         if px_last is None:
-            px_last = db.PxLast(ticker=ticker).create()
+            px_last = db.PxLast(code=ticker.code).create()
         data = None
 
         if ticker.source == "YAHOO":
@@ -44,7 +43,7 @@ def run():
             logger.debug(f"No data found for {ticker.code}, skipping.")
             continue
 
-        data = data.combine_first(pd.Series(ticker.px_last)).loc[: yesterday()]
+        data = data.combine_first(pd.Series(px_last.data)).loc[: yesterday()]
         px_last.set({"data": data.to_dict()})
 
     logger.debug("Timeseries update process completed.")
@@ -69,3 +68,5 @@ def update_economic_calendar():
     for record in data.to_dict("records"):
         objs.append(EconomicCalendar(**record))
     EconomicCalendar.insert_many(objs)
+
+

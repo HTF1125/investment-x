@@ -2,12 +2,12 @@ from fastapi import APIRouter
 from fastapi import HTTPException
 from ix.core.perf import get_period_performances
 from ix import db
+from ix.misc import yesterday, as_date
 
 router = APIRouter(
     prefix="/data",
     tags=["data"],
 )
-
 
 
 @router.get("/economic_calendar")
@@ -24,12 +24,26 @@ def get_regimes() -> list[db.Regime]:
     raise
 
 
-@router.get("/strategies/summary", response_model=db.StrategySummary)
-async def get_strategies_summary() -> list[db.StrategySummary]:
+from pydantic import BaseModel
+
+
+class StrategySummary(BaseModel):
+    code: str
+    last_updated: str | None = None
+    ann_return: float | None = None
+    ann_volatility: float | None = None
+    nav_history: list[float] | None = None
+
+
+@router.get("/strategies/summary")
+async def get_strategies_summary() -> list[StrategySummary]:
     strategies = db.Strategy.find_all().to_list()
     if not strategies:
         raise HTTPException(status_code=404, detail="Strategy not found")
-    return strategies
+    out = []
+    for strategy in strategies:
+        out.append(StrategySummary(**strategy.model_dump()))
+    return out
 
 
 from pydantic import BaseModel
@@ -59,7 +73,13 @@ async def get_all_pxlast():
 
 
 @router.get("/performance")
-async def get_performance(asofdate: str, group: str = "local-indicies") -> list[dict]:
+async def get_performance(
+    group: str = "local-indices",
+    asofdate: str | None = None,
+) -> list[db.KeyPerformance]:
+
+    if asofdate is None:
+        asofdate = as_date(yesterday())
 
     if group == "local-indices":
         # Example usage
@@ -162,8 +182,19 @@ async def get_performance(asofdate: str, group: str = "local-indicies") -> list[
             "SNSR": "IoT",
             "SOXX": "Semis",
         }
+    from dateutil import parser
 
-    # Assuming 'ix' is your data source object
-    pxs = db.get_pxs(tickers).dropna(how="all").loc[:asofdate]
-    period_performances = get_period_performances(pxs=pxs).T.round(2)
-    return period_performances.reset_index().to_dict("records")
+    performances = []
+
+    for key, name in tickers.items():
+        performance = db.Performance.find_one(
+            db.Performance.code == key,
+            db.Performance.date == parser.parse(asofdate).date(),
+        ).run()
+
+        if performance is None:
+            continue
+        performance.code = name
+        performances.append(performance)
+
+    return performances

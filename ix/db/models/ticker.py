@@ -1,6 +1,6 @@
 from typing import Annotated
 from datetime import date
-from bunnet import Document, Indexed, Link
+from bunnet import Document, Indexed
 
 
 class Ticker(Document):
@@ -12,13 +12,15 @@ class Ticker(Document):
     bloomberg: str | None = None
     fred: str | None = None
     yahoo: str | None = None
-    px_last: dict[date, float] = {}
-    px_volume: dict[date, float] = {}
 
 
-class Performance(Document):
-    ticker: Link[Ticker]
+from pydantic import BaseModel
+
+
+class KeyPerformance(BaseModel):
+    code: Annotated[str, Indexed()]
     date: Annotated[date, Indexed()]
+    level: float
     pct_chg_1d: float | None = None
     pct_chg_1w: float | None = None
     pct_chg_1m: float | None = None
@@ -30,7 +32,9 @@ class Performance(Document):
     pct_chg_ytd: float | None = None
 
 
-class PxLast(Document):
+class Performance(KeyPerformance, Document): ...
 
-    ticker: Link[Ticker]
+
+class PxLast(Document):
+    code: Annotated[str, Indexed(unique=True)]
     data: dict[date, float] = {}

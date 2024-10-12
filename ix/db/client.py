@@ -1,10 +1,9 @@
 import pandas as pd
-from ix.db.models import Ticker
+from ix import db
 
 
 def get_pxs(
     codes: str | list[str] | set[str] | tuple[str, ...] | dict[str, str] | None = None,
-    field: str = "PxLast",
     start: str | None = None,
 ) -> pd.DataFrame:
 
@@ -23,16 +22,16 @@ def get_pxs(
 
     if codes is None:
         # Fetch all prices if no specific codes are provided
-        for ticker in Ticker.find_all().run():
-            px_last = pd.Series(data=ticker.px_last, name=ticker.code)
-            px_data.append(px_last)
+        for pxlast in db.PxLast.find_all().run():
+            pxlast = pd.Series(data=pxlast.data, name=pxlast.code)
+            px_data.append(pxlast)
     else:
         # Fetch prices for the specified codes
         for code in codes:
-            ticker = Ticker.find_one({"code": code}).run()
-            if ticker is None:
+            pxlast = db.PxLast.find_one({"code": code}).run()
+            if pxlast is None:
                 continue
-            px_last = pd.Series(data=ticker.px_last, name=ticker.code)
+            px_last = pd.Series(data=pxlast.data, name=pxlast.code)
             px_data.append(px_last)
 
     out = pd.concat(px_data, axis=1)

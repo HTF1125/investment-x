@@ -36,8 +36,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 # Add the job to the scheduler
 scheduler.add_job(scheduled_task, IntervalTrigger(hours=1))
-# Include the routers
 app.include_router(routers.data.router, prefix="/api")
+app.include_router(routers.admin.router, prefix="/api")
 
 # Add CORS middleware
 app.add_middleware(
