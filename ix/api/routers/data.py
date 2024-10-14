@@ -1,8 +1,7 @@
 from fastapi import APIRouter
 from fastapi import HTTPException
-from ix.core.perf import get_period_performances
 from ix import db
-from ix.misc import yesterday, as_date
+from ix.misc import as_date, last_business_day
 
 router = APIRouter(
     prefix="/data",
@@ -79,7 +78,7 @@ async def get_performance(
 ) -> list[db.KeyPerformance]:
 
     if asofdate is None:
-        asofdate = as_date(yesterday())
+        asofdate = as_date(last_business_day())
 
     if group == "local-indices":
         # Example usage

@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 from ix import db
-from ix.db.models.strategy import Book
 from ix.misc import get_logger, as_date
 from ix.core import to_ann_return, to_ann_volatility
 
@@ -13,24 +12,24 @@ class Strategy:
     principal: int = 10_000
     assets: list[str] = ["SPY", "AGG", "TLT"]
     bm_assets: dict[str, float] = {"SPY": 1.00}
-    start: str = "2000-1-1"
-    frequency: int = 1
+    start: pd.Timestamp = pd.Timestamp("2000-1-1")
+    end: pd.Timestamp = pd.Timestamp("2040-1-1")
+    frequency: str = "ME"
 
     def __init__(self) -> None:
         self.d = self.start
         self.v = self.principal
         self.l = self.principal
-        self.p = pd.Series(dtype=float)
         self.w = pd.Series(dtype=float)
         self.s = pd.Series(dtype=float)
         self.c = pd.Series(dtype=float)
         self.a = pd.Series(dtype=float)
         self.pxs = db.get_pxs(self.assets)
+
+        self.trade_dates = self.generate_trade_dates()
+
         code = self.__class__.__name__
-        self.db = (
-            db.Strategy.find_one({"code": code}).run()
-            or db.Strategy(code=code).create()
-        )
+        self.db = db.Strategy.find_one({"code": code}).run() or db.Strategy(code=code)
         if self.db.book.d:
             self.d = pd.Timestamp(self.db.book.d[-1]) + pd.DateOffset(days=1)
             self.v = self.db.book.v[-1]
@@ -66,22 +65,38 @@ class Strategy:
         self.w = self.c.div(self.v)
 
     def sim(self) -> "Strategy":
-        for idx, (self.d, self.p) in enumerate(self.pxs.loc[self.d :].iterrows(), 0):
-            print(self.d)
-            self.mtm()
-            if not self.a.empty:
-                self.c = self.a.mul(self.v).dropna()
-                self.s = self.c.div(self.p).dropna()
-                self.l = self.v - self.c.sum()
-                self.w = self.c.div(self.v)
-            self.record()
-            if idx % self.frequency == 0:
-                self.a = self.clean_weight(self.allocate())
+
+        # Assuming self.trade_dates is already defined
+        for i in range(len(self.trade_dates) - 1):
+            start, end = self.trade_dates[i : i + 2]
+            if i > 0:
+                start = start + pd.DateOffset(days=1)
+            self.a = self.allocate()
+            if isinstance(self.a, pd.Series):
+                print(f"{self.d} : {self.a.to_dict()}")
+            pxs = self.pxs.loc[start:end]
+            if not pxs.empty:
+                for self.d in pxs.index:
+                    self.mtm()
+                    if not self.a.empty:
+                        self.c = self.a.mul(self.v).dropna()
+                        self.s = self.c.div(self.p).dropna()
+                        self.l = self.v - self.c.sum()
+                        self.w = self.c.div(self.v)
+                    self.record()
 
         b = db.get_pxs(codes=list(self.bm_assets)).reindex(self.dates).ffill()
-        self.db.book.b = list(b.pct_change().sum(axis=1).add(1).cumprod().mul(self.principal).values)
-        print(self.db.book.b)
+        self.db.book.b = list(
+            b.pct_change().sum(axis=1).add(1).cumprod().mul(self.principal).values
+        )
         return self
+
+    @property
+    def p(self) -> pd.Series:
+        result = self.pxs.loc[self.d]
+        if isinstance(result, pd.Series):
+            return result
+        raise ValueError("..")
 
     def record(self) -> None:
         d = as_date(self.d, "%Y-%m-%d")
@@ -145,3 +160,13 @@ class Strategy:
     @property
     def bm(self) -> pd.Series:
         return pd.Series(data=self.db.book.b, index=self.dates, name="Benchmark")
+
+    def generate_trade_dates(self):
+        # Generate monthly dates
+        date_range = pd.date_range(start=self.d, end=self.end, freq=self.frequency)
+        # Ensure self.d is included
+        trade_dates = pd.DatetimeIndex([self.d]).union(date_range)
+        trade_dates = trade_dates.sort_values().drop_duplicates()
+        # Filter out dates before self.d
+        trade_dates = trade_dates[trade_dates >= self.d]
+        return trade_dates

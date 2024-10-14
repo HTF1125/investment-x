@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from bunnet import Document, Indexed
 import numpy as np
 
+
 class Book(BaseModel):
     d: list[str] = []
     v: list[float] = []
@@ -14,12 +15,11 @@ class Book(BaseModel):
     a: list[dict[str, float]] = []
 
 
-
 class Strategy(Document):
     code: Annotated[str, Indexed(unique=True)]
+    frequency: str = "M"
     last_updated: str | None = None
     ann_return: float | None = None
     ann_volatility: float | None = None
     nav_history: list[float] | None = None
     book: Book = Book()
-
