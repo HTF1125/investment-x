@@ -1,6 +1,6 @@
-from fastapi import APIRouter
-from fastapi import HTTPException
-from ix.core.perf import get_period_performances
+from fastapi import APIRouter, HTTPException, status
+from bson.errors import InvalidId
+from bunnet import PydanticObjectId
 from ix import db
 from ix.misc import yesterday, as_date
 
@@ -8,6 +8,41 @@ router = APIRouter(
     prefix="/data",
     tags=["data"],
 )
+
+
+@router.get("/strategies", response_model=list[db.Strategy])
+def get_strategies():
+    return [
+        db.Strategy(**strategy.model_dump(exclude={"book"}))
+        for strategy in db.Strategy.find_all().run()
+    ]
+
+
+@router.get("/strategies/{id}", response_model=db.Strategy)
+def get_strategy_by_id(id: str):
+    try:
+
+        # Attempt to retrieve the insight
+        insight = db.Strategy.find_one(db.Strategy.id == PydanticObjectId(id)).run()
+
+        if insight is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Insight not found"
+            )
+
+        return insight
+
+    except InvalidId:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid insight ID format"
+        )
+    except Exception as e:
+        print(e)
+        # Log the exception here
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while processing the request: {str(e)}",
+        )
 
 
 @router.get("/economic_calendar")
@@ -22,6 +57,42 @@ def get_regimes() -> list[db.Regime]:
     if regimes_db:
         return regimes_db
     raise
+
+
+from bunnet import PydanticObjectId
+
+
+@router.get("/insights/{id}")
+async def get_inisghts_by_id(id: str) -> db.Insight:
+
+    try:
+
+        # Attempt to retrieve the insight
+        insight = db.Insight.find_one(db.Insight.id == PydanticObjectId(id)).run()
+
+        if insight is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Insight not found"
+            )
+
+        return insight
+
+    except InvalidId:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid insight ID format"
+        )
+    except Exception as e:
+        print(e)
+        # Log the exception here
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while processing the request: {str(e)}",
+        )
+
+
+@router.get("/insights")
+def get_inisghts() -> list[db.Insight]:
+    return db.Insight.find_all().run()
 
 
 from pydantic import BaseModel
@@ -184,16 +255,17 @@ async def get_performance(
         }
     from dateutil import parser
 
-        performances = []
-        for key, name in tickers.items():
-            performance = db.Performance.find_one(
-                db.Performance.code == key,
-                db.Performance.date == parser.parse(asofdate).date(),
-            ).run()
-            if performance:
-                performance.code = name
-                performances.append(performance)
+    performances = []
 
-        return performances
-    except Exception as e:
-        handle_db_exception("Error fetching performance data")(e)
+    for key, name in tickers.items():
+        performance = db.Performance.find_one(
+            db.Performance.code == key,
+            db.Performance.date == parser.parse(asofdate).date(),
+        ).run()
+
+        if performance is None:
+            continue
+        performance.code = name
+        performances.append(performance)
+
+    return performances
