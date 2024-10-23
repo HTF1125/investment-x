@@ -3,10 +3,6 @@ from ix.db import get_pxs
 from ix.bt.strategy import Strategy
 
 
-import pandas as pd
-import numpy as np
-
-
 class SectorRotationMom90(Strategy):
     assets = [
         "XLY",
@@ -22,8 +18,8 @@ class SectorRotationMom90(Strategy):
         "XLRE",
         "SPY",
     ]
-    start = "2000-01-01"
-    frequency = 20
+    start = pd.Timestamp("2000-01-03")
+    frequency = "ME"
     momentum_window = 90
     min_assets = 2
 
@@ -52,31 +48,32 @@ class SectorRotationMom90(Strategy):
 class SectorRotationCESI(Strategy):
     assets = [
         "XLY",
-        "XLP",
-        "XLE",
         "XLF",
         "XLV",
         "XLI",
-        "XLB",
-        "XLU",
         "XLC",
         "XLK",
-        "XLRE",
         "SPY",
     ]
-    start = "2003-1-1"
-    frequency = 20
+    frequency = "ME"
+    start = pd.Timestamp("2007-01-03")
 
     def initialize(self) -> None:
-        self.cesi = get_pxs(["CESIUSD Index"]).squeeze()
+        self.cesi = (
+            get_pxs(["CESIUSD Index"])
+            .resample("D")
+            .last()
+            .ffill()
+            .squeeze()
+            .rolling(20)
+            .mean()
+        )
 
     def allocate(self) -> pd.Series:
-        if self.cesi.loc[: self.d].iloc[-1] >= 28:
-            s = self.p.filter(items=["XLV", "XLP", "XLK", "XLI", "XLB"]).dropna()
-        elif self.cesi.loc[: self.d].iloc[-1] <= -15:
-            s = self.p.filter(
-                items=["XLY", "XLF", "XLC", "XLE", "XLU", "XLRE"]
-            ).dropna()
+        if self.cesi.loc[: self.d].iloc[-1] >= 10:
+            s = self.p.filter(items=["XLF", "XLV", "XLC"]).dropna()
+        elif self.cesi.loc[: self.d].iloc[-1] <= -10:
+            s = self.p.filter(items=["XLK", "XLI", "XLY"]).dropna()
         else:
-            s = self.p.dropna()
+            s = pd.Series({"SPY": 1.0})
         return pd.Series(1 / len(s), index=s.index)
