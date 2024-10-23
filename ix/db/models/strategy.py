@@ -1,7 +1,6 @@
 from typing import Annotated
 from pydantic import BaseModel
 from bunnet import Document, Indexed
-import numpy as np
 
 class Book(BaseModel):
     d: list[str] = []

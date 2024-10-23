@@ -8,7 +8,7 @@ from .strategy import *
 from .regime import *
 from .economic_calendar import *
 from .user import *
-
+from .insight import *
 
 def all_models():
     """
