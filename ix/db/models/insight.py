@@ -10,5 +10,8 @@ class InsightKeyInfo(BaseModel):
     tags: list[str] = []
 
 
-class Insight(Document, InsightKeyInfo):
+class Insight(Document):
+    date: Annotated[date, Indexed()]
+    title: str
+    tags: list[str] = []
     content: str

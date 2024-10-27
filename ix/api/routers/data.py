@@ -2,12 +2,9 @@ from fastapi import APIRouter, HTTPException, status
 from bson.errors import InvalidId
 from bunnet import PydanticObjectId
 from ix import db
-from ix.misc import yesterday, as_date
+from ix.misc import last_business_day, as_date
 
-router = APIRouter(
-    prefix="/data",
-    tags=["data"],
-)
+router = APIRouter(prefix="/data", tags=["data"])
 
 
 @router.get("/strategies", response_model=list[db.Strategy])
@@ -45,18 +42,39 @@ def get_strategy_by_id(id: str):
         )
 
 
-@router.get("/economic_calendar")
-def get_economic_calendar() -> list[db.EconomicCalendar]:
-    data = db.EconomicCalendar.find_all().to_list()
-    return data
+@router.get("/economic_calendar", response_model=list[db.EconomicCalendar])
+async def get_economic_calendar() -> list[db.EconomicCalendar]:
+    """
+    Retrieve all economic calendar events.
+
+    Returns:
+        List[EconomicCalendarResponse]: A list of economic calendar events.
+
+    Raises:
+        HTTPException: If there's an error retrieving the data.
+    """
+    try:
+        data = db.EconomicCalendar.find_all().to_list()
+        return data
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving economic calendar: {str(e)}"
+        )
 
 
 @router.get("/regimes")
 def get_regimes() -> list[db.Regime]:
-    regimes_db = db.Regime.find_all().run()
-    if regimes_db:
+    try:
+        regimes_db = db.Regime.find_all().to_list()
+        if not regimes_db:
+            raise HTTPException(status_code=404, detail="No regimes found")
         return regimes_db
-    raise
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving regimes: {str(e)}"
+        )
 
 
 from bunnet import PydanticObjectId
@@ -95,47 +113,6 @@ def get_inisghts() -> list[db.Insight]:
     return db.Insight.find_all().run()
 
 
-from pydantic import BaseModel
-
-
-class StrategySummary(BaseModel):
-    code: str
-    last_updated: str | None = None
-    ann_return: float | None = None
-    ann_volatility: float | None = None
-    nav_history: list[float] | None = None
-
-
-@router.get("/strategies/summary")
-async def get_strategies_summary() -> list[StrategySummary]:
-    strategies = db.Strategy.find_all().to_list()
-    if not strategies:
-        raise HTTPException(status_code=404, detail="Strategy not found")
-    out = []
-    for strategy in strategies:
-        out.append(StrategySummary(**strategy.model_dump()))
-    return out
-
-
-from pydantic import BaseModel
-
-
-class StrategyPerformanceData(BaseModel):
-    d: list[str]
-    v: list[float]
-    b: list[float]
-
-
-@router.get("/strategies/{code}/performance", response_model=StrategyPerformanceData)
-async def get_strategy_performance(code: str) -> StrategyPerformanceData:
-    strategy = db.Strategy.find_one(db.Strategy.code == code).run()
-    if not strategy:
-        raise HTTPException(status_code=404, detail="Strategy not found")
-    return StrategyPerformanceData(
-        d=strategy.book.d, v=strategy.book.v, b=strategy.book.b
-    )
-
-
 @router.get("/pxlast")
 async def get_all_pxlast():
     data = db.get_pxs().loc["2020":].stack().reset_index()
@@ -147,10 +124,10 @@ async def get_all_pxlast():
 async def get_performance(
     group: str = "local-indices",
     asofdate: str | None = None,
-) -> list[db.KeyPerformance]:
+) -> list[db.Performance]:
 
     if asofdate is None:
-        asofdate = as_date(yesterday())
+        asofdate = as_date(last_business_day())
 
     if group == "local-indices":
         # Example usage

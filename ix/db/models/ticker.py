@@ -14,10 +14,7 @@ class Ticker(Document):
     yahoo: str | None = None
 
 
-from pydantic import BaseModel
-
-
-class KeyPerformance(BaseModel):
+class Performance(Document):
     code: Annotated[str, Indexed()]
     date: Annotated[date, Indexed()]
     level: float
@@ -30,9 +27,6 @@ class KeyPerformance(BaseModel):
     pct_chg_3y: float | None = None
     pct_chg_mtd: float | None = None
     pct_chg_ytd: float | None = None
-
-
-class Performance(KeyPerformance, Document): ...
 
 
 class PxLast(Document):
