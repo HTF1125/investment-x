@@ -1,8 +1,6 @@
-import numpy as np
 import pandas as pd
 from ix import db
 from ix import misc
-from typing import Union
 
 logger = misc.get_logger(__name__)
 
@@ -14,10 +12,9 @@ class Regime:
         return self.__class__.__name__
 
     def __init__(self) -> None:
-        record = db.Regime.find_one(db.Regime.code == self.code).run()
-        if record is None:
-            record = db.Regime(code=self.code).create()
-        self.record = record
+        self.db = db.Regime.find_one(db.Regime.code == self.code).run() or db.Regime(
+            code=self.code
+        )
 
     def fit(self) -> pd.Series:
         raise NotImplementedError("Subclasses must implement `fit` method.")
@@ -34,8 +31,8 @@ class Regime:
             logger.info("Starting data refresh")
             states = self.fit()
             self._validate_states(states)
-            self.record.data = states.to_dict()
-            self.record.save()
+            self.db.data = states.to_dict()
+            db.Regime.save(self.db)
             logger.info(
                 f"Data refresh completed successfully. Updated record with {len(states)} entries"
             )
@@ -64,14 +61,14 @@ class Regime:
             raise TypeError("Index is not sorted in ascending order")
 
     def get_states(self) -> pd.Series:
-        if self.record.data is None:
+        if self.db.data is None:
             self.refresh()
-        states = pd.Series(self.record.data)
+        states = pd.Series(self.db.data)
+        states.index = pd.to_datetime(states.index)
         states = states.sort_index()
         states.name = "states"
         states.index.name = "date"
         return states
 
-    def get_state(self, date: Union[str, pd.Timestamp]) -> str:
+    def get_state(self, date: str | pd.Timestamp) -> str:
         return self.get_states().loc[:date].iloc[-1]
-

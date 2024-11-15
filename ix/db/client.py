@@ -1,42 +1,73 @@
 import pandas as pd
 from ix import db
+from typing import Union, List, Set, Tuple, Dict, Optional
+import logging
 
+# Configure logging
+logger = logging.getLogger(__name__)
 
 def get_pxs(
-    codes: str | list[str] | set[str] | tuple[str, ...] | dict[str, str] | None = None,
-    start: str | None = None,
+    codes: Union[str, List[str], Set[str], Tuple[str, ...], Dict[str, str], None] = None,
+    start: Optional[str] = None,
 ) -> pd.DataFrame:
+    """
+    Fetches price data from the database for specified asset codes.
 
+    Args:
+        codes: Asset codes, which can be a string, list, set, tuple, or dictionary for renaming columns.
+        start: Optional start date to filter the data from.
+
+    Returns:
+        A DataFrame containing price data with assets as columns and dates as the index.
+    """
+    # Handle renaming columns if `codes` is a dictionary
     if isinstance(codes, dict):
-        # If tickers is a dictionary, get the data for the keys and rename columns
         keys = list(codes.keys())
-        data = get_pxs(codes=keys)
-        data = data.rename(columns=codes)
-        return data
+        data = get_pxs(codes=keys, start=start)
+        return data.rename(columns=codes)
 
-    # If tickers is a string, split it into a list
+    # Convert single string input to a list of codes, trimming whitespace
     if isinstance(codes, str):
-        codes = codes.replace(",", " ").split()
+        codes = [code.strip() for code in codes.split(",")]
 
+    # Prepare to hold the data series
     px_data = []
 
-    if codes is None:
-        # Fetch all prices if no specific codes are provided
-        for pxlast in db.PxLast.find_all().run():
-            pxlast = pd.Series(data=pxlast.data, name=pxlast.code)
-            px_data.append(pxlast)
-    else:
-        # Fetch prices for the specified codes
-        for code in codes:
+    try:
+        # Helper function to fetch data for a given code
+        def fetch_px_series(code):
             pxlast = db.PxLast.find_one({"code": code}).run()
-            if pxlast is None:
-                continue
-            px_last = pd.Series(data=pxlast.data, name=pxlast.code)
-            px_data.append(px_last)
+            if pxlast is not None:
+                return pd.Series(data=pxlast.data, name=pxlast.code)
+            return None
 
-    out = pd.concat(px_data, axis=1)
-    out.index = pd.to_datetime(out.index)
-    out = out.sort_index()
-    if start:
-        out = out.loc[start:]
-    return out
+        # Fetch all prices if no specific codes are provided
+        if codes is None:
+            for pxlast in db.PxLast.find_all().run():
+                if pxlast:
+                    px_data.append(pd.Series(data=pxlast.data, name=pxlast.code))
+        else:
+            # Fetch prices for each specified code
+            for code in codes:
+                px_series = fetch_px_series(code)
+                if px_series is not None:
+                    px_data.append(px_series)
+
+        # Combine series into a DataFrame
+        if px_data:
+            out = pd.concat(px_data, axis=1)
+            out.index = pd.to_datetime(out.index)
+            out = out.sort_index()
+
+            # Filter data based on start date if provided
+            if start:
+                out = out.loc[start:]
+
+            return out
+        else:
+            logger.warning("No price data found for the specified codes.")
+            return pd.DataFrame()
+
+    except Exception as e:
+        logger.error(f"Error fetching price data: {e}", exc_info=True)
+        return pd.DataFrame()

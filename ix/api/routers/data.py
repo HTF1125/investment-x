@@ -1,10 +1,21 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
+from fastapi import Query
+from fastapi import HTTPException
+from fastapi import status
 from bson.errors import InvalidId
-from bunnet import PydanticObjectId
+from bunnet import PydanticObjectId, SortDirection
 from ix import db
 from ix.misc import last_business_day, as_date
 
 router = APIRouter(prefix="/data", tags=["data"])
+
+
+@router.get("/signals", response_model=list[db.Signal])
+def get_signals():
+    return [
+        db.Signal(**signal.model_dump(exclude={"book"}))
+        for signal in db.Signal.find_all().run()
+    ]
 
 
 @router.get("/strategies", response_model=list[db.Strategy])
@@ -108,9 +119,100 @@ async def get_inisghts_by_id(id: str) -> db.Insight:
         )
 
 
+@router.put("/insights/{id}")
+async def update_insight_by_id(id: str, insight_update: db.Insight) -> db.Insight:
+    try:
+        # Attempt to retrieve the existing insight
+        existing_insight = db.Insight.find_one(
+            db.Insight.id == PydanticObjectId(id)
+        ).run()
+
+        if existing_insight is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Insight not found"
+            )
+
+        # Prepare the updated insight
+        updated_insight = existing_insight.copy(update=insight_update.dict())
+
+        # Update the insight in the database
+        db.Insight.update(
+            {"_id": PydanticObjectId(id)}, {"$set": updated_insight}
+        ).run()
+
+        return updated_insight
+
+    except InvalidId:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid insight ID format"
+        )
+    except Exception as e:
+        print(e)
+        # Log the exception here
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while processing the request: {str(e)}",
+        )
+
+
+from pydantic import BaseModel, Field
+from datetime import date
+
+
+# Define a request model to validate the incoming data structure
+class InsightCreateRequest(BaseModel):
+    title: str
+    date: date
+    content: str
+
+
+@router.post("/insights", status_code=200)
+async def add_insight(payload: InsightCreateRequest):
+    try:
+        # Create a new insight entry
+        insight_obj = db.Insight(
+            title=payload.title,
+            date=payload.date,
+            content=payload.content,
+        )
+
+        # Insert the new insight into the database
+        new_insight_id = insight_obj.create()
+
+        if not new_insight_id:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create new insight",
+            )
+
+        # Retrieve the created insight to return it in the response
+        created_insight = db.Insight.find_one(db.Insight.id == new_insight_id).run()
+        return created_insight
+
+    except Exception as e:
+        print(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while creating the insight: {str(e)}",
+        )
+
+
 @router.get("/insights")
-def get_inisghts() -> list[db.Insight]:
-    return db.Insight.find_all().run()
+def get_insights(
+    skip: int = Query(0, ge=0), limit: int = Query(10, gt=0)
+) -> list[db.Insight]:
+    # Fetch all insights and sort by date in descending order
+    insights = (
+        db.Insight.find_all()
+        .skip(skip)
+        .limit(limit)
+        .sort([("date", SortDirection.DESCENDING)])
+        .run()
+    )
+    return [
+        db.Insight(**insight.model_dump(exclude={"content"}), content="")
+        for insight in insights
+    ]
 
 
 @router.get("/pxlast")
@@ -230,14 +332,12 @@ async def get_performance(
             "SNSR": "IoT",
             "SOXX": "Semis",
         }
-    from dateutil import parser
 
     performances = []
 
     for key, name in tickers.items():
         performance = db.Performance.find_one(
             db.Performance.code == key,
-            db.Performance.date == parser.parse(asofdate).date(),
         ).run()
 
         if performance is None:

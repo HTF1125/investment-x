@@ -12,6 +12,7 @@ logger = get_logger(__name__)
 def run():
 
     update_price_data()
+    db.Performance.delete_all()
     update_price_performance()
     update_economic_calendar()
 
@@ -100,6 +101,8 @@ def update_price_performance():
     pxlasts.index = pd.to_datetime(pxlasts.index)
     pxlasts = pxlasts.sort_index().loc[:asofdate].resample("D").last().ffill()
 
+
+    print(f"update performance for {pxlasts.index[-1]}")
     for code in pxlasts:
         pxlast = pxlasts[code]
         level = pxlast.iloc[-1]
@@ -137,13 +140,16 @@ def update_price_performance():
             "pct_chg_mtd": pct_chg_mtd,
             "pct_chg_ytd": pct_chg_ytd,
         }
-
-        if existing_performance:
-            # Update the existing document
-            existing_performance.update({"$set": performance_data})
-            print(f"Updated Performance for {code} on {asofdate}")
-        else:
-            # Create a new document
-            new_performance = db.Performance(**performance_data)
-            new_performance.create()
-            print(f"Created new Performance for {code} on {asofdate}")
+        try:
+            if existing_performance:
+                # Update the existing document
+                existing_performance.update({"$set": performance_data})
+                print(f"Updated Performance for {code} on {asofdate}")
+            else:
+                # Create a new document
+                new_performance = db.Performance(**performance_data)
+                new_performance.create()
+                print(f"Created new Performance for {code} on {asofdate}")
+        except Exception as exc:
+            print(exc)
+            print(performance_data)

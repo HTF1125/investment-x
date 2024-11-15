@@ -24,5 +24,5 @@ class UsOecdLeading(Regime):
         data.loc[contracting & uptrending & significant, "States"] = "Recovery"
         data.loc[expanding & uptrending & significant, "States"] = "Expansion"
         data["States"] = data["States"].ffill()
-        data.index += pd.DateOffset(months=1, days=2)
+        data.index += pd.DateOffset(days=20)
         return data["States"].dropna()
