@@ -54,7 +54,6 @@ class SectorRotationCESI(Strategy):
         "XLK",
         "SPY",
     ]
-    frequency = "ME"
     start = pd.Timestamp("2007-01-03")
 
     def initialize(self) -> None:

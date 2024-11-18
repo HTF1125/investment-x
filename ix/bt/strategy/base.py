@@ -47,6 +47,9 @@ class Strategy:
             self.db.nav_history = self.nav.iloc[-30:].to_list()
         db.Strategy.save(self.db)
 
+    def delete(self):
+        return db.Strategy.find_one(db.Strategy.code == self.__class__.__name__).delete().run()
+
     def initialize(self):
         raise NotImplementedError(
             "Must implement `initialize` method to calculate needed signals."
