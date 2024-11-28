@@ -5,7 +5,6 @@ from fastapi.exceptions import RequestValidationError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
-from ix import task
 from ix.api import routers
 from ix.misc import get_logger
 from ix.db import initialize
@@ -18,11 +17,6 @@ logger = get_logger(__name__)
 
 # Create a scheduler
 scheduler = AsyncIOScheduler()
-
-
-# Define your scheduled task
-async def scheduled_task():
-    task.run()
 
 
 # App lifespan manager
@@ -46,12 +40,13 @@ async def lifespan(app: FastAPI):
 # Initialize the FastAPI app with the lifespan manager
 app = FastAPI(lifespan=lifespan)
 
-# Add the job to the scheduler
-scheduler.add_job(scheduled_task, IntervalTrigger(hours=1))
 
 # Include API routers
 app.include_router(routers.data.router, prefix="/api")
-app.include_router(routers.admin.router, prefix="/api")
+app.include_router(routers.strategies.router, prefix="/api")
+app.include_router(routers.index_groups.router, prefix="/api")
+app.include_router(routers.signals.router, prefix="/api")
+app.include_router(routers.tickers.router, prefix="/api")
 
 # CORS middleware
 app.add_middleware(

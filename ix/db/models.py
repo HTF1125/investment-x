@@ -4,6 +4,14 @@ from pydantic import BaseModel
 from bunnet import Document, Indexed
 
 
+class Code(BaseModel):
+    code: Annotated[str, Indexed(unique=True)]
+
+
+class IndexGroup(Code, Document):
+    constituents: Dict[str, str]
+
+
 class EconomicCalendar(Document):
     """
     Represents an entry in an economic calendar, with fields for event details.
@@ -50,9 +58,8 @@ class Regime(Document):
     data: Optional[Dict[date, str]] = {}
 
 
-class Signal(Document):
+class Signal(Code, Document):
 
-    code: Annotated[str, Indexed(unique=True)]
     data: Optional[Dict[date, float]] = {}
 
 
@@ -71,25 +78,24 @@ class Book(BaseModel):
     a: List[Dict[str, float]] = []
 
 
-class Strategy(Document):
-    """
-    Represents a strategy with related book data and performance metrics.
-    """
-
+class StrategyKeyInfo(BaseModel):
     code: Annotated[str, Indexed(unique=True)]
     frequency: str = "ME"
     last_updated: Optional[str] = None
     ann_return: Optional[float] = None
     ann_volatility: Optional[float] = None
     nav_history: Optional[List[float]] = None
+
+
+class Strategy(StrategyKeyInfo, Document):
+    """
+    Represents a strategy with related book data and performance metrics.
+    """
+
     book: Book = Book()
 
 
-class Ticker(Document):
-    """
-    Represents a market ticker with identification and source details.
-    """
-
+class TickerInfo(BaseModel):
     code: Annotated[str, Indexed(unique=True)]
     name: Optional[str] = None
     exchange: Optional[str] = None
@@ -99,6 +105,9 @@ class Ticker(Document):
     fred: Optional[str] = None
     yahoo: Optional[str] = None
     remark: Optional[str] = None
+
+
+class Ticker(TickerInfo, Document): ...
 
 
 class Performance(Document):
@@ -120,13 +129,12 @@ class Performance(Document):
     pct_chg_ytd: Optional[float] = None
 
 
-class PxLast(Document):
-    """
-    Represents the last known price level for a ticker over time.
-    """
-
+class PxLastModel(BaseModel):
     code: Annotated[str, Indexed(unique=True)]
     data: Dict[date, float] = {}
+
+
+class PxLast(PxLastModel, Document): ...
 
 
 class User(Document):
@@ -153,4 +161,5 @@ def all_models():
         PxLast,
         User,
         Signal,
+        IndexGroup,
     ]
