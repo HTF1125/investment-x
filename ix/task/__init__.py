@@ -153,3 +153,153 @@ def update_price_performance():
         except Exception as exc:
             print(exc)
             print(performance_data)
+
+
+
+
+import requests
+from typing import Dict, List, Optional
+from datetime import date
+import yfinance as yf
+from ix.misc import get_bloomberg_data
+from ix.misc import get_logger
+
+
+logger = get_logger(__name__)
+
+
+class Task:
+    def __init__(self, base_url: str):
+        """
+        Initialize the Task class.
+
+        Args:
+            base_url (str): The base URL for the API.
+        """
+        self.base_url = base_url
+        self.session = requests.Session()
+
+    def update_pxlast_api(self, ticker_code: str, update_pxlast: Dict[date, float]) -> None:
+        """
+        Update the PxLast values for a given ticker via the API.
+
+        Args:
+            ticker_code (str): The ticker code to update.
+            update_pxlast (Dict[date, float]): Dictionary of date-value pairs to update.
+        """
+        if not update_pxlast:
+            logger.error(f"Update data for ticker '{ticker_code}' is empty.")
+            return
+
+        endpoint = f"{self.base_url}/api/data/tickers/update_pxlast/{ticker_code}"
+        payload = {
+            "update_pxlast": {
+                key.strftime("%Y-%m-%d"): round(float(value), 2)
+                for key, value in update_pxlast.items()
+            }
+        }
+
+        try:
+            response = self.session.put(endpoint, json=payload)
+            response.raise_for_status()
+            logger.info(f"Successfully updated PxLast for ticker '{ticker_code}'")
+        except requests.exceptions.RequestException as err:
+            logger.error(f"Failed to update PxLast for ticker '{ticker_code}': {err}")
+            if response is not None:
+                logger.error(f"Response content: {response.text}")
+
+    def fetch_all_tickers(self) -> Optional[List[Dict]]:
+        """
+        Fetch all tickers from the API.
+
+        Returns:
+            List[Dict]: A list of tickers or None if fetching fails.
+        """
+        endpoint = f"{self.base_url}/api/data/tickers/all"
+        try:
+            response = self.session.get(endpoint)
+            response.raise_for_status()
+            tickers = response.json()
+            logger.info(f"Fetched {len(tickers)} tickers.")
+            return tickers
+        except requests.exceptions.RequestException as err:
+            logger.error(f"Failed to fetch tickers: {err}")
+            return None
+
+    def process_yahoo_ticker(self, ticker: Dict) -> Optional[Dict[date, float]]:
+        """
+        Process a Yahoo Finance ticker and retrieve its adjusted close prices.
+
+        Args:
+            ticker (Dict): Ticker details from the API.
+
+        Returns:
+            Dict[date, float]: Date-value pairs of adjusted close prices or None.
+        """
+        code = ticker.get("yahoo")
+        if not code:
+            logger.warning(f"No Yahoo code found for ticker: {ticker.get('code')}")
+            return None
+
+        try:
+            data = yf.download(code, progress=False)["Adj Close"]
+            return {key.to_pydatetime().date(): float(value) for key, value in data.items()}
+        except Exception as err:
+            logger.error(f"Error processing Yahoo ticker '{code}': {err}")
+            return None
+
+    def process_bloomberg_ticker(self, ticker: Dict) -> Optional[Dict[date, float]]:
+        """
+        Process a Bloomberg ticker and retrieve its data.
+
+        Args:
+            ticker (Dict): Ticker details from the API.
+
+        Returns:
+            Dict[date, float]: Date-value pairs of Bloomberg data or None.
+        """
+        code = ticker.get("bloomberg")
+        if not code:
+            logger.warning(f"No Bloomberg code found for ticker: {ticker.get('code')}")
+            return None
+
+        try:
+            data = get_bloomberg_data(code=code)
+            if data.empty:
+                logger.warning(f"No data found for Bloomberg ticker '{code}'.")
+                return None
+            return {key.to_pydatetime().date(): float(value) for key, value in data.iloc[:, 0].items()}
+        except Exception as err:
+            logger.error(f"Error processing Bloomberg ticker '{code}': {err}")
+            return None
+
+    def run(self):
+        """
+        Main method to fetch tickers and update their PxLast data.
+        """
+        tickers = self.fetch_all_tickers()
+        if not tickers:
+            logger.error("No tickers available for processing.")
+            return
+
+        for ticker in tickers:
+            source = ticker.get("source")
+            update_data = None
+
+            if source == "YAHOO":
+                update_data = self.process_yahoo_ticker(ticker)
+            elif source == "BLOOMBERG":
+                update_data = self.process_bloomberg_ticker(ticker)
+            else:
+                logger.warning(f"Unknown source '{source}' for ticker: {ticker.get('code')}")
+                continue
+
+            if update_data:
+                self.update_pxlast_api(ticker["code"], update_data)
+
+
+# Example usage:
+if __name__ == "__main__":
+    base_url = "https://port-0-investmentx-ghdys32bls2zef7e.sel5.cloudtype.app"
+    task = Task(base_url)
+    task.run()

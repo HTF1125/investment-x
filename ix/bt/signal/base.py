@@ -50,13 +50,30 @@ class Signal:
 
     def get_performance(
         self,
-        code : str,
-        periods: Union[int, list[int]] = 1,
+        long: str,
+        short: str | None = None,
+        periods: int = 1,
         start: Union[str, None] = None,
+        commission: int = 0,
     ) -> Union[pd.Series, pd.DataFrame]:
-        px = get_pxs(code).squeeze()
-        performance = get_signal_performances(self.data, px, periods)
-        return performance.loc[start:] if start else performance
+
+        l_px = get_pxs(long).squeeze()
+        l_pri_return = to_log_return(px=l_px, periods=periods, forward=True)
+        l_signal_shifted = self.data.reindex(l_pri_return.index).ffill().shift(1)
+        l_returns = l_pri_return.mul(l_signal_shifted)
+        if short:
+            s_px = get_pxs(short).squeeze()
+            s_pri_return = to_log_return(px=s_px, periods=periods, forward=True)
+            s_signal_shifted = self.data.reindex(s_pri_return.index).ffill().shift(1)
+            s_returns = l_pri_return.mul(-s_signal_shifted)
+            l_returns = l_returns - s_returns
+        if commission:
+            l_returns -= (
+                l_signal_shifted.diff(periods).abs() * commission / 10_000 / periods
+            )
+        return l_returns.div(periods).cumsum().rename(periods)
+
+
 
 
 class UsOecdLeading(Signal):
@@ -82,14 +99,7 @@ class UsIsmPmiManu(Signal):
 
 
 class EquityVolatility1(Signal):
-    def fit(
-        self,
-        ewm_window: int = 50,  # Exponential Moving Average window
-        rolling_window: int = 63,  # Rolling window size (quarterly ~252/4)
-        lookback_window: int = 252,  # Lookback period for dynamic thresholds
-        clip_quantile: float = 0.95,  # Dynamic threshold using quantiles
-        scale_factor: float = 2.0,  # Scaling factor for normalization
-    ) -> pd.Series:
+    def fit(self) -> pd.Series:
         # Fetch VIX and SPX returns data
         vix = db.get_pxs(["VIX Index"]).squeeze()
         spx_returns = db.get_pxs(["SPX Index"]).pct_change().squeeze()
@@ -98,15 +108,15 @@ class EquityVolatility1(Signal):
             raise ValueError("Required data is missing. Please check the database.")
 
         # Signal Calculation: VIX Deviation from EMA
-        vix_ema = vix.ewm(span=ewm_window).mean()
+        vix_ema = vix.ewm(span=50).mean()
         signal_raw = vix / vix_ema - 1  # Deviation from EMA
 
         # Incorporate SPX Returns as an additional signal
-        spx_vol = spx_returns.rolling(rolling_window).std()  # Realized volatility
+        spx_vol = spx_returns.rolling(60).std()  # Realized volatility
         combined_signal = signal_raw * spx_vol  # Interaction of VIX and realized vol
 
         # Rolling statistics for z-score calculation
-        rolling_stats = combined_signal.rolling(window=rolling_window, min_periods=1)
+        rolling_stats = combined_signal.rolling(window=60, min_periods=1)
         rolling_mean = rolling_stats.mean()
         rolling_std = rolling_stats.std()
 
@@ -114,14 +124,14 @@ class EquityVolatility1(Signal):
         z_score = (combined_signal - rolling_mean) / rolling_std
 
         # Dynamic Clipping based on quantiles
-        lower_clip = z_score.rolling(lookback_window).quantile(1 - clip_quantile)
-        upper_clip = z_score.rolling(lookback_window).quantile(clip_quantile)
-        z_score = z_score.clip(lower=lower_clip, upper=upper_clip) /scale_factor
+        lower_clip = z_score.rolling(252).quantile(1 - 0.95)
+        upper_clip = z_score.rolling(252).quantile(0.95)
+        z_score = z_score.clip(lower=lower_clip, upper=upper_clip) / 2
 
         # Apply scaling and smooth the final signal
-        # smooth_signal = z_score.ewm(span=rolling_window).mean() /
+        smooth_signal = z_score.ewm(span=60).mean()
 
-        return z_score.dropna()
+        return smooth_signal.dropna()
 
 
 class EquityPutCall1(Signal):
@@ -153,12 +163,16 @@ class EquityPutCall1(Signal):
         z_score = (smoothed_signal - expanding_mean) / expanding_std
 
         # Dynamic clipping based on quantiles (use a trailing rolling window)
-        lower_clip = z_score.rolling(lookback_window, min_periods=1, center=False).quantile(1 - clip_quantile)
-        upper_clip = z_score.rolling(lookback_window, min_periods=1, center=False).quantile(clip_quantile)
+        lower_clip = z_score.rolling(
+            lookback_window, min_periods=1, center=False
+        ).quantile(1 - clip_quantile)
+        upper_clip = z_score.rolling(
+            lookback_window, min_periods=1, center=False
+        ).quantile(clip_quantile)
         clipped_signal = z_score.clip(lower=lower_clip, upper=upper_clip)
 
         # Apply scaling and invert the signal
-        scaled_signal = clipped_signal / scale_factor
+        scaled_signal = (clipped_signal - 1) / scale_factor
 
         # Ensure no NaN values and return the final signal
         return scaled_signal.fillna(0)
@@ -173,10 +187,10 @@ class JunkBondDemand(Signal):
             pd.Series: A z-score-based signal, clipped and inverted.
         """
         # Configurable parameters
-        lookback_spread = 20         # Lookback period for spread calculation
-        rolling_mean_window = 10     # Rolling mean window for the spread
-        zscore_window = 120          # Rolling window for z-score calculation
-        zscore_clip = 2.0            # Clipping threshold for z-score
+        lookback_spread = 20  # Lookback period for spread calculation
+        rolling_mean_window = 10  # Rolling mean window for the spread
+        zscore_window = 120  # Rolling window for z-score calculation
+        zscore_clip = 2.0  # Clipping threshold for z-score
 
         # Get percentage change data
         st = db.get_pxs("SPY").pct_change(lookback_spread).squeeze()
@@ -208,7 +222,6 @@ class JunkBondDemand(Signal):
         return z * -1
 
 
-
 class EquityMomentum1(Signal):
     def fit(
         self,
@@ -226,7 +239,9 @@ class EquityMomentum1(Signal):
 
         # Calculate long-term momentum signal
         long_term_mean = data.rolling(window=rolling_mean_window, min_periods=1).mean()
-        momentum_signal = data / long_term_mean - 1  # Relative deviation from long-term mean
+        momentum_signal = (
+            data / long_term_mean - 1
+        )  # Relative deviation from long-term mean
 
         # Rolling statistics for z-score normalization
         rolling_stats = momentum_signal.rolling(window=zscore_window, min_periods=1)
@@ -237,8 +252,12 @@ class EquityMomentum1(Signal):
         z_score = (momentum_signal - rolling_mean) / rolling_std
 
         # Dynamic clipping based on rolling quantiles
-        lower_clip = z_score.rolling(window=lookback_window, min_periods=1).quantile(1 - clip_quantile)
-        upper_clip = z_score.rolling(window=lookback_window, min_periods=1).quantile(clip_quantile)
+        lower_clip = z_score.rolling(window=lookback_window, min_periods=1).quantile(
+            1 - clip_quantile
+        )
+        upper_clip = z_score.rolling(window=lookback_window, min_periods=1).quantile(
+            clip_quantile
+        )
         clipped_signal = z_score.clip(lower=lower_clip, upper=upper_clip)
 
         # Smooth the signal and scale
@@ -250,7 +269,6 @@ class EquityMomentum1(Signal):
 
 class UsLargeSmallRatio(Signal):
 
-
     def fit(self) -> pd.Series:
         """
         Calculate the z-score of the ratio of US large-cap (SPY) to global small-cap (ACWI).
@@ -259,9 +277,9 @@ class UsLargeSmallRatio(Signal):
             pd.Series: A z-score-based signal for the SPY/ACWI ratio, clipped and normalized.
         """
         # Configurable parameters
-        rolling_mean_window = 10     # Rolling mean window for the ratio
-        zscore_window = 120          # Rolling window for z-score calculation
-        zscore_clip = 2.0            # Clipping threshold for z-score
+        rolling_mean_window = 10  # Rolling mean window for the ratio
+        zscore_window = 120  # Rolling window for z-score calculation
+        zscore_clip = 2.0  # Clipping threshold for z-score
 
         # Fetch price series for large-cap (SPY) and small-cap (ACWI)
         large = db.get_pxs("SPY").squeeze()
@@ -293,24 +311,10 @@ class UsLargeSmallRatio(Signal):
         return z
 
 
-# class GoldSilverRatio(Signal):
-
-#     def fit(self) -> pd.Series:
-
-#         gold = db.get_pxs("GC=F Comdty").squeeze()
-#         silver = db.get_pxs("SI=F Comdty").squeeze()
-
-#         return (gold / silver).dropna()
-
-
 class EquityBreadth1(Signal):
 
-    assets = {
-        "SUM INX Index" : "SP500MarketBreadth"
-    }
+    assets = {"SUM INX Index": "SP500MarketBreadth"}
     lookback_window: int = 120
-
-
 
     def fit(self) -> pd.Series:
         signal = db.get_pxs("SUM INX Index").squeeze()
@@ -350,13 +354,11 @@ def get_signal_performances(
         )
 
     pri_return = to_log_return(px=px, periods=periods, forward=True)
-    annualized_return = (1 + pri_return) ** (1 / periods) - 1
     signal_shifted = signal.reindex(pri_return.index).ffill().shift(1)
-    returns = annualized_return.mul(signal_shifted)
+    returns = pri_return.mul(signal_shifted)
 
     if commission:
         returns -= signal_shifted.diff(periods).abs() * commission / 10_000 / periods
-
     return returns.cumsum().rename(periods)
 
 

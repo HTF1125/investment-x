@@ -2,10 +2,16 @@ from typing import Annotated, List, Dict, Optional
 from datetime import date
 from pydantic import BaseModel
 from bunnet import Document, Indexed
+import pandas as pd
 
 
 class Code(BaseModel):
     code: Annotated[str, Indexed(unique=True)]
+
+
+class ResearchFile(Code, Document):
+
+    content: bytes
 
 
 class IndexGroup(Code, Document):
@@ -107,7 +113,13 @@ class TickerInfo(BaseModel):
     remark: Optional[str] = None
 
 
-class Ticker(TickerInfo, Document): ...
+class Ticker(TickerInfo, Document):
+
+    def px_last(self, exists: bool = False) -> pd.Series:
+        pxlast = PxLast.find_one({"code": self.code}).run()
+        if pxlast is not None:
+            return pd.Series(data=pxlast.data, name=pxlast.code)
+        raise ValueError(f"pxlast fot '{self.code}' is not available.")
 
 
 class Performance(Document):
@@ -162,4 +174,5 @@ def all_models():
         User,
         Signal,
         IndexGroup,
+        ResearchFile,
     ]

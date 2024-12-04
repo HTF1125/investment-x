@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 from ix import db
 from ix.misc import get_logger, as_date

@@ -8,10 +8,6 @@ from ix.misc import last_business_day, as_date
 router = APIRouter(prefix="/data", tags=["data"])
 
 
-
-
-
-
 @router.get("/economic_calendar", response_model=list[db.EconomicCalendar])
 async def get_economic_calendar() -> list[db.EconomicCalendar]:
     """

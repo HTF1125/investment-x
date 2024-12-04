@@ -9,3 +9,4 @@ from .date import *
 from .util import *
 from .theme import *
 from .crawler import *
+from .settings import Settings

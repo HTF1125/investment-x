@@ -2,43 +2,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-from contextlib import asynccontextmanager
 from ix.api import routers
 from ix.misc import get_logger
-from ix.db import initialize
 
-from dotenv import load_dotenv
-
-load_dotenv()
 
 logger = get_logger(__name__)
 
-# Create a scheduler
-scheduler = AsyncIOScheduler()
 
-
-# App lifespan manager
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Context manager to handle startup and shutdown events."""
-    # Initialize database connection
-    database = initialize()
-    if database is None:
-        raise RuntimeError("Database initialization failed")
-
-    # Start the scheduler
-    scheduler.start()
-    try:
-        yield
-    finally:
-        # Stop the scheduler on shutdown
-        scheduler.shutdown()
-
-
-# Initialize the FastAPI app with the lifespan manager
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 
 # Include API routers
@@ -47,6 +18,7 @@ app.include_router(routers.strategies.router, prefix="/api")
 app.include_router(routers.index_groups.router, prefix="/api")
 app.include_router(routers.signals.router, prefix="/api")
 app.include_router(routers.tickers.router, prefix="/api")
+app.include_router(routers.reserach_file.router, prefix="/api")
 
 # CORS middleware
 app.add_middleware(

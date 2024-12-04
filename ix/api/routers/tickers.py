@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, status, Path
+from fastapi import APIRouter, HTTPException, status, Path, Body
 from ix import db
 from datetime import date
 import pandas as pd
 from typing import Dict
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/data/tickers", tags=["data"])
 
@@ -33,9 +34,35 @@ def get_tickers():
         )
 
 
+@router.get(
+    "/{code}",
+    response_model=db.TickerInfo,
+    status_code=status.HTTP_200_OK,
+)
+def get_ticker_by_code(code: str):
+    """
+    Fetch all tickers from the database.
+    """
+    try:
+        ticker = db.Ticker.find_one(
+            db.Ticker.code == code,
+            projection_model=db.TickerInfo,
+        ).run()
+        if not ticker:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No tickers found.",
+            )
+        return ticker
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while fetching tickers: {str(e)}",
+        )
+
+
 @router.put(
     "/{code}",
-    response_model=db.Ticker,
     status_code=status.HTTP_200_OK,
 )
 def update_ticker(
@@ -71,7 +98,6 @@ def update_ticker(
             db.Ticker.find_one(db.Ticker.code == code)
             .update(
                 {"$set": update_data},
-                projection_model=db.TickerInfo,
             )
             .run()
         )
@@ -81,7 +107,6 @@ def update_ticker(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to update ticker with code '{code}'.",
             )
-        return updated_ticker
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -94,8 +119,11 @@ from fastapi import Body
 from typing import Dict
 from datetime import date
 
+
 class UpdatePxLastRequest(BaseModel):
-    update_pxlast: Dict[str, float] = Field(..., description="PxLast data with date keys")
+    update_pxlast: Dict[str, float] = Field(
+        ..., description="PxLast data with date keys"
+    )
 
     # Validator to convert keys to `date`
     @classmethod
@@ -104,6 +132,7 @@ class UpdatePxLastRequest(BaseModel):
             return {date.fromisoformat(k): v for k, v in value.items()}
         except ValueError as e:
             raise ValidationError(f"Invalid date format in keys: {str(e)}")
+
 
 @router.put(path="/update_pxlast/{code}", status_code=status.HTTP_200_OK)
 def update_pxlast(
@@ -141,4 +170,41 @@ def update_pxlast(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while updating PxLast data: {str(e)}",
+        )
+
+
+@router.post(
+    path="/add",
+    status_code=status.HTTP_201_CREATED,
+    description="Add a new ticker code to the database.",
+)
+def add_ticker(ticker_request: db.TickerInfo = Body(...)):
+    """
+    Add a new ticker code to the database.
+
+    Validates that the ticker code does not already exist and creates a new ticker record.
+    """
+    try:
+        # Check if the ticker code already exists
+        existing_ticker = db.Ticker.find_one({"code": ticker_request.code}).run()
+        if existing_ticker:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ticker with code '{ticker_request.code}' already exists.",
+            )
+
+        # Insert the new ticker into the database
+        new_ticker = db.Ticker(**ticker_request.model_dump())
+        new_ticker.create()
+
+        return {
+            "message": "Ticker added successfully.",
+            "ticker": new_ticker,
+        }
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while adding the ticker: {str(e)}",
         )
