@@ -13,12 +13,12 @@ app = FastAPI()
 
 
 # Include API routers
-app.include_router(routers.data.router, prefix="/api")
+# app.include_router(routers.data.router, prefix="/api")
 app.include_router(routers.strategies.router, prefix="/api")
 app.include_router(routers.index_groups.router, prefix="/api")
 app.include_router(routers.signals.router, prefix="/api")
 app.include_router(routers.tickers.router, prefix="/api")
-app.include_router(routers.reserach_file.router, prefix="/api")
+app.include_router(routers.insights.router, prefix="/api")
 
 # CORS middleware
 app.add_middleware(

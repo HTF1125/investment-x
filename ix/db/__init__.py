@@ -3,8 +3,8 @@
 """
 
 from .client import get_pxs
-from .conn import initialize
-from .models import *
+from .conn import *
 
 
-initialize()
+# Initialize the database
+init()

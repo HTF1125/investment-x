@@ -35,30 +35,6 @@ from pydantic import BaseModel, Field
 from datetime import date
 
 
-# Define a request model to validate the incoming data structure
-class InsightCreateRequest(BaseModel):
-    title: str
-    date: date
-    content: str
-
-
-
-@router.get("/insights")
-def get_insights(
-    skip: int = Query(0, ge=0), limit: int = Query(10, gt=0)
-) -> list[db.Insight]:
-    # Fetch all insights and sort by date in descending order
-    insights = (
-        db.Insight.find_all()
-        .skip(skip)
-        .limit(limit)
-        .sort([("date", SortDirection.DESCENDING)])
-        .run()
-    )
-    return [
-        db.Insight(**insight.model_dump(exclude={"content"}), content="")
-        for insight in insights
-    ]
 
 
 @router.get("/pxlast")

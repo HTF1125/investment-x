@@ -1,7 +1,7 @@
 from typing import List
 from typing import Type
 from bunnet import Document
-from ix.db.models import Code
+from ix.db.conn import Code
 
 
 def get_model_codes(model: Type[Document]) -> List[str]:
