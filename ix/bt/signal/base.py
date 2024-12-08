@@ -12,10 +12,17 @@ logger = misc.get_logger(__name__)
 
 class Signal:
     def __init__(self) -> None:
-        self.code = self.__class__.__name__
-        self.db = db.Signal.find_one(db.Signal.code == self.code).run() or db.Signal(
-            code=self.code
-        )
+        self.code = f"Signal.{self.__class__.__name__}"
+        self.db = db.Ticker.find_one(db.Ticker.code == self.code).run() or db.Ticker(
+            code=self.code,
+            exchange="Signal",
+            source="XXX",
+        ).create()
+        self.pxlast = db.PxLast.find_one(
+            db.PxLast.code == self.code
+        ).run() or db.PxLast(
+            code=self.code,
+        ).create()
 
     def fit(self) -> pd.Series:
         """Override this method to define how the signal is calculated."""
@@ -26,8 +33,8 @@ class Signal:
         try:
             logger.info("Starting data refresh")
             data = self.fit().dropna().round(2)
-            self.db.data = data.to_dict()
-            db.Signal.save(self.db)
+            self.pxlast.data = data.to_dict()
+            db.PxLast.save(self.pxlast)
         except TypeError as e:
             logger.error(f"Data validation failed: {e}")
             raise
@@ -39,14 +46,14 @@ class Signal:
     @property
     def data(self) -> pd.Series:
         """Fetches the signal from the database, refreshing if not present."""
-        if not self.db.data:
+        if not self.pxlast.data:
             self.refresh()
-        states = pd.Series(self.db.data)
+        states = pd.Series(self.pxlast.data)
         states.index = pd.to_datetime(states.index)
         return states.sort_index().rename(self.code)
 
     def save(self) -> None:
-        db.Signal.save(self.db)
+        db.PxLast.save(self.pxlast)
 
     def get_performance(
         self,
@@ -72,8 +79,6 @@ class Signal:
                 l_signal_shifted.diff(periods).abs() * commission / 10_000 / periods
             )
         return l_returns.div(periods).cumsum().rename(periods)
-
-
 
 
 class UsOecdLeading(Signal):

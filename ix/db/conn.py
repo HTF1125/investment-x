@@ -3,6 +3,10 @@ from gridfs import GridFS
 from bunnet import init_bunnet
 from ix.misc import Settings
 
+from typing import Annotated, List, Dict, Optional
+from datetime import date
+from pydantic import BaseModel
+from bunnet import Document, Indexed
 
 # MongoDB client and GridFS setup
 client = MongoClient(
@@ -17,10 +21,6 @@ database = client[Settings.db_name]
 fs = GridFS(database)  # Initialize GridFS
 
 
-from typing import Annotated, List, Dict, Optional
-from datetime import date
-from pydantic import BaseModel
-from bunnet import Document, Indexed
 
 
 class Code(BaseModel):
@@ -123,6 +123,7 @@ class PxLast(PxLastModel, Document):
 class User(Document):
     password: str
 
+from pydantic import Field
 
 class Insight(Document):
     """
@@ -130,8 +131,8 @@ class Insight(Document):
     """
 
     issuer: str = "XXX"
-    name: str
-    date: date
+    name: str = "Unnamed"
+    published_date: date = Field(default_factory=date.today)
     summary: Optional[str] = None
 
     def get_content(self) -> bytes:
@@ -149,6 +150,21 @@ class Insight(Document):
             # Concatenate the content chunks (bytes)
             output = b"".join(content.content for content in contents)
             return output
+        except Exception as e:
+            raise ValueError(f"Error retrieving content: {str(e)}")
+
+    def update_content(self, content: bytes) -> str:
+        """
+        Retrieves and concatenates all content chunks for a given insight ID.
+        """
+        try:
+            # Retrieve all content chunks for the given insight ID and sort by index
+            InsightContent.find_many(
+                InsightContent.insight_id == str(self.id)
+            ).delete().run()
+
+            return self.save_content(content)
+
         except Exception as e:
             raise ValueError(f"Error retrieving content: {str(e)}")
 
