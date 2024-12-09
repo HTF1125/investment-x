@@ -9,8 +9,8 @@ router = APIRouter(prefix="/data/tickers", tags=["data"])
 
 
 @router.get(
-    "/all",
-    response_model=list[db.TickerInfo],
+    "/",
+    response_model=list[db.Ticker],
     status_code=status.HTTP_200_OK,
 )
 def get_tickers():

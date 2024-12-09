@@ -1,5 +1,4 @@
 from pymongo import MongoClient, errors
-from gridfs import GridFS
 from bunnet import init_bunnet
 from ix.misc import Settings
 
@@ -18,9 +17,6 @@ client = MongoClient(
 )
 
 database = client[Settings.db_name]
-fs = GridFS(database)  # Initialize GridFS
-
-
 
 
 class Code(BaseModel):
@@ -92,8 +88,29 @@ class TickerInfo(BaseModel):
     remark: Optional[str] = None
 
 
+import pandas as pd
+
+
 class Ticker(TickerInfo, Document):
-    pass
+
+    @property
+    def pxlast(self) -> pd.Series:
+        pxlast = PxLast.find_one(PxLast.code == self.code).run()
+        if not pxlast:
+            pxlast = PxLast(code=self.code).create()
+            return pd.Series(dtype=float)
+        pxlast_data = pd.Series(data=pxlast.data)
+        pxlast_data.index = pd.to_datetime(pxlast_data.index)
+        pxlast_data.name = self.code
+        return pxlast_data
+
+    @pxlast.setter
+    def pxlast(self, data: pd.Series) -> None:
+        p = self.pxlast
+        if not p.empty:
+            data = data.combine_first(self.pxlast)
+        pxlast = PxLast.find_one(PxLast.code == self.code).run()
+        pxlast.set({"data": data.to_dict()})
 
 
 class Performance(Document):
@@ -123,7 +140,9 @@ class PxLast(PxLastModel, Document):
 class User(Document):
     password: str
 
+
 from pydantic import Field
+
 
 class Insight(Document):
     """

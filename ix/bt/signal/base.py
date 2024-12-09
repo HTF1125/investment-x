@@ -1,4 +1,4 @@
-from typing import Union, overload
+from typing import Union
 import numpy as np
 import pandas as pd
 from ix.core import to_log_return
@@ -13,16 +13,14 @@ logger = misc.get_logger(__name__)
 class Signal:
     def __init__(self) -> None:
         self.code = f"Signal.{self.__class__.__name__}"
-        self.db = db.Ticker.find_one(db.Ticker.code == self.code).run() or db.Ticker(
-            code=self.code,
-            exchange="Signal",
-            source="XXX",
-        ).create()
-        self.pxlast = db.PxLast.find_one(
-            db.PxLast.code == self.code
-        ).run() or db.PxLast(
-            code=self.code,
-        ).create()
+        self.db = (
+            db.Ticker.find_one(db.Ticker.code == self.code).run()
+            or db.Ticker(
+                code=self.code,
+                exchange="Signal",
+                source="XXX",
+            ).create()
+        )
 
     def fit(self) -> pd.Series:
         """Override this method to define how the signal is calculated."""
@@ -33,8 +31,7 @@ class Signal:
         try:
             logger.info("Starting data refresh")
             data = self.fit().dropna().round(2)
-            self.pxlast.data = data.to_dict()
-            db.PxLast.save(self.pxlast)
+            self.db.pxlast = data
         except TypeError as e:
             logger.error(f"Data validation failed: {e}")
             raise
@@ -46,11 +43,9 @@ class Signal:
     @property
     def data(self) -> pd.Series:
         """Fetches the signal from the database, refreshing if not present."""
-        if not self.pxlast.data:
+        if self.db.pxlast.empty:
             self.refresh()
-        states = pd.Series(self.pxlast.data)
-        states.index = pd.to_datetime(states.index)
-        return states.sort_index().rename(self.code)
+        return self.db.pxlast
 
     def save(self) -> None:
         db.PxLast.save(self.pxlast)

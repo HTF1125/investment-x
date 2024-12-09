@@ -13,7 +13,7 @@ app = FastAPI()
 
 
 # Include API routers
-# app.include_router(routers.data.router, prefix="/api")
+app.include_router(routers.data.router, prefix="/api")
 app.include_router(routers.strategies.router, prefix="/api")
 app.include_router(routers.index_groups.router, prefix="/api")
 app.include_router(routers.signals.router, prefix="/api")

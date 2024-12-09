@@ -23,17 +23,35 @@ class InsightRequest(BaseModel):
     response_model=List[db.Insight],
     status_code=status.HTTP_200_OK,
 )
-def get_research_file_codes(
+def get_insights(
     skip: Optional[int] = Query(0, ge=0, description="Number of records to skip"),
     limit: Optional[int] = Query(
         1000, gt=0, description="Maximum number of records to return"
     ),
+    search: Optional[str] = Query(
+        None, description="Search term to filter insights by issuer, name, or date"
+    ),
 ):
     """
-    Retrieves insights sorted by date in descending order, with support for pagination.
+    Retrieves insights sorted by date in descending order, with support for pagination and search.
     """
     try:
-        insights = db.Insight.find().sort("-date").skip(skip).limit(limit)
+        # Base query
+        query = {}
+
+        # Add search filters if search term is provided
+        if search:
+            query["$or"] = [
+                {"issuer": {"$regex": search, "$options": "i"}},  # Case-insensitive match
+                {"name": {"$regex": search, "$options": "i"}},
+                {"published_date": {"$regex": search, "$options": "i"}},  # For string date matching
+            ]
+
+        # Fetch insights with the query
+        insights = (
+            db.Insight.find(query).sort("-published_date").skip(skip).limit(limit)
+        )
+
         return list(insights)
     except Exception as e:
         raise HTTPException(
