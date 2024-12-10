@@ -5,7 +5,8 @@ from fastapi.responses import StreamingResponse
 import io, base64
 from bson import ObjectId
 from pydantic import BaseModel
-from datetime import date
+from datetime import datetime, date
+import re
 
 router = APIRouter(prefix="/data/insights", tags=["data"])
 
@@ -39,13 +40,52 @@ def get_insights(
         # Base query
         query = {}
 
-        # Add search filters if search term is provided
         if search:
-            query["$or"] = [
-                {"issuer": {"$regex": search, "$options": "i"}},  # Case-insensitive match
-                {"name": {"$regex": search, "$options": "i"}},
-                {"published_date": {"$regex": search, "$options": "i"}},  # For string date matching
-            ]
+            # Step 1: Try to extract a date from the search term using regex
+            date_pattern = r"\d{4}-\d{2}-\d{2}"  # Match date in YYYY-MM-DD format
+            date_match = re.search(date_pattern, search)
+
+            # If a date is found, separate the date and text parts
+            if date_match:
+                search_date_str = date_match.group(0)
+                try:
+                    search_date = datetime.strptime(
+                        search_date_str, "%Y-%m-%d"
+                    )  # Convert to date object
+                    query["published_date"] = {
+                        "$eq": search_date
+                    }  # Filter by exact date
+                except ValueError:
+                    pass  # If date format is incorrect, we ignore it
+
+                # Remove the date part from the search term for text-based search
+                search_text = search.replace(search_date_str, "").strip()
+            else:
+                # No date found, use the entire search term as text-based search
+                search_text = search
+
+            # Step 2: Handle the text-based search for issuer, name, and published_date
+            if search_text:
+                search_keywords = search_text.lower().split()
+
+                conditions = []
+                for keyword in search_keywords:
+                    conditions.append(
+                        {
+                            "$or": [
+                                {"issuer": {"$regex": keyword, "$options": "i"}},
+                                {"name": {"$regex": keyword, "$options": "i"}},
+                                {
+                                    "published_date": {
+                                        "$regex": keyword,
+                                        "$options": "i",
+                                    }
+                                },
+                            ]
+                        }
+                    )
+
+                query["$and"] = conditions
 
         # Fetch insights with the query
         insights = (
@@ -53,6 +93,7 @@ def get_insights(
         )
 
         return list(insights)
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -191,6 +232,7 @@ def update_insight(id: str, update_request: InsightRequest = Body(...)):
             )
 
     return insight
+
 
 @router.delete(
     "/delete/{id}",

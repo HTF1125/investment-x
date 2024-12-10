@@ -110,7 +110,8 @@ class Ticker(TickerInfo, Document):
         if not p.empty:
             data = data.combine_first(self.pxlast)
         pxlast = PxLast.find_one(PxLast.code == self.code).run()
-        pxlast.set({"data": data.to_dict()})
+        if pxlast is not None:
+            pxlast.set({"data": data.to_dict()})
 
 
 class Performance(Document):
