@@ -111,18 +111,32 @@ def get_insight_content(id: str):
     Retrieves the content of a research file by its ID and streams it as a response.
     """
     try:
+        # Validate the ID format
         if not ObjectId.is_valid(id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ID format"
             )
 
+        # Retrieve the insight object from the database
         insight = db.Insight.find_one(db.Insight.id == ObjectId(id)).run()
         if not insight:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
             )
 
-        content = insight.get_content()
+        # Build the filename for the PDF
+        filename = f"{insight.id}.pdf"
+
+        # Get the PDF content using the Boto class
+        boto = db.Boto()
+        content = boto.get_pdf(filename)
+        if content is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File '{filename}' not found in storage",
+            )
+
+        # Return the PDF as a streaming response
         return StreamingResponse(
             io.BytesIO(content),
             media_type="application/pdf",
@@ -167,7 +181,10 @@ def add_insight(add_request: InsightRequest = Body(...)):
         ).create()
 
         if content_bytes:
-            new_insight.save_content(content=content_bytes)
+            db.Boto().save_pdf(
+                pdf_content=content_bytes,
+                filename=f"{new_insight.id}.pdf",
+            )
 
         return new_insight
     except Exception as e:
@@ -220,11 +237,11 @@ def update_insight(id: str, update_request: InsightRequest = Body(...)):
             # Decode Base64 content to bytes
             content_bytes = base64.b64decode(update_request.content)
 
-            # Remove old content and save new content
-            db.InsightContent.find_many(
-                db.InsightContent.insight_id == str(insight.id)
-            ).delete().run()
-            insight.save_content(content_bytes)
+            db.Boto().save_pdf(
+                pdf_content=content_bytes,
+                filename=f"{insight.id}.pdf",
+            )
+
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -254,7 +271,9 @@ def delete_insight(id: str):
                 db.InsightContent.insight_id == str(insight.id)
             ).delete().run()
             db.Insight.find_one(db.Insight.id == ObjectId(id)).delete().run()
-
+            db.Boto().delete_pdf(
+                filename=f"{insight.id}.pdf",
+            )
         return {"message": "Insight successfully deleted."}
 
     except HTTPException as e:
