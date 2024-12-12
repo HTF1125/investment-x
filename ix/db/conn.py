@@ -139,7 +139,21 @@ class PxLast(PxLastModel, Document):
 
 
 class User(Document):
+    username: Annotated[str, Indexed(unique=True)]
     password: str
+    disabled: bool = False
+    admin: bool = False
+
+    def verify_password(self, password):
+        return self.password == password
+
+    @classmethod
+    def get_user(cls, username) -> Optional["User"]:
+        return cls.find_one(cls.username == username).run()
+
+    @classmethod
+    def new_user(cls, username: str, password: str) -> "User":
+        return cls(username=username, password=password).create()
 
 
 from pydantic import Field

@@ -66,7 +66,7 @@ def get_insights(
 
             # Step 2: Handle the text-based search for issuer, name, and published_date
             if search_text:
-                search_keywords = search_text.lower().split()
+                search_keywords = search_text.lower().split(sep=" - ")
 
                 conditions = []
                 for keyword in search_keywords:
