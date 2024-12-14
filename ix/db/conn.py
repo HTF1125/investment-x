@@ -6,6 +6,7 @@ from typing import Annotated, List, Dict, Optional
 from datetime import date
 from pydantic import BaseModel
 from bunnet import Document, Indexed
+from datetime import datetime
 
 # MongoDB client and GridFS setup
 client = MongoClient(
@@ -169,77 +170,33 @@ class Insight(Document):
     published_date: date = Field(default_factory=date.today)
     summary: Optional[str] = None
 
-    def get_content(self) -> bytes:
-        """
-        Retrieves and concatenates all content chunks for a given insight ID.
-        """
-        try:
-            # Retrieve all content chunks for the given insight ID and sort by index
-            contents = (
-                InsightContent.find_many(InsightContent.insight_id == str(self.id))
-                .sort("+index")
-                .run()
-            )
-
-            # Concatenate the content chunks (bytes)
-            output = b"".join(content.content for content in contents)
-            return output
-        except Exception as e:
-            raise ValueError(f"Error retrieving content: {str(e)}")
-
-    def update_content(self, content: bytes) -> str:
-        """
-        Retrieves and concatenates all content chunks for a given insight ID.
-        """
-        try:
-            # Retrieve all content chunks for the given insight ID and sort by index
-            InsightContent.find_many(
-                InsightContent.insight_id == str(self.id)
-            ).delete().run()
-
-            return self.save_content(content)
-
-        except Exception as e:
-            raise ValueError(f"Error retrieving content: {str(e)}")
-
-    def save_content(self, content: bytes) -> str:
+    def save_content(self, content: bytes) -> bool:
         """
         Saves the given content in chunks of 10MB.
         Each chunk is stored as a separate InsightContent document.
         """
-        try:
-            # Define the maximum chunk size (10MB)
-            chunk_size = 10 * 1024 * 1024  # 10 MB in bytes
+        from .boto import Boto
 
-            # Split the content into chunks
-            chunks = [
-                content[i : i + chunk_size] for i in range(0, len(content), chunk_size)
-            ]
-
-            # Delete existing content for this insight
-            InsightContent.find_many(
-                InsightContent.insight_id == str(self.id)
-            ).delete().run()
-
-            # Save each chunk as a separate InsightContent document
-            for index, chunk in enumerate(chunks):
-                InsightContent(
-                    insight_id=str(self.id), index=index, content=chunk
-                ).create()
-
-            return f"Content saved in {len(chunks)} chunks."
-        except Exception as e:
-            raise ValueError(f"Error saving content: {str(e)}")
+        return Boto().save_pdf(
+            pdf_content=content,
+            filename=f"{self.id}.pdf",
+        )
 
 
-class InsightContent(Document):
-    """
-    Represents a chunk of content for an Insight document.
-    """
+class TacticalView(Document):
+    # Define the fields for the document
+    views: dict
+    published_date: (
+        datetime  # Declare published_date as a datetime field, no DateTimeField
+    )
 
-    insight_id: str  # Reference to the parent Insight
-    index: int  # The order of the chunk
-    content: bytes  # The chunk content
+    # Optionally, add a pre-save hook to modify the document before saving it
+    @classmethod
+    def pre_save(cls, document):
+        # Automatically set the published_date if not set
+        if not document.published_date:
+            document.published_date = datetime.now()
+        return document
 
 
 # Initialize Bunnet
@@ -258,7 +215,7 @@ def init():
                 IndexGroup,
                 ResearchFile,
                 Insight,
-                InsightContent,
+                TacticalView,
             ],
         )
         print(

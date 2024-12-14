@@ -18,3 +18,4 @@ class Settings:
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "600")
     )
     algorithm: str = os.getenv("ALGORITHM", "HS256")
+    openai_secret_key: str = os.getenv("OPENAI_SECRET_KEY", "")

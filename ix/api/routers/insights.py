@@ -20,6 +20,28 @@ class InsightRequest(BaseModel):
 
 
 @router.get(
+    "/streetview",
+    response_model=db.TacticalView,
+    status_code=status.HTTP_200_OK,
+)
+def get_streetview():
+
+    # Find the most recent document by sorting published_date descending
+    most_recent = db.TacticalView.find_one(
+        {},  # Match all documents
+        sort=[("published_date", -1)]  # Sort descending by `published_date`
+    ).run()
+
+    if not most_recent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No TacticalView found"
+        )
+
+    # Return the most recent TacticalView
+    return most_recent
+
+@router.get(
     "/",
     response_model=List[db.Insight],
     status_code=status.HTTP_200_OK,
@@ -66,7 +88,7 @@ def get_insights(
 
             # Step 2: Handle the text-based search for issuer, name, and published_date
             if search_text:
-                search_keywords = search_text.lower().split(sep=" - ")
+                search_keywords = search_text.lower().split(sep="_")
 
                 conditions = []
                 for keyword in search_keywords:
@@ -234,11 +256,8 @@ def update_insight(id: str, update_request: InsightRequest = Body(...)):
     # Handle content update
     if update_request.content:
         try:
-            # Decode Base64 content to bytes
-            content_bytes = base64.b64decode(update_request.content)
-
             db.Boto().save_pdf(
-                pdf_content=content_bytes,
+                pdf_content=base64.b64decode(update_request.content),
                 filename=f"{insight.id}.pdf",
             )
 
@@ -250,36 +269,3 @@ def update_insight(id: str, update_request: InsightRequest = Body(...)):
 
     return insight
 
-
-@router.delete(
-    "/delete/{id}",
-    status_code=status.HTTP_200_OK,
-)
-def delete_insight(id: str):
-    """
-    Deletes an Insight by its ID.
-    """
-    try:
-        if not ObjectId.is_valid(id):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ID format"
-            )
-
-        insight = db.Insight.find_one(db.Insight.id == ObjectId(id)).run()
-        if insight:
-            db.InsightContent.find_many(
-                db.InsightContent.insight_id == str(insight.id)
-            ).delete().run()
-            db.Insight.find_one(db.Insight.id == ObjectId(id)).delete().run()
-            db.Boto().delete_pdf(
-                filename=f"{insight.id}.pdf",
-            )
-        return {"message": "Insight successfully deleted."}
-
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while deleting the insight: {str(e)}",
-        )
