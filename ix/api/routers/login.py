@@ -162,10 +162,9 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
     return current_user
 
 
-
-@router.get("/user/isadmin")
+@router.get("/user/isadmin", response_model=bool)
 async def is_admin(current_user: User = Depends(get_current_active_user)):
-    user =  get_user(username=current_user.username)
+    user = get_user(username=current_user.username)
     if user:
         return user.admin
     raise HTTPException(status_code=400, detail="Inactive user")

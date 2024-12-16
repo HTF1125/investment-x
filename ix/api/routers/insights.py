@@ -20,26 +20,26 @@ class InsightRequest(BaseModel):
 
 
 @router.get(
-    "/streetview",
+    "/tacticalview",
     response_model=db.TacticalView,
     status_code=status.HTTP_200_OK,
 )
-def get_streetview():
+def get_tacticalview():
 
     # Find the most recent document by sorting published_date descending
     most_recent = db.TacticalView.find_one(
         {},  # Match all documents
-        sort=[("published_date", -1)]  # Sort descending by `published_date`
+        sort=[("published_date", -1)],  # Sort descending by `published_date`
     ).run()
 
     if not most_recent:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No TacticalView found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="No TacticalView found"
         )
 
     # Return the most recent TacticalView
     return most_recent
+
 
 @router.get(
     "/",
@@ -269,3 +269,12 @@ def update_insight(id: str, update_request: InsightRequest = Body(...)):
 
     return insight
 
+
+@router.delete("/{id}", status_code=status.HTTP_200_OK)
+def delete_insight(id: str):
+    """
+    Deletes an Insight by its ID.
+
+    """
+    db.Insight.find_one(db.Insight.id == ObjectId(id)).delete().run()
+    return {"message": "Insight deleted successfully"}
