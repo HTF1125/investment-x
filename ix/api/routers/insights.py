@@ -49,7 +49,7 @@ def get_tacticalview():
 def get_insights(
     skip: Optional[int] = Query(0, ge=0, description="Number of records to skip"),
     limit: Optional[int] = Query(
-        1000, gt=0, description="Maximum number of records to return"
+        100, gt=0, description="Maximum number of records to return"
     ),
     search: Optional[str] = Query(
         None, description="Search term to filter insights by issuer, name, or date"

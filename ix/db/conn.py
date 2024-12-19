@@ -177,10 +177,16 @@ class Insight(Document):
         """
         from .boto import Boto
 
-        return Boto().save_pdf(
-            pdf_content=content,
-            filename=f"{self.id}.pdf",
-        )
+        return Boto().save_pdf(pdf_content=content, filename=f"{self.id}.pdf")
+
+    def get_content(self) -> bytes:
+        """
+        Saves the given content in chunks of 10MB.
+        Each chunk is stored as a separate InsightContent document.
+        """
+        from .boto import Boto
+
+        return Boto().get_pdf(filename=f"{self.id}.pdf")
 
 
 class TacticalView(Document):
