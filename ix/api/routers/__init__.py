@@ -6,3 +6,4 @@ from . import index_groups
 from . import tickers
 from . import insights
 from . import login
+from . import base

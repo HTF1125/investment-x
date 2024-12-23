@@ -7,6 +7,7 @@ from bson import ObjectId
 from pydantic import BaseModel
 from datetime import datetime, date
 import re
+from ix.misc.date import today
 
 router = APIRouter(prefix="/data/insights", tags=["data"])
 
@@ -278,3 +279,42 @@ def delete_insight(id: str):
     """
     db.Insight.find_one(db.Insight.id == ObjectId(id)).delete().run()
     return {"message": "Insight deleted successfully"}
+
+
+class P(BaseModel):
+
+    content: str
+
+
+@router.post(
+    "/",
+    response_model=db.Insight,
+    status_code=status.HTTP_200_OK,
+)
+def create_insight(payload: P = Body(...)):
+    """
+    Adds a new Insight with the provided data.
+    """
+    from ix.misc import PDFSummarizer, Settings
+
+    content_bytes = base64.b64decode(payload.content)
+    report = PDFSummarizer(Settings.openai_secret_key).process_insights(content_bytes)
+    if report:
+        # Create and save the insight
+        new_insight = db.Insight(
+            issuer="Investment-X",
+            name="Investment-X",
+            published_date=today().date(),
+            summary=report,
+        ).create()
+
+        if content_bytes:
+            db.Boto().save_pdf(
+                pdf_content=content_bytes,
+                filename=f"{new_insight.id}.pdf",
+            )
+        return new_insight
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid Base64 content",
+    )

@@ -5,7 +5,7 @@ from fastapi import status
 from bson.errors import InvalidId
 from ix import db
 from .base import get_model_codes
-
+from ix.db import MetaData
 
 router = APIRouter(prefix="/data/signals", tags=["data"])
 
@@ -54,6 +54,27 @@ def get_signal_by_id(code: str):
         )
     except Exception as e:
         # Log the exception here
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while processing the request: {str(e)}",
+        )
+
+
+from typing import Dict
+from datetime import date
+
+
+@router.get(
+    path="/{code}/px_last",
+    response_model=Dict[date, float],
+    status_code=status.HTTP_200_OK,
+)
+def get_signal_px_last(code: str):
+    try:
+        metadata = MetaData.find_one({"code": code}).run()
+        if metadata:
+            return metadata.ts().i_data
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while processing the request: {str(e)}",

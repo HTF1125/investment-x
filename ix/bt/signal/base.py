@@ -5,21 +5,17 @@ from ix.core import to_log_return
 from ix.db import get_pxs
 from ix import db
 from ix import misc
-
+from ix.db import MetaData
 
 logger = misc.get_logger(__name__)
 
 
 class Signal:
     def __init__(self) -> None:
-        self.code = f"Signal.{self.__class__.__name__}"
-        self.db = (
-            db.Ticker.find_one(db.Ticker.code == self.code).run()
-            or db.Ticker(
-                code=self.code,
-                exchange="Signal",
-                source="XXX",
-            ).create()
+        code = f"S.{self.__class__.__name__}"
+        self.metadata = (
+            db.MetaData.find_one(db.MetaData.code == code).run()
+            or db.MetaData(code=code, market="Signal", source="Investment-X").create()
         )
 
     def fit(self) -> pd.Series:
@@ -31,7 +27,7 @@ class Signal:
         try:
             logger.info("Starting data refresh")
             data = self.fit().dropna().round(2)
-            self.db.pxlast = data
+            self.metadata.ts(field="PX_LAST").data = data
         except TypeError as e:
             logger.error(f"Data validation failed: {e}")
             raise
@@ -43,12 +39,11 @@ class Signal:
     @property
     def data(self) -> pd.Series:
         """Fetches the signal from the database, refreshing if not present."""
-        if self.db.pxlast.empty:
+        data = self.metadata.ts(field="PX_LAST").data
+        if data.empty:
             self.refresh()
-        return self.db.pxlast
-
-    def save(self) -> None:
-        db.PxLast.save(self.pxlast)
+        data.name = self.metadata.code
+        return data
 
     def get_performance(
         self,

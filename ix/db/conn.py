@@ -205,12 +205,16 @@ class TacticalView(Document):
         return document
 
 
+from .models import MetaData, TimeSeries
+
 # Initialize Bunnet
 def init():
     try:
         init_bunnet(
             database=database,
             document_models=[
+                MetaData,
+                TimeSeries,
                 EconomicCalendar,
                 Strategy,
                 Ticker,

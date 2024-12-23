@@ -2,6 +2,7 @@ import pandas as pd
 from ix import db
 from typing import Union, List, Set, Tuple, Dict, Optional
 import logging
+from .models import MetaData
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -36,10 +37,12 @@ def get_pxs(
     try:
         # Helper function to fetch data for a given code
         def fetch_px_series(code):
-            pxlast = db.PxLast.find_one({"code": code}).run()
-            if pxlast is not None:
-                return pd.Series(data=pxlast.data, name=pxlast.code)
-            return None
+            metadata = MetaData.find_one(MetaData.code == code).run()
+            if metadata is None:
+                return None
+            px_last = metadata.ts(field="PX_LAST").data
+            px_last.name = code
+            return px_last
 
         # Fetch all prices if no specific codes are provided
         if codes is None:
@@ -52,13 +55,11 @@ def get_pxs(
                 px_series = fetch_px_series(code)
                 if px_series is not None:
                     px_data.append(px_series)
-
         # Combine series into a DataFrame
         if px_data:
             out = pd.concat(px_data, axis=1)
             out.index = pd.to_datetime(out.index)
             out = out.sort_index()
-
             # Filter data based on start date if provided
             if start:
                 out = out.loc[start:]
