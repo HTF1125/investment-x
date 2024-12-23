@@ -287,6 +287,28 @@ class P(BaseModel):
 
 
 @router.post(
+    "/{id}/update_summary",
+    response_model=str,
+    status_code=status.HTTP_200_OK,
+)
+def update_insight_summary(id: str):
+    """
+    Adds a new Insight with the provided data.
+    """
+    from ix.misc import PDFSummarizer, Settings
+
+    insight = db.Insight.find_one(db.Insight.id == ObjectId(id)).run()
+    if not insight:
+        raise
+    report = PDFSummarizer(Settings.openai_secret_key).process_insights(
+        insight.get_content()
+    )
+    insight.summary = report
+    insight.save()
+    return report
+
+
+@router.post(
     "/",
     response_model=db.Insight,
     status_code=status.HTTP_200_OK,

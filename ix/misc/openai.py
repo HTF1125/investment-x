@@ -19,11 +19,10 @@ class PDFSummarizer:
     PROMPT = """
 Provide a one to three paragraph, professional investment insight that offers a
 forward-looking market analysis, clearly identifies key drivers and assumptions,
-and includes specific, actionable recommendations with potential returns,
-associated risks, alignment to different risk tolerances, time horizons, and
-sector or geographic focuses. Incorporate a brief but robust risk assessment
-outlining how these strategies might underperform under certain economic or
-geopolitical conditions, and suggest mitigation approaches.
+and includes specific, actionable recommendations, associated risks and sector
+or geographic focuses. Incorporate a brief but robust risk assessment outlining
+how these strategies might underperform under certain economic or geopolitical
+conditions.
 Ensure the language is concise, avoids special symbols, and is suitable for
 seasoned investors seeking practical, data-driven strategies and tactical
 insights aligned with evolving market dynamics.
