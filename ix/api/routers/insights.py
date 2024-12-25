@@ -175,7 +175,7 @@ def get_insight_content(id: str):
 
 
 @router.post(
-    "/new",
+    path="/",
     response_model=db.Insight,
     status_code=status.HTTP_200_OK,
 )
@@ -303,40 +303,49 @@ def update_insight_summary(id: str):
     report = PDFSummarizer(Settings.openai_secret_key).process_insights(
         insight.get_content()
     )
-    insight.summary = report
-    insight.save()
+    insight.set({"summary": report})
     return report
 
 
+from fastapi import BackgroundTasks
+
+
+def generate_summary(content: bytes, insight: db.Insight):
+    from ix.misc import PDFSummarizer, Settings
+    summary = PDFSummarizer(Settings.openai_secret_key).process_insights(content)
+    insight.set({"summary": summary})
+
+
 @router.post(
-    "/",
+    "/frompdf",
     response_model=db.Insight,
     status_code=status.HTTP_200_OK,
 )
-def create_insight(payload: P = Body(...)):
+def create_insight_with_pdf(
+    background_tasks: BackgroundTasks,
+    payload: P = Body(...),
+):
     """
     Adds a new Insight with the provided data.
     """
-    from ix.misc import PDFSummarizer, Settings
 
-    content_bytes = base64.b64decode(payload.content)
-    report = PDFSummarizer(Settings.openai_secret_key).process_insights(content_bytes)
-    if report:
-        # Create and save the insight
-        new_insight = db.Insight(
+    # Create and save the insight
+    try:
+        insight = db.Insight(
             issuer="Investment-X",
             name="Investment-X",
             published_date=today().date(),
-            summary=report,
         ).create()
-
+        content_bytes = base64.b64decode(payload.content)
         if content_bytes:
             db.Boto().save_pdf(
                 pdf_content=content_bytes,
-                filename=f"{new_insight.id}.pdf",
+                filename=f"{insight.id}.pdf",
             )
-        return new_insight
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Invalid Base64 content",
-    )
+            background_tasks.add_task(generate_summary, content_bytes, insight)
+        return insight
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Base64 content",
+        )

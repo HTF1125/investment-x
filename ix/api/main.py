@@ -20,6 +20,7 @@ app.include_router(routers.signals.router, prefix="/api")
 app.include_router(routers.tickers.router, prefix="/api")
 app.include_router(routers.insights.router, prefix="/api")
 app.include_router(routers.login.router, prefix="/api")
+app.include_router(routers.base.router, prefix="/api")
 
 # CORS middleware
 app.add_middleware(

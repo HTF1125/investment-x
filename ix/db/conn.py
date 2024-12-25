@@ -205,7 +205,8 @@ class TacticalView(Document):
         return document
 
 
-from .models import MetaData, TimeSeries
+from .models import MetaData, TimeSeries, InsightSource
+
 
 # Initialize Bunnet
 def init():
@@ -226,6 +227,7 @@ def init():
                 ResearchFile,
                 Insight,
                 TacticalView,
+                InsightSource,
             ],
         )
         print(

@@ -1,10 +1,11 @@
-from typing import Annotated, List, Dict, Optional
+from typing import Annotated, Dict, Optional, Union
 from bunnet import Document, Indexed
 from datetime import date
 import pandas as pd
 from ix.misc import get_logger
 
 logger = get_logger(__name__)
+
 
 class MetaData(Document):
     code: Annotated[str, Indexed(unique=True)]
@@ -32,8 +33,6 @@ class MetaData(Document):
         return ts
 
 
-
-
 class TimeSeries(Document):
     meta_id: str
     field: str
@@ -46,7 +45,10 @@ class TimeSeries(Document):
         return data
 
     @data.setter
-    def data(self, data: pd.Series) -> None:
+    def data(self, data: Union[pd.Series, Dict[date, float]]) -> None:
+        if isinstance(data, dict):
+            data = pd.Series(data=data)
+            data.index = pd.to_datetime(data.index)
         if self.i_data:
             data = data.combine_first(self.data)
         if data is not None:
@@ -57,3 +59,14 @@ class TimePoint(Document):
     meta_id: str
     field: str
     data: str | int | float | None = None
+
+
+from pydantic import Field
+from datetime import datetime
+
+
+class InsightSource(Document):
+    url: str
+    name: Optional[str] = None
+    last_visited: datetime = Field(default_factory=datetime.now)
+    remark: Optional[str] = None
