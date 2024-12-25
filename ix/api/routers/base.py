@@ -7,12 +7,11 @@ from bson import ObjectId
 from pydantic import BaseModel
 from typing import Dict
 from datetime import date
-from fastapi import Query, Body
-import pandas as pd
-
-
-from fastapi import APIRouter, HTTPException, status, Path, Body
+from fastapi import Query
+from fastapi import APIRouter, BackgroundTasks, status
+from fastapi import HTTPException, Body
 from ix.db import MetaData, InsightSource
+from ix import task
 
 
 def get_model_codes(model: Type[Document]) -> List[str]:
@@ -290,3 +289,15 @@ async def delete_insight_source(id: str):
         )
     InsightSource.find_one(InsightSource.id == ObjectId(id)).delete().run()
     return {"message": "InsightSource deleted successfully"}
+
+
+# Your task handler that will run in the background
+async def run_daily_task():
+    task.run()
+
+
+# The route that will trigger the background task
+@router.get(path="/tasks/daily", status_code=status.HTTP_200_OK)
+async def ping_task_daily(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_daily_task)
+    return {"message": "Task is running in the background"}

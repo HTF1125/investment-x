@@ -3,6 +3,7 @@ from bunnet import Document, Indexed
 from datetime import date
 import pandas as pd
 from ix.misc import get_logger
+from bson import ObjectId
 
 logger = get_logger(__name__)
 
@@ -39,6 +40,15 @@ class TimeSeries(Document):
     i_data: Dict[date, float] = {}
 
     @property
+    def metadata_code(self) -> str:
+        if not ObjectId.is_valid(self.meta_id):  # Make sure 'self.meta_id' is valid
+            raise ValueError(f"Invalid ObjectId: {self.meta_id}")  # Raise a more meaningful error
+        metadata = MetaData.find_one(MetaData.id == ObjectId(self.meta_id)).run()
+        if not metadata:
+            raise ValueError(f"Metadata not found for id {self.meta_id}")  # Raise an error if metadata is not found
+        return metadata.code
+
+    @property
     def data(self) -> pd.Series:
         data = pd.Series(data=self.i_data)
         data.index = pd.to_datetime(data.index)
@@ -53,6 +63,7 @@ class TimeSeries(Document):
             data = data.combine_first(self.data)
         if data is not None:
             self.set({"i_data": data.to_dict()})
+            logger.info(f"Update {self.metadata_code} {self.field}")
 
 
 class TimePoint(Document):
