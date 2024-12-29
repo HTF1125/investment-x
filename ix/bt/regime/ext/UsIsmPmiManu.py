@@ -10,7 +10,7 @@ class UsIsmPmiManu(Regime):
     THRESHOLD = 0.5
 
     def fit(self):
-        data = db.get_pxs(codes=self.TICKERS)
+        data = db.get_ts(codes=self.TICKERS)
         smoothed = data["UsIsmPmiManu"].ewm(span=5).mean().dropna()
         expanding = smoothed > (self.SPLIT + self.THRESHOLD)
         contracting = smoothed < (self.SPLIT - self.THRESHOLD)

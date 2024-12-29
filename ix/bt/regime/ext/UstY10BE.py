@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 import pandas as pd
 from ix import db
 from .. import Regime
@@ -18,7 +11,7 @@ class UstY10BE(Regime):
     INDEX_SHIFT_DAYS = 2
 
     def fit(self):
-        data = db.get_pxs(codes=self.TICKERS).resample("ME").last()
+        data = db.get_ts(codes=self.TICKERS).resample("ME").last()
         data["Difference"] = data["UstY10BE"].diff(periods=self.DIFF_PERIOD)
         data["States"] = pd.NA
         increasing = data["Difference"] > self.VOLATILITY_THRESHOLD
@@ -28,5 +21,3 @@ class UstY10BE(Regime):
         data["States"] = data["States"].ffill()
         data.index += pd.DateOffset(days=2)
         return data["States"].dropna()
-
-

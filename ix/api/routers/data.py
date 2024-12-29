@@ -35,11 +35,9 @@ from pydantic import BaseModel, Field
 from datetime import date
 
 
-
-
 @router.get("/pxlast")
 async def get_all_pxlast():
-    data = db.get_pxs().loc["2020":].stack().reset_index()
+    data = db.get_ts().loc["2020":].stack().reset_index()
     data.columns = ["date", "code", "value"]
     return data.to_dict("records")
 

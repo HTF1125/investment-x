@@ -2,7 +2,7 @@ from typing import Union
 import numpy as np
 import pandas as pd
 from ix.core import to_log_return
-from ix.db import get_pxs
+from ix.db import get_ts
 from ix import db
 from ix import misc
 from ix.db import MetaData
@@ -12,10 +12,10 @@ logger = misc.get_logger(__name__)
 
 class Signal:
     def __init__(self) -> None:
-        code = f"S.{self.__class__.__name__}"
+        code = f"{self.__class__.__name__}"
         self.metadata = (
-            db.MetaData.find_one(db.MetaData.code == code).run()
-            or db.MetaData(code=code, market="Signal", source="Investment-X").create()
+            MetaData.find_one(MetaData.code == code).run()
+            or MetaData(code=code, market="Signal", source="Investment-X").create()
         )
 
     def fit(self) -> pd.Series:
@@ -47,39 +47,78 @@ class Signal:
 
     def get_performance(
         self,
-        long: str,
+        long: str | None = None,
         short: str | None = None,
         periods: int = 1,
         start: Union[str, None] = None,
         commission: int = 0,
     ) -> Union[pd.Series, pd.DataFrame]:
 
-        l_px = get_pxs(long).squeeze()
-        l_pri_return = to_log_return(px=l_px, periods=periods, forward=True)
-        l_signal_shifted = self.data.reindex(l_pri_return.index).ffill().shift(1)
-        l_returns = l_pri_return.mul(l_signal_shifted)
+        if not long and not short:
+            raise ValueError("both long and short could not be none.")
+        if long:
+            l_px = get_ts(long).squeeze()
+            l_pri_return = to_log_return(px=l_px, periods=periods, forward=True)
+            l_signal_shifted = self.data.reindex(l_pri_return.index).ffill().shift(1)
+            l_returns = l_pri_return.mul(l_signal_shifted)
+        else:
+            l_returns = 0
         if short:
-            s_px = get_pxs(short).squeeze()
+            s_px = get_ts(short).squeeze()
             s_pri_return = to_log_return(px=s_px, periods=periods, forward=True)
             s_signal_shifted = self.data.reindex(s_pri_return.index).ffill().shift(1)
-            s_returns = l_pri_return.mul(-s_signal_shifted)
-            l_returns = l_returns - s_returns
+            s_returns = s_pri_return.mul(-s_signal_shifted)
+        else:
+            s_returns = 0
+
+        returns = l_returns + s_returns
         if commission:
-            l_returns -= (
+            returns -= (
                 l_signal_shifted.diff(periods).abs() * commission / 10_000 / periods
             )
-        return l_returns.div(periods).cumsum().rename(periods)
+        assert isinstance(returns, pd.Series)
+        return returns.div(periods).cumsum().rename(periods)
 
 
-class UsOecdLeading(Signal):
+class OecdCliUsChg1(Signal):
     def fit(self) -> pd.Series:
-        """Calculates the US OECD Leading indicator signal."""
-        TICKERS = {"OEUSKLAC Index": "UsOecdLeading"}
-        EWM_SPAN = 3
-        data = get_pxs(codes=TICKERS).diff().ewm(span=EWM_SPAN).mean().squeeze()
-        adjusted_data = data + data.diff()
-        adjusted_data.index += pd.DateOffset(days=20)
-        return adjusted_data.clip(-0.25, 0.25) * 4
+        """
+        Generates an investment signal based on the OECD US Composite Leading Indicator.
+
+        The signal ranges between -1 and 1:
+            - 1: Strong Long (Buy)
+            - -1: Strong Short (Sell)
+            - 0: Neutral
+
+        Returns:
+            pd.Series: The investment signal series.
+        """
+        # Define constants within the fit method
+        TICKERS = {"OEUSKLAC Index": "OecdCliUs"}  # Ticker symbols
+        EWM_SPAN: int = 3  # Span for EWMA
+        DATE_SHIFT_DAYS: int = 20  # Days to shift the signal forward
+        CLIP_RANGE_INITIAL: tuple = (-2, 2)  # Initial clipping range before scaling
+        SCALE_FACTOR: float = 0.5  # Factor to scale the clipped signal
+        # Step 1: Fetch price data
+        raw_data = get_ts(codes=TICKERS).squeeze().ewm(span=EWM_SPAN).mean()
+        roc_data = raw_data.diff().dropna()
+        roroc_data = roc_data.diff().dropna()
+        roc_mean = roc_data.expanding().mean().shift(1)
+        roc_std = (
+            roc_data.expanding().std().shift(1).replace(0, 1)
+        )  # Replace 0 std to avoid division by zero
+        roc_normalized = (roc_data - roc_mean) / roc_std
+        roroc_mean = roroc_data.expanding().mean().shift(1)
+        roroc_std = roroc_data.expanding().std().shift(1).replace(0, 1)
+        roroc_normalized = (roroc_data - roroc_mean) / roroc_std
+        combined_signal = roc_normalized.add(roroc_normalized, fill_value=0)
+        combined_signal = combined_signal.reindex(roc_normalized.index).fillna(0)
+        clipped_signal = combined_signal.clip(*CLIP_RANGE_INITIAL)
+        scaled_signal = clipped_signal * SCALE_FACTOR
+        normalized_signal = scaled_signal.clip(-1, 1)
+        shifted_signal = normalized_signal.shift(periods=DATE_SHIFT_DAYS, freq="D")
+        shifted_signal = shifted_signal.fillna(0)
+        return shifted_signal
 
 
 class UsIsmPmiManu(Signal):
@@ -87,7 +126,7 @@ class UsIsmPmiManu(Signal):
         """Calculates the US ISM PMI Manufacturing indicator signal."""
         TICKERS = {"NAPMPMI Index": "UsIsmPmiManu"}
         EWM_SPAN = 3
-        data = get_pxs(codes=TICKERS).sub(50).ewm(span=EWM_SPAN).mean().squeeze()
+        data = get_ts(codes=TICKERS).sub(50).ewm(span=EWM_SPAN).mean().squeeze()
         adjusted_data = data + data.diff() * 0.2
         adjusted_data.index += pd.DateOffset(days=5)
         return adjusted_data.clip(-10, 10) / 10
@@ -96,8 +135,8 @@ class UsIsmPmiManu(Signal):
 class EquityVolatility1(Signal):
     def fit(self) -> pd.Series:
         # Fetch VIX and SPX returns data
-        vix = db.get_pxs(["VIX Index"]).squeeze()
-        spx_returns = db.get_pxs(["SPX Index"]).pct_change().squeeze()
+        vix = db.get_ts(["VIX Index"]).squeeze()
+        spx_returns = db.get_ts(["SPX Index"]).pct_change().squeeze()
 
         if vix.empty or spx_returns.empty:
             raise ValueError("Required data is missing. Please check the database.")
@@ -108,7 +147,7 @@ class EquityVolatility1(Signal):
 
         # Incorporate SPX Returns as an additional signal
         spx_vol = spx_returns.rolling(60).std()  # Realized volatility
-        combined_signal = signal_raw * spx_vol  # Interaction of VIX and realized vol
+        combined_signal = signal_raw * spx_vol
 
         # Rolling statistics for z-score calculation
         rolling_stats = combined_signal.rolling(window=60, min_periods=1)
@@ -139,7 +178,7 @@ class EquityPutCall1(Signal):
         scale_factor: float = 2.0,  # Scaling factor for normalization
     ) -> pd.Series:
         # Fetch data for Put-Call Ratio
-        data = db.get_pxs(codes=["PCRTEQTY Index"]).squeeze()
+        data = db.get_ts(codes=["PCRTEQTY Index"]).squeeze()
 
         if data.empty:
             raise ValueError("Put-Call Ratio data is empty. Please check the database.")
@@ -188,8 +227,8 @@ class JunkBondDemand(Signal):
         zscore_clip = 2.0  # Clipping threshold for z-score
 
         # Get percentage change data
-        st = db.get_pxs("SPY").pct_change(lookback_spread).squeeze()
-        bd = db.get_pxs("AGG").pct_change(lookback_spread).squeeze()
+        st = db.get_ts("SPY").pct_change(lookback_spread).squeeze()
+        bd = db.get_ts("AGG").pct_change(lookback_spread).squeeze()
 
         # Validate data
         if st.empty or bd.empty:
@@ -227,7 +266,7 @@ class EquityMomentum1(Signal):
         scale_factor: float = 2.0,  # Scaling factor for normalization
     ) -> pd.Series:
         # Fetch SPY price data
-        data = db.get_pxs("SPY").squeeze()
+        data = db.get_ts("SPY").squeeze()
 
         if data.empty:
             raise ValueError("SPY price data is empty. Please check the database.")
@@ -277,8 +316,8 @@ class UsLargeSmallRatio(Signal):
         zscore_clip = 2.0  # Clipping threshold for z-score
 
         # Fetch price series for large-cap (SPY) and small-cap (ACWI)
-        large = db.get_pxs("SPY").squeeze()
-        small = db.get_pxs("IWM").squeeze()
+        large = db.get_ts("SPY").squeeze()
+        small = db.get_ts("IWM").squeeze()
 
         # Validate data
         if large.empty or small.empty:
@@ -312,7 +351,7 @@ class EquityBreadth1(Signal):
     lookback_window: int = 120
 
     def fit(self) -> pd.Series:
-        signal = db.get_pxs("SUM INX Index").squeeze()
+        signal = db.get_ts("SUM INX Index").squeeze()
         roll = signal.rolling(120)
         mean = roll.mean()
         std = roll.std()
@@ -363,7 +402,7 @@ def all_signals() -> list[type[Signal]]:
     """
     return [
         UsIsmPmiManu,
-        UsOecdLeading,
+        OecdCliUsChg1,
         EquityBreadth1,
         EquityVolatility1,
         EquityPutCall1,

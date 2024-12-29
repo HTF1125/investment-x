@@ -3,8 +3,6 @@ from ix import db
 from .. import Regime
 
 
-
-
 class UsExpRealRate12M(Regime):
 
     TICKERS = {"FPRI12MO Index": "UsExpRealRate12M"}
@@ -12,7 +10,7 @@ class UsExpRealRate12M(Regime):
     THRESHOLD = 0.15
 
     def fit(self):
-        data = db.get_pxs(codes=self.TICKERS)
+        data = db.get_ts(codes=self.TICKERS)
         data["Difference"] = data["UsExpRealRate12M"].diff(self.DIFF_PERIOD)
         upward = data["Difference"] >= self.THRESHOLD
         downward = data["Difference"] < self.THRESHOLD
@@ -30,7 +28,7 @@ class UsExpInflation10Y(Regime):
     THRESHOLD = 0.15
 
     def fit(self):
-        data = db.get_pxs(codes=self.TICKERS).resample("M").last()
+        data = db.get_ts(codes=self.TICKERS).resample("M").last()
         data["Difference"] = data["UsExpInflation10Y"].diff(self.DIFF_PERIOD)
         upward = data["Difference"] >= self.THRESHOLD
         downward = data["Difference"] < self.THRESHOLD
@@ -40,4 +38,3 @@ class UsExpInflation10Y(Regime):
         data["States"] = data["States"].ffill()
         data.index += pd.DateOffset(days=2)
         return data["States"].dropna()
-

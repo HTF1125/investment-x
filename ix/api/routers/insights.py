@@ -331,11 +331,7 @@ def create_insight_with_pdf(
 
     # Create and save the insight
     try:
-        insight = db.Insight(
-            issuer="Investment-X",
-            name="Investment-X",
-            published_date=today().date(),
-        ).create()
+        insight = db.Insight().create()
         content_bytes = base64.b64decode(payload.content)
         if content_bytes:
             db.Boto().save_pdf(

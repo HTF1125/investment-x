@@ -10,7 +10,7 @@ from datetime import date
 from fastapi import Query
 from fastapi import APIRouter, BackgroundTasks, status
 from fastapi import HTTPException, Body
-from ix.db import MetaData, InsightSource
+from ix.db import MetaData, InsightSource, MetaDataBase
 from ix import task
 
 
@@ -55,7 +55,7 @@ def get_metadatas():
 @router.get(
     "/metadata",
     status_code=status.HTTP_201_CREATED,
-    description="Add a new ticker code to the database.",
+    description="Get ticker code",
 )
 def get_metadata(
     id: Optional[str] = Query(None, description="MetaData id (optional)"),
@@ -73,25 +73,21 @@ def get_metadata(
     return metadata
 
 
-# @router.put(
-#     "/metadata",
-#     status_code=status.HTTP_200_OK,
-#     response_model=MetaData,
-#     description="Add a new ticker code to the database.",
-# )
-# def get_metadata(metadata: MetaData):
+@router.put(
+    "/metadata",
+    status_code=status.HTTP_200_OK,
+    response_model=MetaData,
+    description="Add a new ticker code to the database.",
+)
+def create_metadata(metadata: MetaDataBase):
 
-
-#     if code:
-#         metadata = MetaData.find_one(MetaData.code == code).run()
-#     elif id:
-#         metadata = MetaData.find_one(MetaData.id == id).run()
-#     if not metadata:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail="No metadatas found.",
-#         )
-#     return metadata
+    try:
+        return MetaData(**metadata.model_dump()).create()
+    except:
+        HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No metadatas found.",
+        )
 
 
 # Define the request model for the data
@@ -196,6 +192,7 @@ async def get_insight_sources():
 class Url(BaseModel):
     url: str
     name: Optional[str] = None
+    frequency: Optional[str] = None
 
 
 @router.post(
@@ -228,7 +225,7 @@ async def create_insight_source(url: Url = Body(...)):
 @router.put(
     path="/insightsources/{id}",
     response_model=InsightSource,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
 )
 async def update_insight_source(
     id: str,

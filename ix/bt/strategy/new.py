@@ -1,5 +1,5 @@
 import pandas as pd
-from ix.db import get_pxs
+from ix.db import get_ts
 from ix.bt.strategy import Strategy
 
 
@@ -58,7 +58,7 @@ class SectorRotationCESI(Strategy):
 
     def initialize(self) -> None:
         self.cesi = (
-            get_pxs(["CESIUSD Index"])
+            get_ts(["CESIUSD Index"])
             .resample("D")
             .last()
             .ffill()

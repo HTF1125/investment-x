@@ -4,8 +4,23 @@ from datetime import date
 import pandas as pd
 from ix.misc import get_logger
 from bson import ObjectId
-
+from pydantic import BaseModel
 logger = get_logger(__name__)
+
+
+class MetaDataBase(BaseModel):
+    code: Annotated[str, Indexed(unique=True)]
+    name: Optional[str] = None
+    exchange: Optional[str] = None
+    market: Optional[str] = None
+    source: str = "YAHOO"
+    bloomberg: Optional[str] = None
+    fred: Optional[str] = None
+    yahoo: Optional[str] = None
+    remark: Optional[str] = None
+    disabled: bool = False
+    fields: Optional[list[str]] = ["PX_LAST"]
+
 
 
 class MetaData(Document):
@@ -79,5 +94,7 @@ from datetime import datetime
 class InsightSource(Document):
     url: str
     name: Optional[str] = None
-    last_visited: datetime = Field(default_factory=datetime.now)
+    frequency : Optional[str] = None
     remark: Optional[str] = None
+    last_visited: datetime = Field(default_factory=datetime.now)
+

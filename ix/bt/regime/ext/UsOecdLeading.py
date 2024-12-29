@@ -11,7 +11,7 @@ class UsOecdLeading(Regime):
     THRESHOLD = 0
 
     def fit(self):
-        data = db.get_pxs(codes=self.TICKERS)
+        data = db.get_ts(codes=self.TICKERS)
         data["Difference"] = data["UsOecdLeading"].diff()
         smoothed = data["Difference"].ewm(span=self.EWM_SPAN).mean()
         expanding = smoothed > (self.SPLIT + self.THRESHOLD)

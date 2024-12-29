@@ -7,8 +7,12 @@ from .models import MetaData
 # Configure logging
 logger = logging.getLogger(__name__)
 
-def get_pxs(
-    codes: Union[str, List[str], Set[str], Tuple[str, ...], Dict[str, str], None] = None,
+
+def get_ts(
+    codes: Union[
+        str, List[str], Set[str], Tuple[str, ...], Dict[str, str], None
+    ] = None,
+    field: str = "PX_LAST",
     start: Optional[str] = None,
 ) -> pd.DataFrame:
     """
@@ -24,7 +28,7 @@ def get_pxs(
     # Handle renaming columns if `codes` is a dictionary
     if isinstance(codes, dict):
         keys = list(codes.keys())
-        data = get_pxs(codes=keys, start=start)
+        data = get_ts(codes=keys, start=start)
         return data.rename(columns=codes)
 
     # Convert single string input to a list of codes, trimming whitespace
@@ -40,7 +44,7 @@ def get_pxs(
             metadata = MetaData.find_one(MetaData.code == code).run()
             if metadata is None:
                 return None
-            px_last = metadata.ts(field="PX_LAST").data
+            px_last = metadata.ts(field=field).data
             px_last.name = code
             return px_last
 

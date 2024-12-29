@@ -165,7 +165,7 @@ class Insight(Document):
     Represents an insight with metadata, while the actual file content is stored in GridFS.
     """
 
-    issuer: str = "XXX"
+    issuer: str = "Unnamed"
     name: str = "Unnamed"
     published_date: date = Field(default_factory=date.today)
     summary: Optional[str] = None
