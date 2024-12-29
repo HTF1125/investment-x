@@ -9,13 +9,14 @@ logger = get_logger(__name__)
 
 def get_bloomberg_data(
     code: str,
+    field: str = "PX_LAST",
     start: str = "1950-1-1",
     end: str = tomorrow().date().strftime("%Y-%m-%d"),
 ) -> pd.DataFrame:
     try:
         from xbbg import blp
 
-        data = blp.bdh(code, "PX_LAST", start_date=start, end_date=end)
+        data = blp.bdh(code, field, start_date=start, end_date=end)
         data.columns = [code]
         data.index.name = "date"
         data.index = pd.to_datetime(data.index)

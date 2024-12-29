@@ -10,7 +10,7 @@ from datetime import date
 from fastapi import Query
 from fastapi import APIRouter, BackgroundTasks, status
 from fastapi import HTTPException, Body
-from ix.db import MetaData, InsightSource, MetaDataBase
+from ix.db import MetaData, InsightSource, MetaDataBase, InsightSourceBase
 from ix import task
 
 
@@ -73,20 +73,55 @@ def get_metadata(
     return metadata
 
 
+@router.delete(
+    "/metadata",
+    status_code=status.HTTP_200_OK,
+    description="Add a new ticker code to the database.",
+)
+def delete_metata(metadata: MetaData):
+    """
+    Endpoint to create a new insight source.
+
+    Parameters:
+    - url: URL data provided in the request body.
+
+    Returns:
+    - The created InsightSource document.
+    """
+    if not ObjectId.is_valid(metadata.id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format",
+        )
+    InsightSource.find_one(MetaData.id == metadata.id).delete().run()
+    return {"message": "InsightSource deleted successfully"}
+
+
 @router.put(
     "/metadata",
     status_code=status.HTTP_200_OK,
     response_model=MetaData,
     description="Add a new ticker code to the database.",
 )
-def create_metadata(metadata: MetaDataBase):
+def create_metadata(metadata: MetaData):
+
+    if not ObjectId.is_valid(metadata.id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format",
+        )
 
     try:
-        return MetaData(**metadata.model_dump()).create()
-    except:
-        HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No metadatas found.",
+        insight_source = MetaData.find_one(MetaData.id == metadata.id).run()
+        if not insight_source:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Insight not found"
+            )
+        return insight_source.set(metadata.model_dump())
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while creating the insight source: {str(e)}",
         )
 
 
@@ -189,18 +224,12 @@ async def get_insight_sources():
         )
 
 
-class Url(BaseModel):
-    url: str
-    name: Optional[str] = None
-    frequency: Optional[str] = None
-
-
 @router.post(
     path="/insightsources",
     response_model=InsightSource,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_insight_source(url: Url = Body(...)):
+async def create_insight_source(insight_source: InsightSourceBase = Body(...)):
     """
     Endpoint to create a new insight source.
 
@@ -211,10 +240,11 @@ async def create_insight_source(url: Url = Body(...)):
     - The created InsightSource document.
     """
     try:
-        # Create an InsightSource object and save it
-        insight_source = InsightSource(url=url.url, name=url.name)
-        insight_source.create()  # Ensure create() is async if using an async ORM
-        return insight_source
+        model = {}
+        for k, v in insight_source.model_dump().items():
+            if v is not None:
+                model[k] = v
+        return InsightSource(**model).create()
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -223,12 +253,11 @@ async def create_insight_source(url: Url = Body(...)):
 
 
 @router.put(
-    path="/insightsources/{id}",
+    path="/insightsources",
     response_model=InsightSource,
     status_code=status.HTTP_200_OK,
 )
 async def update_insight_source(
-    id: str,
     update_insight_source: InsightSource = Body(...),
 ):
     """
@@ -240,7 +269,7 @@ async def update_insight_source(
     Returns:
     - The created InsightSource document.
     """
-    if not ObjectId.is_valid(id):
+    if not ObjectId.is_valid(update_insight_source.id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid ID format",
@@ -252,7 +281,9 @@ async def update_insight_source(
             detail="No fields provided for update",
         )
     try:
-        insight_source = InsightSource.find_one(InsightSource.id == ObjectId(id)).run()
+        insight_source = InsightSource.find_one(
+            InsightSource.id == update_insight_source.id
+        ).run()
         if not insight_source:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Insight not found"

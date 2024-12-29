@@ -6,6 +6,7 @@ from ix.db import get_ts
 from ix import db
 from ix import misc
 from ix.db import MetaData
+import matplotlib.pyplot as plt
 
 logger = misc.get_logger(__name__)
 
@@ -50,7 +51,6 @@ class Signal:
         long: str | None = None,
         short: str | None = None,
         periods: int = 1,
-        start: Union[str, None] = None,
         commission: int = 0,
     ) -> Union[pd.Series, pd.DataFrame]:
 
@@ -79,7 +79,53 @@ class Signal:
         assert isinstance(returns, pd.Series)
         return returns.div(periods).cumsum().rename(periods)
 
+    def plot(
+        self,
+        long: str | None = None,
+        short: str | None = None,
+        periods: int = 1,
+        commission: int = 0,
+    ) -> None:
+        """
+        Plots the signal data and its performance with dual y-axes,
+        more transparent tone, improved design, and clarity.
+        """
+        # Get the signal data
+        signal_data = self.data
 
+        # Get the performance data
+        performance_data = self.get_performance(long=long, short=short, periods=periods, commission=commission)
+
+        # Create a plot with dual y-axes
+        fig, ax1 = plt.subplots(figsize=(12, 6))
+
+        # Plot signal data on the left y-axis
+        ax1.set_xlabel("Date", fontsize=12)
+        ax1.set_ylabel("Signal Data", color="tab:blue", fontsize=12)
+        ax1.plot(signal_data.index, signal_data, color="tab:blue", label="Signal Data", linewidth=2, alpha=0.9)
+        ax1.fill_between(signal_data.index, signal_data, color="tab:blue", alpha=0.2)  # Light fill under signal
+        ax1.tick_params(axis="y", labelcolor="tab:blue")
+
+        # Plot performance on the right y-axis
+        ax2 = ax1.twinx()
+        ax2.set_ylabel("Performance", color="tab:green", fontsize=12)
+        ax2.plot(performance_data.index, performance_data, color="tab:green", label="Performance", linestyle="--", linewidth=2, alpha=0.9)
+        ax2.fill_between(performance_data.index, performance_data, color="tab:green", alpha=0.1)  # Light fill under performance
+        ax2.tick_params(axis="y", labelcolor="tab:green")
+
+        # Title and grid settings
+        plt.title(f"{self.metadata.code} Signal and Performance", fontsize=14)
+        ax1.grid(True, which='both', axis='both', linestyle="--", linewidth=0.5, alpha=0.7)  # Subtle gridlines
+
+        # Add a legend with custom location
+        ax1.legend(loc="upper left", fontsize=10)
+        ax2.legend(loc="upper right", fontsize=10)
+
+        # Layout adjustments for better spacing
+        plt.tight_layout()
+
+        # Show the plot
+        plt.show()
 class OecdCliUsChg1(Signal):
     def fit(self) -> pd.Series:
         """
@@ -99,14 +145,11 @@ class OecdCliUsChg1(Signal):
         DATE_SHIFT_DAYS: int = 20  # Days to shift the signal forward
         CLIP_RANGE_INITIAL: tuple = (-2, 2)  # Initial clipping range before scaling
         SCALE_FACTOR: float = 0.5  # Factor to scale the clipped signal
-        # Step 1: Fetch price data
         raw_data = get_ts(codes=TICKERS).squeeze().ewm(span=EWM_SPAN).mean()
         roc_data = raw_data.diff().dropna()
         roroc_data = roc_data.diff().dropna()
         roc_mean = roc_data.expanding().mean().shift(1)
-        roc_std = (
-            roc_data.expanding().std().shift(1).replace(0, 1)
-        )  # Replace 0 std to avoid division by zero
+        roc_std = roc_data.expanding().std().shift(1).replace(0, 1)
         roc_normalized = (roc_data - roc_mean) / roc_std
         roroc_mean = roroc_data.expanding().mean().shift(1)
         roroc_std = roroc_data.expanding().std().shift(1).replace(0, 1)
@@ -125,47 +168,47 @@ class UsIsmPmiManu(Signal):
     def fit(self) -> pd.Series:
         """Calculates the US ISM PMI Manufacturing indicator signal."""
         TICKERS = {"NAPMPMI Index": "UsIsmPmiManu"}
-        EWM_SPAN = 3
-        data = get_ts(codes=TICKERS).sub(50).ewm(span=EWM_SPAN).mean().squeeze()
-        adjusted_data = data + data.diff() * 0.2
-        adjusted_data.index += pd.DateOffset(days=5)
-        return adjusted_data.clip(-10, 10) / 10
+        EWM_SPAN: int = 3  # Span for EWMA
+        DATE_SHIFT_DAYS: int = 20  # Days to shift the signal forward
+        CLIP_RANGE_INITIAL: tuple = (-2, 2)  # Initial clipping range before scaling
+        SCALE_FACTOR: float = 0.5  # Factor to scale the clipped signal
+        raw_data = get_ts(codes=TICKERS).squeeze().ewm(span=EWM_SPAN).mean()
+        roc_data = raw_data.diff().dropna()
+        roroc_data = roc_data.diff().dropna()
+        roc_mean = roc_data.expanding().mean().shift(1)
+        roc_std = roc_data.expanding().std().shift(1).replace(0, 1)
+        roc_normalized = (roc_data - roc_mean) / roc_std
+        roroc_mean = roroc_data.expanding().mean().shift(1)
+        roroc_std = roroc_data.expanding().std().shift(1).replace(0, 1)
+        roroc_normalized = (roroc_data - roroc_mean) / roroc_std
+        combined_signal = roc_normalized.add(roroc_normalized, fill_value=0)
+        combined_signal = combined_signal.reindex(roc_normalized.index).fillna(0)
+        clipped_signal = combined_signal.clip(*CLIP_RANGE_INITIAL)
+        scaled_signal = clipped_signal * SCALE_FACTOR
+        normalized_signal = scaled_signal.clip(-1, 1)
+        shifted_signal = normalized_signal.shift(periods=DATE_SHIFT_DAYS, freq="D")
+        shifted_signal = shifted_signal.fillna(0)
+        return shifted_signal
 
 
 class EquityVolatility1(Signal):
     def fit(self) -> pd.Series:
         # Fetch VIX and SPX returns data
         vix = db.get_ts(["VIX Index"]).squeeze()
-        spx_returns = db.get_ts(["SPX Index"]).pct_change().squeeze()
+        gix = db.get_ts(["SPX Index"]).pct_change().squeeze().rolling(20).std()
 
-        if vix.empty or spx_returns.empty:
+        if vix.empty or gix.empty:
             raise ValueError("Required data is missing. Please check the database.")
 
         # Signal Calculation: VIX Deviation from EMA
-        vix_ema = vix.ewm(span=50).mean()
-        signal_raw = vix / vix_ema - 1  # Deviation from EMA
+        vix_ema = vix.ewm(span=20).mean()
+        gix_ema = gix.ewm(span=20).mean()
+        signalv = vix / vix_ema
+        signalg = gix / gix_ema
 
         # Incorporate SPX Returns as an additional signal
-        spx_vol = spx_returns.rolling(60).std()  # Realized volatility
-        combined_signal = signal_raw * spx_vol
-
-        # Rolling statistics for z-score calculation
-        rolling_stats = combined_signal.rolling(window=60, min_periods=1)
-        rolling_mean = rolling_stats.mean()
-        rolling_std = rolling_stats.std()
-
-        # Z-score normalization
-        z_score = (combined_signal - rolling_mean) / rolling_std
-
-        # Dynamic Clipping based on quantiles
-        lower_clip = z_score.rolling(252).quantile(1 - 0.95)
-        upper_clip = z_score.rolling(252).quantile(0.95)
-        z_score = z_score.clip(lower=lower_clip, upper=upper_clip) / 2
-
-        # Apply scaling and smooth the final signal
-        smooth_signal = z_score.ewm(span=60).mean()
-
-        return smooth_signal.dropna()
+        combined_signal = signalv / signalg
+        return combined_signal.clip(0.75, 1.25).sub(1).mul(4).dropna()
 
 
 class EquityPutCall1(Signal):
@@ -254,6 +297,8 @@ class JunkBondDemand(Signal):
 
         # Return the inverse of the z-score
         return z * -1
+
+
 
 
 class EquityMomentum1(Signal):

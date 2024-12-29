@@ -1,6 +1,7 @@
 import pandas as pd
 from ix.misc import get_yahoo_data
 from ix.misc import get_bloomberg_data
+from ix.misc import get_fred_data
 from ix.misc import get_logger
 from ix import misc
 from ix.db import MetaData, Performance
@@ -18,33 +19,35 @@ def run():
 
 def update_px_last():
     logger.debug("Initialize update PX_LAST data")
-    for metadata in MetaData.find_all():
-        if metadata.source == "YAHOO":
-            if metadata.yahoo is None:
-                logger.debug(f"Skipping {metadata.code}: No Yahoo ID.")
-                continue
-            data = get_yahoo_data(code=metadata.yahoo)["Adj Close"]
-            logger.debug(f"Fetched data from Yahoo for {metadata.code}")
+    for metadata in MetaData.find_all().run():
+        logger.info(f"Processing metadata with code: {metadata.code}")
+        # Loop through each data source for the metadata
+        for data_source in metadata.data_sources:
+            try:
+                logger.info(f"Checking data source: {data_source.source} for metadata code={metadata.code}")
+                if data_source.source == "YAHOO":
+                    ts = get_yahoo_data(code=data_source.s_code)[data_source.s_field]
+                    logger.info(f"Successfully fetched data from YAHOO for code={data_source.s_code}, field={data_source.s_field}")
+                elif data_source.source == "BLOOMBERG":
+                    ts = get_bloomberg_data(
+                        code=data_source.s_code,
+                        field=data_source.s_field,
+                    ).iloc[:, 0]
+                    logger.info(f"Successfully fetched data from BLOOMBERG for code={data_source.s_code}, field={data_source.s_field}")
+                elif data_source.source == "FRED":
+                    ts = get_fred_data(ticker=data_source.s_code).iloc[:, 0]
+                    logger.info(f"Successfully fetched data from FRED for ticker={data_source.s_code}")
+                else:
+                    logger.warning(f"Unknown data source: {data_source.source} for metadata code={metadata.code}")
+                    continue
+                # Update the corresponding field in metadata with the fetched time series
+                metadata.ts(field=data_source.field).data = ts
+                logger.info(f"Updated field={data_source.field} for metadata code={metadata.code} with new time series data")
 
-        elif metadata.source == "BLOOMBERG":
-            if metadata.bloomberg is None:
-                logger.debug(f"Skipping {metadata.code}: No Bloomberg ID.")
-                continue
-            data = get_bloomberg_data(code=metadata.bloomberg)
-            if data.empty:
-                continue
-            data = data.iloc[:, 0]
-            logger.debug(f"Fetched data from Bloomberg for {metadata.code}")
-        else:
-            logger.debug(
-                f"Skipping {metadata.code}: Unsupported source {metadata.source}."
-            )
-            continue
-        if data.empty:
-            continue
+            except Exception as e:
+                # Log errors if data fetching or updating fails
+                logger.error(f"Error processing metadata code={metadata.code}, data source={data_source.source}, field={data_source.field}: {e}")
 
-        px_last = metadata.ts(field="PX_LAST")
-        px_last.data = data
     logger.debug("Timeseries update process completed.")
 
 
@@ -77,7 +80,7 @@ def update_price_performance():
 
     asofdate = misc.last_business_day().date()
     px_lasts = []
-    for metadata in MetaData.find_many(MetaData.source == "YAHOO").run():
+    for metadata in MetaData.find_all().run():
         px_last = metadata.ts(field="PX_LAST").data
         px_last.name = metadata.code
         if px_last.empty:
