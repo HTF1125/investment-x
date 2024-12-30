@@ -24,29 +24,43 @@ def update_px_last():
         # Loop through each data source for the metadata
         for data_source in metadata.data_sources:
             try:
-                logger.info(f"Checking data source: {data_source.source} for metadata code={metadata.code}")
+                logger.info(
+                    f"Checking data source: {data_source.source} for metadata code={metadata.code}"
+                )
                 if data_source.source == "YAHOO":
                     ts = get_yahoo_data(code=data_source.s_code)[data_source.s_field]
-                    logger.info(f"Successfully fetched data from YAHOO for code={data_source.s_code}, field={data_source.s_field}")
+                    logger.info(
+                        f"Successfully fetched data from YAHOO for code={data_source.s_code}, field={data_source.s_field}"
+                    )
                 elif data_source.source == "BLOOMBERG":
                     ts = get_bloomberg_data(
                         code=data_source.s_code,
                         field=data_source.s_field,
                     ).iloc[:, 0]
-                    logger.info(f"Successfully fetched data from BLOOMBERG for code={data_source.s_code}, field={data_source.s_field}")
+                    logger.info(
+                        f"Successfully fetched data from BLOOMBERG for code={data_source.s_code}, field={data_source.s_field}"
+                    )
                 elif data_source.source == "FRED":
                     ts = get_fred_data(ticker=data_source.s_code).iloc[:, 0]
-                    logger.info(f"Successfully fetched data from FRED for ticker={data_source.s_code}")
+                    logger.info(
+                        f"Successfully fetched data from FRED for ticker={data_source.s_code}"
+                    )
                 else:
-                    logger.warning(f"Unknown data source: {data_source.source} for metadata code={metadata.code}")
+                    logger.warning(
+                        f"Unknown data source: {data_source.source} for metadata code={metadata.code}"
+                    )
                     continue
                 # Update the corresponding field in metadata with the fetched time series
                 metadata.ts(field=data_source.field).data = ts
-                logger.info(f"Updated field={data_source.field} for metadata code={metadata.code} with new time series data")
+                logger.info(
+                    f"Updated field={data_source.field} for metadata code={metadata.code} with new time series data"
+                )
 
             except Exception as e:
                 # Log errors if data fetching or updating fails
-                logger.error(f"Error processing metadata code={metadata.code}, data source={data_source.source}, field={data_source.field}: {e}")
+                logger.error(
+                    f"Error processing metadata code={metadata.code}, data source={data_source.source}, field={data_source.field}: {e}"
+                )
 
     logger.debug("Timeseries update process completed.")
 
@@ -141,3 +155,32 @@ def update_price_performance():
         except Exception as exc:
             print(exc)
             print(performance_data)
+
+
+def bloomberg_only():
+
+    import requests
+    from ix.db import MetaData
+    from ix.misc import get_bloomberg_data
+
+    # Define the API URL and parameters
+    url = "https://port-0-investmentx-ghdys32bls2zef7e.sel5.cloudtype.app"
+    response = requests.get(f"{url}/api/metadatas")
+    for metadata in response.json():
+        mt = MetaData(**metadata)
+        for data_source in mt.data_sources:
+            if data_source.source == "BLOOMBERG":
+                ts = get_bloomberg_data(
+                    code=data_source.s_code,
+                    field=data_source.s_field,
+                ).iloc[:, 0]
+                params = {"code": mt.code, "field": data_source.field}
+                body = {"data": ts.to_dict()}
+                requests.put(f"{url}/api/timeseries", params=params, json=body)
+                # Check the response
+                if response.status_code == 200:
+                    print("Time series updated successfully.")
+                else:
+                    print(
+                        f"Failed to update time series. Status code: {response.status_code}, Response: {response.text}"
+                    )

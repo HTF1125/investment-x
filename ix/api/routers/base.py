@@ -103,7 +103,7 @@ def delete_metata(metadata: MetaData):
     response_model=MetaData,
     description="Add a new ticker code to the database.",
 )
-def create_metadata(metadata: MetaData):
+def update_metadata(metadata: MetaData):
 
     if not ObjectId.is_valid(metadata.id):
         raise HTTPException(
@@ -112,12 +112,29 @@ def create_metadata(metadata: MetaData):
         )
 
     try:
-        insight_source = MetaData.find_one(MetaData.id == metadata.id).run()
-        if not insight_source:
+        _metadata = MetaData.find_one(MetaData.id == metadata.id).run()
+        if not _metadata:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Insight not found"
             )
-        return insight_source.set(metadata.model_dump())
+        return _metadata.set(metadata.model_dump())
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while creating the insight source: {str(e)}",
+        )
+
+
+@router.post(
+    "/metadata",
+    status_code=status.HTTP_200_OK,
+    response_model=MetaData,
+    description="Add a new ticker code to the database.",
+)
+def create_metadata(metadata: MetaDataBase):
+
+    try:
+        return MetaData(**metadata.model_dump()).create()
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

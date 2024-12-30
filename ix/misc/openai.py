@@ -16,18 +16,7 @@ class PDFSummarizer:
         model (str): The OpenAI model to use.
     """
 
-    PROMPT = """
-Provide a one to three paragraph, professional investment insight that offers a
-forward-looking market analysis, clearly identifies key drivers and assumptions,
-and includes specific, actionable recommendations, associated risks and sector
-or geographic focuses. Incorporate a brief but robust risk assessment outlining
-how these strategies might underperform under certain economic or geopolitical
-conditions.
-Ensure the language is concise, avoids special symbols, and is suitable for
-seasoned investors seeking practical, data-driven strategies and tactical
-insights aligned with evolving market dynamics.
-Content :
-"""
+    PROMPT = """ Provide a one to three paragraph, professional investment insight with a forward-looking market analysis. Clearly identify key drivers and assumptions, and base your analysis on specific data sources. Offer actionable recommendations, highlighting the associated risks and specifying sector or geographic focuses. Ensure the language is concise, avoids special symbols, and is tailored for seasoned investors seeking practical, data-driven strategies and tactical insights aligned with evolving market conditions. Content: """
 
     def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
         """
