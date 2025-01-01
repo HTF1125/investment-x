@@ -24,6 +24,7 @@ class Token(BaseModel):
 
 class User(BaseModel):
     username: str
+    isadmin: bool = False
     disabled: Optional[bool] = None
 
 
@@ -84,7 +85,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, Settings.secret_key, algorithm=Settings.algorithm)
 
 
-async def get_current_user(authorization: Optional[str] = Header(None)) -> User:
+async def get_current_user(authorization: Optional[str] = Header(None)) -> db.User:
     """
     Decode and validate the current user from the token.
     """
@@ -115,12 +116,12 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> User:
     user = get_user(username=username)
     if user is None:
         raise credentials_exception
-    return User(username=username)
+    return user
 
 
 async def get_current_active_user(
-    current_user: User = Depends(get_current_user),
-) -> User:
+    current_user: db.User = Depends(get_current_user),
+) -> db.User:
     """
     Ensure the user is active (not disabled).
     """
@@ -154,7 +155,7 @@ async def login_for_access_token(user: UserIn):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.get("/users/me", response_model=User)
+@router.get("/users/me", response_model=db.User)
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
     """
     Retrieve the currently logged-in user details.
@@ -166,5 +167,5 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
 async def is_admin(current_user: User = Depends(get_current_active_user)):
     user = get_user(username=current_user.username)
     if user:
-        return user.admin
+        return user.is_admin
     raise HTTPException(status_code=400, detail="Inactive user")

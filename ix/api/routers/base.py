@@ -10,7 +10,7 @@ from datetime import date
 from fastapi import Query
 from fastapi import APIRouter, BackgroundTasks, status
 from fastapi import HTTPException, Body
-from ix.db import MetaData, InsightSource, MetaDataBase, InsightSourceBase
+from ix.db import MetaData, InsightSource, InsightSourceBase, Performance, IndexGroup
 from ix import task
 
 
@@ -93,7 +93,7 @@ def delete_metata(metadata: MetaData):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid ID format",
         )
-    InsightSource.find_one(MetaData.id == metadata.id).delete().run()
+    MetaData.find_one(MetaData.id == metadata.id).delete().run()
     return {"message": "InsightSource deleted successfully"}
 
 
@@ -131,10 +131,10 @@ def update_metadata(metadata: MetaData):
     response_model=MetaData,
     description="Add a new ticker code to the database.",
 )
-def create_metadata(metadata: MetaDataBase):
+def create_metadata(metadata: MetaData):
 
     try:
-        return MetaData(**metadata.model_dump()).create()
+        return metadata.create()
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -336,13 +336,178 @@ async def delete_insight_source(id: str):
     return {"message": "InsightSource deleted successfully"}
 
 
-# Your task handler that will run in the background
-async def run_daily_task():
-    task.run()
-
-
 # The route that will trigger the background task
 @router.get(path="/tasks/daily", status_code=status.HTTP_200_OK)
 async def ping_task_daily(background_tasks: BackgroundTasks):
+    """
+    _summary_
+
+    _extended_summary_
+
+    Args:
+        background_tasks (BackgroundTasks): _description_
+    """
+
+    async def run_daily_task():
+        task.run()
+
     background_tasks.add_task(run_daily_task)
     return {"message": "Task is running in the background"}
+
+
+@router.get(
+    path="/performance",
+    response_model=Performance,
+    status_code=status.HTTP_200_OK,
+)
+def get_performance_by_code(code: str):
+    """
+    _summary_
+
+    _extended_summary_
+    """
+    try:
+        performance = Performance.find_one({"group": code}).run()
+        if not performance:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No performances found.",
+            )
+        return performance
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while fetching performances: {str(e)}",
+        )
+
+
+@router.get(
+    path="/performance",
+    response_model=List[Performance],
+    status_code=status.HTTP_200_OK,
+)
+def get_performance():
+    """
+    _summary_
+
+    _extended_summary_
+    """
+    try:
+        performances = Performance.find_all().run()
+        if not performances:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No performances found.",
+            )
+        return performances
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while fetching performances: {str(e)}",
+        )
+
+
+from pydantic import BaseModel
+from ix.misc.date import today
+from datetime import date
+
+
+class PerforamnceGrouped(BaseModel):
+    group: str
+    code: str
+    name: Optional[str] = None
+    level: Optional[float] = None
+    pct_chg_1d: Optional[float] = None
+    pct_chg_1w: Optional[float] = None
+    pct_chg_1m: Optional[float] = None
+    pct_chg_3m: Optional[float] = None
+    pct_chg_6m: Optional[float] = None
+    pct_chg_1y: Optional[float] = None
+    pct_chg_3y: Optional[float] = None
+    pct_chg_mtd: Optional[float] = None
+    pct_chg_ytd: Optional[float] = None
+
+
+@router.get(
+    path="/performances-grouped",
+    response_model=List[PerforamnceGrouped],
+    status_code=status.HTTP_200_OK,
+)
+def get_performance_grouped():
+
+    groups = [
+        {"group": "LocalIndices", "code": "SPX Index", "name": "S&P500"},
+        {"group": "LocalIndices", "code": "INDU Index", "name": "DJIA30"},
+        {"group": "LocalIndices", "code": "CCMP Index", "name": "NASDAQ"},
+        {"group": "LocalIndices", "code": "RTY Index", "name": "Russell2"},
+        {"group": "LocalIndices", "code": "SX5E Index", "name": "Stoxx50"},
+        {"group": "LocalIndices", "code": "UKX Index", "name": "FTSE100"},
+        {"group": "LocalIndices", "code": "NKY Index", "name": "Nikkei225"},
+        {"group": "LocalIndices", "code": "^KOSPI", "name": "Kospi"},
+        {"group": "LocalIndices", "code": "SHCOMP Index", "name": "SSE"},
+        {"group": "GlobalMarkets", "code": "ACWI", "name": "ACWI"},
+        {"group": "GlobalMarkets", "code": "IDEV", "name": "DMxUS"},
+        {"group": "GlobalMarkets", "code": "FEZ", "name": "Europe"},
+        {"group": "GlobalMarkets", "code": "EWJ", "name": "Japan"},
+        {"group": "GlobalMarkets", "code": "EWY", "name": "Korea"},
+        {"group": "GlobalMarkets", "code": "VWO", "name": "Emerging"},
+        {"group": "GlobalMarkets", "code": "VNM", "name": "Vietnam"},
+        {"group": "GlobalMarkets", "code": "INDA", "name": "India"},
+        {"group": "GlobalMarkets", "code": "EWZ", "name": "Brazil"},
+        {"group": "GICS-US", "code": "XLB", "name": "Materi."},
+        {"group": "GICS-US", "code": "XLY", "name": "Cycl"},
+        {"group": "GICS-US", "code": "XLF", "name": "Fin."},
+        {"group": "GICS-US", "code": "XLRE", "name": "R.E."},
+        {"group": "GICS-US", "code": "XLC", "name": "Comm."},
+        {"group": "GICS-US", "code": "XLE", "name": "Energy"},
+        {"group": "GICS-US", "code": "XLI", "name": "Indus."},
+        {"group": "GICS-US", "code": "XLK", "name": "I.Tech"},
+        {"group": "GICS-US", "code": "XLP", "name": "Non-Cycl"},
+        {"group": "GICS-US", "code": "XLV", "name": "Health"},
+        {"group": "GICS-US", "code": "XLU", "name": "Util"},
+        {"group": "Styles", "code": "MTUM", "name": "Mtum"},
+        {"group": "Styles", "code": "QUAL", "name": "Quality"},
+        {"group": "Styles", "code": "SIZE", "name": "Size"},
+        {"group": "Styles", "code": "USMV", "name": "MinVol"},
+        {"group": "Styles", "code": "VLUE", "name": "Value"},
+        {"group": "Styles", "code": "IWO", "name": "Small G"},
+        {"group": "Styles", "code": "IWN", "name": "Small V"},
+        {"group": "Styles", "code": "IWM", "name": "Small"},
+        {"group": "GlobalBonds", "code": "AGG", "name": "Agg"},
+        {"group": "GlobalBonds", "code": "SHY", "name": "T 1-3Y"},
+        {"group": "GlobalBonds", "code": "IEF", "name": "T 3-7Y"},
+        {"group": "GlobalBonds", "code": "TLH", "name": "T 10-20Y"},
+        {"group": "GlobalBonds", "code": "TLT", "name": "T 20+Y"},
+        {"group": "GlobalBonds", "code": "LQD", "name": "I Grade"},
+        {"group": "GlobalBonds", "code": "HYG", "name": "High Yield"},
+        {"group": "GlobalBonds", "code": "EMB", "name": "Emerging"},
+        {"group": "Currencies", "code": "DXY Index", "name": "DXY"},
+        {"group": "Currencies", "code": "USDEUR", "name": "EUR"},
+        {"group": "Currencies", "code": "USDGBP", "name": "GBP"},
+        {"group": "Currencies", "code": "USDJPY", "name": "JPY"},
+        {"group": "Currencies", "code": "USDKRW", "name": "KRW"},
+        {"group": "Commodities", "code": "IAU", "name": "Gold"},
+        {"group": "Commodities", "code": "SLV", "name": "Silver"},
+        {"group": "Commodities", "code": "HG1 Comdty", "name": "Copper"},
+        {"group": "Commodities", "code": "CL1 Comdty", "name": "WTI"},
+        {"group": "Commodities", "code": "XBTUSD", "name": "Bitcoin"},
+        {"group": "Themes", "code": "UFO", "name": "Space"},
+        {"group": "Themes", "code": "VNQ", "name": "Real Estate"},
+        {"group": "Themes", "code": "PPH", "name": "Pharma"},
+        {"group": "Themes", "code": "PAVE", "name": "Pave"},
+        {"group": "Themes", "code": "SRVR", "name": "Data/Infra"},
+        {"group": "Themes", "code": "FINX", "name": "FinTech"},
+        {"group": "Themes", "code": "TAN", "name": "Solar"},
+        {"group": "Themes", "code": "LIT", "name": "Lit/Battery"},
+        {"group": "Themes", "code": "SKYY", "name": "Cloud"},
+        {"group": "Themes", "code": "DRIV", "name": "EV/Drive"},
+        {"group": "Themes", "code": "SNSR", "name": "IoT"},
+        {"group": "Themes", "code": "SOXX", "name": "Semis"},
+    ]
+
+    for group in groups:
+        performance = Performance.find_one(Performance.code == group["code"]).run()
+        if performance:
+            group.update(performance.model_dump())
+
+    return groups

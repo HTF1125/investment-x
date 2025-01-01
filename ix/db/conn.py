@@ -117,7 +117,7 @@ class Ticker(TickerInfo, Document):
 
 class Performance(Document):
     code: Annotated[str, Indexed()]
-    date: Annotated[date, Indexed()]
+    date: date
     level: float
     pct_chg_1d: Optional[float] = None
     pct_chg_1w: Optional[float] = None
@@ -143,7 +143,7 @@ class User(Document):
     username: Annotated[str, Indexed(unique=True)]
     password: str
     disabled: bool = False
-    admin: bool = False
+    is_admin: bool = False
 
     def verify_password(self, password):
         return self.password == password
