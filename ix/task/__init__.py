@@ -5,13 +5,17 @@ from ix.misc import get_fred_data
 from ix.misc import get_logger
 from ix import misc
 from ix.db import MetaData, Performance
+import pandas as pd
+
 
 logger = get_logger(__name__)
 
 
+
+
 def run():
 
-    # update_px_last()
+    update_px_last()
     Performance.delete_all()
     update_price_performance()
     update_economic_calendar()
@@ -105,7 +109,7 @@ def update_price_performance():
 
     print(f"update performance for {px_lasts.index[-1]}")
     for code in px_lasts:
-        pxlast = px_lasts[code].round(2)
+        pxlast = px_lasts[code]
         level = round(pxlast.iloc[-1], 2)
         pct_chg = (level / pxlast).sub(1).mul(100).round(2)
         pct_chg_1d = pct_chg.get(asofdate - pd.offsets.BusinessDay(1), None)

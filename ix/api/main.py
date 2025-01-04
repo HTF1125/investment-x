@@ -15,7 +15,6 @@ app = FastAPI()
 # Include API routers
 app.include_router(routers.data.router, prefix="/api")
 app.include_router(routers.strategies.router, prefix="/api")
-app.include_router(routers.index_groups.router, prefix="/api")
 app.include_router(routers.signals.router, prefix="/api")
 app.include_router(routers.tickers.router, prefix="/api")
 app.include_router(routers.insights.router, prefix="/api")
@@ -68,5 +67,4 @@ async def general_exception_handler(request, exc: Exception):
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)

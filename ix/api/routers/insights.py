@@ -296,6 +296,7 @@ def update_insight_summary(id: str):
     Adds a new Insight with the provided data.
     """
     from ix.misc import PDFSummarizer, Settings
+    from markitdown import MarkItDown
 
     insight = db.Insight.find_one(db.Insight.id == ObjectId(id)).run()
     if not insight:

@@ -91,7 +91,7 @@ class TimeSeries(Document):
         if self.i_data:
             data = data.combine_first(self.data)
         if data is not None:
-            self.set({"latest_date" : data.index[-1]})
+            self.set({"latest_date": data.index[-1]})
             self.set({"i_data": data.to_dict()})
             logger.info(f"Update {self.metadata_code} {self.field}")
 
@@ -111,3 +111,10 @@ class InsightSourceBase(BaseModel):
 
 
 class InsightSource(InsightSourceBase, Document): ...
+
+
+class MarketCommentary(Document):
+
+    asofdate: Annotated[date, Indexed(unique=True)] = Field(default_factory=date.today)
+    frequency: str = "Daily"
+    content: str = ""

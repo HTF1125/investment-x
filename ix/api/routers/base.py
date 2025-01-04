@@ -436,15 +436,15 @@ class PerforamnceGrouped(BaseModel):
 def get_performance_grouped():
 
     groups = [
-        {"group": "LocalIndices", "code": "SPX Index", "name": "S&P500"},
-        {"group": "LocalIndices", "code": "INDU Index", "name": "DJIA30"},
-        {"group": "LocalIndices", "code": "CCMP Index", "name": "NASDAQ"},
-        {"group": "LocalIndices", "code": "RTY Index", "name": "Russell2"},
-        {"group": "LocalIndices", "code": "SX5E Index", "name": "Stoxx50"},
-        {"group": "LocalIndices", "code": "UKX Index", "name": "FTSE100"},
-        {"group": "LocalIndices", "code": "NKY Index", "name": "Nikkei225"},
+        {"group": "LocalIndices", "code": "^SPX", "name": "S&P500"},
+        {"group": "LocalIndices", "code": "^INDU", "name": "DJIA30"},
+        {"group": "LocalIndices", "code": "^CCMP", "name": "NASDAQ"},
+        {"group": "LocalIndices", "code": "^RTY", "name": "Russell2"},
+        {"group": "LocalIndices", "code": "^SX5E", "name": "Stoxx50"},
+        {"group": "LocalIndices", "code": "^UKX", "name": "FTSE100"},
+        {"group": "LocalIndices", "code": "^NKY", "name": "Nikkei225"},
         {"group": "LocalIndices", "code": "^KOSPI", "name": "Kospi"},
-        {"group": "LocalIndices", "code": "SHCOMP Index", "name": "SSE"},
+        {"group": "LocalIndices", "code": "^SHCOMP", "name": "SSE"},
         {"group": "GlobalMarkets", "code": "ACWI", "name": "ACWI"},
         {"group": "GlobalMarkets", "code": "IDEV", "name": "DMxUS"},
         {"group": "GlobalMarkets", "code": "FEZ", "name": "Europe"},
@@ -454,17 +454,17 @@ def get_performance_grouped():
         {"group": "GlobalMarkets", "code": "VNM", "name": "Vietnam"},
         {"group": "GlobalMarkets", "code": "INDA", "name": "India"},
         {"group": "GlobalMarkets", "code": "EWZ", "name": "Brazil"},
-        {"group": "GICS-US", "code": "XLB", "name": "Materi."},
-        {"group": "GICS-US", "code": "XLY", "name": "Cycl"},
-        {"group": "GICS-US", "code": "XLF", "name": "Fin."},
-        {"group": "GICS-US", "code": "XLRE", "name": "R.E."},
-        {"group": "GICS-US", "code": "XLC", "name": "Comm."},
-        {"group": "GICS-US", "code": "XLE", "name": "Energy"},
-        {"group": "GICS-US", "code": "XLI", "name": "Indus."},
-        {"group": "GICS-US", "code": "XLK", "name": "I.Tech"},
-        {"group": "GICS-US", "code": "XLP", "name": "Non-Cycl"},
-        {"group": "GICS-US", "code": "XLV", "name": "Health"},
-        {"group": "GICS-US", "code": "XLU", "name": "Util"},
+        {"group": "Sectors-US", "code": "XLB", "name": "Materi."},
+        {"group": "Sectors-US", "code": "XLY", "name": "Cycl"},
+        {"group": "Sectors-US", "code": "XLF", "name": "Fin."},
+        {"group": "Sectors-US", "code": "XLRE", "name": "Estate."},
+        {"group": "Sectors-US", "code": "XLC", "name": "Comm."},
+        {"group": "Sectors-US", "code": "XLE", "name": "Energy"},
+        {"group": "Sectors-US", "code": "XLI", "name": "Indus."},
+        {"group": "Sectors-US", "code": "XLK", "name": "I.Tech"},
+        {"group": "Sectors-US", "code": "XLP", "name": "Non-Cycl"},
+        {"group": "Sectors-US", "code": "XLV", "name": "Health"},
+        {"group": "Sectors-US", "code": "XLU", "name": "Util"},
         {"group": "Styles", "code": "MTUM", "name": "Mtum"},
         {"group": "Styles", "code": "QUAL", "name": "Quality"},
         {"group": "Styles", "code": "SIZE", "name": "Size"},
@@ -486,13 +486,14 @@ def get_performance_grouped():
         {"group": "Currencies", "code": "USDGBP", "name": "GBP"},
         {"group": "Currencies", "code": "USDJPY", "name": "JPY"},
         {"group": "Currencies", "code": "USDKRW", "name": "KRW"},
+        {"group": "Commodities", "code": "GSG", "name": "Broad"},
         {"group": "Commodities", "code": "IAU", "name": "Gold"},
         {"group": "Commodities", "code": "SLV", "name": "Silver"},
         {"group": "Commodities", "code": "HG1 Comdty", "name": "Copper"},
         {"group": "Commodities", "code": "CL1 Comdty", "name": "WTI"},
         {"group": "Commodities", "code": "XBTUSD", "name": "Bitcoin"},
         {"group": "Themes", "code": "UFO", "name": "Space"},
-        {"group": "Themes", "code": "VNQ", "name": "Real Estate"},
+        {"group": "Themes", "code": "VNQ", "name": "REITs"},
         {"group": "Themes", "code": "PPH", "name": "Pharma"},
         {"group": "Themes", "code": "PAVE", "name": "Pave"},
         {"group": "Themes", "code": "SRVR", "name": "Data/Infra"},
@@ -511,3 +512,180 @@ def get_performance_grouped():
             group.update(performance.model_dump())
 
     return groups
+
+
+from ix.db import TacticalView
+
+
+@router.get(
+    path="/tacticalview",
+    response_model=TacticalView,
+    status_code=status.HTTP_200_OK,
+)
+def get_tacticalview():
+    """
+    _summary_
+
+    _extended_summary_
+    """
+    # Find the most recent document by sorting published_date descending
+    most_recent = TacticalView.find_one(
+        {},  # Match all documents
+        sort=[("published_date", -1)],  # Sort descending by `published_date`
+    ).run()
+
+    if not most_recent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No TacticalView found"
+        )
+
+    # Return the most recent TacticalView
+    return most_recent
+
+
+from ix.db import Insight
+from ix.misc import onemonthbefore
+
+
+def fetch_insights(
+    start_date: Optional[date] = None, end_date: Optional[date] = None
+) -> List[Insight]:
+    """
+    Fetch insights from the database based on a date range.
+
+    Args:
+        start_date (Optional[date]): Start date (inclusive). Defaults to None (no lower bound).
+        end_date (Optional[date]): End date (exclusive). Defaults to None (no upper bound).
+
+    Returns:
+        List[ix.db.Insight]: List of insights matching the query.
+    """
+    query = {}
+    if start_date:
+        query.setdefault("published_date", {})["$gte"] = start_date
+    if end_date:
+        query.setdefault("published_date", {})["$lt"] = end_date
+
+    try:
+        return Insight.find(query).to_list()
+    except Exception as e:
+        return []
+
+
+import json
+from ix.misc.openai import TaaViews
+from ix.misc.settings import Settings
+
+
+# @router.get(
+#     path="/tacticalview/refresh",
+#     response_model=TacticalView,
+#     status_code=status.HTTP_200_OK,
+# )
+# def update_tacticalview():
+#     """
+#     _summary_
+
+#     _extended_summary_
+#     """
+#     insights = fetch_insights(start_date=onemonthbefore().date())
+#     txt = "\n".join(
+#         f"{insight.published_date} : {insight.summary}"
+#         for insight in insights
+#         if insight.summary
+#     )
+#     views = TaaViews(api_key=Settings.openai_secret_key).generate_tactical_views(
+#         insights=txt
+#     )
+
+#     # Ensure the JSON string ends properly
+#     if "}" in views:
+#         views = views[: views.rfind("}") + 1]  # Truncate at the last closing brace
+
+#     print("Cleaned JSON String:", views)
+#     try:
+#         # Load the JSON data
+
+#         data = json.loads(views)
+#         print("Parsed JSON:", data)
+#         TacticalView(views=data, published_date=ix.misc.now()).create()
+#     except json.JSONDecodeError as e:
+#         print("JSONDecodeError:", e.msg)
+#         print("Problematic Location:", e.pos)
+
+
+from ix.db import MarketCommentary
+
+
+class AsofDate(BaseModel):
+    asofdate: Optional[date] = None
+    frequency: str = "Daily"
+
+
+@router.get(
+    path="/market_commentary",
+    response_model=MarketCommentary,
+    status_code=status.HTTP_200_OK,
+)
+def get_market_commentary(
+    asofdate: Optional[date] = None,
+    frequency: str = "Daily",
+):
+    # Construct query filters
+
+    if asofdate:
+        # Query for the commentary based on filters
+        commentary = MarketCommentary.find_one(
+            {"asofdate": asofdate, "frequency": frequency}
+        ).run()
+        if commentary:
+            return commentary
+    commentary = MarketCommentary.find_one(
+        {"frequency": frequency}, sort=[("asofdate", -1)]
+    ).run()
+    if commentary:
+        return commentary
+    # If no document is found, raise a 404 error
+    error_detail = "No Market Commentary found"
+    if asofdate:
+        error_detail += f" for the date {asofdate}"
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=error_detail,
+    )
+
+
+class TimeSeriesPredicitonResponse(BaseModel):
+
+    features: Dict[str, Dict[date, float]]
+    target: Dict[date, float]
+    prediction: Dict[date, float]
+
+
+@router.get(
+    path="/predictions",
+    response_model=TimeSeriesPredicitonResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_predictions(name: str):
+
+    if name == "SPX_EPS_Forcastor_6M":
+        from ix.core.pred.ts import SPX_EPS_Forcastor_6M
+
+        model = SPX_EPS_Forcastor_6M().fit()
+        start = "2020"
+
+        data = {
+            "features": {
+                feature: model.features[feature].loc[start:].dropna().to_dict()
+                for feature in model.features
+            },
+            "target": model.target.loc[start:].to_dict(),
+            "prediction": model.prediction.loc[start:].to_dict(),
+        }
+        return data
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )

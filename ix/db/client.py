@@ -8,13 +8,7 @@ from .models import MetaData
 logger = logging.getLogger(__name__)
 
 
-def get_ts(
-    codes: Union[
-        str, List[str], Set[str], Tuple[str, ...], Dict[str, str], None
-    ] = None,
-    field: str = "PX_LAST",
-    start: Optional[str] = None,
-) -> pd.DataFrame:
+def get_ts(*args: Dict[str, str], start: Optional[str] = None) -> pd.DataFrame:
     """
     Fetches price data from the database for specified asset codes.
 
@@ -25,54 +19,24 @@ def get_ts(
     Returns:
         A DataFrame containing price data with assets as columns and dates as the index.
     """
-    # Handle renaming columns if `codes` is a dictionary
-    if isinstance(codes, dict):
-        keys = list(codes.keys())
-        data = get_ts(codes=keys, start=start)
-        return data.rename(columns=codes)
+    timeseries = []
+    for arg in args:
+        timeseries.append(get_timeseries(**arg, start=start))
+    data = pd.concat(timeseries, axis=1)
+    return data
 
-    # Convert single string input to a list of codes, trimming whitespace
-    if isinstance(codes, str):
-        codes = [code.strip() for code in codes.split(",")]
 
-    # Prepare to hold the data series
-    px_data = []
-
-    try:
-        # Helper function to fetch data for a given code
-        def fetch_px_series(code):
-            metadata = MetaData.find_one(MetaData.code == code).run()
-            if metadata is None:
-                return None
-            px_last = metadata.ts(field=field).data
-            px_last.name = code
-            return px_last
-
-        # Fetch all prices if no specific codes are provided
-        if codes is None:
-            for pxlast in db.PxLast.find_all().run():
-                if pxlast:
-                    px_data.append(pd.Series(data=pxlast.data, name=pxlast.code))
-        else:
-            # Fetch prices for each specified code
-            for code in codes:
-                px_series = fetch_px_series(code)
-                if px_series is not None:
-                    px_data.append(px_series)
-        # Combine series into a DataFrame
-        if px_data:
-            out = pd.concat(px_data, axis=1)
-            out.index = pd.to_datetime(out.index)
-            out = out.sort_index()
-            # Filter data based on start date if provided
-            if start:
-                out = out.loc[start:]
-
-            return out
-        else:
-            logger.warning("No price data found for the specified codes.")
-            return pd.DataFrame()
-
-    except Exception as e:
-        logger.error(f"Error fetching price data: {e}", exc_info=True)
-        return pd.DataFrame()
+def get_timeseries(
+    code: str,
+    field: str = "PX_LAST",
+    name: Optional[str] = None,
+    start: Optional[str] = None,
+) -> pd.Series:
+    metadata = MetaData.find_one({"code": code}).run()
+    if metadata is None:
+        raise ValueError(f"No metadata found for code: {code}")
+    px_last = metadata.ts(field=field).data
+    if start:
+        px_last = px_last.loc[start:]
+    px_last.name = name or code
+    return px_last
