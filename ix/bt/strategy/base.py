@@ -86,7 +86,7 @@ class Strategy:
         return pd.Series(p).dropna()
 
     def sim(self) -> "Strategy":
-        self.pxs = db.get_ts(self.assets)
+        self.pxs = db.get_px_last(self.assets)
         self.trade_dates = self.generate_trade_dates()
         self.initialize()
         for i, self.d in enumerate(pd.to_datetime(self.pxs.loc[self.d :].index)):
@@ -100,7 +100,7 @@ class Strategy:
             self.record()
 
         b = (
-            db.get_ts(codes=list(self.bm_assets))
+            db.get_px_last(codes=list(self.bm_assets))
             .resample("D")
             .last()
             .reindex(self.dates)

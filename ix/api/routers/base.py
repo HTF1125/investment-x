@@ -10,7 +10,7 @@ from datetime import date
 from fastapi import Query
 from fastapi import APIRouter, BackgroundTasks, status
 from fastapi import HTTPException, Body
-from ix.db import MetaData, InsightSource, InsightSourceBase, Performance, IndexGroup
+from ix.db import Metadata, InsightSource, InsightSourceBase, Performance, IndexGroup
 from ix import task
 
 
@@ -33,12 +33,12 @@ router = APIRouter(prefix="", tags=["metadata"])
 
 @router.get(
     "/metadatas",
-    response_model=List[MetaData],
+    response_model=List[Metadata],
     status_code=status.HTTP_200_OK,
 )
 def get_metadatas():
     try:
-        metadatas = MetaData.find_all().run()
+        metadatas = Metadata.find_all().run()
         if not metadatas:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -62,9 +62,9 @@ def get_metadata(
     code: Optional[str] = Query(None, description="MetaData code (optional)"),
 ):
     if code:
-        metadata = MetaData.find_one(MetaData.code == code).run()
+        metadata = Metadata.find_one(Metadata.code == code).run()
     elif id:
-        metadata = MetaData.find_one(MetaData.id == id).run()
+        metadata = Metadata.find_one(Metadata.id == id).run()
     if not metadata:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -78,7 +78,7 @@ def get_metadata(
     status_code=status.HTTP_200_OK,
     description="Add a new ticker code to the database.",
 )
-def delete_metata(metadata: MetaData):
+def delete_metata(metadata: Metadata):
     """
     Endpoint to create a new insight source.
 
@@ -93,17 +93,17 @@ def delete_metata(metadata: MetaData):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid ID format",
         )
-    MetaData.find_one(MetaData.id == metadata.id).delete().run()
+    Metadata.find_one(Metadata.id == metadata.id).delete().run()
     return {"message": "InsightSource deleted successfully"}
 
 
 @router.put(
     "/metadata",
     status_code=status.HTTP_200_OK,
-    response_model=MetaData,
+    response_model=Metadata,
     description="Add a new ticker code to the database.",
 )
-def update_metadata(metadata: MetaData):
+def update_metadata(metadata: Metadata):
 
     if not ObjectId.is_valid(metadata.id):
         raise HTTPException(
@@ -112,7 +112,7 @@ def update_metadata(metadata: MetaData):
         )
 
     try:
-        _metadata = MetaData.find_one(MetaData.id == metadata.id).run()
+        _metadata = Metadata.find_one(Metadata.id == metadata.id).run()
         if not _metadata:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Insight not found"
@@ -128,10 +128,10 @@ def update_metadata(metadata: MetaData):
 @router.post(
     "/metadata",
     status_code=status.HTTP_200_OK,
-    response_model=MetaData,
+    response_model=Metadata,
     description="Add a new ticker code to the database.",
 )
-def create_metadata(metadata: MetaData):
+def create_metadata(metadata: Metadata):
 
     try:
         return metadata.create()
@@ -162,7 +162,7 @@ async def get_timeseries(
         - body (TimeSeriesData): Time series data in the request body.
     """
     try:
-        metadata = MetaData.find_one(MetaData.code == code).run()
+        metadata = Metadata.find_one(Metadata.code == code).run()
         if metadata is None:
             raise
         return metadata.ts(field=field).data.to_dict()
@@ -189,7 +189,7 @@ async def update_timeseries(
         - field (str): Field to update (query parameter).
         - body (TimeSeriesData): Time series data in the request body.
     """
-    metadata = MetaData.find_one(MetaData.code == code).run()
+    metadata = Metadata.find_one(Metadata.code == code).run()
     if metadata is None:
         raise HTTPException(status_code=404, detail=f"MetaData<{code}> not found.")
     try:
@@ -201,12 +201,12 @@ async def update_timeseries(
 
 @router.get(
     path="/signals",
-    response_model=List[MetaData],
+    response_model=List[Metadata],
     status_code=status.HTTP_200_OK,
 )
 async def get_signals():
     try:
-        metadatas = MetaData.find_many(MetaData.market == "Signal").run()
+        metadatas = Metadata.find_many(Metadata.market == "Signal").run()
         if not metadatas:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -616,10 +616,6 @@ from ix.misc.settings import Settings
 
 from ix.db import MarketCommentary
 
-
-class AsofDate(BaseModel):
-    asofdate: Optional[date] = None
-    frequency: str = "Daily"
 
 
 @router.get(

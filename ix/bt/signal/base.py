@@ -2,10 +2,10 @@ from typing import Union
 import numpy as np
 import pandas as pd
 from ix.core import to_log_return
-from ix.db import get_ts
+from ix.db import get_ts, get_px_last
 from ix import db
 from ix import misc
-from ix.db import MetaData
+from ix.db import Metadata
 import matplotlib.pyplot as plt
 
 logger = misc.get_logger(__name__)
@@ -15,8 +15,8 @@ class Signal:
     def __init__(self) -> None:
         code = f"{self.__class__.__name__}"
         self.metadata = (
-            MetaData.find_one(MetaData.code == code).run()
-            or MetaData(code=code, market="Signal", source="Investment-X").create()
+            Metadata.find_one(Metadata.code == code).run()
+            or Metadata(code=code, market="Signal", source="Investment-X").create()
         )
 
     def fit(self) -> pd.Series:
@@ -57,14 +57,14 @@ class Signal:
         if not long and not short:
             raise ValueError("both long and short could not be none.")
         if long:
-            l_px = get_ts(long).squeeze()
+            l_px = get_px_last([long]).squeeze()
             l_pri_return = to_log_return(px=l_px, periods=periods, forward=True)
             l_signal_shifted = self.data.reindex(l_pri_return.index).ffill().shift(1)
             l_returns = l_pri_return.mul(l_signal_shifted)
         else:
             l_returns = 0
         if short:
-            s_px = get_ts(short).squeeze()
+            s_px = get_px_last([short]).squeeze()
             s_pri_return = to_log_return(px=s_px, periods=periods, forward=True)
             s_signal_shifted = self.data.reindex(s_pri_return.index).ffill().shift(1)
             s_returns = s_pri_return.mul(-s_signal_shifted)
@@ -94,7 +94,9 @@ class Signal:
         signal_data = self.data
 
         # Get the performance data
-        performance_data = self.get_performance(long=long, short=short, periods=periods, commission=commission)
+        performance_data = self.get_performance(
+            long=long, short=short, periods=periods, commission=commission
+        )
 
         # Create a plot with dual y-axes
         fig, ax1 = plt.subplots(figsize=(12, 6))
@@ -102,20 +104,41 @@ class Signal:
         # Plot signal data on the left y-axis
         ax1.set_xlabel("Date", fontsize=12)
         ax1.set_ylabel("Signal Data", color="tab:blue", fontsize=12)
-        ax1.plot(signal_data.index, signal_data, color="tab:blue", label="Signal Data", linewidth=2, alpha=0.9)
-        ax1.fill_between(signal_data.index, signal_data, color="tab:blue", alpha=0.2)  # Light fill under signal
+        ax1.plot(
+            signal_data.index,
+            signal_data,
+            color="tab:blue",
+            label="Signal Data",
+            linewidth=2,
+            alpha=0.9,
+        )
+        ax1.fill_between(
+            signal_data.index, signal_data, color="tab:blue", alpha=0.2
+        )  # Light fill under signal
         ax1.tick_params(axis="y", labelcolor="tab:blue")
 
         # Plot performance on the right y-axis
         ax2 = ax1.twinx()
         ax2.set_ylabel("Performance", color="tab:green", fontsize=12)
-        ax2.plot(performance_data.index, performance_data, color="tab:green", label="Performance", linestyle="--", linewidth=2, alpha=0.9)
-        ax2.fill_between(performance_data.index, performance_data, color="tab:green", alpha=0.1)  # Light fill under performance
+        ax2.plot(
+            performance_data.index,
+            performance_data,
+            color="tab:green",
+            label="Performance",
+            linestyle="--",
+            linewidth=2,
+            alpha=0.9,
+        )
+        ax2.fill_between(
+            performance_data.index, performance_data, color="tab:green", alpha=0.1
+        )  # Light fill under performance
         ax2.tick_params(axis="y", labelcolor="tab:green")
 
         # Title and grid settings
         plt.title(f"{self.metadata.code} Signal and Performance", fontsize=14)
-        ax1.grid(True, which='both', axis='both', linestyle="--", linewidth=0.5, alpha=0.7)  # Subtle gridlines
+        ax1.grid(
+            True, which="both", axis="both", linestyle="--", linewidth=0.5, alpha=0.7
+        )  # Subtle gridlines
 
         # Add a legend with custom location
         ax1.legend(loc="upper left", fontsize=10)
@@ -126,6 +149,8 @@ class Signal:
 
         # Show the plot
         plt.show()
+
+
 class OecdCliUsChg1(Signal):
     def fit(self) -> pd.Series:
         """
@@ -140,12 +165,12 @@ class OecdCliUsChg1(Signal):
             pd.Series: The investment signal series.
         """
         # Define constants within the fit method
-        TICKERS = {"OEUSKLAC Index": "OecdCliUs"}  # Ticker symbols
         EWM_SPAN: int = 3  # Span for EWMA
         DATE_SHIFT_DAYS: int = 20  # Days to shift the signal forward
         CLIP_RANGE_INITIAL: tuple = (-2, 2)  # Initial clipping range before scaling
         SCALE_FACTOR: float = 0.5  # Factor to scale the clipped signal
-        raw_data = get_ts(codes=TICKERS).squeeze().ewm(span=EWM_SPAN).mean()
+        raw_data = get_px_last(codes=["^OEUSKLAC"]).squeeze().ewm(span=EWM_SPAN).mean()
+        raw_data.name = "OecdCliUs"
         roc_data = raw_data.diff().dropna()
         roroc_data = roc_data.diff().dropna()
         roc_mean = roc_data.expanding().mean().shift(1)
@@ -167,12 +192,12 @@ class OecdCliUsChg1(Signal):
 class UsIsmPmiManu(Signal):
     def fit(self) -> pd.Series:
         """Calculates the US ISM PMI Manufacturing indicator signal."""
-        TICKERS = {"NAPMPMI Index": "UsIsmPmiManu"}
         EWM_SPAN: int = 3  # Span for EWMA
         DATE_SHIFT_DAYS: int = 20  # Days to shift the signal forward
         CLIP_RANGE_INITIAL: tuple = (-2, 2)  # Initial clipping range before scaling
         SCALE_FACTOR: float = 0.5  # Factor to scale the clipped signal
-        raw_data = get_ts(codes=TICKERS).squeeze().ewm(span=EWM_SPAN).mean()
+        raw_data = get_px_last(["^NAPMPMI"]).squeeze().ewm(span=EWM_SPAN).mean()
+        raw_data.name = "UsIsmPmiManu"
         roc_data = raw_data.diff().dropna()
         roroc_data = roc_data.diff().dropna()
         roc_mean = roc_data.expanding().mean().shift(1)
@@ -194,8 +219,8 @@ class UsIsmPmiManu(Signal):
 class EquityVolatility1(Signal):
     def fit(self) -> pd.Series:
         # Fetch VIX and SPX returns data
-        vix = db.get_ts(["VIX Index"]).squeeze()
-        gix = db.get_ts(["SPX Index"]).pct_change().squeeze().rolling(20).std()
+        vix = db.get_px_last(["VIX Index"]).squeeze()
+        gix = db.get_px_last(["SPX Index"]).pct_change().squeeze().rolling(20).std()
 
         if vix.empty or gix.empty:
             raise ValueError("Required data is missing. Please check the database.")
@@ -221,7 +246,7 @@ class EquityPutCall1(Signal):
         scale_factor: float = 2.0,  # Scaling factor for normalization
     ) -> pd.Series:
         # Fetch data for Put-Call Ratio
-        data = db.get_ts(codes=["PCRTEQTY Index"]).squeeze()
+        data = get_px_last(codes=["^PCRTEQTY"]).squeeze()
 
         if data.empty:
             raise ValueError("Put-Call Ratio data is empty. Please check the database.")
@@ -270,8 +295,8 @@ class JunkBondDemand(Signal):
         zscore_clip = 2.0  # Clipping threshold for z-score
 
         # Get percentage change data
-        st = db.get_ts("SPY").pct_change(lookback_spread).squeeze()
-        bd = db.get_ts("AGG").pct_change(lookback_spread).squeeze()
+        st = get_px_last(["SPY"]).pct_change(lookback_spread).squeeze()
+        bd = get_px_last(["AGG"]).pct_change(lookback_spread).squeeze()
 
         # Validate data
         if st.empty or bd.empty:
@@ -299,8 +324,6 @@ class JunkBondDemand(Signal):
         return z * -1
 
 
-
-
 class EquityMomentum1(Signal):
     def fit(
         self,
@@ -311,7 +334,7 @@ class EquityMomentum1(Signal):
         scale_factor: float = 2.0,  # Scaling factor for normalization
     ) -> pd.Series:
         # Fetch SPY price data
-        data = db.get_ts("SPY").squeeze()
+        data = get_px_last(["SPY"]).squeeze()
 
         if data.empty:
             raise ValueError("SPY price data is empty. Please check the database.")
@@ -361,8 +384,8 @@ class UsLargeSmallRatio(Signal):
         zscore_clip = 2.0  # Clipping threshold for z-score
 
         # Fetch price series for large-cap (SPY) and small-cap (ACWI)
-        large = db.get_ts("SPY").squeeze()
-        small = db.get_ts("IWM").squeeze()
+        large = get_px_last(["SPY"]).squeeze()
+        small = get_px_last(["IWM"]).squeeze()
 
         # Validate data
         if large.empty or small.empty:
@@ -396,7 +419,7 @@ class EquityBreadth1(Signal):
     lookback_window: int = 120
 
     def fit(self) -> pd.Series:
-        signal = db.get_ts("SUM INX Index").squeeze()
+        signal = get_px_last(["^SUM_INX"]).squeeze()
         roll = signal.rolling(120)
         mean = roll.mean()
         std = roll.std()

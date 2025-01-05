@@ -5,7 +5,7 @@ from fastapi import status
 from bson.errors import InvalidId
 from ix import db
 from .base import get_model_codes
-from ix.db import MetaData
+from ix.db import Metadata
 
 router = APIRouter(prefix="/data/signals", tags=["data"])
 
@@ -71,7 +71,7 @@ from datetime import date
 )
 def get_signal_px_last(code: str):
     try:
-        metadata = MetaData.find_one({"code": code}).run()
+        metadata = Metadata.find_one({"code": code}).run()
         if metadata:
             return metadata.ts().i_data
     except Exception as e:

@@ -10,37 +10,18 @@ from pydantic import BaseModel, Field
 logger = get_logger(__name__)
 
 
-class MetaDataBase(BaseModel):
-    code: Annotated[str, Indexed(unique=True)]
-    name: Optional[str] = None
-    exchange: Optional[str] = None
-    market: Optional[str] = None
-    source: str = "YAHOO"
-    bloomberg: Optional[str] = None
-    fred: Optional[str] = None
-    yahoo: Optional[str] = None
-    remark: Optional[str] = None
-    disabled: bool = False
-    fields: Optional[list[str]] = ["PX_LAST"]
-
-
 class DataSource(BaseModel):
-
     field: str
     s_code: str
     s_field: str
     source: str = "YAHOO"
 
 
-class MetaData(Document):
+class Metadata(Document):
     code: Annotated[str, Indexed(unique=True)]
     name: Optional[str] = None
     exchange: Optional[str] = None
     market: Optional[str] = None
-    source: str = "YAHOO"
-    bloomberg: Optional[str] = None
-    fred: Optional[str] = None
-    yahoo: Optional[str] = None
     remark: Optional[str] = None
     disabled: bool = False
     data_sources: List[DataSource] = []
@@ -48,14 +29,20 @@ class MetaData(Document):
     def ts(self, field: str = "PX_LAST") -> "TimeSeries":
         if not self.id:
             raise
-        ts = TimeSeries.find_one(
-            TimeSeries.meta_id == str(self.id),
-            TimeSeries.field == field,
-        ).run()
+        ts = TimeSeries.find_one({"meta_id": str(self.id), "field": field}).run()
         if ts is None:
-            logger.info(f"Create new TimeSeries for {self.code} - {field}")
+            logger.debug(f"Create new TimeSeries for {self.code} - {field}")
             return TimeSeries(meta_id=str(self.id), field=field).create()
         return ts
+
+    def tp(self, field: str = "PX_LAST") -> "TimePoint":
+        if not self.id:
+            raise
+        tp = TimePoint.find_one({"meta_id": str(self.id), "field": field}).run()
+        if tp is None:
+            logger.debug(f"Create new TimeSeries for {self.code} - {field}")
+            return TimePoint(meta_id=str(self.id), field=field).create()
+        return tp
 
 
 class TimeSeries(Document):
@@ -70,7 +57,7 @@ class TimeSeries(Document):
             raise ValueError(
                 f"Invalid ObjectId: {self.meta_id}"
             )  # Raise a more meaningful error
-        metadata = MetaData.find_one(MetaData.id == ObjectId(self.meta_id)).run()
+        metadata = Metadata.find_one(Metadata.id == ObjectId(self.meta_id)).run()
         if not metadata:
             raise ValueError(
                 f"Metadata not found for id {self.meta_id}"
@@ -100,6 +87,7 @@ class TimePoint(Document):
     meta_id: str
     field: str
     data: str | int | float | None = None
+    latest_date: Optional[date] = None
 
 
 class InsightSourceBase(BaseModel):

@@ -1,5 +1,5 @@
 import pandas as pd
-from ix.db import get_ts
+from ix.db import get_px_last
 from ix.bt.strategy import Strategy
 
 
@@ -58,7 +58,7 @@ class SectorRotationCESI(Strategy):
 
     def initialize(self) -> None:
         self.cesi = (
-            get_ts(["CESIUSD Index"])
+            get_px_last(["CESIUSD Index"])
             .resample("D")
             .last()
             .ffill()
@@ -105,9 +105,9 @@ class UsOecdLeiEB(Strategy):
     bm_assets: dict[str, float] = {"SPY": 0.5, "AGG": 0.5}
 
     def initialize(self) -> None:
-        from ix.bt.signal import UsOecdLeading
+        from ix.bt.signal import OecdCliUsChg1
 
-        self.signal = UsOecdLeading().data
+        self.signal = OecdCliUsChg1().data
         self.momentum = self.pxs.pct_change(20)
 
     def allocate(self) -> pd.Series:

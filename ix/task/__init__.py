@@ -4,13 +4,32 @@ from ix.misc import get_bloomberg_data
 from ix.misc import get_fred_data
 from ix.misc import get_logger
 from ix import misc
-from ix.db import MetaData, Performance
-import pandas as pd
-
+from ix.db import Metadata, Performance
+import ix
 
 logger = get_logger(__name__)
 
 
+def CustomTimeSeries(code: str, field: str) -> pd.Series:
+    if code == "^SPX" and field == "TRAIL_12M_EPS_YOY_ME":
+        data = ix.get_timeseries("^SPX", "TRAIL_12M_EPS")
+        data = data.resample("ME").last().ffill()
+        return data.pct_change(12).dropna()
+    if code == "^DXY" and field == "PX_DIFF_12M_INV_ME":
+        data = ix.get_timeseries("^DXY", "PX_LAST")
+        data = data.resample("ME").last().ffill()
+        return data.diff(12).mul(-1).dropna()
+    if code == "^LF98OAS" and field == "PX_DIFF_12M_ME":
+        data = ix.get_timeseries("^LF98OAS", "PX_LAST")
+        data = data.resample("ME").last().ffill()
+        return data.diff(12).mul(-1).dropna()
+    if code == "^CONCCONF" and field == "PX_DIFF_12M_ME":
+        data = ix.get_timeseries("^CONCCONF", "PX_LAST")
+        return data.diff(12).mul(-1).dropna()
+    if code == "^PCI" and field == "PX_YOY":
+        data = ix.get_timeseries("^PCI", "PX_LAST")
+        return data.diff(12).dropna()
+    raise
 
 
 def run():
@@ -23,42 +42,36 @@ def run():
 
 def update_px_last():
     logger.debug("Initialize update PX_LAST data")
-    for metadata in MetaData.find_all().run():
-        logger.info(f"Processing metadata with code: {metadata.code}")
-        # Loop through each data source for the metadata
+    for metadata in Metadata.find_all().run():
         for data_source in metadata.data_sources:
+            msg = f"Checking data source: {data_source.source} for metadata code={metadata.code}"
+            logger.info(msg)
             try:
-                logger.info(
-                    f"Checking data source: {data_source.source} for metadata code={metadata.code}"
-                )
                 if data_source.source == "YAHOO":
                     ts = get_yahoo_data(code=data_source.s_code)[data_source.s_field]
-                    logger.info(
-                        f"Successfully fetched data from YAHOO for code={data_source.s_code}, field={data_source.s_field}"
-                    )
                 elif data_source.source == "BLOOMBERG":
                     ts = get_bloomberg_data(
                         code=data_source.s_code,
                         field=data_source.s_field,
                     ).iloc[:, 0]
-                    logger.info(
-                        f"Successfully fetched data from BLOOMBERG for code={data_source.s_code}, field={data_source.s_field}"
-                    )
+
                 elif data_source.source == "FRED":
                     ts = get_fred_data(ticker=data_source.s_code).iloc[:, 0]
-                    logger.info(
-                        f"Successfully fetched data from FRED for ticker={data_source.s_code}"
+
+                elif data_source.source == "INVESTMENTX":
+
+                    ts = CustomTimeSeries(
+                        code=data_source.s_code, field=data_source.s_field
                     )
                 else:
                     logger.warning(
                         f"Unknown data source: {data_source.source} for metadata code={metadata.code}"
                     )
                     continue
-                # Update the corresponding field in metadata with the fetched time series
+                msg = f"Successfully fetched data (code: {metadata.code}, field: {data_source.field})"
+                logger.info(msg)
+                logger.info(ts.tail().to_dict())
                 metadata.ts(field=data_source.field).data = ts
-                logger.info(
-                    f"Updated field={data_source.field} for metadata code={metadata.code} with new time series data"
-                )
 
             except Exception as e:
                 # Log errors if data fetching or updating fails
@@ -98,7 +111,7 @@ def update_price_performance():
 
     asofdate = misc.last_business_day().date()
     px_lasts = []
-    for metadata in MetaData.find_all().run():
+    for metadata in Metadata.find_all().run():
         px_last = metadata.ts(field="PX_LAST").data
         px_last.name = metadata.code
         if px_last.empty:
@@ -164,14 +177,14 @@ def update_price_performance():
 def bloomberg_only():
 
     import requests
-    from ix.db import MetaData
+    from ix.db import Metadata
     from ix.misc import get_bloomberg_data
 
     # Define the API URL and parameters
     url = "https://port-0-investmentx-ghdys32bls2zef7e.sel5.cloudtype.app"
     response = requests.get(f"{url}/api/metadatas")
     for metadata in response.json():
-        mt = MetaData(**metadata)
+        mt = Metadata(**metadata)
         for data_source in mt.data_sources:
             if data_source.source == "BLOOMBERG":
                 ts = get_bloomberg_data(
