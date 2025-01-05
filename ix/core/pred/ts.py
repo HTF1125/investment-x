@@ -5,14 +5,14 @@ from ix import get_ts, get_timeseries
 class SPX_EPS_Forcastor_6M:
 
     FEATURES = [
-        {"code": "^DXY", "field": "PX_DIFF_12M_ME", "name": "DXY_12M_CHG"},
-        {"code": "^LF98OAS", "field": "PX_DIFF_12M_ME", "name": "HTY_SPRD_12M_CHG"},
-        {"code": "^CONCCONF", "field": "PX_DIFF_12M_ME", "name": "ConsConf12MChg"},
-        {"code": "^PCI", "field": "PX_YOY", "name": "PPI_YOY"},
-        {"code": "^NAPMNEWO", "field": "PX_LAST", "name": "ISM_NEW_ORDERS_US"},
-        {"code": "^LEI_YOY", "field": "PX_LAST", "name": "Leading"},
-        {"code": "^COI_YOY", "field": "PX_LAST", "name": "Coincident"},
-        {"code": "^WGTROVRA", "field": "PX_LAST", "name": "WageGrowth"},
+        {"code": "^DXY", "field": "PX_DIFF_12M_ME", "name": "Dollar Index 12M Change Inverted"},
+        {"code": "^LF98OAS", "field": "PX_DIFF_12M_ME", "name": "Credit Spread 12M Change Inverted"},
+        {"code": "^CONCCONF", "field": "PX_DIFF_12M_ME", "name": "Consumer Confidence 12M Change"},
+        {"code": "^PCI", "field": "PX_YOY", "name": "Industrial Commodities PPI YoY"},
+        {"code": "^NAPMNEWO", "field": "PX_LAST", "name": "ISM New Orders"},
+        {"code": "^LEI_YOY", "field": "PX_LAST", "name": "Conference Board Leading"},
+        {"code": "^COI_YOY", "field": "PX_LAST", "name": "Conference Board Coincident"},
+        {"code": "^WGTROVRA", "field": "PX_LAST", "name": "Wage Growth Tracker"},
     ]
     TARGET = {
         "code": "^SPX",

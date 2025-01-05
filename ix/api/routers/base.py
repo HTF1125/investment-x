@@ -481,7 +481,7 @@ def get_performance_grouped():
         {"group": "GlobalBonds", "code": "LQD", "name": "I Grade"},
         {"group": "GlobalBonds", "code": "HYG", "name": "High Yield"},
         {"group": "GlobalBonds", "code": "EMB", "name": "Emerging"},
-        {"group": "Currencies", "code": "DXY Index", "name": "DXY"},
+        {"group": "Currencies", "code": "^DXY", "name": "DXY"},
         {"group": "Currencies", "code": "USDEUR", "name": "EUR"},
         {"group": "Currencies", "code": "USDGBP", "name": "GBP"},
         {"group": "Currencies", "code": "USDJPY", "name": "JPY"},
