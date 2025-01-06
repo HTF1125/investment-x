@@ -58,7 +58,7 @@ class SectorRotationCESI(Strategy):
 
     def initialize(self) -> None:
         self.cesi = (
-            get_px_last(["CESIUSD Index"])
+            get_px_last(["^CESIUSD"])
             .resample("D")
             .last()
             .ffill()
@@ -106,8 +106,7 @@ class UsOecdLeiEB(Strategy):
 
     def initialize(self) -> None:
         from ix.bt.signal import OecdCliUsChg1
-
-        self.signal = OecdCliUsChg1().data
+        self.signal = OecdCliUsChg1().refresh().data
         self.momentum = self.pxs.pct_change(20)
 
     def allocate(self) -> pd.Series:

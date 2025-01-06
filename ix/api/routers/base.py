@@ -558,7 +558,7 @@ def fetch_insights(
         end_date (Optional[date]): End date (exclusive). Defaults to None (no upper bound).
 
     Returns:
-        List[ix.db.Insight]: List of insights matching the query.
+        List[ix.Insight]: List of insights matching the query.
     """
     query = {}
     if start_date:
@@ -617,7 +617,6 @@ from ix.misc.settings import Settings
 from ix.db import MarketCommentary
 
 
-
 @router.get(
     path="/market_commentary",
     response_model=MarketCommentary,
@@ -658,6 +657,9 @@ class TimeSeriesPredicitonResponse(BaseModel):
     prediction: Dict[date, float]
 
 
+import pandas as pd
+
+
 @router.get(
     path="/predictions",
     response_model=TimeSeriesPredicitonResponse,
@@ -670,11 +672,13 @@ def get_predictions(name: str):
 
         model = SPX_EPS_Forcastor_6M().fit()
         start = "2020"
+        features = model.features
+        features.index += pd.offsets.MonthEnd(6)
 
         data = {
             "features": {
                 feature: model.features[feature].loc[start:].dropna().to_dict()
-                for feature in model.features
+                for feature in features
             },
             "target": model.target.loc[start:].to_dict(),
             "prediction": model.prediction.loc[start:].to_dict(),
@@ -685,3 +689,192 @@ def get_predictions(name: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Model not found",
         )
+
+
+from ix.db import Insight
+
+
+@router.put(
+    "/insight",
+    response_model=Insight,
+    status_code=status.HTTP_200_OK,
+)
+def put_insight(insight_new: Insight = Body(...)):
+
+    if not ObjectId.is_valid(insight_new.id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format",
+        )
+
+    insight = Insight.find_one(Insight.id == ObjectId(insight_new.id)).run()
+    if not insight:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Insight not found"
+        )
+
+    # Update the fields
+    insight.set(insight_new.model_dump())
+
+    return insight
+
+
+import base64
+from ix.db import Boto
+
+
+class PDF(BaseModel):
+    content: str
+
+
+def generate_summary(content: bytes, insight: Insight):
+    from ix.misc import PDFSummarizer, Settings
+
+    summary = PDFSummarizer(Settings.openai_secret_key).process_insights(content)
+    insight.set({"summary": summary})
+
+
+@router.post(
+    "/insight/frompdf",
+    response_model=Insight,
+    status_code=status.HTTP_200_OK,
+)
+def create_insight_with_pdf(
+    background_tasks: BackgroundTasks,
+    pdf: PDF = Body(...),
+):
+    """
+    Adds a new Insight with the provided data.
+    """
+
+    try:
+        content_bytes = base64.b64decode(pdf.content)
+        insight = Insight().create()
+        if content_bytes:
+            Boto().save_pdf(
+                pdf_content=content_bytes,
+                filename=f"{insight.id}.pdf",
+            )
+            # background_tasks.add_task(generate_summary, content_bytes, insight)
+        return insight
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Base64 content",
+        )
+
+
+@router.delete("/insight/{id}", status_code=status.HTTP_200_OK)
+def delete_insight(id: str):
+    """
+    Deletes an Insight by its ID.
+
+    """
+    Insight.find_one(Insight.id == ObjectId(id)).delete().run()
+    return {"message": "Insight deleted successfully"}
+
+
+import re
+from datetime import datetime
+
+
+@router.get(
+    "/insights",
+    response_model=List[Insight],
+    status_code=status.HTTP_200_OK,
+)
+def get_insights(
+    skip: Optional[int] = Query(0, ge=0, description="Number of records to skip"),
+    limit: Optional[int] = Query(
+        100, gt=0, description="Maximum number of records to return"
+    ),
+    search: Optional[str] = Query(
+        None, description="Search term to filter insights by issuer, name, or date"
+    ),
+):
+    """
+    Retrieves insights sorted by date in descending order, with support for pagination and search.
+    """
+    try:
+        # Base query
+        query = {}
+
+        if search:
+            # Step 1: Try to extract a date from the search term using regex
+            date_pattern = r"\d{4}-\d{2}-\d{2}"  # Match date in YYYY-MM-DD format
+            date_match = re.search(date_pattern, search)
+
+            # If a date is found, separate the date and text parts
+            if date_match:
+                search_date_str = date_match.group(0)
+                try:
+                    search_date = datetime.strptime(
+                        search_date_str, "%Y-%m-%d"
+                    )  # Convert to date object
+                    query["published_date"] = {
+                        "$eq": search_date
+                    }  # Filter by exact date
+                except ValueError:
+                    pass  # If date format is incorrect, we ignore it
+
+                # Remove the date part from the search term for text-based search
+                search_text = search.replace(search_date_str, "").strip()
+            else:
+                # No date found, use the entire search term as text-based search
+                search_text = search
+
+            # Step 2: Handle the text-based search for issuer, name, and published_date
+            if search_text:
+                search_keywords = search_text.lower().split(sep="_")
+
+                conditions = []
+                for keyword in search_keywords:
+                    conditions.append(
+                        {
+                            "$or": [
+                                {"issuer": {"$regex": keyword, "$options": "i"}},
+                                {"name": {"$regex": keyword, "$options": "i"}},
+                                {
+                                    "published_date": {
+                                        "$regex": keyword,
+                                        "$options": "i",
+                                    }
+                                },
+                            ]
+                        }
+                    )
+
+                query["$and"] = conditions
+
+        # Fetch insights with the query
+        insights = Insight.find(query).sort("-published_date").skip(skip).limit(limit)
+
+        return list(insights)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while fetching insights: {str(e)}",
+        )
+
+
+@router.post(
+    "/insight/summarize/{id}",
+    response_model=str,
+    status_code=status.HTTP_200_OK,
+)
+def update_insight_summary(id: str):
+    """
+    Adds a new Insight with the provided data.
+    """
+    from ix.misc import PDFSummarizer, Settings
+    from markitdown import MarkItDown
+
+    insight = Insight.find_one(Insight.id == ObjectId(id)).run()
+    if not insight:
+        raise
+    report = PDFSummarizer(Settings.openai_secret_key).process_insights(
+        insight.get_content()
+    )
+    insight.set({"summary": report})
+    return report
