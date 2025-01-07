@@ -654,6 +654,7 @@ class TimeSeriesPredicitonResponse(BaseModel):
 
     features: Dict[str, Dict[date, float]]
     target: Dict[date, float]
+    validation: Dict[date, float]
     prediction: Dict[date, float]
 
 
@@ -666,31 +667,12 @@ import pandas as pd
     status_code=status.HTTP_200_OK,
 )
 def get_predictions(name: str):
-
-    if name == "SPX_EPS_Forcastor_6M":
-        from ix.core.pred.ts import SPX_EPS_Forcastor_6M
-
-        model = SPX_EPS_Forcastor_6M().fit()
-        start = "2020"
-        features = model.features
-        features.index += pd.offsets.MonthEnd(6)
-
-        data = {
-            "features": {
-                feature: model.features[feature].loc[start:].dropna().to_dict()
-                for feature in features
-            },
-            "target": model.target.loc[start:].to_dict(),
-            "prediction": model.prediction.loc[start:].to_dict(),
-        }
-        return data
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model not found",
-        )
-
-
+    import json
+    with open("prediction.json", "r") as file:
+        json_content = file.read()
+    return json.loads(json_content)
+    
+    
 from ix.db import Insight
 
 
@@ -725,6 +707,7 @@ from ix.db import Boto
 
 class PDF(BaseModel):
     content: str
+    filename: Optional[str] = None
 
 
 def generate_summary(content: bytes, insight: Insight):
@@ -734,33 +717,61 @@ def generate_summary(content: bytes, insight: Insight):
     insight.set({"summary": summary})
 
 
+import re
+from datetime import datetime
+
+
+def extract_file_info(filename):
+    # Define the regular expression pattern
+    pattern = r"(\d{8})_([a-zA-Z0-9\s]+)_(.+)\.pdf"
+    match = re.match(pattern, filename)
+
+    if match:
+        try:
+            # Extract components
+            published_date_str = match.group(1)
+            issuer = match.group(2)
+            name = match.group(3)
+
+            # Convert the published date to datetime.date format
+            published_date = datetime.strptime(published_date_str, "%Y%m%d").date()
+
+            return {"published_date": published_date, "issuer": issuer, "name": name}
+        except Exception as e:
+            print(e)
+            return {}
+
+
 @router.post(
     "/insight/frompdf",
     response_model=Insight,
     status_code=status.HTTP_200_OK,
 )
-def create_insight_with_pdf(
-    background_tasks: BackgroundTasks,
-    pdf: PDF = Body(...),
-):
+def create_insight_with_pdf(pdf: PDF = Body(...)):
     """
     Adds a new Insight with the provided data.
     """
 
     try:
         content_bytes = base64.b64decode(pdf.content)
-        insight = Insight().create()
+        params = {}
+        if pdf.filename:
+            params=extract_file_info(filename=pdf.filename)
+        try:
+            insight = Insight(**params).create()
+        except:
+            insight = Insight().create()
+
         if content_bytes:
             Boto().save_pdf(
                 pdf_content=content_bytes,
                 filename=f"{insight.id}.pdf",
             )
-            # background_tasks.add_task(generate_summary, content_bytes, insight)
         return insight
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid Base64 content",
+            detail=f"Invalid Base64 content \n{e}",
         )
 
 

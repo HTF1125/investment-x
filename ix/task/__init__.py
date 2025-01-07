@@ -15,18 +15,18 @@ def CustomTimeSeries(code: str, field: str) -> pd.Series:
         data = ix.get_timeseries("^SPX", "TRAIL_12M_EPS")
         data = data.resample("ME").last().ffill()
         return data.pct_change(12).dropna()
-    if code == "^DXY" and field == "PX_DIFF_12M_INV_ME":
+    if code == "^DXY" and field == "PX_DIFF_12M_ME":
         data = ix.get_timeseries("^DXY", "PX_LAST")
         data = data.resample("ME").last().ffill()
-        return data.diff(12).mul(-1).dropna()
+        return data.diff(12).dropna()
     if code == "^LF98OAS" and field == "PX_DIFF_12M_ME":
         data = ix.get_timeseries("^LF98OAS", "PX_LAST")
         data = data.resample("ME").last().ffill()
-        return data.diff(12).mul(-1).dropna()
+        return data.diff(12).dropna()
     if code == "^CONCCONF" and field == "PX_DIFF_12M_ME":
         data = ix.get_timeseries("^CONCCONF", "PX_LAST")
-        return data.diff(12).mul(-1).dropna()
-    if code == "^PCI" and field == "PX_YOY":
+        return data.diff(12).dropna()
+    if code == "^PCI" and field == "PX_DIFF_12M_ME":
         data = ix.get_timeseries("^PCI", "PX_LAST")
         return data.diff(12).dropna()
     raise
