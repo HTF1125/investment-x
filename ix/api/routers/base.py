@@ -654,7 +654,6 @@ class TimeSeriesPredicitonResponse(BaseModel):
 
     features: Dict[str, Dict[date, float]]
     target: Dict[date, float]
-    validation: Dict[date, float]
     prediction: Dict[date, float]
 
 
