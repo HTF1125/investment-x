@@ -106,3 +106,11 @@ class MarketCommentary(Document):
     asofdate: Annotated[date, Indexed(unique=True)] = Field(default_factory=date.today)
     frequency: str = "Daily"
     content: str = ""
+
+
+class Prediction(Document):
+    code: Annotated[str, Indexed(unique=True)]
+    name: Optional[str] = None
+    features: Dict[str, Dict[date, float]]
+    target: Dict[date, float]
+    prediction: Dict[date, float]

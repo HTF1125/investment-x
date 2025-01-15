@@ -659,17 +659,16 @@ class TimeSeriesPredicitonResponse(BaseModel):
 
 import pandas as pd
 
+from ix.db import Prediction
+
 
 @router.get(
     path="/predictions",
-    response_model=TimeSeriesPredicitonResponse,
+    response_model=Prediction,
     status_code=status.HTTP_200_OK,
 )
 def get_predictions(name: str):
-    import json
-    with open("prediction.json", "r") as file:
-        json_content = file.read()
-    return json.loads(json_content)
+    return Prediction.find_all().run()[0]
     
     
 from ix.db import Insight
