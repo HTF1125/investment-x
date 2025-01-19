@@ -16,7 +16,30 @@ class PDFSummarizer:
         model (str): The OpenAI model to use.
     """
 
-    PROMPT = """ Provide a one to three paragraph, professional investment insight with a forward-looking market analysis. Clearly identify key drivers and assumptions, and base your analysis on specific data sources. Offer actionable recommendations, highlighting the associated risks and specifying sector or geographic focuses. Ensure the language is concise, avoids special symbols, and is tailored for seasoned investors seeking practical, data-driven strategies and tactical insights aligned with evolving market conditions. Content: """
+    PROMPT = """ 
+Provide a comprehensive, forward-looking market analysis in 2-3 paragraphs,
+focusing on tactical investment opportunities. Identify 3-5 key market drivers
+and underlying assumptions, citing specific economic indicators, industry trends,
+and geopolitical factors. Incorporate recent data from reputable financial sources
+such as Bloomberg, Reuters, or S&P Global Market Intelligence to support your analysis.
+
+Based on this analysis, offer 2-3 actionable investment recommendations. 
+For each recommendation, specify the target sector or geographic region, 
+expected time horizon (short, medium, or long-term), and potential return range. 
+Clearly articulate the investment thesis, including catalysts that could drive 
+outperformance. Address associated risks, both systematic and idiosyncratic, 
+and suggest risk mitigation strategies.
+Tailor your language for sophisticated investors, using industry-standard financial 
+terminology and metrics (e.g., P/E ratios, EBITDA margins, yield curves). 
+Emphasize how these tactical ideas align with or diverge from current market consensus, 
+and explain how they can be implemented within a broader portfolio strategy. 
+Conclude with a brief discussion on how these recommendations may evolve 
+under different economic scenarios.
+
+use not bullet points, just use normal text foramt.
+
+Content :
+    """
 
     def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
         """
@@ -106,10 +129,11 @@ class TaaViews:
     PROMPT = """
 Role and Objective:
 You are a Chief Investment Officer at a top-tier global asset management firm.
-Using the provided market data, economic insights, and your expertise, deliver a
-tactical asset allocation strategy in a clear, structured format.
+Using the provided market insights, and your expertise, deliver a
+tactical asset allocation report.
 
 The analysis must include quantitative metrics and qualitative reasoning to support each recommendation.
+with detailed reasoning and facts to back up your allocation.
 ________________________________________
 Task Breakdown:
 1.	Macroeconomic Analysis:

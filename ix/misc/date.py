@@ -50,6 +50,11 @@ def onemonthbefore() -> pd.Timestamp:
     return today() - pd.DateOffset(months=1)
 
 
+def oneweekbefore() -> pd.Timestamp:
+    """Returns the date one month before today."""
+    return today() - pd.DateOffset(days=7)
+
+
 def tomorrow() -> pd.Timestamp:
     """Returns tomorrow's date as a timestamp."""
     return today() + pd.DateOffset(days=1)
