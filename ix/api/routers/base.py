@@ -360,7 +360,7 @@ async def ping_task_daily(background_tasks: BackgroundTasks):
     response_model=Performance,
     status_code=status.HTTP_200_OK,
 )
-def get_performance_by_code(code: str):
+async def get_performance_by_code(code: str):
     """
     _summary_
 
@@ -386,7 +386,7 @@ def get_performance_by_code(code: str):
     response_model=List[Performance],
     status_code=status.HTTP_200_OK,
 )
-def get_performance():
+async def get_performance():
     """
     _summary_
 
@@ -408,7 +408,6 @@ def get_performance():
 
 
 from pydantic import BaseModel
-from ix.misc.date import today
 from datetime import date
 
 
@@ -433,7 +432,7 @@ class PerforamnceGrouped(BaseModel):
     response_model=List[PerforamnceGrouped],
     status_code=status.HTTP_200_OK,
 )
-def get_performance_grouped():
+async def get_performance_grouped():
 
     groups = [
         {"group": "LocalIndices", "code": "^SPX", "name": "S&P500"},
@@ -522,7 +521,7 @@ from ix.db import TacticalView
     response_model=TacticalView,
     status_code=status.HTTP_200_OK,
 )
-def get_tacticalview():
+async def get_tacticalview():
     """
     _summary_
 
@@ -544,7 +543,6 @@ def get_tacticalview():
 
 
 from ix.db import Insight
-from ix.misc import onemonthbefore
 
 
 def fetch_insights(

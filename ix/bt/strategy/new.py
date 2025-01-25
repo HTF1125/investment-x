@@ -25,19 +25,19 @@ class SectorRotationMom90(Strategy):
 
     def initialize(self) -> None:
         self.mom = self.pxs.pct_change(self.momentum_window)
+        pct_change = self.pxs.pct_change()
+        corr_diff = pct_change.rolling(20).corr() - pct_change.rolling(250).corr()
+        corr_difff = (
+            corr_diff.unstack()["SPY"].drop(labels="SPY", axis=1).mean(axis=1)
+        )
+        self.corr_signal = corr_difff
 
     def allocate(self) -> pd.Series:
-        momentum = self.mom.loc[str(self.d)]
-
-        # Adjust momentum relative to SPY
-        adjusted_momentum = momentum.sub(min(float(momentum.loc["SPY"]), 0))
-
-        # Filter positive momentum
-        positive_momentum = adjusted_momentum[adjusted_momentum > 0]
-
-        if len(positive_momentum) < self.min_assets:
+        if self.corr_signal.loc[self.d] < 0:
             return pd.Series({"SPY": 1.0})
-
+        momentum = self.mom.loc[str(self.d)]
+        # Filter positive momentum
+        positive_momentum = momentum.nlargest(3)
         # Normalize allocations
         allocation = positive_momentum / positive_momentum.sum()
 
@@ -106,6 +106,7 @@ class UsOecdLeiEB(Strategy):
 
     def initialize(self) -> None:
         from ix.bt.signal import OecdCliUsChg1
+
         self.signal = OecdCliUsChg1().refresh().data
         self.momentum = self.pxs.pct_change(20)
 
