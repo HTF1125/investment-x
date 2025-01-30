@@ -24,19 +24,6 @@ class Code(BaseModel):
     code: Annotated[str, Indexed(unique=True)]
 
 
-class ResearchFile(Code, Document):
-    """
-    Model for storing research file metadata.
-    The file content itself will be stored in GridFS.
-    """
-
-    metadata: Optional[Dict[str, str]] = {}
-
-
-class IndexGroup(Code, Document):
-    constituents: Dict[str, str]
-
-
 class EconomicCalendar(Document):
     date: str
     time: str
@@ -92,29 +79,6 @@ class TickerInfo(BaseModel):
 import pandas as pd
 
 
-class Ticker(TickerInfo, Document):
-
-    @property
-    def pxlast(self) -> pd.Series:
-        pxlast = PxLast.find_one(PxLast.code == self.code).run()
-        if not pxlast:
-            pxlast = PxLast(code=self.code).create()
-            return pd.Series(dtype=float)
-        pxlast_data = pd.Series(data=pxlast.data)
-        pxlast_data.index = pd.to_datetime(pxlast_data.index)
-        pxlast_data.name = self.code
-        return pxlast_data
-
-    @pxlast.setter
-    def pxlast(self, data: pd.Series) -> None:
-        p = self.pxlast
-        if not p.empty:
-            data = data.combine_first(self.pxlast)
-        pxlast = PxLast.find_one(PxLast.code == self.code).run()
-        if pxlast is not None:
-            pxlast.set({"data": data.to_dict()})
-
-
 class Performance(Document):
     code: Annotated[str, Indexed()]
     date: date
@@ -128,15 +92,6 @@ class Performance(Document):
     pct_chg_3y: Optional[float] = None
     pct_chg_mtd: Optional[float] = None
     pct_chg_ytd: Optional[float] = None
-
-
-class PxLastModel(BaseModel):
-    code: Annotated[str, Indexed(unique=True)]
-    data: Dict[date, float] = {}
-
-
-class PxLast(PxLastModel, Document):
-    pass
 
 
 class User(Document):
@@ -155,6 +110,13 @@ class User(Document):
     @classmethod
     def new_user(cls, username: str, password: str) -> "User":
         return cls(username=username, password=password).create()
+
+    @classmethod
+    def exists(cls, username: str) -> bool:
+        user = cls.get_user(username=username)
+        if user:
+            return True
+        return False
 
 
 from pydantic import Field
@@ -205,7 +167,15 @@ class TacticalView(Document):
         return document
 
 
-from .models import Metadata, TimeSeries, InsightSource, MarketCommentary, Prediction
+from .models import (
+    Metadata,
+    TimeSeries,
+    TimePoint,
+    InsightSource,
+    MarketCommentary,
+    Prediction,
+    DataSource,
+)
 
 
 # Initialize Bunnet
@@ -215,16 +185,14 @@ def init():
             database=database,
             document_models=[
                 Metadata,
+                DataSource,
                 TimeSeries,
+                TimePoint,
                 EconomicCalendar,
                 Strategy,
-                Ticker,
                 Performance,
-                PxLast,
                 User,
                 Signal,
-                IndexGroup,
-                ResearchFile,
                 Insight,
                 TacticalView,
                 InsightSource,

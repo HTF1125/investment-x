@@ -19,3 +19,5 @@ class Settings:
     )
     algorithm: str = os.getenv("ALGORITHM", "HS256")
     openai_secret_key: str = os.getenv("OPENAI_SECRET_KEY", "")
+    gmail_login: str = os.getenv("GMAIL_LOGIN", "")
+    gmail_password: str = os.getenv("GMAIL_PASSWORD", "")

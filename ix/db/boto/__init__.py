@@ -12,9 +12,9 @@ class Boto:
             endpoint_url=f"https://{Settings.r2_account_id}.r2.cloudflarestorage.com",
             aws_access_key_id=Settings.r2_access_id,
             aws_secret_access_key=Settings.r2_access_key,
-            verify=True,  # Enable SSL verification
+            verify=True,
         )
-        self.bucket_name = Settings.r2_bucket_name  # Cloudflare R2 bucket name
+        self.bucket_name = Settings.r2_bucket_name
 
     def save_pdf(self, pdf_content: bytes, filename: str) -> bool:
         try:

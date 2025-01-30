@@ -38,45 +38,43 @@ def run():
     Performance.delete_all()
     update_price_performance()
     update_economic_calendar()
-
+    send_px_last()
 
 def update_px_last():
     logger.debug("Initialize update PX_LAST data")
     for metadata in Metadata.find_all().run():
-        for data_source in metadata.data_sources:
-            msg = f"Checking data source: {data_source.source} for metadata code={metadata.code}"
+        for ds in metadata.ds():
+            msg = f"Checking data source: {ds.source} for metadata code={metadata.code}"
             logger.info(msg)
             try:
-                if data_source.source == "YAHOO":
-                    ts = get_yahoo_data(code=data_source.s_code)[data_source.s_field]
-                elif data_source.source == "BLOOMBERG":
+                if ds.source == "YAHOO":
+                    ts = get_yahoo_data(code=ds.s_code)[ds.s_field]
+                elif ds.source == "BLOOMBERG":
                     ts = get_bloomberg_data(
-                        code=data_source.s_code,
-                        field=data_source.s_field,
+                        code=ds.s_code,
+                        field=ds.s_field,
                     ).iloc[:, 0]
 
-                elif data_source.source == "FRED":
-                    ts = get_fred_data(ticker=data_source.s_code).iloc[:, 0]
+                elif ds.source == "FRED":
+                    ts = get_fred_data(ticker=ds.s_code).iloc[:, 0]
 
-                elif data_source.source == "INVESTMENTX":
+                elif ds.source == "INVESTMENTX":
 
-                    ts = CustomTimeSeries(
-                        code=data_source.s_code, field=data_source.s_field
-                    )
+                    ts = CustomTimeSeries(code=ds.s_code, field=ds.s_field)
                 else:
                     logger.warning(
-                        f"Unknown data source: {data_source.source} for metadata code={metadata.code}"
+                        f"Unknown data source: {ds.source} for metadata code={metadata.code}"
                     )
                     continue
-                msg = f"Successfully fetched data (code: {metadata.code}, field: {data_source.field})"
+                msg = f"Successfully fetched data (code: {metadata.code}, field: {ds.field})"
                 logger.info(msg)
                 logger.info(ts.tail().to_dict())
-                metadata.ts(field=data_source.field).data = ts
+                metadata.ts(field=ds.field).data = ts.round(4)
 
             except Exception as e:
                 # Log errors if data fetching or updating fails
                 logger.error(
-                    f"Error processing metadata code={metadata.code}, data source={data_source.source}, field={data_source.field}: {e}"
+                    f"Error processing metadata code={metadata.code}, data source={ds.source}, field={ds.field}: {e}"
                 )
 
     logger.debug("Timeseries update process completed.")
@@ -201,3 +199,58 @@ def bloomberg_only():
                     print(
                         f"Failed to update time series. Status code: {response.status_code}, Response: {response.text}"
                     )
+
+
+def get_px_last() -> pd.DataFrame:
+
+    datas = []
+    for metadata in ix.db.Metadata.find_all().run():
+        tp = metadata.tp(field="PX_LAST")
+        data = {
+            "isin": metadata.id_isin,
+            "code": metadata.code,
+            "px_last": tp.data,
+        }
+        datas.append(data)
+    px_last_latest = pd.DataFrame(datas).dropna()
+    return px_last_latest
+
+
+from typing import List, Optional
+from ix.misc.email import EmailSender
+import logging
+
+
+def send_px_last(
+    recipients: List[str] = ["roberthan1125@gmail.com", "26106825@heungkuklife.co.kr"],
+    subject: str = "Daily PX Last Report",
+    content: str = "Please find the attached CSV file with the latest PX data.",
+    filename: str = "px_last.csv",
+) -> bool:
+    try:
+        px_last = get_px_last()
+
+        if px_last.empty:
+            logging.warning("No data available in px_last. Email not sent.")
+            return False
+
+        email_sender = EmailSender(
+            to=", ".join(recipients),
+            subject=subject,
+            content=content,
+        )
+
+        email_sender.attach(df=px_last, filename=filename)
+        email_sender.send()
+
+        logging.info(f"Email sent successfully to {', '.join(recipients)}")
+        return True
+
+    except Exception as e:
+        logging.error(f"Failed to send email: {str(e)}")
+        return False
+
+
+if __name__ == "__main__":
+    success = send_px_last()
+    print(f"Email sent successfully: {success}")

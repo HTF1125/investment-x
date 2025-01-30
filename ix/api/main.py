@@ -16,10 +16,11 @@ app = FastAPI()
 app.include_router(routers.data.router, prefix="/api")
 app.include_router(routers.strategies.router, prefix="/api")
 app.include_router(routers.signals.router, prefix="/api")
-app.include_router(routers.tickers.router, prefix="/api")
 app.include_router(routers.insights.router, prefix="/api")
 app.include_router(routers.login.router, prefix="/api")
 app.include_router(routers.base.router, prefix="/api")
+app.include_router(routers.auth.router, prefix="/api")
+app.include_router(routers.metadata.router, prefix="/api")
 
 # CORS middleware
 app.add_middleware(

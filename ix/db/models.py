@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 logger = get_logger(__name__)
 
 
-class DataSource(BaseModel):
+class DataSource(Document):
+    meta_id: str
     field: str
     s_code: str
     s_field: str
@@ -19,12 +20,20 @@ class DataSource(BaseModel):
 
 class Metadata(Document):
     code: Annotated[str, Indexed(unique=True)]
-    name: Optional[str] = None
     exchange: Optional[str] = None
     market: Optional[str] = None
+    id_isin: Optional[str] = None
+    name: Optional[str] = None
     remark: Optional[str] = None
     disabled: bool = False
-    data_sources: List[DataSource] = []
+
+    def ds(self) -> List[DataSource]:
+        if not self.id:
+            raise
+        ds = DataSource.find_many({"meta_id": str(self.id)}).run()
+        if ds is None:
+            raise
+        return ds
 
     def ts(self, field: str = "PX_LAST") -> "TimeSeries":
         if not self.id:
@@ -50,6 +59,22 @@ class TimeSeries(Document):
     field: str
     latest_date: Optional[date] = None
     i_data: Dict[date, float] = {}
+
+    @property
+    def metadata(self) -> Metadata:
+        metadata = Metadata.find_one(Metadata.id == ObjectId(self.meta_id)).run()
+        if metadata is None:
+            raise
+        return metadata
+
+    @property
+    def timepoint(self) -> "TimePoint":
+        timepoint = TimePoint.find_one(
+            {"meta_id": str(self.id), "field": self.field}
+        ).run()
+        if timepoint:
+            return timepoint
+        return TimePoint(meta_id=self.meta_id, field=self.field).create()
 
     @property
     def metadata_code(self) -> str:
@@ -78,8 +103,10 @@ class TimeSeries(Document):
         if self.i_data:
             data = data.combine_first(self.data)
         if data is not None:
+            data = data.dropna()
             self.set({"latest_date": data.index[-1]})
             self.set({"i_data": data.to_dict()})
+            self.timepoint.set({"data": data.iloc[-1]})
             logger.info(f"Update {self.metadata_code} {self.field}")
 
 
@@ -87,7 +114,6 @@ class TimePoint(Document):
     meta_id: str
     field: str
     data: str | int | float | None = None
-    latest_date: Optional[date] = None
 
 
 class InsightSourceBase(BaseModel):

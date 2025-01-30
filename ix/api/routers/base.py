@@ -10,8 +10,13 @@ from datetime import date
 from fastapi import Query
 from fastapi import APIRouter, BackgroundTasks, status
 from fastapi import HTTPException, Body
-from ix.db import Metadata, InsightSource, InsightSourceBase, Performance, IndexGroup
+from ix.db import Metadata, InsightSource, InsightSourceBase, Performance
 from ix import task
+
+
+router = APIRouter(prefix="", tags=["metadata"])
+
+
 
 
 def get_model_codes(model: Type[Document]) -> List[str]:
@@ -28,7 +33,6 @@ def get_model_codes(model: Type[Document]) -> List[str]:
     return codes
 
 
-router = APIRouter(prefix="", tags=["metadata"])
 
 
 @router.get(
@@ -667,8 +671,8 @@ from ix.db import Prediction
 )
 def get_predictions(name: str):
     return Prediction.find_all().run()[0]
-    
-    
+
+
 from ix.db import Insight
 
 
@@ -713,30 +717,26 @@ def generate_summary(content: bytes, insight: Insight):
     insight.set({"summary": summary})
 
 
-import re
 from datetime import datetime
 
 
 def extract_file_info(filename):
-    # Define the regular expression pattern
-    pattern = r"(\d{8})_([a-zA-Z0-9\s]+)_(.+)\.pdf"
-    match = re.match(pattern, filename)
+    try:
+        # Split the filename by underscores
+        parts = filename.split('_')
+        # Extract components
+        published_date_str = parts[0]
+        issuer = parts[1]
+        name = '_'.join(parts[2:]).replace('.pdf', '')
+        # Convert the published date to datetime.date format
+        published_date = datetime.strptime(published_date_str, "%Y%m%d").date()
+        return {"published_date": published_date, "issuer": issuer, "name": name}
+    except Exception as e:
+        print(e)
+        return {}
 
-    if match:
-        try:
-            # Extract components
-            published_date_str = match.group(1)
-            issuer = match.group(2)
-            name = match.group(3)
 
-            # Convert the published date to datetime.date format
-            published_date = datetime.strptime(published_date_str, "%Y%m%d").date()
-
-            return {"published_date": published_date, "issuer": issuer, "name": name}
-        except Exception as e:
-            print(e)
-            return {}
-
+from datetime import datetime
 
 @router.post(
     "/insight/frompdf",
@@ -745,29 +745,55 @@ def extract_file_info(filename):
 )
 def create_insight_with_pdf(pdf: PDF = Body(...)):
     """
-    Adds a new Insight with the provided data.
+    Adds a new Insight with the provided data and extracted from the provided PDF file.
     """
-
     try:
         content_bytes = base64.b64decode(pdf.content)
+        # Extract file information if filename is provided
         params = {}
         if pdf.filename:
-            params=extract_file_info(filename=pdf.filename)
-        try:
-            insight = Insight(**params).create()
-        except:
-            insight = Insight().create()
+            try:
+                # Split the filename by underscores
+                parts = pdf.filename.split('_')
+                # Extract components
+                published_date_str = parts[0]
+                issuer = parts[1]
+                name = '_'.join(parts[2:]).replace('.pdf', '')
+                # Convert the published date to datetime.date format
+                published_date = datetime.strptime(published_date_str, "%Y%m%d").date()
 
-        if content_bytes:
-            Boto().save_pdf(
-                pdf_content=content_bytes,
-                filename=f"{insight.id}.pdf",
+                # Prepare the params dictionary with extracted info
+                params = {
+                    "published_date": published_date,
+                    "issuer": issuer,
+                    "name": name
+                }
+
+            except Exception as e:
+                print(f"Error extracting file info: {e}")
+
+        try:
+            # Create Insight object using the extracted params, or fallback to default
+            insight = Insight(**params).create() if params else Insight().create()
+
+            # Save the PDF content if present
+            if content_bytes:
+                Boto().save_pdf(
+                    pdf_content=content_bytes,
+                    filename=f"{insight.id}.pdf",
+                )
+
+            return insight
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Error while creating Insight: {e}",
             )
-        return insight
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid Base64 content \n{e}",
+            detail=f"Invalid Base64 content or file processing error: {e}",
         )
 
 
