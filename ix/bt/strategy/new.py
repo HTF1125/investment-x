@@ -117,3 +117,40 @@ class UsOecdLeiEB(Strategy):
         if m > 0:
             return pd.Series({"SPY": w, "AGG": 1.0 - w})
         return pd.Series({"SPY": w, "AGG": 0.0})
+
+
+class MAM60CF(Strategy):
+    assets = [
+        "SPY",
+        "IWM",
+        "EEM",
+        "QQQ",
+        "LQD",
+        "IEF",
+        "TLT",
+        "GLD",
+    ]
+
+    start = pd.Timestamp("2007-01-03")
+    frequency = "ME"
+    momentum_window = 60
+    min_assets = 2
+
+    def initialize(self) -> None:
+        self.mom = self.pxs.pct_change(self.momentum_window)
+        pct_change = self.pxs.pct_change()
+        corr_diff = pct_change.rolling(20).corr() - pct_change.rolling(90).corr()
+        corr_difff = corr_diff.unstack().mean(axis=1)
+        self.corr_signal = corr_difff
+        # self.corr_signal.loc["2020":].plot()
+
+    def allocate(self) -> pd.Series:
+        if self.corr_signal.loc[self.d] < 0:
+            return pd.Series({"SPY": 1.0})
+        momentum = self.mom.loc[str(self.d)]
+        momentum = momentum[momentum > 0]
+        # Filter positive momentum
+        positive_momentum = momentum.nlargest(4)
+        # Normalize allocations
+        allocation = positive_momentum / positive_momentum.sum()
+        return allocation

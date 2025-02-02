@@ -17,6 +17,12 @@ class DataSource(Document):
     s_field: str
     source: str = "YAHOO"
 
+class Source(BaseModel):
+    field: str
+    s_code: str
+    s_field: str
+    source: str = "YAHOO"
+
 
 class Metadata(Document):
     code: Annotated[str, Indexed(unique=True)]
@@ -26,6 +32,7 @@ class Metadata(Document):
     name: Optional[str] = None
     remark: Optional[str] = None
     disabled: bool = False
+    data_sources: List[Source] = []
 
     def ds(self) -> List[DataSource]:
         if not self.id:
@@ -104,9 +111,9 @@ class TimeSeries(Document):
             data = data.combine_first(self.data)
         if data is not None:
             data = data.dropna()
-            self.set({"latest_date": data.index[-1]})
             self.set({"i_data": data.to_dict()})
-            self.timepoint.set({"data": data.iloc[-1]})
+            tp = self.timepoint
+            tp.set({"data": data.iloc[-1]})
             logger.info(f"Update {self.metadata_code} {self.field}")
 
 

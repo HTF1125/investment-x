@@ -4,7 +4,7 @@ from ix.misc import get_bloomberg_data
 from ix.misc import get_fred_data
 from ix.misc import get_logger
 from ix import misc
-from ix.db import Metadata, Performance
+from ix.db import Metadata, Performance, TimePoint
 import ix
 
 logger = get_logger(__name__)
@@ -35,10 +35,12 @@ def CustomTimeSeries(code: str, field: str) -> pd.Series:
 def run():
 
     update_px_last()
+    TimePoint.delete_all()
     Performance.delete_all()
     update_price_performance()
     update_economic_calendar()
     send_px_last()
+
 
 def update_px_last():
     logger.debug("Initialize update PX_LAST data")
@@ -50,16 +52,13 @@ def update_px_last():
                 if ds.source == "YAHOO":
                     ts = get_yahoo_data(code=ds.s_code)[ds.s_field]
                 elif ds.source == "BLOOMBERG":
-                    ts = get_bloomberg_data(
-                        code=ds.s_code,
-                        field=ds.s_field,
-                    ).iloc[:, 0]
+                    continue
+                    ts = get_bloomberg_data(code=ds.s_code, field=ds.s_field).iloc[:, 0]
 
                 elif ds.source == "FRED":
                     ts = get_fred_data(ticker=ds.s_code).iloc[:, 0]
 
                 elif ds.source == "INVESTMENTX":
-
                     ts = CustomTimeSeries(code=ds.s_code, field=ds.s_field)
                 else:
                     logger.warning(
@@ -76,7 +75,6 @@ def update_px_last():
                 logger.error(
                     f"Error processing metadata code={metadata.code}, data source={ds.source}, field={ds.field}: {e}"
                 )
-
     logger.debug("Timeseries update process completed.")
 
 
@@ -205,11 +203,14 @@ def get_px_last() -> pd.DataFrame:
 
     datas = []
     for metadata in ix.db.Metadata.find_all().run():
-        tp = metadata.tp(field="PX_LAST")
+        px_last = metadata.ts().data
+        if px_last.empty:
+            continue
+
         data = {
             "isin": metadata.id_isin,
             "code": metadata.code,
-            "px_last": tp.data,
+            "px_last": px_last.iloc[-1],
         }
         datas.append(data)
     px_last_latest = pd.DataFrame(datas).dropna()

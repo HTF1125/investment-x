@@ -14,22 +14,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # Password hashing
 crypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
 # Models
 class Token(BaseModel):
     access_token: str
     token_type: str
-
 
 class User(BaseModel):
     username: str
     isadmin: bool = False
     disabled: Optional[bool] = None
 
-
 class UserInDB(User):
     hashed_password: str
-
 
 # Database interaction
 def get_user(username: str) -> Optional[db.User]:
@@ -49,7 +45,6 @@ def get_user(username: str) -> Optional[db.User]:
             detail=f"Database error: {str(e)}",
         )
 
-
 # Utility functions
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
@@ -57,23 +52,20 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     return crypt_context.verify(plain_password, hashed_password)
 
-
 def get_password_hash(password: str) -> str:
     """
     Generate a hashed password.
     """
     return crypt_context.hash(password)
 
-
 def authenticate_user(username: str, password: str) -> Optional[db.User]:
     """
     Authenticate user by username and password.
     """
     user = get_user(username)
-    if not user or not verify_password(password, user.hashed_password):
+    if not user or not verify_password(password, user.password):
         return None
     return user
-
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -85,7 +77,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     )
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, Settings.secret_key, algorithm=Settings.algorithm)
-
 
 async def get_current_user(authorization: Optional[str] = Header(None)) -> db.User:
     """
@@ -118,7 +109,6 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> db.Us
         raise credentials_exception
     return user
 
-
 async def get_current_active_user(
     current_user: db.User = Depends(get_current_user),
 ) -> db.User:
@@ -129,11 +119,9 @@ async def get_current_active_user(
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-
 class UserIn(BaseModel):
     username: str
     password: str
-
 
 # Authentication Endpoints
 @router.post("/token", response_model=Token)
@@ -153,7 +141,6 @@ async def get_token(user: UserIn):
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-
 @router.post("/refresh", response_model=Token)
 async def refresh_token(current_user: db.User = Depends(get_current_active_user)):
     """
@@ -164,7 +151,6 @@ async def refresh_token(current_user: db.User = Depends(get_current_active_user)
         data={"sub": current_user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
-
 
 @router.get("/me", response_model=db.User)
 async def read_users_me(current_user: db.User = Depends(get_current_active_user)):
