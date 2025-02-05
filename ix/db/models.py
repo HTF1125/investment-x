@@ -34,14 +34,6 @@ class Metadata(Document):
     disabled: bool = False
     data_sources: List[Source] = []
 
-    def ds(self) -> List[DataSource]:
-        if not self.id:
-            raise
-        ds = DataSource.find_many({"meta_id": str(self.id)}).run()
-        if ds is None:
-            raise
-        return ds
-
     def ts(self, field: str = "PX_LAST") -> "TimeSeries":
         if not self.id:
             raise
@@ -147,3 +139,6 @@ class Prediction(Document):
     features: Dict[str, Dict[date, float]]
     target: Dict[date, float]
     prediction: Dict[date, float]
+
+
+

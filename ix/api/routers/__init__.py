@@ -7,3 +7,4 @@ from . import login
 from . import base
 from . import auth
 from . import metadata
+from . import test

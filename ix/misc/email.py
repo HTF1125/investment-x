@@ -1,9 +1,8 @@
-
-
 from smtplib import SMTP_SSL
 from email.message import EmailMessage
 from ix.misc import Settings
 import pandas as pd
+
 
 class EmailSender:
     """A class to send emails with optional attachments using Gmail's SMTP server."""
@@ -15,8 +14,8 @@ class EmailSender:
         content: str,
     ):
         """Initialize the EmailSender with login credentials from Settings."""
-        self.login = Settings.gmail_login
-        self.password = Settings.gmail_password
+        self.login = Settings.email_login
+        self.password = Settings.email_password
         self.smtp_server = "smtp.gmail.com"
         self.smtp_port = 465
         self.msg = EmailMessage()
@@ -49,4 +48,3 @@ class EmailSender:
         with SMTP_SSL(self.smtp_server, self.smtp_port) as smtp:
             smtp.login(self.login, self.password)
             smtp.send_message(self.msg)
-

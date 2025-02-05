@@ -216,14 +216,14 @@ def get_px_last() -> pd.DataFrame:
     px_last_latest = pd.DataFrame(datas).dropna()
     return px_last_latest
 
-
-from typing import List, Optional
+from typing import List
 from ix.misc.email import EmailSender
+from ix.misc.settings import Settings
 import logging
 
 
 def send_px_last(
-    recipients: List[str] = ["roberthan1125@gmail.com", "26106825@heungkuklife.co.kr"],
+    recipients: List[str] = Settings.email_recipients,
     subject: str = "Daily PX Last Report",
     content: str = "Please find the attached CSV file with the latest PX data.",
     filename: str = "px_last.csv",
