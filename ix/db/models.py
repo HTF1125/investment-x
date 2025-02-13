@@ -17,6 +17,7 @@ class DataSource(Document):
     s_field: str
     source: str = "YAHOO"
 
+
 class Source(BaseModel):
     field: str
     s_code: str
@@ -32,6 +33,7 @@ class Metadata(Document):
     name: Optional[str] = None
     remark: Optional[str] = None
     disabled: bool = False
+    bbg_ticker: Optional[str] = None
     data_sources: List[Source] = []
 
     def ts(self, field: str = "PX_LAST") -> "TimeSeries":
@@ -48,7 +50,7 @@ class Metadata(Document):
             raise
         tp = TimePoint.find_one({"meta_id": str(self.id), "field": field}).run()
         if tp is None:
-            logger.debug(f"Create new TimeSeries for {self.code} - {field}")
+            logger.debug(f"Create new TimePoint for {self.code} - {field}")
             return TimePoint(meta_id=str(self.id), field=field).create()
         return tp
 
@@ -57,7 +59,7 @@ class TimeSeries(Document):
     meta_id: str
     field: str
     latest_date: Optional[date] = None
-    i_data: Dict[date, float] = {}
+    i_data: Dict[date, str | int | float] = {}
 
     @property
     def metadata(self) -> Metadata:
@@ -73,7 +75,7 @@ class TimeSeries(Document):
         ).run()
         if timepoint:
             return timepoint
-        return TimePoint(meta_id=self.meta_id, field=self.field).create()
+        return TimePoint(meta_id=str(self.id), field=self.field).create()
 
     @property
     def metadata_code(self) -> str:
@@ -105,14 +107,22 @@ class TimeSeries(Document):
             data = data.dropna()
             self.set({"i_data": data.to_dict()})
             tp = self.timepoint
-            tp.set({"data": data.iloc[-1]})
+            tp.set({"i_data": float(data.iloc[-1])})
             logger.info(f"Update {self.metadata_code} {self.field}")
 
 
 class TimePoint(Document):
     meta_id: str
     field: str
-    data: str | int | float | None = None
+    i_data: float | None = None
+
+    @property
+    def data(self) -> float | None:
+        return self.i_data
+
+    @data.setter
+    def data(self, data: float) -> None:
+        self.set({"i_data": data})
 
 
 class InsightSourceBase(BaseModel):
@@ -131,6 +141,7 @@ class MarketCommentary(Document):
     asofdate: Annotated[date, Indexed(unique=True)] = Field(default_factory=date.today)
     frequency: str = "Daily"
     content: str = ""
+    last_visited: datetime = Field(default_factory=datetime.now)
 
 
 class Prediction(Document):
@@ -141,4 +152,13 @@ class Prediction(Document):
     prediction: Dict[date, float]
 
 
+class Asset(BaseModel):
 
+    code: Annotated[str, Indexed(unique=True)]
+    name: Optional[str] = None
+
+
+class Universe(Document):
+    code: Annotated[str, Indexed(unique=True)]
+    name: Optional[str] = None
+    assets: List[Asset]

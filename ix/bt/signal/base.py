@@ -15,8 +15,8 @@ class Signal:
     def __init__(self) -> None:
         code = f"{self.__class__.__name__}"
         self.metadata = (
-            Metadata.find_one(Metadata.code == code).run()
-            or Metadata(code=code, market="Signal", source="Investment-X").create()
+            Metadata.find_one({"code" : code}).run()
+            or Metadata(code=code).create()
         )
 
     def fit(self) -> pd.Series:
@@ -25,16 +25,9 @@ class Signal:
 
     def refresh(self) -> "Signal":
         """Refreshes the signal data by recalculating and saving to the database."""
-        try:
-            logger.info("Starting data refresh")
-            data = self.fit().dropna().round(2)
-            self.metadata.ts(field="PX_LAST").data = data
-        except TypeError as e:
-            logger.error(f"Data validation failed: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error during refresh: {e}")
-            raise
+        logger.info("Starting data refresh")
+        data = self.fit().dropna().round(2)
+        self.metadata.ts(field="PX_LAST").data = data
         return self
 
     @property

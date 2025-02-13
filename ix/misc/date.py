@@ -58,3 +58,28 @@ def oneweekbefore() -> pd.Timestamp:
 def tomorrow() -> pd.Timestamp:
     """Returns tomorrow's date as a timestamp."""
     return today() + pd.DateOffset(days=1)
+
+
+def get_relative_date(
+    asofdate: pd.Timestamp,
+    period: str = "1D",
+) -> pd.Timestamp:
+    if period == "1D":
+        return asofdate - pd.DateOffset(days=1)
+    if period == "1W":
+        return asofdate - pd.DateOffset(days=7)
+    if period == "1M":
+        return asofdate - pd.DateOffset(months=1)
+    if period == "3M":
+        return asofdate - pd.DateOffset(months=3)
+    if period == "6M":
+        return asofdate - pd.DateOffset(months=6)
+    if period == "1Y":
+        return asofdate - pd.DateOffset(months=12)
+    if period == "3Y":
+        return asofdate - pd.DateOffset(months=12 * 3)
+    if period == "MTD":
+        return asofdate - pd.offsets.MonthBegin() - pd.DateOffset(days=1)
+    if period == "YTD":
+        return asofdate - pd.offsets.YearBegin() - pd.DateOffset(days=1)
+    raise

@@ -69,7 +69,7 @@ class BollingerBand:
 
         return breakouts
 
-    def to_dataframe(self, start: Optional[str] = None) -> pd.DataFrame:
+    def to_dataframe(self, start: Optional[str] = None, end: Optional[str] = None) -> pd.DataFrame:
         """
         Return the Bollinger Bands as a DataFrame.
 
@@ -87,21 +87,21 @@ class BollingerBand:
         if start:
             df = df.loc[start:]
 
+        if end:
+            df = df.loc[:end]
+
         df["Breakouts"] = self.get_breakouts(
             df["Price"], df["Upper Band"], df["Lower Band"]
         )
         return df
 
-    def plot(
-        self, title: str = "Bollinger Bands", start: Optional[str] = None
-    ) -> go.Figure:
+    def plot(self, start: Optional[str] = None, end: Optional[str] = None) -> go.Figure:
         """
         Create an interactive Plotly chart of the Bollinger Bands along with the price series.
 
-        :param title: Title of the plot.
         :return: Plotly Figure object.
         """
-        df = self.to_dataframe(start=start)
+        df = self.to_dataframe(start=start, end=end)
 
         fig = go.Figure()
 
@@ -176,15 +176,18 @@ class BollingerBand:
         )
 
         fig.update_layout(
-            title=title,
             xaxis_title="Date",
             yaxis_title="Price",
             legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5
             ),
-            margin=dict(t=130),  # Increased top margin
             hovermode="x unified",
         )
+
 
         fig.update_layout(
             yaxis=dict(

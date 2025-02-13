@@ -175,6 +175,7 @@ from .models import (
     MarketCommentary,
     Prediction,
     DataSource,
+    Universe,
 )
 
 
@@ -198,6 +199,7 @@ def init():
                 InsightSource,
                 MarketCommentary,
                 Prediction,
+                Universe,
             ],
         )
         print(

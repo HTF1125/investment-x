@@ -1,6 +1,6 @@
 import pandas as pd
 from ix.db import get_px_last
-from ix.bt.strategy import Strategy
+from .base import Strategy
 
 
 class SectorRotationMom90(Strategy):
@@ -102,12 +102,32 @@ class UsOecdLeiEB(Strategy):
     assets = ["SPY", "AGG"]
     frequency = "ME"
     start = pd.Timestamp("2004-11-18")
-    bm_assets: dict[str, float] = {"SPY": 0.5, "AGG": 0.5}
+    bm_assets: dict[str, float] = {"SPY": 0.6, "AGG": 0.4}
 
     def initialize(self) -> None:
         from ix.bt.signal import OecdCliUsChg1
-
         self.signal = OecdCliUsChg1().refresh().data
+        self.momentum = self.pxs.pct_change(20)
+
+    def allocate(self) -> pd.Series:
+
+        w = 0.6 + 0.4 * self.signal.loc[: self.d].iloc[-1]
+        m = self.momentum["AGG"].loc[self.d]
+        if m > 0:
+            return pd.Series({"SPY": w, "AGG": 1.0 - w})
+        return pd.Series({"SPY": w, "AGG": 0.0})
+
+
+
+class UsOecdLeiEB2(Strategy):
+    assets = ["SPY", "AGG"]
+    frequency = "ME"
+    start = pd.Timestamp("2004-11-18")
+    bm_assets: dict[str, float] = {"SPY": 0.5, "AGG": 0.5}
+
+    def initialize(self) -> None:
+        from ix.core.tech import WaveTrend
+        self.signal = WaveTrend.from_meta("^OEUSKLAC").hlc["wt_diff"].clip(-10, 10).div(10)
         self.momentum = self.pxs.pct_change(20)
 
     def allocate(self) -> pd.Series:
@@ -117,7 +137,6 @@ class UsOecdLeiEB(Strategy):
         if m > 0:
             return pd.Series({"SPY": w, "AGG": 1.0 - w})
         return pd.Series({"SPY": w, "AGG": 0.0})
-
 
 class MAM60CF(Strategy):
     assets = [
@@ -154,3 +173,14 @@ class MAM60CF(Strategy):
         # Normalize allocations
         allocation = positive_momentum / positive_momentum.sum()
         return allocation
+
+
+
+
+def all_strategies() -> list[type[Strategy]]:
+    return [
+        # UsIsmPmiManuEB,
+        UsOecdLeiEB,
+        SectorRotationCESI,
+        SectorRotationMom90,
+    ]

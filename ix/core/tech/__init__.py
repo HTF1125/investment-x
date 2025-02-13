@@ -1,8 +1,9 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from .bollingerband import BollingerBand
-from .rsi import RSI
-
+from .bollingerband import *
+from .rsi import *
+from .trend import *
+from .ma import *
 class MovingAverage:
     def __init__(self, px: pd.Series, window: int = 20) -> None:
         """

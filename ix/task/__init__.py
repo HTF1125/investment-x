@@ -1,3 +1,4 @@
+from datetime import date
 import pandas as pd
 from ix.misc import get_yahoo_data
 from ix.misc import get_bloomberg_data
@@ -33,48 +34,76 @@ def CustomTimeSeries(code: str, field: str) -> pd.Series:
 
 
 def run():
-
     update_px_last()
-    TimePoint.delete_all()
     Performance.delete_all()
-    update_price_performance()
     update_economic_calendar()
     send_px_last()
+
+
+def get_performance(px_last: pd.Series) -> dict:
+    px_last = px_last.resample("D").last().ffill()
+    asofdate = pd.Timestamp(str(px_last.index[-1]))
+    level = px_last.loc[asofdate]
+    pct_chg = (level / px_last).sub(1).mul(100).round(2)
+    out = {}
+    for period in ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "MTD", "YTD"]:
+        r_date = misc.get_relative_date(asofdate=asofdate, period=period)
+        try:
+            out[f"PCT_CHG_{period}"] = pct_chg.loc[r_date]
+        except:
+            pass
+    return out
 
 
 def update_px_last():
     logger.debug("Initialize update PX_LAST data")
     for metadata in Metadata.find_all().run():
-        for ds in metadata.ds():
+        for ds in metadata.data_sources:
             msg = f"Checking data source: {ds.source} for metadata code={metadata.code}"
             logger.info(msg)
-            try:
-                if ds.source == "YAHOO":
-                    ts = get_yahoo_data(code=ds.s_code)[ds.s_field]
-                elif ds.source == "BLOOMBERG":
-                    continue
-                    ts = get_bloomberg_data(code=ds.s_code, field=ds.s_field).iloc[:, 0]
+            if ds.source == "YAHOO":
+                ts = get_yahoo_data(code=ds.s_code)
+                fields = {
+                    # "Open": "PX_OPEN",
+                    # "High": "PX_HIGH",
+                    # "Low": "PX_LOW",
+                    # "Close": "PX_CLOSE",
+                    # "Volume": "PX_VOLUME",
+                    "Adj Close": "PX_LAST",
+                }
+                for key, field in fields.items():
+                    metadata.ts(field=field).data = ts[key].astype(float)
 
-                elif ds.source == "FRED":
-                    ts = get_fred_data(ticker=ds.s_code).iloc[:, 0]
+                    if field == "PX_LAST":
+                        metadata.tp(field=field).data = ts[key].iloc[-1]
+                        performance = get_performance(px_last=ts[key].astype(float))
+                        for field, data in performance.items():
+                            metadata.tp(field=field).data = float(data)
 
-                elif ds.source == "INVESTMENTX":
-                    ts = CustomTimeSeries(code=ds.s_code, field=ds.s_field)
-                else:
-                    logger.warning(
-                        f"Unknown data source: {ds.source} for metadata code={metadata.code}"
-                    )
-                    continue
-                msg = f"Successfully fetched data (code: {metadata.code}, field: {ds.field})"
-                logger.info(msg)
-                logger.info(ts.tail().to_dict())
-                metadata.ts(field=ds.field).data = ts.round(4)
+                    msg = f"Successfully fetched data (code: {metadata.code}, field: {field})"
+                continue
 
-            except Exception as e:
-                # Log errors if data fetching or updating fails
-                logger.error(
-                    f"Error processing metadata code={metadata.code}, data source={ds.source}, field={ds.field}: {e}"
+            elif ds.source == "BLOOMBERG":
+                continue
+                ts = get_bloomberg_data(code=ds.s_code, field=ds.s_field).iloc[:, 0]
+
+            elif ds.source == "FRED":
+                ts = get_fred_data(ticker=ds.s_code).iloc[:, 0]
+
+            elif ds.source == "INVESTMENTX":
+                ts = CustomTimeSeries(code=ds.s_code, field=ds.s_field)
+            else:
+                logger.warning(
+                    f"Unknown data source: {ds.source} for metadata code={metadata.code}"
                 )
+                continue
+            msg = (
+                f"Successfully fetched data (code: {metadata.code}, field: {ds.field})"
+            )
+            logger.info(msg)
+            logger.info(ts.tail().to_dict())
+            metadata.ts(field=ds.field).data = ts.astype(float).round(4)
+
     logger.debug("Timeseries update process completed.")
 
 
@@ -115,8 +144,6 @@ def update_price_performance():
         px_lasts.append(px_last)
     px_lasts = pd.concat(px_lasts, axis=1)
     px_lasts = px_lasts.sort_index().loc[:asofdate].resample("D").last().ffill()
-
-    print(f"update performance for {px_lasts.index[-1]}")
     for code in px_lasts:
         pxlast = px_lasts[code]
         level = round(pxlast.iloc[-1], 2)
@@ -215,6 +242,7 @@ def get_px_last() -> pd.DataFrame:
         datas.append(data)
     px_last_latest = pd.DataFrame(datas).dropna()
     return px_last_latest
+
 
 from typing import List
 from ix.misc.email import EmailSender
