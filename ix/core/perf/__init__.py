@@ -5,7 +5,6 @@ import pandas as pd
 
 
 
-
 def get_period_performances(pxs):
 
     pxs = pxs.resample("D").last().ffill()

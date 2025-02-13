@@ -1,8 +1,7 @@
 from smtplib import SMTP_SSL
 from email.message import EmailMessage
 from ix.misc import Settings
-import pandas as pd
-
+import io
 
 class EmailSender:
     """A class to send emails with optional attachments using Gmail's SMTP server."""
@@ -24,15 +23,16 @@ class EmailSender:
         self.msg["Subject"] = subject
         self.msg.set_content(content)
 
-    def attach(self, df: pd.DataFrame, filename: str = "data.csv") -> None:
-        """Attach a pandas DataFrame as a CSV file to the email.
+    def attach(self, file_buffer: io.BytesIO, filename: str) -> None:
+        """Attach an Excel file (as io.BytesIO) to the email.
 
         Args:
-            df (pd.DataFrame): The DataFrame to attach as a CSV file.
-            filename (str): The name of the attached CSV file. Defaults to "data.csv".
+            file_buffer (io.BytesIO): The file buffer containing the Excel file.
+            filename (str): The name of the attached file.
         """
-        csv_data = df.to_csv(index=False)
-        self.msg.add_attachment(csv_data, filename=filename, subtype="csv")
+        file_content = file_buffer.getvalue()
+        self.msg.add_attachment(file_content, maintype="application", subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename)
+
 
     def send(
         self,

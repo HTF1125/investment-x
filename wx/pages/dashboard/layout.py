@@ -36,5 +36,3 @@ layout = dbc.Container(
     ],
 )
 
-# dash.register_page(__name__, path="/", title="Dashboard", name="Dashboard")
-
