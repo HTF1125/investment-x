@@ -1,6 +1,7 @@
 import dash_bootstrap_components as dbc
 from dash import html, dcc
 import dash
+from ix.wx.pages.insights.callbacks import *
 
 # Register Page
 dash.register_page(
@@ -10,7 +11,6 @@ dash.register_page(
     name="Insights"
 )
 
-from wx.pages.insights.callbacks import *
 
 layout = dbc.Container(
     id="insights-main-container",

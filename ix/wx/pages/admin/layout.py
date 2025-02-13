@@ -1,16 +1,8 @@
-import dash
-
-# Register Page
-dash.register_page(
-    __name__,
-    path="/",
-    title="Dashboard",
-    name="Dashboard"
-)
-
-from dash import html
+from dash import html, register_page
 import dash_bootstrap_components as dbc
-from wx.components import commentary, technical, performance, excel_uploader
+from ix.wx.pages.admin import excel_uploader
+
+register_page(__name__, path="/admin", title="Admin", name="Admin")
 
 # Wrap the four sections in a flex container with a small gap.
 layout = dbc.Container(
@@ -23,9 +15,6 @@ layout = dbc.Container(
         html.Div(
             children=[
                 excel_uploader.layout,
-                performance.get_layout(),
-                technical.get_layout(),
-                commentary.get_layout(),
             ],
             style={
                 "display": "flex",
@@ -35,4 +24,3 @@ layout = dbc.Container(
         )
     ],
 )
-
