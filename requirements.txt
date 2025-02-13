@@ -30,3 +30,4 @@ dash-html-components==2.0.0
 dash-iconify==0.1.2
 dash-summernote==0.0.1
 dash-table==5.0.0
+gunicorn
