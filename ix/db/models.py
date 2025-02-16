@@ -56,9 +56,8 @@ class Metadata(Document):
     bbg_ticker: Any = None
     yah_ticker: Any = None
     fre_ticker: Any = None
-    data_sources: List[Source] = []
 
-    def update_px(self) -> bool:
+    def update_px(self):
 
         if self.yah_ticker:
             ts = get_yahoo_data(code=self.yah_ticker)
@@ -70,11 +69,11 @@ class Metadata(Document):
 
             # Mapping of source field to metadata field.
             field_mappings = {
-                # "Open": "PX_OPEN",
-                # "High": "PX_HIGH",
-                # "Low": "PX_LOW",
-                # "Close": "PX_CLOSE",
-                # "Volume": "PX_VOLUME",
+                "Open": "PX_OPEN",
+                "High": "PX_HIGH",
+                "Low": "PX_LOW",
+                "Close": "PX_CLOSE",
+                "Volume": "PX_VOLUME",
                 "Adj Close": "PX_LAST",
             }
             for source_field, target_field in field_mappings.items():
@@ -136,7 +135,7 @@ class TimeSeries(Document):
     meta_id: str
     field: str
     latest_date: Optional[date] = None
-    i_data: Dict[date, str | int | float] = {}
+    i_data: Dict[date | str, str | int | float] = {}
 
     @property
     def metadata(self) -> Metadata:
@@ -170,7 +169,13 @@ class TimeSeries(Document):
     @property
     def data(self) -> pd.Series:
         data = pd.Series(data=self.i_data)
-        data.index = pd.to_datetime(data.index)
+        try:
+            data.index = pd.to_datetime(data.index)
+        except:
+            valid_dates = pd.to_datetime(data.index, errors="coerce")
+            data = data[valid_dates.notna()]
+            data.index = pd.to_datetime(data.index)
+            self.set({"i_data" : data.to_dict()})
         return data
 
     @data.setter

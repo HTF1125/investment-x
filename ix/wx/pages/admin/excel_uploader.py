@@ -74,10 +74,6 @@ layout = dbc.Container(
 )
 
 
-from openpyxl import load_workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-
-
 @callback(
     Output("output-message", "children"),
     Input("upload-data", "contents"),
@@ -98,52 +94,38 @@ def update_output(contents, filename):
         decoded = base64.b64decode(content_string)
         in_file = io.BytesIO(decoded)
 
-        # Read the 'Data' sheet using pandas and process it
-        data = pd.read_excel(in_file, sheet_name="Data", parse_dates=True, index_col=[0])
-        upload_bbg_data(data=data)
+        # Read the 'Data' sheet using pandas
+        data = pd.read_excel(
+            in_file, sheet_name="Data", parse_dates=True, index_col=[0]
+        ).dropna(how="all")
 
-        # Reset pointer to the beginning for openpyxl to load the workbook
-        in_file.seek(0)
-        wb = load_workbook(in_file)
-
-        # If "DataV" exists, remove it (or you could update it as needed)
-        if "DataV" in wb.sheetnames:
-            ws = wb["DataV"]
-            wb.remove(ws)
-
-        # Create a new sheet "DataV"
-        ws = wb.create_sheet("DataV")
-        # Write the DataFrame data to the new sheet
-        for row in dataframe_to_rows(data, index=False, header=True):
-            ws.append(row)
-
-        # Save the updated workbook back to the original in-memory file
-        in_file.seek(0)
-        in_file.truncate()  # Clear existing content
-        wb.save(in_file)
-        in_file.seek(0)  # Reset pointer before sending
+        # Upload cleaned data
+        upload_bbg_data(data)
 
         # Prepare and send the email with the updated Excel file attached
-        email_sender = EmailSender(
-            to=", ".join(Settings.email_recipients),
-            subject="[IX] Daily Data Share",
-            content="Please find the attached Excel file with the latest data and added sheet.",
-        )
-        email_sender.attach(in_file, filename=filename)
-        email_sender.send()
+        # email_sender = EmailSender(
+        #     to=", ".join(Settings.email_recipients),
+        #     subject="[IX] Daily Data Share",
+        #     content="Please find the attached Excel file with the latest data and added sheet.",
+        # )
+        # email_sender.attach(in_file, filename=filename)
+        # email_sender.send()
 
-        logger.info(
-            f"Email sent successfully to {', '.join(Settings.email_recipients)}"
-        )
+        # logger.info(
+        #     f"Email sent successfully to {', '.join(Settings.email_recipients)}"
+        # )
         return html.Div(
             [html.P(f"File '{filename}' uploaded successfully, updated, and emailed!")]
         )
+
     except Exception as e:
         logger.error(f"Failed to process and send email: {str(e)}", exc_info=True)
         return html.Div(f"Error processing file: {str(e)}")
 
 
 from ix.db.models import Metadata
+
+
 def upload_bbg_data(data: pd.DataFrame) -> bool:
     for ticker_field in data.columns:
         ticker, field = str(ticker_field).split(":", maxsplit=2)
@@ -152,5 +134,6 @@ def upload_bbg_data(data: pd.DataFrame) -> bool:
             ts = data[ticker_field].dropna()
             if ts.empty:
                 continue
+            print(ts)
             metadata.ts(field=field).data = ts
     return True
