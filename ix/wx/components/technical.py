@@ -83,10 +83,10 @@ def get_layout():
                                     dbc.Select(
                                         id="asset-select",
                                         options=[
-                                            {"label": "IAU", "value": "IAU"},
-                                            {"label": "SPY", "value": "SPY"},
+                                            {"label": "IAU", "value": "IAU US Equity"},
+                                            {"label": "SPY", "value": "SPY US Equity"},
                                         ],
-                                        value="IAU",
+                                        value="IAU US Equity",
                                         style={
                                             "backgroundColor": "transparent",
                                             "color": "#f8f9fa",

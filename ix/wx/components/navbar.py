@@ -32,8 +32,9 @@ def create_nav_link(item):
 def create_navbar():
     """Construct a responsive, modern navbar with pure black background and white accents."""
     nav_links = [create_nav_link(item) for item in NAV_ITEMS]
+    # Add a placeholder for the user menu
     nav_links.append(
-        html.Div(id="user-menu", className="d-flex align-items-center ms-2"),
+        html.Div(id="user-menu", className="d-flex align-items-center ms-2")
     )
 
     return dbc.Navbar(
@@ -46,6 +47,11 @@ def create_navbar():
                                 src="/assets/images/investment-x-logo-light.svg",
                                 height="25px",
                                 className="navbar-logo",
+                                style={
+                                    "maxWidth": "300px",
+                                    "width": "100%",
+                                    "objectFit": "contain",
+                                },
                             )
                         ),
                         align="center",
@@ -67,8 +73,14 @@ def create_navbar():
                 ),
             ],
             fluid=True,
-            # Fix container height and vertically center items.
-            style={"display": "flex", "alignItems": "center", "height": "60px"},
+            # Set a maximum width for the entire navbar content and center it.
+            style={
+                "display": "flex",
+                "alignItems": "center",
+                "height": "60px",
+                "maxWidth": "1680px",  # Adjust this value as needed
+                "margin": "0 auto",
+            },
         ),
         color="#000000",
         dark=True,
@@ -90,10 +102,12 @@ def create_navbar():
 navbar = create_navbar()
 
 
+# -----------------------------------------------------------------------------
+# PART 2: User Menu Callback
+# -----------------------------------------------------------------------------
 @callback(Output("user-menu", "children"), Input("token-store", "data"))
 def update_user_menu(token_data):
     """Update the user menu with inline styles ensuring dark dropdown styling."""
-    # When not authenticated, show a Sign In button
     if not token_data:
         return dbc.Button(
             "Sign In",
@@ -125,8 +139,8 @@ def update_user_menu(token_data):
             },
         )
 
-    # Style for the dropdown toggle button
     dropdown_toggle_style = {
+        "width" : "100px",
         "color": "#FFFFFF",
         "backgroundColor": "#000000",
         "border": "1px solid #FFFFFF",
@@ -135,7 +149,6 @@ def update_user_menu(token_data):
         "transition": "background-color 0.3s ease-in-out",
     }
 
-    # Style for dropdown items (force black background with white text)
     item_style = {"backgroundColor": "#000000", "color": "#FFFFFF"}
 
     dropdown_items = [
@@ -145,7 +158,6 @@ def update_user_menu(token_data):
         dbc.DropdownMenuItem("Log Out", href="/logout", style=item_style),
     ]
 
-    # Include admin option if applicable
     if user.is_admin:
         dropdown_items.insert(
             0,
@@ -161,6 +173,9 @@ def update_user_menu(token_data):
     )
 
 
+# -----------------------------------------------------------------------------
+# PART 3: Navbar Collapse Callback
+# -----------------------------------------------------------------------------
 @callback(
     Output("navbar-collapse", "is_open"),
     Input("navbar-toggler", "n_clicks"),

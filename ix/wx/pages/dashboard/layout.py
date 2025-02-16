@@ -2,8 +2,9 @@ import dash
 
 from dash import html
 import dash_bootstrap_components as dbc
-from ix.wx.components import commentary, technical
+from ix.wx.components import technical
 from ix.wx.pages.dashboard import performance
+from ix.wx.pages.dashboard import commentary
 
 # Register Page
 dash.register_page(
@@ -25,7 +26,7 @@ layout = dbc.Container(
             children=[
                 performance.layout,
                 technical.get_layout(),
-                commentary.get_layout(),
+                commentary.layout,
             ],
             style={
                 "display": "flex",

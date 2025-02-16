@@ -7,6 +7,7 @@ from ix.misc import get_logger
 from ix import misc
 from ix.db import Metadata, Performance, TimePoint
 import ix
+import io
 
 logger = get_logger(__name__)
 
@@ -37,7 +38,7 @@ def run():
     update_px_last()
     Performance.delete_all()
     update_economic_calendar()
-    send_px_last()
+    # send_px_last()
 
 
 def get_performance(px_last: pd.Series) -> dict:
@@ -57,52 +58,42 @@ def get_performance(px_last: pd.Series) -> dict:
 
 def update_px_last():
     logger.debug("Initialize update PX_LAST data")
+
     for metadata in Metadata.find_all().run():
-        for ds in metadata.data_sources:
-            msg = f"Checking data source: {ds.source} for metadata code={metadata.code}"
-            logger.info(msg)
-            if ds.source == "YAHOO":
-                ts = get_yahoo_data(code=ds.s_code)
-                fields = {
-                    # "Open": "PX_OPEN",
-                    # "High": "PX_HIGH",
-                    # "Low": "PX_LOW",
-                    # "Close": "PX_CLOSE",
-                    # "Volume": "PX_VOLUME",
-                    "Adj Close": "PX_LAST",
-                }
-                for key, field in fields.items():
-                    metadata.ts(field=field).data = ts[key].astype(float)
+        try:
+            # Process Yahoo ticker data if available.
+            if metadata.yah_ticker:
+                metadata.update_px()
 
-                    if field == "PX_LAST":
-                        metadata.tp(field=field).data = ts[key].iloc[-1]
-                        performance = get_performance(px_last=ts[key].astype(float))
-                        for field, data in performance.items():
-                            metadata.tp(field=field).data = float(data)
-
-                    msg = f"Successfully fetched data (code: {metadata.code}, field: {field})"
-                continue
-
-            elif ds.source == "BLOOMBERG":
-                continue
-                ts = get_bloomberg_data(code=ds.s_code, field=ds.s_field).iloc[:, 0]
-
-            elif ds.source == "FRED":
-                ts = get_fred_data(ticker=ds.s_code).iloc[:, 0]
-
-            elif ds.source == "INVESTMENTX":
-                ts = CustomTimeSeries(code=ds.s_code, field=ds.s_field)
-            else:
-                logger.warning(
-                    f"Unknown data source: {ds.source} for metadata code={metadata.code}"
+            # Process FRED ticker data if Yahoo ticker isn't available.
+            elif metadata.fre_ticker:
+                logger.info(
+                    f"Processing FRED ticker for metadata code: {metadata.code}"
                 )
-                continue
-            msg = (
-                f"Successfully fetched data (code: {metadata.code}, field: {ds.field})"
+                ts = get_fred_data(ticker=metadata.fre_ticker)
+
+                if ts.empty:
+                    logger.warning(
+                        f"No FRED data returned for ticker {metadata.fre_ticker}"
+                    )
+                    continue
+
+                # Assume the first column holds the required time series.
+                ts_series = ts.iloc[:, 0].astype(float).round(4)
+                metadata.ts(field="PX_LAST").data = ts_series
+                logger.info(
+                    f"Successfully updated PX_LAST for code: {metadata.code} using FRED data"
+                )
+                logger.debug(
+                    f"FRED data tail for code {metadata.code}: {ts_series.tail().to_dict()}"
+                )
+            else:
+                logger.warning(f"No ticker found for metadata code: {metadata.code}")
+
+        except Exception as e:
+            logger.error(
+                f"Error processing metadata code {metadata.code}: {e}", exc_info=True
             )
-            logger.info(msg)
-            logger.info(ts.tail().to_dict())
-            metadata.ts(field=ds.field).data = ts.astype(float).round(4)
 
     logger.debug("Timeseries update process completed.")
 
@@ -269,7 +260,13 @@ def send_px_last(
             content=content,
         )
 
-        email_sender.attach(df=px_last, filename=filename)
+        # Convert the DataFrame to a CSV in a BytesIO buffer.
+        buffer = io.BytesIO()
+        px_last.to_csv(buffer, index=False)
+        buffer.seek(0)  # Reset the buffer's pointer to the beginning
+
+        # Use the correct parameter name `file_buffer`
+        email_sender.attach(file_buffer=buffer, filename=filename)
         email_sender.send()
 
         logging.info(f"Email sent successfully to {', '.join(recipients)}")

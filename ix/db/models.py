@@ -3,11 +3,28 @@ from bunnet import Document, Indexed
 from datetime import date, datetime
 import pandas as pd
 from ix.misc import get_logger
+from ix.misc import get_yahoo_data
+from ix.misc import get_relative_date
 from bson import ObjectId
 from pydantic import BaseModel, Field
 
 
 logger = get_logger(__name__)
+
+
+def get_performance(px_last: pd.Series) -> dict:
+    px_last = px_last.resample("D").last().ffill()
+    asofdate = pd.Timestamp(str(px_last.index[-1]))
+    level = px_last.loc[asofdate]
+    pct_chg = (level / px_last).sub(1).mul(100).round(2)
+    out = {}
+    for period in ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "MTD", "YTD"]:
+        r_date = get_relative_date(asofdate=asofdate, period=period)
+        try:
+            out[f"PCT_CHG_{period}"] = pct_chg.loc[r_date]
+        except:
+            pass
+    return out
 
 
 class DataSource(Document):
@@ -25,6 +42,9 @@ class Source(BaseModel):
     source: str = "YAHOO"
 
 
+from typing import Any
+
+
 class Metadata(Document):
     code: Annotated[str, Indexed(unique=True)]
     exchange: Optional[str] = None
@@ -33,8 +53,65 @@ class Metadata(Document):
     name: Optional[str] = None
     remark: Optional[str] = None
     disabled: bool = False
-    bbg_ticker: Optional[str] = None
+    bbg_ticker: Any = None
+    yah_ticker: Any = None
+    fre_ticker: Any = None
     data_sources: List[Source] = []
+
+    def update_px(self) -> bool:
+
+        if self.yah_ticker:
+            ts = get_yahoo_data(code=self.yah_ticker)
+            if ts.empty:
+                logger.warning(
+                    f"No Yahoo data returned for ticker {self.yah_ticker}"
+                )
+                return False
+
+            # Mapping of source field to metadata field.
+            field_mappings = {
+                # "Open": "PX_OPEN",
+                # "High": "PX_HIGH",
+                # "Low": "PX_LOW",
+                # "Close": "PX_CLOSE",
+                # "Volume": "PX_VOLUME",
+                "Adj Close": "PX_LAST",
+            }
+            for source_field, target_field in field_mappings.items():
+                try:
+                    # Ensure the data is converted to float.
+                    series = ts[source_field].astype(float)
+                except Exception as conv_err:
+                    logger.error(
+                        f"Error converting {source_field} to float for code {self.code}: {conv_err}"
+                    )
+                    continue
+
+                # Update the timeseries data.
+                self.ts(field=target_field).data = series
+                logger.debug(
+                    f"Set timeseries field {target_field} for code {self.code}"
+                )
+
+                # For PX_LAST, update the TP (timepoint) value and calculate performance.
+                if target_field == "PX_LAST":
+                    last_value = series.iloc[-1]
+                    self.tp(field=target_field).data = last_value
+                    logger.debug(
+                        f"Set timepoint {target_field} (last value: {last_value}) for code {self.code}"
+                    )
+
+                    # Calculate and update performance metrics.
+                    performance = get_performance(px_last=series)
+                    for perf_field, perf_value in performance.items():
+                        self.tp(field=perf_field).data = float(perf_value)
+                        logger.debug(
+                            f"Set performance field {perf_field} to {perf_value} for code {self.code}"
+                        )
+
+                logger.info(
+                    f"Successfully updated {target_field} for metadata code: {self.code}"
+                )
 
     def ts(self, field: str = "PX_LAST") -> "TimeSeries":
         if not self.id:
