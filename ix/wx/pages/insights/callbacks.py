@@ -1,21 +1,44 @@
 import json
 import base64
+import logging
 from datetime import datetime
 from bson import ObjectId
+from typing import Any, List, Tuple, Optional
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import html, callback, Input, Output, State, ALL
+from dash import html, callback, Input, Output, State, ALL, no_update
 from dash.exceptions import PreventUpdate
 
-# External modules—ensure these are installed and in your PYTHONPATH.
 from ix.db.client import get_insights
 from ix.db.conn import Insight
 from ix.db.boto import Boto
 from ix.misc import PDFSummarizer, Settings
 
-# Import helper function from our helpers module.
 from .helpers import create_insight_card
+
+# Configure logging.
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def remove_deleted_insight(current_data: List[str], insight_id: str) -> List[str]:
+    """Removes the deleted insight from the current data list."""
+    updated_insights = []
+    for insight_json in current_data:
+        insight = json.loads(insight_json)
+        if str(insight.get("id")) != insight_id:
+            updated_insights.append(insight_json)
+    return updated_insights
+
+
+def delete_insight_backend(insight: dict) -> None:
+    """Attempts deletion in the backend for a given insight."""
+    try:
+        Insight.find_one(Insight.id == ObjectId(insight.get("id"))).delete().run()
+    except Exception as e:
+        logger.error(f"Error deleting insight with id {insight.get('id')}: {e}")
+
 
 # ----------------------------------------------------------------------
 # Combined Callback: Fetch (Load/Search) and Delete Insights
@@ -27,71 +50,62 @@ from .helpers import create_insight_card
     Input("load-more-insights", "n_clicks"),
     Input("search-button", "n_clicks"),
     Input("insights-search", "n_submit"),
-    Input({'type': 'delete-insight-button', 'index': ALL}, 'n_clicks'),
+    Input({"type": "delete-insight-button", "index": ALL}, "n_clicks"),
     State("insights-data", "data"),
     State("total-insights-loaded", "data"),
     State("search-query", "data"),
     State("insights-search", "value"),
 )
 def combined_fetch_delete_callback(
-    load_clicks,
-    search_clicks,
-    search_submit,
-    delete_clicks,
-    current_data,
-    total_loaded,
-    search_query,
-    search_value,
+    load_clicks: Optional[int],
+    search_clicks: Optional[int],
+    search_submit: Optional[int],
+    delete_clicks: List[Optional[int]],
+    current_data: List[str],
+    total_loaded: int,
+    search_query: str,
+    search_value: Optional[str],
 ):
+    """
+    Depending on which input triggered the callback, either fetch new insights, load more insights,
+    or delete an insight.
+    """
     ctx = dash.callback_context
-
-    # Determine which input triggered the callback.
     if ctx.triggered:
         triggered_prop = ctx.triggered[0]["prop_id"]
-        trigger_id = triggered_prop.split(".")[0]
     else:
-        # On initial page load, treat as a search load.
-        trigger_id = "initial"
+        triggered_prop = "initial"
 
     # ----- Deletion Branch -----
-    if ctx.triggered and "delete-insight-button" in triggered_prop:
+    if "delete-insight-button" in triggered_prop:
         try:
-            # Extract the insight id from the triggered delete button.
-            triggered_id = json.loads(triggered_prop.split(".")[0])
+            triggered_id = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])
             insight_id = str(triggered_id["index"])
         except Exception:
             raise PreventUpdate
 
-        updated_insights = []
-        insight_found = None
+        # Remove the insight from the current data.
+        updated_insights = remove_deleted_insight(current_data, insight_id)
 
-        # Remove the deleted insight from the current store.
+        # Find the insight to delete in the current data.
         for insight_json in current_data:
             insight = json.loads(insight_json)
             if str(insight.get("id")) == insight_id:
-                insight_found = insight
-            else:
-                updated_insights.append(insight_json)
-
-        # Attempt deletion in the backend if the insight was found.
-        if insight_found:
-            try:
-                print(insight_found)
-                # Example deletion call – adjust as needed.
-                Insight.find_one(Insight.id == ObjectId(insight_found.get("id"))).delete().run()
-            except Exception as e:
-                print(f"Error deleting insight with id {insight_id}: {e}")
+                delete_insight_backend(insight)
+                break
 
         new_total = total_loaded - 1 if total_loaded > 0 else 0
-        # For deletion, we leave the search query unchanged.
-        return updated_insights, new_total, dash.no_update
+        return updated_insights, new_total, no_update
 
     # ----- Fetch/Load/Search Branch -----
-    # For initial load, search-button, or search submission, reset the data.
-    if trigger_id in ["search-button", "insights-search", "initial"]:
+    if (
+        triggered_prop.startswith("search-button")
+        or triggered_prop.startswith("insights-search")
+        or triggered_prop == "initial"
+    ):
         search_query = search_value or ""
         skip = 0
-    elif trigger_id == "load-more-insights":
+    elif triggered_prop.startswith("load-more-insights"):
         skip = total_loaded or 0
     else:
         skip = 0
@@ -100,13 +114,17 @@ def combined_fetch_delete_callback(
     new_insights = get_insights(search=search_query, skip=skip, limit=limit)
 
     if not new_insights:
-        if trigger_id == "load-more-insights":
+        if triggered_prop.startswith("load-more-insights"):
             raise PreventUpdate
-        new_serialized = []
+        new_serialized: List[str] = []
     else:
         new_serialized = [insight.model_dump_json() for insight in new_insights]
 
-    if trigger_id in ["search-button", "insights-search", "initial"]:
+    if (
+        triggered_prop.startswith("search-button")
+        or triggered_prop.startswith("insights-search")
+        or triggered_prop == "initial"
+    ):
         updated_data = new_serialized
         new_total = len(new_serialized)
     else:
@@ -115,6 +133,7 @@ def combined_fetch_delete_callback(
 
     return updated_data, new_total, search_query
 
+
 # ----------------------------------------------------------------------
 # Callback: Update Insight Cards
 # ----------------------------------------------------------------------
@@ -122,7 +141,8 @@ def combined_fetch_delete_callback(
     Output("insights-container-wrapper", "children"),
     Input("insights-data", "data"),
 )
-def update_insights_cards(insights_data):
+def update_insights_cards(insights_data: List[str]) -> Any:
+    """Updates the UI cards based on insights data."""
     if not insights_data:
         return dbc.Alert(
             "No insights available.", color="info", className="text-center"
@@ -137,6 +157,7 @@ def update_insights_cards(insights_data):
             className="text-center",
         )
 
+
 # ----------------------------------------------------------------------
 # Callback: PDF Upload Processing
 # ----------------------------------------------------------------------
@@ -148,8 +169,14 @@ def update_insights_cards(insights_data):
     State("upload-pdf", "last_modified"),
     prevent_initial_call=True,
 )
-def process_pdf_upload(content, filename, last_modified):
-    if content is None:
+def process_pdf_upload(
+    content: Optional[str], filename: Optional[str], last_modified: Optional[float]
+) -> Tuple[Any, Optional[str]]:
+    """
+    Processes a PDF upload, validates the file format and filename,
+    uploads the PDF, and returns a success or error message.
+    """
+    if content is None or filename is None or last_modified is None:
         raise PreventUpdate
     try:
         content_type, content_string = content.split(",")
@@ -174,14 +201,12 @@ def process_pdf_upload(content, filename, last_modified):
             published_date=published_date, issuer=issuer, name=name
         ).create()
         filename_pdf = f"{insight.id}.pdf"
-        Boto().save_pdf(pdf_content=decoded, filename=filename_pdf)
-        insight.set(
-            {
-                "summary": PDFSummarizer(Settings.openai_secret_key).process_insights(
-                    Boto().get_pdf(filename=filename_pdf)
-                )
-            }
-        )
+        boto_instance = Boto()
+        boto_instance.save_pdf(pdf_content=decoded, filename=filename_pdf)
+        summarizer = PDFSummarizer(Settings.openai_secret_key)
+        pdf_content = boto_instance.get_pdf(filename=filename_pdf)
+        summary_text = summarizer.process_insights(pdf_content)
+        insight.set({"summary": summary_text})
         return (
             html.Div(
                 [
@@ -200,6 +225,7 @@ def process_pdf_upload(content, filename, last_modified):
             None,
         )
     except Exception as e:
+        logger.exception("Error processing PDF upload")
         return (
             html.Div(
                 [
@@ -209,6 +235,7 @@ def process_pdf_upload(content, filename, last_modified):
             ),
             None,
         )
+
 
 # ----------------------------------------------------------------------
 # Callback: Modal Display
@@ -221,14 +248,23 @@ def process_pdf_upload(content, filename, last_modified):
     State("insight-modal", "is_open"),
     State("insights-data", "data"),
 )
-def display_modal(n_clicks_list, close_n, is_open, insights_data):
+def display_modal(
+    n_clicks_list: List[Optional[int]],
+    close_n: Optional[int],
+    is_open: bool,
+    insights_data: List[str],
+) -> Tuple[bool, Any]:
+    """
+    Opens the modal to display an insight summary when a card is clicked,
+    and closes the modal when the close button is clicked.
+    """
     ctx = dash.callback_context
     if not ctx.triggered:
         raise PreventUpdate
 
     triggered = ctx.triggered[0]
     if "close-modal" in triggered["prop_id"]:
-        return False, dash.no_update
+        return False, no_update
 
     if not any(n_clicks_list):
         raise PreventUpdate
@@ -237,7 +273,7 @@ def display_modal(n_clicks_list, close_n, is_open, insights_data):
         triggered_id = json.loads(triggered["prop_id"].split(".")[0])
         card_index = triggered_id["index"]
     except Exception:
-        return is_open, dash.no_update
+        return is_open, no_update
 
     summary_text = "No summary available."
     for insight_json in insights_data:

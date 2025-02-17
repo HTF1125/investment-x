@@ -2,6 +2,7 @@ from dash import dcc, html, callback, Output, Input, State
 import dash_bootstrap_components as dbc
 import pandas as pd
 import io, base64
+from ix.db import Metadata, TimeSeries
 from ix.misc.email import EmailSender
 from ix.misc.settings import Settings
 from ix.misc.terminal import get_logger
@@ -102,18 +103,38 @@ def update_output(contents, filename):
         # Upload cleaned data
         upload_bbg_data(data)
 
-        # Prepare and send the email with the updated Excel file attached
-        # email_sender = EmailSender(
-        #     to=", ".join(Settings.email_recipients),
-        #     subject="[IX] Daily Data Share",
-        #     content="Please find the attached Excel file with the latest data and added sheet.",
-        # )
-        # email_sender.attach(in_file, filename=filename)
-        # email_sender.send()
+        datas = []
 
-        # logger.info(
-        #     f"Email sent successfully to {', '.join(Settings.email_recipients)}"
-        # )
+        for metadata in Metadata.find().run():
+            for ts in TimeSeries.find_many({"meta_id": str(metadata.id)}).run():
+                if ts.field in [
+                    "PX_OPEN",
+                    "PX_HIGH",
+                    "PX_LOW",
+                    "PX_VOLUME",
+                    "PX_CLOSE",
+                ]:
+                    continue
+                data = ts.data
+                data.name = f"{metadata.code}:{ts.field}"
+                datas.append(data.loc["2023":])
+        datas = pd.concat(datas, axis=1)
+
+        # Prepare and send the email with the updated Excel file attached
+        email_sender = EmailSender(
+            to=", ".join(Settings.email_recipients),
+            subject="[IX] Daily Data Share",
+            content="Please find the attached Excel file with the latest data and added sheet.",
+        )
+
+        file = io.BytesIO()
+        datas.to_csv(file)
+        email_sender.attach(file, filename="datas.csv")
+        email_sender.send()
+
+        logger.info(
+            f"Email sent successfully to {', '.join(Settings.email_recipients)}"
+        )
         return html.Div(
             [html.P(f"File '{filename}' uploaded successfully, updated, and emailed!")]
         )

@@ -176,7 +176,7 @@ class TimeSeries(Document):
             data = data[valid_dates.notna()]
             data.index = pd.to_datetime(data.index)
             self.set({"i_data" : data.to_dict()})
-        return data
+        return data.sort_index()
 
     @data.setter
     def data(self, data: Union[pd.Series, Dict[date, float]]) -> None:

@@ -13,9 +13,11 @@ dash.register_page(__name__, path="/signin", title="Sign In", name="Sign In")
 # Initialize password hashing context
 crypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify that the provided password matches the stored hash."""
     return crypt_context.verify(plain_password, hashed_password)
+
 
 def authenticate_user(username: str, password: str):
     """Fetch the user and verify credentials."""
@@ -24,12 +26,14 @@ def authenticate_user(username: str, password: str):
         return None
     return user
 
+
 def create_access_token(data: dict) -> str:
     """Create a JWT access token with an expiration time."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=Settings.access_token_expire_minutes)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, Settings.secret_key, algorithm=Settings.algorithm)
+
 
 # Revised layout with full viewport height, enhanced design, and a taller login card
 layout = dbc.Container(
@@ -52,16 +56,26 @@ layout = dbc.Container(
                             html.Div(
                                 [
                                     # Optional logo; replace with your logo path if needed
-                                    html.Img(src="/assets/images/investment-x-logo-dark.svg", height="15px", className="mb-3"),
-                                    html.H2("Welcome Back", className="text-center mb-4", style={"fontWeight": "bold"}),
+                                    html.Img(
+                                        src="/assets/images/investment-x-logo-dark.svg",
+                                        height="15px",
+                                        className="mb-3",
+                                    ),
+                                    html.H2(
+                                        "Welcome Back",
+                                        className="text-center mb-4",
+                                        style={"fontWeight": "bold"},
+                                    ),
                                 ],
-                                className="text-center"
+                                className="text-center",
                             ),
                             dbc.Form(
                                 [
                                     html.Div(
                                         [
-                                            dbc.Label("Username", html_for="username-input"),
+                                            dbc.Label(
+                                                "Username", html_for="username-input"
+                                            ),
                                             dbc.Input(
                                                 type="text",
                                                 id="username-input",
@@ -70,11 +84,13 @@ layout = dbc.Container(
                                                 style={"borderRadius": "0.5rem"},
                                             ),
                                         ],
-                                        className="mb-3"
+                                        className="mb-3",
                                     ),
                                     html.Div(
                                         [
-                                            dbc.Label("Password", html_for="password-input"),
+                                            dbc.Label(
+                                                "Password", html_for="password-input"
+                                            ),
                                             dbc.Input(
                                                 type="password",
                                                 id="password-input",
@@ -83,7 +99,7 @@ layout = dbc.Container(
                                                 style={"borderRadius": "0.5rem"},
                                             ),
                                         ],
-                                        className="mb-3"
+                                        className="mb-3",
                                     ),
                                     dbc.Button(
                                         "Sign In",
@@ -91,7 +107,10 @@ layout = dbc.Container(
                                         color="primary",
                                         className="w-100 mt-3",
                                         n_clicks=0,
-                                        style={"borderRadius": "0.5rem", "padding": "0.75rem"},
+                                        style={
+                                            "borderRadius": "0.5rem",
+                                            "padding": "0.75rem",
+                                        },
                                     ),
                                 ]
                             ),
@@ -103,7 +122,14 @@ layout = dbc.Container(
                             html.Div(
                                 [
                                     html.Span("Don't have an account? "),
-                                    html.A("Sign Up", href="/signup", style={"textDecoration": "none", "fontWeight": "bold"}),
+                                    html.A(
+                                        "Sign Up",
+                                        href="/signup",
+                                        style={
+                                            "textDecoration": "none",
+                                            "fontWeight": "bold",
+                                        },
+                                    ),
                                 ],
                                 className="text-center mt-3",
                             ),
@@ -114,7 +140,7 @@ layout = dbc.Container(
                             "flexDirection": "column",
                             "justifyContent": "center",
                             "height": "100%",
-                        }
+                        },
                     ),
                     className="shadow-lg",
                     style={
@@ -122,14 +148,19 @@ layout = dbc.Container(
                         "maxWidth": "400px",
                         "width": "100%",
                         "minWidth": "350px",
-                        "minHeight": "500px"  # Increases the card height
+                        "minHeight": "500px",  # Increases the card height
                     },
                 ),
-                xs=12, sm=8, md=6, lg=4, xl=4,
+                xs=12,
+                sm=8,
+                md=6,
+                lg=4,
+                xl=4,
             ),
         ),
     ],
 )
+
 
 @callback(
     [
@@ -159,7 +190,11 @@ def handle_signin(n_clicks, username, password, current_pathname, token):
         return dash.no_update, dash.no_update, dash.no_update
 
     if not username or not password:
-        return dash.no_update, dash.no_update, "Please enter both username and password."
+        return (
+            dash.no_update,
+            dash.no_update,
+            "Please enter both username and password.",
+        )
 
     user = authenticate_user(username, password)
     if user:

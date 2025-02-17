@@ -9,7 +9,9 @@ register_page(__name__, path="/strategies", title="Strategies Performance")
 strategy_classes = strategy.all_strategies()
 
 # Build dropdown options and a mapping from strategy name to class.
-strategy_options = [{"label": s.__name__, "value": s.__name__} for s in strategy_classes]
+strategy_options = [
+    {"label": s.__name__, "value": s.__name__} for s in strategy_classes
+]
 strategy_mapping = {s.__name__: s for s in strategy_classes}
 
 # Define the layout for the page.
@@ -28,6 +30,7 @@ layout = html.Div(
     style={"textAlign": "center"},
 )
 
+
 @callback(
     Output("strategy-graph", "figure"),
     Input("strategy-dropdown", "value"),
@@ -36,12 +39,14 @@ def update_graph(selected_strategy_name):
     if not selected_strategy_name:
         # If no strategy is selected, return an empty figure.
         import plotly.graph_objects as go
+
         return go.Figure()
 
     # Retrieve the strategy class for the selected strategy.
     strat_class = strategy_mapping.get(selected_strategy_name)
     if not strat_class:
         import plotly.graph_objects as go
+
         return go.Figure()
 
     # Instantiate the strategy and run the simulation.

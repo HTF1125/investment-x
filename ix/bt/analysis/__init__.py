@@ -8,7 +8,7 @@ from ix.db import get_timeseries
 
 class UsDollarAndFed:
     def __init__(self) -> None:
-        self.dollar = get_timeseries(code="^DXY", field="PX_LAST", name="Dollar")
+        self.dollar = get_timeseries(code="DXY Index", field="PX_LAST", name="Dollar")
         self.ff1 = get_timeseries(code="FF1 Comdty", field="PX_LAST", name="FF1")
         self.ff12 = get_timeseries(code="FF12 Comdty", field="PX_LAST", name="FF12")
 
@@ -132,12 +132,12 @@ class PMIs_US:
     def __init__(self) -> None:
         # Retrieve the two PMI series.
         self.us_manu = get_timeseries(
-            code="^NAPMPMI",
+            code="NAPMPMI Index",
             field="PX_LAST",
             name="US Manufacturing PMI",
         )
         self.us_serv = get_timeseries(
-            code="^NAPMNMI",
+            code="NAPMNMI Index",
             field="PX_LAST",
             name="US Services PMI",
         )
@@ -279,8 +279,3 @@ class PMIs_US:
         )
 
         return fig
-
-
-
-
-
