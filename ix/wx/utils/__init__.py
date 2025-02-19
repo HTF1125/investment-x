@@ -25,3 +25,4 @@ def get_user_from_token(token_data: dict) -> Optional[User]:
     except Exception as e:
         print(f"Error decoding token: {e}")
         return None
+

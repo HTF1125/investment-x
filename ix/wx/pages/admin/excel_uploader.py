@@ -1,27 +1,29 @@
-from dash import dcc, html, callback, Output, Input, State
+from dash import dcc, html, callback, Output, Input, State, set_props
 import dash_bootstrap_components as dbc
 import pandas as pd
 import io, base64
-from ix.db import Metadata, TimeSeries
+import diskcache
+from ix.db import Metadata, TimeSeries  # Assuming these are your data models
 from ix.misc.email import EmailSender
 from ix.misc.settings import Settings
 from ix.misc.terminal import get_logger
+from dash.long_callback import DiskcacheManager
 
 logger = get_logger(__name__)
 
-# Layout wrapped in a Card for a polished look.
+# Initialize cache for background callbacks
+cache = diskcache.Cache("./cache")
+manager = DiskcacheManager(cache)
+
+# -------------------------------- Layout ---------------------------------------
 layout = dbc.Container(
     fluid=True,
-    style={
-        "backgroundColor": "transparent",
-        "color": "#f8f9fa",
-        "padding": "10px",
-    },
+    style={"backgroundColor": "#121212", "color": "#f8f9fa", "padding": "20px"},
     children=[
         dbc.Card(
             className="shadow rounded-3 w-100",
             style={
-                "backgroundColor": "transparent",
+                "backgroundColor": "#1e1e1e",
                 "border": "1px solid #f8f9fa",
                 "boxShadow": "2px 2px 5px rgba(0,0,0,0.5)",
                 "marginBottom": "1rem",
@@ -37,11 +39,7 @@ layout = dbc.Container(
                     },
                 ),
                 dbc.CardBody(
-                    style={
-                        "backgroundColor": "transparent",
-                        "color": "#f8f9fa",
-                        "padding": "1.5rem",
-                    },
+                    style={"backgroundColor": "#1e1e1e", "color": "#f8f9fa"},
                     children=[
                         dcc.Upload(
                             id="upload-data",
@@ -57,20 +55,16 @@ layout = dbc.Container(
                                 "borderRadius": "5px",
                                 "textAlign": "center",
                                 "margin": "10px 0",
-                                "backgroundColor": "transparent",
+                                "backgroundColor": "#282828",
                                 "color": "#f8f9fa",
                             },
                             multiple=False,
                         ),
-                        # Wrap the upload message in a loading container
                         dcc.Loading(
                             id="loading-upload",
                             type="default",
-                            # Set style to ensure the spinner appears within the same section
-                            style={"width": "100%"},
                             children=html.Div(
-                                id="output-message",
-                                style={"marginTop": "10px"},
+                                id="output-message", style={"marginTop": "10px"}
                             ),
                         ),
                         html.Hr(),
@@ -80,14 +74,11 @@ layout = dbc.Container(
                             color="primary",
                             className="mt-2",
                         ),
-                        # Wrap the email message in a loading container
                         dcc.Loading(
                             id="loading-email",
                             type="default",
-                            style={"width": "100%"},
                             children=html.Div(
-                                id="output-email-message",
-                                style={"marginTop": "10px"},
+                                id="output-email-message", style={"marginTop": "10px"}
                             ),
                         ),
                     ],
@@ -97,109 +88,104 @@ layout = dbc.Container(
     ],
 )
 
+# ------------------------------ Callbacks ----------------------------------
+
+
+def parse_uploaded_file(contents):
+    """Parses the uploaded Excel file."""
+    try:
+        _, content_string = contents.split(",", 1)
+        decoded = base64.b64decode(content_string)
+        in_file = io.BytesIO(decoded)
+        data = pd.read_excel(
+            in_file, sheet_name="Data", parse_dates=True, index_col=[0]
+        ).dropna(how="all")
+        return data
+    except Exception as e:
+        logger.error(f"Error processing Excel file: {e}", exc_info=True)
+        return None
+
 
 @callback(
     Output("output-message", "children"),
     Input("upload-data", "contents"),
     State("upload-data", "filename"),
+    background=True,
+    manager=manager,
+    prevent_initial_call=True,
+    running=[(Output("output-message", "children"), "Uploading and processing...", "")],
 )
-def update_output(contents, filename):
-    """
-    Process the uploaded Excel file by reading its 'Data' sheet,
-    uploading data to Bloomberg, and adding a new sheet 'DataV'
-    to the original workbook. The modified workbook is then emailed.
-    """
+def process_uploaded_file(contents, filename):
     if not contents:
-        return ""
+        return "No file uploaded."
+
+    data = parse_uploaded_file(contents)
+    if data is None:
+        return html.Div("Error: Could not read 'Data' sheet.")
 
     try:
-        # Decode the base64 content and create an in-memory file
-        header, content_string = contents.split(",", 1)
-        decoded = base64.b64decode(content_string)
-        in_file = io.BytesIO(decoded)
-
-        # Read the 'Data' sheet using pandas
-        data = pd.read_excel(
-            in_file, sheet_name="Data", parse_dates=True, index_col=[0]
-        ).dropna(how="all")
-
-        # Upload cleaned data
         upload_bbg_data(data)
-
-        logger.info("Files uploaded Successfully")
-        return html.Div([html.P(f"File '{filename}' uploaded successfully")])
-
+        logger.info("File processed successfully")
+        return html.Div(f"File '{filename}' uploaded and processed successfully")
     except Exception as e:
-        logger.error(f"Failed to process and send email: {str(e)}", exc_info=True)
-        return html.Div(f"Error processing file: {str(e)}")
+        logger.error(f"Upload Error: {e}", exc_info=True)
+        return html.Div(f"Error uploading data: {str(e)}")
 
 
 @callback(
     Output("output-email-message", "children"),
     Input("send-email-btn", "n_clicks"),
+    background=True,
+    manager=manager,
+    prevent_initial_call=True,
+    running=[(Output("send-email-btn", "disabled"), True, False)],
 )
 def send_email_callback(n_clicks):
-    """
-    Retrieve the latest time series data, prepare a CSV file, and send an email.
-    This is triggered when the "Send Email" button is clicked.
-    """
     if not n_clicks:
         return ""
 
     try:
-        datas = []
-        for metadata in Metadata.find().run():
-            for ts in TimeSeries.find_many({"meta_id": str(metadata.id)}).run():
-                if ts.field in [
-                    "PX_OPEN",
-                    "PX_HIGH",
-                    "PX_LOW",
-                    "PX_VOLUME",
-                    "PX_CLOSE",
-                ]:
-                    continue
-                ts_data = ts.data
-                ts_data.name = f"{metadata.code}:{ts.field}"
-                datas.append(ts_data.loc["2023":])
-                logger.debug(f"{metadata.code} - {ts.field} added.")
-        if not datas:
-            return html.Div("No data available to send.")
-        datas = pd.concat(datas, axis=1)
-
         email_sender = EmailSender(
             to=", ".join(Settings.email_recipients),
             subject="[IX] Daily Data Share",
             content="Please find the attached CSV file with the latest data.",
         )
 
+        data_list = [
+            ts.data
+            for metadata in Metadata.find().run()
+            for ts in TimeSeries.find_many({"meta_id": str(metadata.id)}).run()
+            if ts.field not in ["PX_OPEN", "PX_HIGH", "PX_LOW", "PX_VOLUME", "PX_CLOSE"]
+        ]
+        if not data_list:
+            return html.Div("No data available to send.")
+
+        datas = pd.concat(data_list, axis=1)
         file = io.BytesIO()
         datas.to_csv(file)
         file.seek(0)
         email_sender.attach(file, filename="datas.csv")
         email_sender.send()
-
-        logger.info(
-            f"Email sent successfully to {', '.join(Settings.email_recipients)}"
-        )
         return html.Div("Data email sent successfully!")
     except Exception as e:
-        logger.error(f"Failed to send data email: {str(e)}", exc_info=True)
+        logger.error(f"Email sending error: {e}", exc_info=True)
         return html.Div(f"Error sending email: {str(e)}")
 
 
-def upload_bbg_data(data: pd.DataFrame) -> bool:
+def upload_bbg_data(data: pd.DataFrame):
+    """Uploads data to Bloomberg."""
     for ticker_field in data.columns:
-        ticker, field = str(ticker_field).split(":", maxsplit=2)
+        if ":" not in ticker_field:
+            logger.warning(f"Invalid format: {ticker_field}")
+            continue
+
+        ticker, field = map(str.strip, ticker_field.split(":", maxsplit=1))
         metadata = Metadata.find_one({"bbg_ticker": ticker}).run()
         if not metadata:
             metadata = Metadata(code=ticker, name="...", bbg_ticker=ticker).create()
 
-        try:
-            ts = data[ticker_field].dropna()
-            if ts.empty:
-                continue
+        ts = data[ticker_field].dropna()
+        if not ts.empty:
             metadata.ts(field=field).data = ts
-        except Exception as e:
-            logger.exception(e)
 
     return True

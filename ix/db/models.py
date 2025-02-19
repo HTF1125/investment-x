@@ -27,21 +27,6 @@ def get_performance(px_last: pd.Series) -> dict:
     return out
 
 
-class DataSource(Document):
-    meta_id: str
-    field: str
-    s_code: str
-    s_field: str
-    source: str = "YAHOO"
-
-
-class Source(BaseModel):
-    field: str
-    s_code: str
-    s_field: str
-    source: str = "YAHOO"
-
-
 from typing import Any
 
 
@@ -57,9 +42,9 @@ class Metadata(Document):
     yah_ticker: Any = None
     fre_ticker: Any = None
     ts_fields: List[str] = []
+    tp_fields: List[str] = []
 
     def update_px(self):
-
         if self.yah_ticker:
             ts = get_yahoo_data(code=self.yah_ticker)
             if ts.empty:
@@ -241,3 +226,106 @@ class Universe(Document):
     code: Annotated[str, Indexed(unique=True)]
     name: Optional[str] = None
     assets: List[Asset]
+
+
+class EconomicCalendar(Document):
+    date: str
+    time: str
+    event: str
+    zone: Optional[str] = None
+    currency: Optional[str] = None
+    importance: Optional[str] = None
+    actual: Optional[str] = None
+    forecast: Optional[str] = None
+    previous: Optional[str] = None
+
+
+class Book(BaseModel):
+    d: List[str] = []
+    v: List[float] = []
+    l: List[float] = []
+    b: List[float] = []
+    s: List[Dict[str, float]] = []
+    c: List[Dict[str, float]] = []
+    w: List[Dict[str, float]] = []
+    a: List[Dict[str, float]] = []
+
+
+class StrategyKeyInfo(Document):
+    code: Annotated[str, Indexed(unique=True)]
+    frequency: str = "ME"
+    last_updated: Optional[str] = None
+    ann_return: Optional[float] = None
+    ann_volatility: Optional[float] = None
+    nav_history: Optional[List[float]] = None
+    book: Book = Book()
+
+
+class User(Document):
+    username: Annotated[str, Indexed(unique=True)]
+    password: str
+    disabled: bool = False
+    is_admin: bool = False
+
+    def verify_password(self, password):
+        return self.password == password
+
+    @classmethod
+    def get_user(cls, username) -> Optional["User"]:
+        return cls.find_one(cls.username == username).run()
+
+    @classmethod
+    def new_user(cls, username: str, password: str) -> "User":
+        return cls(username=username, password=password).create()
+
+    @classmethod
+    def exists(cls, username: str) -> bool:
+        user = cls.get_user(username=username)
+        if user:
+            return True
+        return False
+
+
+class Insight(Document):
+    """
+    Represents an insight with metadata, while the actual file content is stored in GridFS.
+    """
+
+    issuer: str = "Unnamed"
+    name: str = "Unnamed"
+    published_date: date = Field(default_factory=date.today)
+    summary: Optional[str] = None
+
+    def save_content(self, content: bytes) -> bool:
+        """
+        Saves the given content in chunks of 10MB.
+        Each chunk is stored as a separate InsightContent document.
+        """
+        from .boto import Boto
+
+        return Boto().save_pdf(pdf_content=content, filename=f"{self.id}.pdf")
+
+    def get_content(self) -> bytes:
+        """
+        Saves the given content in chunks of 10MB.
+        Each chunk is stored as a separate InsightContent document.
+        """
+        from .boto import Boto
+
+        return Boto().get_pdf(filename=f"{self.id}.pdf")
+
+
+class TacticalView(Document):
+    # Define the fields for the document
+    views: dict
+    published_date: (
+        datetime  # Declare published_date as a datetime field, no DateTimeField
+    )
+
+    # Optionally, add a pre-save hook to modify the document before saving it
+    @classmethod
+    def pre_save(cls, document):
+        # Automatically set the published_date if not set
+        if not document.published_date:
+            document.published_date = datetime.now()
+        return document

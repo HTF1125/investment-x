@@ -7,6 +7,8 @@ from ix.wx.components.navbar import navbar
 
 logger = ix.misc.get_logger("InvestmentX")
 
+
+
 # Initialize the Dash app with dark mode (using the DARKLY theme)
 app = Dash(
     __name__,

@@ -5,8 +5,9 @@ import json
 import pandas as pd
 
 # Import your specific modules
-from ix.bt.analysis.performance import Performance
+from ix.bt.analysis.performance import performance_fig
 from ix import db
+
 
 # Global list of periods
 periods = ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "MTD", "YTD"]
@@ -54,7 +55,10 @@ layout = dbc.Container(
                                     [
                                         dbc.Button(
                                             period,
-                                            id={"type": "period-button", "period": period},
+                                            id={
+                                                "type": "period-button",
+                                                "period": period,
+                                            },
                                             n_clicks=0,
                                             style={
                                                 "backgroundColor": "transparent",
@@ -113,11 +117,9 @@ layout = dbc.Container(
     style={"backgroundColor": "transparent"},
 )
 
+
 # --- Callback 1: Refresh Performance Data ---
-@callback(
-    Output("performance-store", "data"),
-    Input("refresh-interval", "n_intervals")
-)
+@callback(Output("performance-store", "data"), Input("refresh-interval", "n_intervals"))
 def refresh_data(n_intervals):
     """
     This callback refreshes performance data every 5 minutes.
@@ -148,6 +150,7 @@ def refresh_data(n_intervals):
             data[universe].append(perf)
     return data
 
+
 # --- Callback 2: Update Graphs Based on Selected Period ---
 @callback(
     Output("performance-graphs-container", "children"),
@@ -167,7 +170,9 @@ def update_graphs(n_clicks_list, data):
     for t in ctx.triggered:
         if "period-button" in t["prop_id"]:
             try:
-                selected_period = json.loads(t["prop_id"].split(".")[0]).get("period", "1D")
+                selected_period = json.loads(t["prop_id"].split(".")[0]).get(
+                    "period", "1D"
+                )
                 break
             except (json.JSONDecodeError, KeyError):
                 selected_period = "1D"
@@ -180,9 +185,7 @@ def update_graphs(n_clicks_list, data):
         performance_data = performance_data.set_index("name")
         if selected_period not in performance_data.columns:
             continue
-
-        performance_instance = Performance(performance_data[selected_period])
-        fig = performance_instance.plot()
+        fig = performance_fig(performance_data[selected_period].copy())
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
@@ -218,6 +221,7 @@ def update_graphs(n_clicks_list, data):
         )
     return graph_divs
 
+
 # --- Callback 3: Update Period Button Styles ---
 @callback(
     Output({"type": "period-button", "period": ALL}, "style"),
@@ -229,13 +233,17 @@ def update_button_styles(n_clicks_list):
         active_period = "1D"
     else:
         try:
-            active_period = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])["period"]
+            active_period = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])[
+                "period"
+            ]
         except Exception:
             active_period = "1D"
     return [
         {
             "backgroundColor": "transparent",
-            "border": "2px solid #f8f9fa" if period == active_period else "1px solid #f8f9fa",
+            "border": (
+                "2px solid #f8f9fa" if period == active_period else "1px solid #f8f9fa"
+            ),
             "padding": "0.5rem",
             "margin": "0.25rem",
             "color": "#f8f9fa",

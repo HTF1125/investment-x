@@ -2,18 +2,14 @@ import dash
 
 from dash import html
 import dash_bootstrap_components as dbc
+
 # from ix.wx.components import technical
 from ix.wx.pages.dashboard import performance
 from ix.wx.pages.dashboard import commentary
 from ix.wx.pages.dashboard import technical
 
 # Register Page
-dash.register_page(
-    __name__,
-    path="/",
-    title="Dashboard",
-    name="Dashboard"
-)
+dash.register_page(__name__, path="/", title="Dashboard", name="Dashboard")
 
 # Wrap the four sections in a flex container with a small gap.
 layout = dbc.Container(
@@ -26,7 +22,7 @@ layout = dbc.Container(
         html.Div(
             children=[
                 performance.layout,
-                technical.get_layout(),
+                technical.layout,
                 commentary.layout,
             ],
             style={

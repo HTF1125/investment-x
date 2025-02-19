@@ -1,4 +1,3 @@
-import dash
 from dash import dcc, html, Input, Output, callback
 import dash_bootstrap_components as dbc
 from datetime import datetime, timedelta
@@ -57,12 +56,40 @@ def update_dashboard(asset, start_date, end_date):
         return empty_fig, empty_fig
 
 
-def get_layout():
-    return dbc.Container(
+css = """
+.technical-asset-select {
+    background-color: #212529;
+    color: #f8f9fa;
+    border: 1px solid #6c757d;
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    outline: none;
+    box-shadow: none;
+    appearance: none;
+    cursor: pointer;
+    font-size: 1rem;
+    width: 100%;
+    height: 2.5rem;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.technical-asset-select:hover {
+    background-color: #343a40;
+}
+
+.technical-asset-select:focus {
+    background-color: #495057;
+    border-color: #adb5bd;
+}
+"""
+
+
+layout = dbc.Container(
         fluid=True,
         className="py-3",
         style={"backgroundColor": "transparent", "color": "#f8f9fa"},
         children=[
+            html.Meta(name="style", content=css),
             dbc.Card(
                 className="shadow rounded-3 w-100",
                 style={
@@ -87,13 +114,7 @@ def get_layout():
                                             {"label": "SPY", "value": "SPY US Equity"},
                                         ],
                                         value="IAU US Equity",
-                                        style={
-                                            "backgroundColor": "transparent",
-                                            "color": "#f8f9fa",
-                                            "border": "1px solid #f8f9fa",
-                                            "borderRadius": "4px",
-                                            "padding": "0.25rem 0.5rem",
-                                        },
+                                        className="technical-asset-select",
                                     ),
                                     width="auto",
                                 ),
@@ -205,6 +226,6 @@ def get_layout():
                         ],
                     ),
                 ],
-            )
+            ),
         ],
     )

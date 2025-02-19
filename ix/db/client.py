@@ -1,4 +1,3 @@
-import functools
 from typing import Union, List, Set, Tuple, Dict, Optional
 import pandas as pd
 import re
@@ -8,7 +7,7 @@ import base64
 from bson import ObjectId
 
 from ix.misc import get_logger
-from .models import Metadata
+from .models import Metadata, Universe
 from .conn import Insight
 from .boto import Boto
 
@@ -16,7 +15,6 @@ from .boto import Boto
 logger = get_logger(__name__)
 
 
-@functools.lru_cache(maxsize=128)
 def get_timeseries(
     code: str,
     field: str = "PX_LAST",
@@ -60,7 +58,6 @@ def get_px_last(codes: List[str]) -> pd.DataFrame:
     return get_ts(*[{"code": code, "field": "PX_LAST", "name": code} for code in codes])
 
 
-@functools.lru_cache(maxsize=128)
 def get_insight_by_id(id: str) -> Insight:
     """
     Retrieves an insight by its ID from the database.
@@ -87,10 +84,6 @@ def _get_insight_content_bytes(id: str) -> bytes:
     if content is None:
         raise ValueError("PDF content not found")
     return content
-
-
-# Cache the raw PDF bytes version
-_get_insight_content_bytes = functools.lru_cache(maxsize=128)(_get_insight_content_bytes)
 
 
 def get_insight_content(id: str) -> io.BytesIO:
@@ -269,3 +262,19 @@ def create_insight_with_pdf(base64_content: str, filename: str):
         return insight
     except Exception as e:
         raise Exception(f"Error creating insight from PDF: {str(e)}")
+
+
+def get_performances(universe: str = "LocalIndices", period: str = "1D") -> pd.Series:
+    """
+    Retrieve performance data for a given universe.
+    """
+    universe_obj = Universe.find_one({"code": universe}).run()
+    if not universe_obj:
+        raise ValueError(f"Universe {universe} not found.")
+    performance = {}
+    for asset in universe_obj.assets:
+        metadata = Metadata.find_one({"code": asset.code}).run()
+        if metadata is None:
+            continue
+        performance[asset.name] = metadata.tp(field=f"PCT_CHG_{period}").data
+    return pd.Series(performance)
