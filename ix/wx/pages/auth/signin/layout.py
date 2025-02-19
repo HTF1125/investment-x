@@ -35,7 +35,7 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, Settings.secret_key, algorithm=Settings.algorithm)
 
 
-# Revised layout with full viewport height, enhanced design, and a taller login card
+# Revised layout with dark theme, full viewport height, enhanced design, and a taller login card
 layout = dbc.Container(
     fluid=True,
     style={
@@ -43,7 +43,7 @@ layout = dbc.Container(
         "display": "flex",
         "justifyContent": "center",
         "alignItems": "center",
-        "background": "linear-gradient(135deg, #71b7e6, #9b59b6)",
+        "background": "linear-gradient(135deg, #2c3e50, #000000)",  # dark gradient background
     },
     children=[
         # Location for redirecting and a hidden store for the token
@@ -55,86 +55,114 @@ layout = dbc.Container(
                         [
                             html.Div(
                                 [
-                                    # Optional logo; replace with your logo path if needed
                                     html.Img(
-                                        src="/assets/images/investment-x-logo-dark.svg",
-                                        height="15px",
-                                        className="mb-3",
+                                        src="/assets/images/investment-x-logo-light.svg",
+                                        style={
+                                            "height": "15px",
+                                            "marginBottom": "1rem",
+                                        },
                                     ),
                                     html.H2(
                                         "Welcome Back",
-                                        className="text-center mb-4",
-                                        style={"fontWeight": "bold"},
+                                        style={
+                                            "fontWeight": "bold",
+                                            "textAlign": "center",
+                                            "marginBottom": "1.5rem",
+                                            "color": "#ffffff",
+                                        },
                                     ),
                                 ],
-                                className="text-center",
+                                style={"textAlign": "center"},
                             ),
                             dbc.Form(
                                 [
                                     html.Div(
                                         [
                                             dbc.Label(
-                                                "Username", html_for="username-input"
+                                                "Username",
+                                                html_for="username-input",
+                                                style={"color": "#ffffff"},
                                             ),
                                             dbc.Input(
                                                 type="text",
                                                 id="username-input",
                                                 placeholder="Enter your username",
                                                 required=True,
-                                                style={"borderRadius": "0.5rem"},
+                                                style={
+                                                    "borderRadius": "0.5rem",
+                                                    "backgroundColor": "#495057",
+                                                    "color": "#ffffff",
+                                                },
                                             ),
                                         ],
-                                        className="mb-3",
+                                        style={"marginBottom": "1.5rem"},
                                     ),
                                     html.Div(
                                         [
                                             dbc.Label(
-                                                "Password", html_for="password-input"
+                                                "Password",
+                                                html_for="password-input",
+                                                style={"color": "#ffffff"},
                                             ),
                                             dbc.Input(
                                                 type="password",
                                                 id="password-input",
                                                 placeholder="Enter your password",
                                                 required=True,
-                                                style={"borderRadius": "0.5rem"},
+                                                style={
+                                                    "borderRadius": "0.5rem",
+                                                    "backgroundColor": "#495057",
+                                                    "color": "#ffffff",
+                                                },
                                             ),
                                         ],
-                                        className="mb-3",
+                                        style={"marginBottom": "1.5rem"},
                                     ),
                                     dbc.Button(
                                         "Sign In",
                                         id="signin-button",
-                                        color="primary",
-                                        className="w-100 mt-3",
+                                        color="primary",  # You may change this if desired
                                         n_clicks=0,
                                         style={
                                             "borderRadius": "0.5rem",
                                             "padding": "0.75rem",
+                                            "width": "100%",
+                                            "marginTop": "1rem",
                                         },
                                     ),
                                 ]
                             ),
                             html.Div(
                                 id="signin-output",
-                                className="text-center mt-3",
-                                style={"color": "red"},
+                                style={
+                                    "color": "red",
+                                    "textAlign": "center",
+                                    "marginTop": "1rem",
+                                },
                             ),
                             html.Div(
                                 [
-                                    html.Span("Don't have an account? "),
+                                    html.Span(
+                                        "Don't have an account? ",
+                                        style={"color": "#ffffff"},
+                                    ),
                                     html.A(
                                         "Sign Up",
                                         href="/signup",
                                         style={
                                             "textDecoration": "none",
                                             "fontWeight": "bold",
+                                            "color": "#ffffff",
                                         },
                                     ),
                                 ],
-                                className="text-center mt-3",
+                                style={
+                                    "textAlign": "center",
+                                    "marginTop": "1rem",
+                                },
                             ),
                         ],
-                        # Center the card content vertically
+                        # Center the card content vertically and apply dark text colors
                         style={
                             "display": "flex",
                             "flexDirection": "column",
@@ -142,13 +170,15 @@ layout = dbc.Container(
                             "height": "100%",
                         },
                     ),
-                    className="shadow-lg",
                     style={
                         "borderRadius": "1rem",
                         "maxWidth": "400px",
                         "width": "100%",
                         "minWidth": "350px",
                         "minHeight": "500px",  # Increases the card height
+                        "boxShadow": "0 1rem 3rem rgba(0,0,0,0.175)",
+                        "backgroundColor": "#343a40",  # dark card background
+                        "color": "#ffffff",  # light text color for the card
                     },
                 ),
                 xs=12,

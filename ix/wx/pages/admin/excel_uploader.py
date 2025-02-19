@@ -9,7 +9,6 @@ from ix.misc.terminal import get_logger
 
 logger = get_logger(__name__)
 
-
 # Layout wrapped in a Card for a polished look.
 layout = dbc.Container(
     fluid=True,
@@ -63,9 +62,33 @@ layout = dbc.Container(
                             },
                             multiple=False,
                         ),
-                        html.Div(
-                            id="output-message",
-                            style={"marginTop": "10px"},
+                        # Wrap the upload message in a loading container
+                        dcc.Loading(
+                            id="loading-upload",
+                            type="default",
+                            # Set style to ensure the spinner appears within the same section
+                            style={"width": "100%"},
+                            children=html.Div(
+                                id="output-message",
+                                style={"marginTop": "10px"},
+                            ),
+                        ),
+                        html.Hr(),
+                        dbc.Button(
+                            "Send Email",
+                            id="send-email-btn",
+                            color="primary",
+                            className="mt-2",
+                        ),
+                        # Wrap the email message in a loading container
+                        dcc.Loading(
+                            id="loading-email",
+                            type="default",
+                            style={"width": "100%"},
+                            children=html.Div(
+                                id="output-email-message",
+                                style={"marginTop": "10px"},
+                            ),
                         ),
                     ],
                 ),
@@ -103,8 +126,28 @@ def update_output(contents, filename):
         # Upload cleaned data
         upload_bbg_data(data)
 
-        datas = []
+        logger.info("Files uploaded Successfully")
+        return html.Div([html.P(f"File '{filename}' uploaded successfully")])
 
+    except Exception as e:
+        logger.error(f"Failed to process and send email: {str(e)}", exc_info=True)
+        return html.Div(f"Error processing file: {str(e)}")
+
+
+@callback(
+    Output("output-email-message", "children"),
+    Input("send-email-btn", "n_clicks"),
+)
+def send_email_callback(n_clicks):
+    """
+    Retrieve the latest time series data, prepare a CSV file, and send an email.
+    This is triggered when the "Send Email" button is clicked.
+    """
+    if not n_clicks:
+        return ""
+
+    try:
+        datas = []
         for metadata in Metadata.find().run():
             for ts in TimeSeries.find_many({"meta_id": str(metadata.id)}).run():
                 if ts.field in [
@@ -115,46 +158,48 @@ def update_output(contents, filename):
                     "PX_CLOSE",
                 ]:
                     continue
-                data = ts.data
-                data.name = f"{metadata.code}:{ts.field}"
-                datas.append(data.loc["2023":])
+                ts_data = ts.data
+                ts_data.name = f"{metadata.code}:{ts.field}"
+                datas.append(ts_data.loc["2023":])
+                logger.debug(f"{metadata.code} - {ts.field} added.")
+        if not datas:
+            return html.Div("No data available to send.")
         datas = pd.concat(datas, axis=1)
 
-        # Prepare and send the email with the updated Excel file attached
         email_sender = EmailSender(
             to=", ".join(Settings.email_recipients),
             subject="[IX] Daily Data Share",
-            content="Please find the attached Excel file with the latest data and added sheet.",
+            content="Please find the attached CSV file with the latest data.",
         )
 
         file = io.BytesIO()
         datas.to_csv(file)
+        file.seek(0)
         email_sender.attach(file, filename="datas.csv")
         email_sender.send()
 
         logger.info(
             f"Email sent successfully to {', '.join(Settings.email_recipients)}"
         )
-        return html.Div(
-            [html.P(f"File '{filename}' uploaded successfully, updated, and emailed!")]
-        )
-
+        return html.Div("Data email sent successfully!")
     except Exception as e:
-        logger.error(f"Failed to process and send email: {str(e)}", exc_info=True)
-        return html.Div(f"Error processing file: {str(e)}")
-
-
-from ix.db.models import Metadata
+        logger.error(f"Failed to send data email: {str(e)}", exc_info=True)
+        return html.Div(f"Error sending email: {str(e)}")
 
 
 def upload_bbg_data(data: pd.DataFrame) -> bool:
     for ticker_field in data.columns:
         ticker, field = str(ticker_field).split(":", maxsplit=2)
         metadata = Metadata.find_one({"bbg_ticker": ticker}).run()
-        if metadata:
+        if not metadata:
+            metadata = Metadata(code=ticker, name="...", bbg_ticker=ticker).create()
+
+        try:
             ts = data[ticker_field].dropna()
             if ts.empty:
                 continue
-            print(ts)
             metadata.ts(field=field).data = ts
+        except Exception as e:
+            logger.exception(e)
+
     return True

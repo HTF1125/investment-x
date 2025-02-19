@@ -1,44 +1,18 @@
-from datetime import date
 import pandas as pd
 from ix.misc import get_yahoo_data
 from ix.misc import get_bloomberg_data
 from ix.misc import get_fred_data
 from ix.misc import get_logger
 from ix import misc
-from ix.db import Metadata, Performance, TimePoint
+from ix.db import Metadata, Performance
 import ix
 import io
 
 logger = get_logger(__name__)
 
 
-def CustomTimeSeries(code: str, field: str) -> pd.Series:
-    if code == "^SPX" and field == "TRAIL_12M_EPS_YOY_ME":
-        data = ix.get_timeseries("^SPX", "TRAIL_12M_EPS")
-        data = data.resample("ME").last().ffill()
-        return data.pct_change(12).dropna()
-    if code == "^DXY" and field == "PX_DIFF_12M_ME":
-        data = ix.get_timeseries("^DXY", "PX_LAST")
-        data = data.resample("ME").last().ffill()
-        return data.diff(12).dropna()
-    if code == "^LF98OAS" and field == "PX_DIFF_12M_ME":
-        data = ix.get_timeseries("^LF98OAS", "PX_LAST")
-        data = data.resample("ME").last().ffill()
-        return data.diff(12).dropna()
-    if code == "^CONCCONF" and field == "PX_DIFF_12M_ME":
-        data = ix.get_timeseries("^CONCCONF", "PX_LAST")
-        return data.diff(12).dropna()
-    if code == "^PCI" and field == "PX_DIFF_12M_ME":
-        data = ix.get_timeseries("^PCI", "PX_LAST")
-        return data.diff(12).dropna()
-    raise
-
-
 def run():
     update_px_last()
-    Performance.delete_all()
-    update_economic_calendar()
-    # send_px_last()
 
 
 def get_performance(px_last: pd.Series) -> dict:
@@ -238,8 +212,9 @@ def get_px_last() -> pd.DataFrame:
 from typing import List
 from ix.misc.email import EmailSender
 from ix.misc.settings import Settings
-import logging
+from ix.misc.terminal import get_logger
 
+logger = get_logger(__name__)
 
 def send_px_last(
     recipients: List[str] = Settings.email_recipients,
@@ -251,7 +226,7 @@ def send_px_last(
         px_last = get_px_last()
 
         if px_last.empty:
-            logging.warning("No data available in px_last. Email not sent.")
+            logger.warning("No data available in px_last. Email not sent.")
             return False
 
         email_sender = EmailSender(
@@ -269,11 +244,11 @@ def send_px_last(
         email_sender.attach(file_buffer=buffer, filename=filename)
         email_sender.send()
 
-        logging.info(f"Email sent successfully to {', '.join(recipients)}")
+        logger.info(f"Email sent successfully to {', '.join(recipients)}")
         return True
 
     except Exception as e:
-        logging.error(f"Failed to send email: {str(e)}")
+        logger.error(f"Failed to send email: {str(e)}")
         return False
 
 

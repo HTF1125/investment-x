@@ -1,9 +1,10 @@
 import dash_bootstrap_components as dbc
 from dash import html, dcc, Dash, callback_context
 import dash
-import dash_player
 from ix.wx.pages.insights.callbacks import *
 from ix.wx.pages.insights.summary_modal import summary_modal
+from ix.wx.pages.insights import sources
+
 
 # Register Page
 dash.register_page(__name__, path="/insights", title="Insights", name="Insights")
@@ -94,13 +95,18 @@ layout = dbc.Container(
     style={"backgroundColor": "black", "color": "white"},
     children=[
         dbc.Row(
-            dbc.Col(
-                html.H1("Insights", style={"color": "white", "textAlign": "center"}),
-                width=12,
-            )
+            [
+                dbc.Col(
+                    html.H1(
+                        "Insights", style={"color": "white", "textAlign": "center"}
+                    ),
+                    width=12,
+                ),
+            ]
         ),
         file_uploader,
         search_bar,
+        sources.layout,
         html.Div(id="insights-container-wrapper", children=[]),
         load_more_button,
         dcc.Store(id="insights-data", data=[]),

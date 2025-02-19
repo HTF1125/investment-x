@@ -24,6 +24,45 @@ app = Dash(
     ],
 )
 
+
+from dash import Dash, html
+from flask import Blueprint, jsonify
+import pandas as pd
+
+server = app.server  # Get the underlying Flask server
+
+# Create a Flask Blueprint for your API endpoints
+api_bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+@api_bp.route("/metadata")
+def get_metadata():
+    try:
+        metadatas = pd.DataFrame(
+            [metadata.model_dump() for metadata in ix.db.Metadata.find().run()]
+        )
+        # metadatas = metadatas.filter(
+        #     items=[
+        #         "code",
+        #         "exchange",
+        #         "market",
+        #         "name",
+        #         "id_isin",
+        #         "remark",
+        #         "bbg_ticker",
+        #         "yah_ticker",
+        #         "fred_ticker",
+        #     ]
+        # )
+    except Exception as e:
+        return jsonify({"error": "Failed to fetch metadata"}), 500
+    return metadatas.to_dict("records")
+
+
+# Register the blueprint with the Flask server
+server.register_blueprint(api_bp)
+
+
 app.layout = html.Div(
     style={
         "backgroundColor": "#000000",
@@ -35,7 +74,6 @@ app.layout = html.Div(
     children=[
         dcc.Location(id="url", refresh=False),
         dcc.Store(id="token-store", storage_type="local"),
-
         dcc.Interval(
             id="refresh-interval",
             interval=300000,
@@ -54,7 +92,6 @@ app.layout = html.Div(
         ),
     ],
 )
-
 
 
 @click.command()

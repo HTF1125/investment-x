@@ -1,8 +1,25 @@
-from dash import dcc, html
+from dash import dcc, html, Input, Output, State, callback, ALL
 import dash_bootstrap_components as dbc
+import dash
+import json
+import pandas as pd
 
+# Import your specific modules
+from ix.bt.analysis.performance import Performance
+from ix import db
+
+# Global list of periods
+periods = ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "MTD", "YTD"]
+
+# Define the layout
 layout = dbc.Container(
     [
+        # Interval component to trigger refresh every 5 minutes (300,000 ms)
+        dcc.Interval(
+            id="refresh-interval",
+            interval=300000,
+            n_intervals=0,
+        ),
         dcc.Store(id="performance-store", storage_type="local"),
         dbc.Card(
             [
@@ -10,16 +27,7 @@ layout = dbc.Container(
                     dbc.Row(
                         [
                             dbc.Col(html.H3("Performance", className="mb-0")),
-                            dbc.Col(
-                                dbc.Button(
-                                    "Refresh",
-                                    id="refresh-button",
-                                    color="primary",
-                                    className="px-4",
-                                ),
-                                width="auto",
-                                className="text-end",
-                            ),
+                            # Refresh button removed
                         ],
                         align="center",
                     ),
@@ -47,10 +55,7 @@ layout = dbc.Container(
                                     [
                                         dbc.Button(
                                             period,
-                                            id={
-                                                "type": "period-button",
-                                                "period": period,
-                                            },
+                                            id={"type": "period-button", "period": period},
                                             n_clicks=0,
                                             style={
                                                 "backgroundColor": "transparent",
@@ -62,17 +67,7 @@ layout = dbc.Container(
                                                 "cursor": "pointer",
                                             },
                                         )
-                                        for period in [
-                                            "1D",
-                                            "1W",
-                                            "1M",
-                                            "3M",
-                                            "6M",
-                                            "1Y",
-                                            "3Y",
-                                            "MTD",
-                                            "YTD",
-                                        ]
+                                        for period in periods
                                     ]
                                 ),
                             ],
@@ -119,17 +114,7 @@ layout = dbc.Container(
     style={"backgroundColor": "transparent"},
 )
 
-
-import dash
-from dash import dcc, html, Input, Output, State, callback, no_update, ALL
-import dash_bootstrap_components as dbc
-import json
-import pandas as pd
-from ix.bt.analysis.performance import Performance
-from ix import db
-
-
-# Combined callback: fetches performance data and updates graphs.
+# Combined callback: refreshes performance data every 5 minutes and updates graphs
 @callback(
     Output("performance-store", "data"),
     Output("performance-graphs-container", "children"),
@@ -139,21 +124,13 @@ from ix import db
 )
 def combined_callback(n_intervals, n_clicks_list, stored_data):
     """
-    Combined callback that refreshes performance data every 5 minutes and
-    updates performance graphs based on the selected period.
-
-    - If the refresh interval triggers the callback or the stored performance data is empty,
-    the callback re-fetches performance data from the database.
-    - Otherwise, if a period button is pressed, it uses the performance data already stored.
-
-    The performance data is stored in "performance-store" and the graphs
-    are rendered in "performance-graphs-container". The selected period is determined
-    from period-button clicks, defaulting to "1D" if none is provided.
+    Refresh performance data if the interval triggers or if no data is stored.
+    Uses the stored data if available, and updates graphs based on the selected period.
     """
     ctx = dash.callback_context
     triggered_ids = [t["prop_id"] for t in ctx.triggered]
 
-    # If refresh interval triggered or there is no stored data, fetch new data.
+    # If the interval triggers or there is no stored data, fetch new data.
     if any("refresh-interval" in tid for tid in triggered_ids) or not stored_data:
         universes = [
             "LocalIndices",
@@ -165,7 +142,7 @@ def combined_callback(n_intervals, n_clicks_list, stored_data):
             "Themes",
             "Currencies",
         ]
-        periods_list = ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "MTD", "YTD"]
+        periods_list = periods
         data = {}
         for universe in universes:
             universe_obj = db.Universe.find_one({"code": universe}).run()
@@ -183,14 +160,12 @@ def combined_callback(n_intervals, n_clicks_list, stored_data):
     else:
         data = stored_data
 
-    # Determine the selected period from the period button trigger.
+    # Determine the selected period from the period button trigger; default is "1D".
     selected_period = "1D"
     for t in ctx.triggered:
         if "period-button" in t["prop_id"]:
             try:
-                selected_period = json.loads(t["prop_id"].split(".")[0]).get(
-                    "period", "1D"
-                )
+                selected_period = json.loads(t["prop_id"].split(".")[0]).get("period", "1D")
                 break
             except (json.JSONDecodeError, KeyError):
                 selected_period = "1D"
@@ -244,9 +219,7 @@ def combined_callback(n_intervals, n_clicks_list, stored_data):
     return data, graph_divs
 
 
-periods = ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "MTD", "YTD"]
-
-
+# Callback to update period button styles (highlight the active period)
 @callback(
     Output({"type": "period-button", "period": ALL}, "style"),
     Input({"type": "period-button", "period": ALL}, "n_clicks"),
@@ -263,9 +236,7 @@ def update_button_styles(n_clicks_list):
     return [
         {
             "backgroundColor": "transparent",
-            "border": (
-                "2px solid #f8f9fa" if period == active_period else "1px solid #f8f9fa"
-            ),
+            "border": "2px solid #f8f9fa" if period == active_period else "1px solid #f8f9fa",
             "padding": "0.5rem",
             "margin": "0.25rem",
             "color": "#f8f9fa",

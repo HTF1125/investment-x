@@ -56,6 +56,7 @@ class Metadata(Document):
     bbg_ticker: Any = None
     yah_ticker: Any = None
     fre_ticker: Any = None
+    ts_fields: List[str] = []
 
     def update_px(self):
 
@@ -207,16 +208,12 @@ class TimePoint(Document):
         self.set({"i_data": data})
 
 
-class InsightSourceBase(BaseModel):
+class InsightSource(Document):
     url: str
     name: str = "Unnamed"
     frequency: str = "Unclassified"
     remark: Optional[str] = None
     last_visited: datetime = Field(default_factory=datetime.now)
-
-
-class InsightSource(InsightSourceBase, Document): ...
-
 
 class MarketCommentary(Document):
 

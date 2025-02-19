@@ -1,6 +1,5 @@
 import json
 import base64
-import logging
 from datetime import datetime
 from bson import ObjectId
 from typing import Any, List, Tuple, Optional
@@ -13,13 +12,13 @@ from dash.exceptions import PreventUpdate
 from ix.db.client import get_insights
 from ix.db.conn import Insight
 from ix.db.boto import Boto
+from ix.misc.terminal import get_logger
 from ix.misc import PDFSummarizer, Settings
 
 from .helpers import create_insight_card
 
 # Configure logging.
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def remove_deleted_insight(current_data: List[str], insight_id: str) -> List[str]:
