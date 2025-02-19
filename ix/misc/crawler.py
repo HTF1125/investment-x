@@ -40,7 +40,11 @@ def get_yahoo_data(
             end=end,
             progress=progress,
             actions=actions,
+            auto_adjust=False,
+            multi_level_index=False,
         )
+        if data is None:
+            raise
         return data
     except Exception as exc:
         logger.warning(f"Download data from `yahoo` fail for ticker {code}")
