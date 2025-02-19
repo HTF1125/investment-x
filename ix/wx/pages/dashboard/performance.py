@@ -27,7 +27,6 @@ layout = dbc.Container(
                     dbc.Row(
                         [
                             dbc.Col(html.H3("Performance", className="mb-0")),
-                            # Refresh button removed
                         ],
                         align="center",
                     ),
@@ -114,54 +113,57 @@ layout = dbc.Container(
     style={"backgroundColor": "transparent"},
 )
 
-# Combined callback: refreshes performance data every 5 minutes and updates graphs
+# --- Callback 1: Refresh Performance Data ---
 @callback(
     Output("performance-store", "data"),
+    Input("refresh-interval", "n_intervals")
+)
+def refresh_data(n_intervals):
+    """
+    This callback refreshes performance data every 5 minutes.
+    """
+    universes = [
+        "LocalIndices",
+        "GicsUS",
+        "GlobalMarkets",
+        "Styles",
+        "GlobalBonds",
+        "Commodities",
+        "Themes",
+        "Currencies",
+    ]
+    data = {}
+    for universe in universes:
+        universe_obj = db.Universe.find_one({"code": universe}).run()
+        if not universe_obj:
+            continue
+        data[universe] = []
+        for asset in universe_obj.assets:
+            metadata = db.Metadata.find_one({"code": asset.code}).run()
+            if metadata is None:
+                continue
+            perf = asset.model_dump()
+            for period in periods:
+                perf[period] = metadata.tp(field=f"PCT_CHG_{period}").data
+            data[universe].append(perf)
+    return data
+
+# --- Callback 2: Update Graphs Based on Selected Period ---
+@callback(
     Output("performance-graphs-container", "children"),
-    Input("refresh-interval", "n_intervals"),
     Input({"type": "period-button", "period": ALL}, "n_clicks"),
     State("performance-store", "data"),
 )
-def combined_callback(n_intervals, n_clicks_list, stored_data):
+def update_graphs(n_clicks_list, data):
     """
-    Refresh performance data if the interval triggers or if no data is stored.
-    Uses the stored data if available, and updates graphs based on the selected period.
+    This callback updates the performance graphs based on the selected period.
+    It uses the data stored in 'performance-store'.
     """
+    if data is None:
+        return []  # No data yet; dcc.Loading will show a spinner
+
     ctx = dash.callback_context
-    triggered_ids = [t["prop_id"] for t in ctx.triggered]
-
-    # If the interval triggers or there is no stored data, fetch new data.
-    if any("refresh-interval" in tid for tid in triggered_ids) or not stored_data:
-        universes = [
-            "LocalIndices",
-            "GicsUS",
-            "GlobalMarkets",
-            "Styles",
-            "GlobalBonds",
-            "Commodities",
-            "Themes",
-            "Currencies",
-        ]
-        periods_list = periods
-        data = {}
-        for universe in universes:
-            universe_obj = db.Universe.find_one({"code": universe}).run()
-            if not universe_obj:
-                continue
-            data[universe] = []
-            for asset in universe_obj.assets:
-                metadata = db.Metadata.find_one({"code": asset.code}).run()
-                if metadata is None:
-                    continue
-                perf = asset.model_dump()
-                for period in periods_list:
-                    perf[period] = metadata.tp(field=f"PCT_CHG_{period}").data
-                data[universe].append(perf)
-    else:
-        data = stored_data
-
-    # Determine the selected period from the period button trigger; default is "1D".
-    selected_period = "1D"
+    selected_period = "1D"  # default period
     for t in ctx.triggered:
         if "period-button" in t["prop_id"]:
             try:
@@ -170,7 +172,6 @@ def combined_callback(n_intervals, n_clicks_list, stored_data):
             except (json.JSONDecodeError, KeyError):
                 selected_period = "1D"
 
-    # Generate graph components from the data.
     graph_divs = []
     for universe, performances in data.items():
         performance_data = pd.DataFrame(performances)
@@ -215,11 +216,9 @@ def combined_callback(n_intervals, n_clicks_list, stored_data):
                 },
             )
         )
+    return graph_divs
 
-    return data, graph_divs
-
-
-# Callback to update period button styles (highlight the active period)
+# --- Callback 3: Update Period Button Styles ---
 @callback(
     Output({"type": "period-button", "period": ALL}, "style"),
     Input({"type": "period-button", "period": ALL}, "n_clicks"),
@@ -229,10 +228,10 @@ def update_button_styles(n_clicks_list):
     if not ctx.triggered:
         active_period = "1D"
     else:
-        active_period = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])["period"]
-
-    # Each button is transparent with a thin border.
-    # The active button gets a thicker border.
+        try:
+            active_period = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])["period"]
+        except Exception:
+            active_period = "1D"
     return [
         {
             "backgroundColor": "transparent",
