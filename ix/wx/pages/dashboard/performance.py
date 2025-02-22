@@ -1,60 +1,13 @@
 import json
-import zlib
-import base64
-import pandas as pd
-import logging
 
+import pandas as pd
 from dash import dcc, html, Input, Output, State, callback, ALL
 import dash_bootstrap_components as dbc
 import dash
-
 from ix.bt.analysis.performance import performance_fig
 from ix import db
 from ix.misc import periods
 
-# Setup logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-# --- Utility functions for compression ---
-def compress_data(data: dict) -> str:
-    """
-    Compress a JSON-serializable dict to a base64 encoded string.
-    """
-    try:
-        json_str = json.dumps(data)
-    except Exception as e:
-        logger.exception("Error serializing data to JSON")
-        raise e
-    try:
-        compressed = zlib.compress(json_str.encode("utf-8"))
-    except Exception as e:
-        logger.exception("Error compressing JSON data")
-        raise e
-    try:
-        encoded = base64.b64encode(compressed).decode("utf-8")
-    except Exception as e:
-        logger.exception("Error encoding compressed data to base64")
-        raise e
-    return encoded
-
-def decompress_data(data_str) -> dict:
-    """
-    Decompress a base64 encoded string back into a dict.
-    If the data is already a dict, return it directly.
-    """
-    if isinstance(data_str, dict):
-        return data_str
-    try:
-        decompressed = zlib.decompress(base64.b64decode(data_str.encode("utf-8")))
-    except Exception as e:
-        logger.exception("Error decompressing data")
-        raise e
-    try:
-        return json.loads(decompressed.decode("utf-8"))
-    except Exception as e:
-        logger.exception("Error parsing decompressed JSON data")
-        raise e
 
 # --- Layout ---
 layout = dbc.Container(
@@ -171,7 +124,6 @@ def refresh_data(n_intervals):
     """
     Refresh performance data every 5 minutes and store a compressed version in local storage.
     """
-    logger.info(f"Refreshing performance data at interval: {n_intervals}")
     universes = [
         "LocalIndices",
         "GicsUS",
@@ -184,48 +136,21 @@ def refresh_data(n_intervals):
     ]
     data = {}
     for universe in universes:
-        logger.debug(f"Processing universe: {universe}")
-        try:
-            universe_obj = db.Universe.find_one({"code": universe}).run()
-        except Exception as e:
-            logger.exception(f"Error fetching universe {universe}: {e}")
-            continue
+        universe_obj = db.Universe.find_one({"code": universe}).run()
         if not universe_obj:
-            logger.warning(f"No universe object found for: {universe}")
             continue
         data[universe] = []
         for asset in universe_obj.assets:
-            logger.debug(f"Processing asset: {asset.code} in universe: {universe}")
-            try:
-                metadata = db.Metadata.find_one({"code": asset.code}).run()
-            except Exception as e:
-                logger.exception(f"Error fetching metadata for asset {asset.code}: {e}")
-                continue
+            metadata = db.Metadata.find_one({"code": asset.code}).run()
             if metadata is None:
-                logger.warning(f"No metadata found for asset: {asset.code}")
                 continue
             # Build a lean performance dictionary rather than a full model dump.
-            perf = {"name": asset.code}
+            perf = {"name": asset.code}  # Use code or asset name as identifier.
             for period in periods:
-                try:
-                    value = metadata.tp(field=f"PCT_CHG_{period}").data
-                    # Ensure the value is JSON serializable by trying to cast it to a float.
-                    try:
-                        value = float(value)
-                    except Exception as conv_err:
-                        logger.debug(f"Value for {asset.code} period {period} not castable to float: {value}")
-                    perf[period] = value
-                except Exception as e:
-                    logger.exception(f"Error retrieving performance for period {period} for asset {asset.code}: {e}")
-                    perf[period] = None
+                perf[period] = metadata.tp(field=f"PCT_CHG_{period}").data
             data[universe].append(perf)
-    try:
-        compressed = compress_data(data)
-    except Exception as e:
-        logger.exception("Error compressing performance data")
-        raise e
-    logger.info("Performance data compressed successfully")
-    return compressed
+    # Compress the data before storing it.
+    return data
 
 # --- Callback 2: Update Graphs Based on Selected Period ---
 @callback(
@@ -233,56 +158,45 @@ def refresh_data(n_intervals):
     Input({"type": "period-button", "period": ALL}, "n_clicks"),
     State("performance-store", "data"),
 )
-def update_graphs(n_clicks_list, compressed_data):
+def update_graphs(n_clicks_list, data):
     """
     Update performance graphs based on the selected period.
     Decompress the stored data before processing.
     """
     if not compressed_data:
-        logger.info("No compressed data found in performance-store; returning empty list.")
         return []  # No data yet; dcc.Loading will show a spinner
 
-    try:
-        data = decompress_data(compressed_data)
-    except Exception as e:
-        logger.exception("Error decompressing performance data")
-        return []
-
+    # Decompress the data stored in the dcc.Store.
     ctx = dash.callback_context
     selected_period = "1D"  # default period
     for t in ctx.triggered:
         if "period-button" in t["prop_id"]:
             try:
-                selected_period = json.loads(t["prop_id"].split(".")[0]).get("period", "1D")
+                selected_period = json.loads(t["prop_id"].split(".")[0]).get(
+                    "period", "1D"
+                )
                 break
-            except (json.JSONDecodeError, KeyError) as e:
-                logger.warning(f"Error parsing triggered period: {e}")
+            except (json.JSONDecodeError, KeyError):
                 selected_period = "1D"
 
-    logger.info(f"Selected period for graphs: {selected_period}")
     graph_divs = []
     for universe, performances in data.items():
-        logger.debug(f"Building graph for universe: {universe}")
+        # Build a DataFrame from the lean performance data.
         performance_data = pd.DataFrame(performances)
         if "name" not in performance_data.columns:
-            logger.warning(f"'name' column not found for universe: {universe}")
             continue
         performance_data = performance_data.set_index("name")
         if selected_period not in performance_data.columns:
-            logger.warning(f"Selected period {selected_period} not found for universe: {universe}")
             continue
 
-        try:
-            fig = performance_fig(performance_data[selected_period])
-            fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                xaxis=dict(gridcolor="#555"),
-                yaxis=dict(gridcolor="#555"),
-            )
-        except Exception as e:
-            logger.exception(f"Error creating figure for universe {universe}: {e}")
-            continue
+        # Create the figure using only the required column.
+        fig = performance_fig(performance_data[selected_period])
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(gridcolor="#555"),
+            yaxis=dict(gridcolor="#555"),
+        )
         graph_divs.append(
             html.Div(
                 [
@@ -323,9 +237,10 @@ def update_button_styles(n_clicks_list):
         active_period = "1D"
     else:
         try:
-            active_period = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])["period"]
-        except Exception as e:
-            logger.warning(f"Error parsing active period from triggered context: {e}")
+            active_period = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])[
+                "period"
+            ]
+        except Exception:
             active_period = "1D"
     return [
         {
