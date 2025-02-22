@@ -4,8 +4,6 @@ import re
 import io
 from datetime import datetime
 import base64
-from bson import ObjectId
-
 from ix.misc import get_logger
 from .models import Metadata, Universe
 from .conn import Insight
@@ -19,7 +17,8 @@ def get_timeseries(
     code: str,
     field: str = "PX_LAST",
     name: Optional[str] = None,
-    start: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> pd.Series:
     """
     Retrieves a time series for the specified asset code.
@@ -29,14 +28,19 @@ def get_timeseries(
     metadata = Metadata.find_one({"code": code}).run()
     if metadata is None:
         raise ValueError(f"No metadata found for code: {code}")
-    px_last = metadata.ts(field=field).data
-    if start:
-        px_last = px_last.loc[start:]
-    px_last.name = name or code
-    return px_last
+    ts = metadata.ts(field=field)
+    if ts is None:
+        return pd.Series(dtype=float)
+    data = ts.get_data(start_date=start_date, end_date=end_date)
+    data.name = name or code
+    return data
 
 
-def get_ts(*args: Dict[str, str], start: Optional[str] = None) -> pd.DataFrame:
+def get_ts(
+    *args: Dict[str, str],
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> pd.DataFrame:
     """
     Fetches price data from the database for specified asset codes.
 
@@ -49,7 +53,12 @@ def get_ts(*args: Dict[str, str], start: Optional[str] = None) -> pd.DataFrame:
     """
     timeseries = []
     for arg in args:
-        timeseries.append(get_timeseries(**arg, start=start))
+        data = get_timeseries(
+            **arg,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        timeseries.append(data)
     data = pd.concat(timeseries, axis=1)
     return data
 
@@ -63,7 +72,7 @@ def get_insight_by_id(id: str) -> Insight:
     Retrieves an insight by its ID from the database.
     Caching is enabled to avoid repeated database lookups for the same insight.
     """
-    insight = Insight.find_one(Insight.id == ObjectId(id)).run()
+    insight = Insight.find_one({"id" : str(id)}).run()
     if insight is None:
         raise ValueError(f"Insight not found for id: {id}")
     return insight
@@ -75,7 +84,7 @@ def _get_insight_content_bytes(id: str) -> bytes:
     This function is cached so that the PDF content is not repeatedly
     fetched from storage.
     """
-    insight = Insight.find_one(Insight.id == ObjectId(id)).run()
+    insight = Insight.find_one({"id": str(id)}).run()
     if not insight:
         raise ValueError("Insight not found")
     filename = f"{insight.id}.pdf"
@@ -191,8 +200,6 @@ def update_insight(id: str, update_request):
     """
     Updates an Insight by its ID with the provided data.
     """
-    if not ObjectId.is_valid(id):
-        raise ValueError("Invalid ID format")
 
     updated_fields = {
         key: value
@@ -203,7 +210,7 @@ def update_insight(id: str, update_request):
     if not updated_fields and not getattr(update_request, "content", None):
         raise ValueError("No fields provided for update")
 
-    insight = Insight.find_one(Insight.id == ObjectId(id)).run()
+    insight = Insight.find_one({"id": str(id)}).run()
     if not insight:
         raise ValueError("Insight not found")
 
@@ -226,7 +233,7 @@ def delete_insight(id: str):
     """
     Deletes an Insight by its ID.
     """
-    Insight.find_one(Insight.id == ObjectId(id)).delete().run()
+    Insight.find_one({"id": str(id)}).run()
     return {"message": "Insight deleted successfully"}
 
 
@@ -236,7 +243,7 @@ def update_insight_summary(id: str):
     """
     from ix.misc import PDFSummarizer, Settings
 
-    insight = Insight.find_one(Insight.id == ObjectId(id)).run()
+    insight = Insight.find_one({"id": str(id)}).run()
     if not insight:
         raise ValueError("Insight not found")
 

@@ -9,8 +9,8 @@ def now() -> pd.Timestamp:
 
 
 def today() -> pd.Timestamp:
-    """Returns today's date as a timestamp."""
-    return pd.Timestamp("today")
+    """Returns today's date as a timestamp with no time component."""
+    return pd.Timestamp.now().normalize()
 
 
 def yesterday() -> pd.Timestamp:
@@ -32,10 +32,13 @@ def lastyear() -> pd.Timestamp:
     return today() - pd.DateOffset(years=1)
 
 
-def to_timestamp(text: str) -> pd.Timestamp:
+def to_timestamp(text: str, normalize: bool = False) -> pd.Timestamp:
     """Parses a date string into a timestamp, with error handling."""
     try:
-        return pd.Timestamp(text)
+        out = pd.Timestamp(text)
+        if normalize:
+            out = out.normalize()
+        return out
     except ValueError:
         raise ValueError(f"Invalid date format: {text}")
 
@@ -60,26 +63,85 @@ def tomorrow() -> pd.Timestamp:
     return today() + pd.DateOffset(days=1)
 
 
-def get_relative_date(
+def relative_timestamp(
     asofdate: pd.Timestamp,
     period: str = "1D",
+    offset_1d: bool = False,
+    normalize: bool = False,
 ) -> pd.Timestamp:
-    if period == "1D":
-        return asofdate - pd.DateOffset(days=1)
-    if period == "1W":
-        return asofdate - pd.DateOffset(days=7)
-    if period == "1M":
-        return asofdate - pd.DateOffset(months=1)
-    if period == "3M":
-        return asofdate - pd.DateOffset(months=3)
-    if period == "6M":
-        return asofdate - pd.DateOffset(months=6)
-    if period == "1Y":
-        return asofdate - pd.DateOffset(months=12)
-    if period == "3Y":
-        return asofdate - pd.DateOffset(months=12 * 3)
-    if period == "MTD":
-        return asofdate - pd.offsets.MonthBegin() - pd.DateOffset(days=1)
-    if period == "YTD":
-        return asofdate - pd.offsets.YearBegin() - pd.DateOffset(days=1)
-    raise
+    """
+    Calculate a relative date from the given timestamp based on the specified period.
+
+    Parameters
+    ----------
+    asofdate : pd.Timestamp
+        The reference date.
+    period : str, optional
+        The offset period. Supported values are:
+          - "1D": 1 day
+          - "1W": 1 week
+          - "1M": 1 month
+          - "3M": 3 months
+          - "6M": 6 months
+          - "1Y": 1 year
+          - "3Y": 3 years
+          - "MTD": Month-to-date (subtracts to the beginning of the month, then one day)
+          - "YTD": Year-to-date (subtracts to the beginning of the year, then one day)
+    offset_1d : bool, optional
+        If True, adds an extra day to the computed offset.
+
+    Returns
+    -------
+    pd.Timestamp
+        The computed relative date.
+
+    Raises
+    ------
+    ValueError
+        If the period provided is not supported.
+    """
+    # Mapping for standard day and month offsets
+    period_mapping = {
+        "1D": pd.DateOffset(days=1),
+        "1W": pd.DateOffset(days=7),
+        "1M": pd.DateOffset(months=1),
+        "3M": pd.DateOffset(months=3),
+        "6M": pd.DateOffset(months=6),
+        "1Y": pd.DateOffset(months=12),
+        "3Y": pd.DateOffset(months=36),
+        "5Y": pd.DateOffset(months=60),
+    }
+
+    if period in period_mapping:
+        outdate = asofdate - period_mapping[period]
+    elif period == "MTD":
+        # Month-to-date: go to the month start then subtract one day
+        outdate = asofdate - pd.offsets.MonthBegin() - pd.DateOffset(days=1)
+    elif period == "YTD":
+        # Year-to-date: go to the year start then subtract one day
+        outdate = asofdate - pd.offsets.YearBegin() - pd.DateOffset(days=1)
+    else:
+        raise ValueError(f"Unsupported period: {period}")
+
+    # Adjust by one day if offset_1d is True
+    if offset_1d:
+        outdate += pd.DateOffset(days=1)
+
+    if normalize:
+        outdate = outdate.normalize()
+
+    return outdate
+
+
+periods = {
+    "1D": "One Day",
+    "1W": "One Week",
+    "1M": "One Month",
+    "3M": "Three Months",
+    "6M": "Six Months",
+    "1Y": "One Year",
+    "3Y": "Three Years",
+    "5Y": "Five Years",
+    "MTD": "Month-to-Date (Start of the Current Month)",
+    "YTD": "Year-to-Date (Start of the Current Year)",
+}

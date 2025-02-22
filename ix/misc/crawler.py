@@ -1,8 +1,7 @@
+from typing import Optional, List
 import pandas as pd
-import yfinance as yf
-import pandas_datareader as pdr
 from ix.misc.terminal import get_logger
-from ix.misc.date import tomorrow
+from ix.misc.date import tomorrow, onemonthbefore, onemonthlater
 
 logger = get_logger(__name__)
 
@@ -15,7 +14,6 @@ def get_bloomberg_data(
 ) -> pd.DataFrame:
     try:
         from xbbg import blp
-
         data = blp.bdh(code, field, start_date=start, end_date=end)
         data.columns = [code]
         data.index.name = "date"
@@ -34,6 +32,7 @@ def get_yahoo_data(
 ) -> pd.DataFrame:
     logger = get_logger(get_fred_data)
     try:
+        import yfinance as yf
         data = yf.download(
             tickers=code,
             start=start,
@@ -60,6 +59,8 @@ def get_fred_data(
 
     logger = get_logger(get_fred_data)
     try:
+        import pandas_datareader as pdr
+
         data = pdr.DataReader(
             name=ticker,
             data_source="fred",
@@ -71,3 +72,27 @@ def get_fred_data(
         logger.warning(f"Download data from `fred` fail for ticker {ticker}")
         logger.exception(exc)
         return pd.DataFrame()
+
+
+def get_economic_releases(
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    importances: List[str] = ["high"],
+):
+    import investpy
+
+    if start is None:
+        start = onemonthbefore().strftime("%d/%m/%Y")
+    if end is None:
+        end = onemonthlater().strftime("%d/%m/%Y")
+    logger.info(f"Fetching economic releases from {start} to {end}")
+    try:
+        releases = investpy.economic_calendar(
+            from_date=start,
+            to_date=end,
+            importances=importances,
+        ).set_index(keys=["id"], drop=True)
+    except Exception as e:
+        logger.error(f"Error retrieving releases: {e}")
+        releases = pd.DataFrame()  # Return an empty DataFrame on error
+    return releases

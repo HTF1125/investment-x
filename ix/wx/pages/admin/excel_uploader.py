@@ -3,7 +3,7 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import io, base64
 import diskcache
-from ix.db import Metadata, TimeSeries  # Assuming these are your data models
+from ix.db import Metadata, TimeSeries, EconomicCalendar
 from ix.misc.email import EmailSender
 from ix.misc.settings import Settings
 from ix.misc.terminal import get_logger
@@ -42,7 +42,7 @@ layout = dbc.Container(
                     style={"backgroundColor": "#1e1e1e", "color": "#f8f9fa"},
                     children=[
                         dcc.Upload(
-                            id="upload-data",
+                            id="upload_file",
                             children=html.Div(
                                 ["Drag and Drop or ", html.A("Select Files")]
                             ),
@@ -61,24 +61,25 @@ layout = dbc.Container(
                             multiple=False,
                         ),
                         dcc.Loading(
-                            id="loading-upload",
+                            id="loading_upload_file",
                             type="default",
                             children=html.Div(
-                                id="output-message", style={"marginTop": "10px"}
+                                id="output_message_upload_file",
+                                style={"marginTop": "10px"},
                             ),
                         ),
                         html.Hr(),
                         dbc.Button(
                             "Send Email",
-                            id="send-email-btn",
+                            id="send_email_button",
                             color="primary",
                             className="mt-2",
                         ),
                         dcc.Loading(
-                            id="loading-email",
+                            id="loading_send_email",
                             type="default",
                             children=html.Div(
-                                id="output-email-message", style={"marginTop": "10px"}
+                                id="output_email_message", style={"marginTop": "10px"}
                             ),
                         ),
                     ],
@@ -88,39 +89,45 @@ layout = dbc.Container(
     ],
 )
 
-# ------------------------------ Callbacks ----------------------------------
-
-
-def parse_uploaded_file(contents):
-    """Parses the uploaded Excel file."""
-    try:
-        _, content_string = contents.split(",", 1)
-        decoded = base64.b64decode(content_string)
-        in_file = io.BytesIO(decoded)
-        data = pd.read_excel(
-            in_file, sheet_name="Data", parse_dates=True, index_col=[0]
-        ).dropna(how="all")
-        return data
-    except Exception as e:
-        logger.error(f"Error processing Excel file: {e}", exc_info=True)
-        return None
-
 
 @callback(
-    Output("output-message", "children"),
-    Input("upload-data", "contents"),
-    State("upload-data", "filename"),
+    Output("output_message_upload_file", "children"),
+    Input("upload_file", "contents"),
+    State("upload_file", "filename"),
     background=True,
     manager=manager,
     prevent_initial_call=True,
-    running=[(Output("output-message", "children"), "Uploading and processing...", "")],
+    running=[
+        (
+            Output("output_message_upload_file", "children"),
+            "Uploading and processing...",
+            "",
+        )
+    ],
 )
 def process_uploaded_file(contents, filename):
     if not contents:
         return "No file uploaded."
+    try:
+        _, content_string = contents.split(",", 1)
+        decoded = base64.b64decode(content_string)
+        in_file = io.BytesIO(decoded)
 
-    data = parse_uploaded_file(contents)
-    if data is None:
+        metadatas = pd.read_excel(in_file, sheet_name="Metadata")
+        metadatas = metadatas.set_index(keys=["id"], drop=True)
+        for metadata in Metadata.find_all().run():
+            _id = str(metadata.id)
+            if _id not in metadatas.index:
+                Metadata.find({"id": str(_id)}).delete().run()
+                print(f"delete {metadata.code}")
+                continue
+            metadata.set(metadatas.loc[_id].dropna().to_dict())
+
+        data = pd.read_excel(
+            in_file, sheet_name="Data", parse_dates=True, index_col=[0]
+        ).dropna(how="all")
+    except Exception as e:
+        logger.error(f"Error processing Excel file: {e}", exc_info=True)
         return html.Div("Error: Could not read 'Data' sheet.")
 
     try:
@@ -132,60 +139,92 @@ def process_uploaded_file(contents, filename):
         return html.Div(f"Error uploading data: {str(e)}")
 
 
-@callback(
-    Output("output-email-message", "children"),
-    Input("send-email-btn", "n_clicks"),
-    background=True,
-    manager=manager,
-    prevent_initial_call=True,
-    running=[(Output("send-email-btn", "disabled"), True, False)],
-)
-def send_email_callback(n_clicks):
-    if not n_clicks:
-        return ""
-
-    try:
-        email_sender = EmailSender(
-            to=", ".join(Settings.email_recipients),
-            subject="[IX] Daily Data Share",
-            content="Please find the attached CSV file with the latest data.",
-        )
-
-        data_list = [
-            ts.data
-            for metadata in Metadata.find().run()
-            for ts in TimeSeries.find_many({"meta_id": str(metadata.id)}).run()
-            if ts.field not in ["PX_OPEN", "PX_HIGH", "PX_LOW", "PX_VOLUME", "PX_CLOSE"]
-        ]
-        if not data_list:
-            return html.Div("No data available to send.")
-
-        datas = pd.concat(data_list, axis=1)
-        file = io.BytesIO()
-        datas.to_csv(file)
-        file.seek(0)
-        email_sender.attach(file, filename="datas.csv")
-        email_sender.send()
-        return html.Div("Data email sent successfully!")
-    except Exception as e:
-        logger.error(f"Email sending error: {e}", exc_info=True)
-        return html.Div(f"Error sending email: {str(e)}")
-
-
 def upload_bbg_data(data: pd.DataFrame):
     """Uploads data to Bloomberg."""
     for ticker_field in data.columns:
         if ":" not in ticker_field:
             logger.warning(f"Invalid format: {ticker_field}")
             continue
-
         ticker, field = map(str.strip, ticker_field.split(":", maxsplit=1))
         metadata = Metadata.find_one({"bbg_ticker": ticker}).run()
         if not metadata:
             metadata = Metadata(code=ticker, name="...", bbg_ticker=ticker).create()
-
         ts = data[ticker_field].dropna()
         if not ts.empty:
             metadata.ts(field=field).data = ts
-
     return True
+
+
+@callback(
+    Output("output_email_message", "children"),
+    Input("send_email_button", "n_clicks"),
+    background=True,
+    manager=manager,
+    prevent_initial_call=True,
+    running=[(Output("send_email_button", "disabled"), True, False)],
+)
+def send_email_callback(n_clicks):
+    if not n_clicks:
+        return ""
+
+    try:
+        # Update email content to refer to an Excel file if desired.
+        email_sender = EmailSender(
+            to=", ".join(Settings.email_recipients),
+            subject="[IX] Daily Data Share",
+            content="Please find the attached Excel file with the latest data.",
+        )
+
+        datas = []
+        metadatas = []
+        performances = []
+        from ix.misc import periods
+
+        for metadata in Metadata.find_all().run():
+            metadatas.append(metadata.model_dump())
+            if metadata.has_performance:
+                performance = {
+                    "code": metadata.code,
+                    "PX_LAST": metadata.tp("PX_LAST").data,
+                }
+                for period in periods:
+                    field = f"PCT_CHG_{period}"
+                    performance[field] = metadata.tp(field).data
+                    field = f"VOL_{period}"
+                    performance[field] = metadata.tp(field).data
+                performances.append(performance)
+            for ts in TimeSeries.find_many({"meta_id": str(metadata.id)}).run():
+                if ts.field not in [
+                    "PX_OPEN",
+                    "PX_HIGH",
+                    "PX_LOW",
+                    "PX_VOLUME",
+                    "PX_CLOSE",
+                ]:
+                    data = ts.data
+                    if data.empty:
+                        continue
+                    data.name = f"{metadata.code}:{ts.field}"
+                    datas.append(data.loc["2024":])
+        datas = pd.concat(datas, axis=1)
+        metdatas = pd.DataFrame(metadatas)
+        performances = pd.DataFrame(performances)
+        releases = EconomicCalendar.get_dataframe()
+
+        # Create an in-memory Excel file with multiple sheets.
+        file = io.BytesIO()
+        with pd.ExcelWriter(file, engine="xlsxwriter") as writer:
+            datas.to_excel(writer, sheet_name="Data")
+            metdatas.to_excel(writer, sheet_name="Metadata")
+            performances.to_excel(writer, sheet_name="Performance")
+            releases.to_excel(writer, sheet_name="Economic Calendar")
+
+        file.seek(0)
+
+        # Attach the Excel file with the desired filename.
+        email_sender.attach(file, filename="Database.xlsx")
+        email_sender.send()
+        return html.Div("Data email sent successfully!")
+    except Exception as e:
+        logger.error(f"Email sending error: {e}", exc_info=True)
+        return html.Div(f"Error sending email: {str(e)}")

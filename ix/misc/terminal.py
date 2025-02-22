@@ -44,6 +44,9 @@ def func_scope(func: typing.Callable) -> str:
     return f"{current_module.__name__}.{func.__name__}"
 
 
+import logging
+import os
+
 def get_logger(
     arg: str | typing.Callable,
     level: int | str = logging.DEBUG,
@@ -51,22 +54,36 @@ def get_logger(
     stream: bool = True,
     filename: str | None = None,
 ) -> logging.Logger:
-
+    # Assume func_scope is defined elsewhere.
     logger_name = func_scope(arg) if callable(arg) else arg
     logger = logging.getLogger(logger_name)
+
     if isinstance(level, str):
         level = getattr(logging, level.upper())
-    logger.setLevel(level=level)
-    if len(logger.handlers) == 0:
-        formatter = logging.Formatter(fmt=fmt)
-        if stream:
-            stream_handler = logging.StreamHandler()
-            stream_handler.setFormatter(fmt=formatter)
-            logger.addHandler(stream_handler)
-        if filename is not None:
-            if not filename.endswith(".log"):
-                filename += ".log"
-            file_handler = logging.FileHandler(filename=filename)
-            file_handler.setFormatter(fmt=formatter)
-            logger.addHandler(file_handler)
+    logger.setLevel(level)
+
+    formatter = logging.Formatter(fmt=fmt)
+
+    # Add a stream handler if requested and not already present.
+    if stream and not any(
+        isinstance(h, logging.StreamHandler) for h in logger.handlers
+    ):
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+
+    # Always add a file handler if filename is provided and one doesn't already exist.
+    if filename is not None and not any(
+        isinstance(h, logging.FileHandler) for h in logger.handlers
+    ):
+        if not filename.endswith(".log"):
+            filename += ".log"
+        # Create the directory if it does not exist.
+        dir_name = os.path.dirname(filename)
+        if dir_name and not os.path.exists(dir_name):
+            os.makedirs(dir_name)
+        file_handler = logging.FileHandler(filename=filename)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
     return logger

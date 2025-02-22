@@ -4,7 +4,8 @@ from datetime import date, datetime
 import pandas as pd
 from ix.misc import get_logger
 from ix.misc import get_yahoo_data
-from ix.misc import get_relative_date
+from ix.misc import get_fred_data
+from ix.misc import relative_timestamp
 from bson import ObjectId
 from pydantic import BaseModel, Field
 
@@ -19,7 +20,7 @@ def get_performance(px_last: pd.Series) -> dict:
     pct_chg = (level / px_last).sub(1).mul(100).round(2)
     out = {}
     for period in ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "MTD", "YTD"]:
-        r_date = get_relative_date(asofdate=asofdate, period=period)
+        r_date = relative_timestamp(asofdate=asofdate, period=period)
         try:
             out[f"PCT_CHG_{period}"] = pct_chg.loc[r_date]
         except:
@@ -38,19 +39,26 @@ class Metadata(Document):
     name: Optional[str] = None
     remark: Optional[str] = None
     disabled: bool = False
-    bbg_ticker: Any = None
-    yah_ticker: Any = None
-    fre_ticker: Any = None
-    ts_fields: List[str] = []
-    tp_fields: List[str] = []
+    bbg_ticker: Optional[str] = None
+    yah_ticker: Optional[str] = None
+    fre_ticker: Optional[str] = None
+    ts_fields : Optional[str] = None
+    tp_fields: Optional[str] = None
+    has_performance: bool = False
+
+    @classmethod
+    def to_dataframe(cls) -> pd.DataFrame:
+        out = [metadata.model_dump() for metadata in cls.find().run()]
+        out = pd.DataFrame(out)
+        out = out.set_index(keys=["id"], drop=True)
+        return out
+
 
     def update_px(self):
         if self.yah_ticker:
             ts = get_yahoo_data(code=self.yah_ticker)
             if ts.empty:
-                logger.warning(
-                    f"No Yahoo data returned for ticker {self.yah_ticker}"
-                )
+                logger.warning(f"No Yahoo data returned for ticker {self.yah_ticker}")
                 return False
 
             # Mapping of source field to metadata field.
@@ -85,26 +93,20 @@ class Metadata(Document):
                     logger.debug(
                         f"Set timepoint {target_field} (last value: {last_value}) for code {self.code}"
                     )
-
-                    # Calculate and update performance metrics.
-                    performance = get_performance(px_last=series)
-                    for perf_field, perf_value in performance.items():
-                        self.tp(field=perf_field).data = float(perf_value)
-                        logger.debug(
-                            f"Set performance field {perf_field} to {perf_value} for code {self.code}"
-                        )
-
                 logger.info(
                     f"Successfully updated {target_field} for metadata code: {self.code}"
                 )
 
-    def ts(self, field: str = "PX_LAST") -> "TimeSeries":
+    def ts(
+        self,
+        field: str = "PX_LAST",
+    ) -> "TimeSeries":
         if not self.id:
             raise
         ts = TimeSeries.find_one({"meta_id": str(self.id), "field": field}).run()
         if ts is None:
             logger.debug(f"Create new TimeSeries for {self.code} - {field}")
-            return TimeSeries(meta_id=str(self.id), field=field).create()
+            ts = TimeSeries(meta_id=str(self.id), field=field).create()
         return ts
 
     def tp(self, field: str = "PX_LAST") -> "TimePoint":
@@ -161,7 +163,7 @@ class TimeSeries(Document):
             valid_dates = pd.to_datetime(data.index, errors="coerce")
             data = data[valid_dates.notna()]
             data.index = pd.to_datetime(data.index)
-            self.set({"i_data" : data.to_dict()})
+            self.set({"i_data": data.to_dict()})
         return data.sort_index()
 
     @data.setter
@@ -177,6 +179,18 @@ class TimeSeries(Document):
             tp = self.timepoint
             tp.set({"i_data": float(data.iloc[-1])})
             logger.info(f"Update {self.metadata_code} {self.field}")
+
+    def get_data(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> pd.Series:
+        data = self.data
+        if start_date:
+            data = data.loc[start_date:]
+        if end_date:
+            data = data.loc[:end_date]
+        return data
 
 
 class TimePoint(Document):
@@ -199,6 +213,7 @@ class InsightSource(Document):
     frequency: str = "Unclassified"
     remark: Optional[str] = None
     last_visited: datetime = Field(default_factory=datetime.now)
+
 
 class MarketCommentary(Document):
 
@@ -238,6 +253,16 @@ class EconomicCalendar(Document):
     actual: Optional[str] = None
     forecast: Optional[str] = None
     previous: Optional[str] = None
+
+    @classmethod
+    def get_dataframe(cls) -> pd.DataFrame:
+        releases = [release.model_dump() for release in cls.find().run()]
+        releases = pd.DataFrame(releases)
+        releases = releases.set_index(keys=["id"], drop=True)
+        return releases
+
+
+
 
 
 class Book(BaseModel):
