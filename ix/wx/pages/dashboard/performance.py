@@ -19,7 +19,7 @@ layout = dbc.Container(
             n_intervals=0,
         ),
         # Using compressed data in the store (as a string)
-        dcc.Store(id="performance-store", storage_type="local"),
+        dcc.Store(id="performance-store", storage_type="memory"),
         dbc.Card(
             [
                 dbc.CardHeader(
@@ -163,7 +163,7 @@ def update_graphs(n_clicks_list, data):
     Update performance graphs based on the selected period.
     Decompress the stored data before processing.
     """
-    if not compressed_data:
+    if not data:
         return []  # No data yet; dcc.Loading will show a spinner
 
     # Decompress the data stored in the dcc.Store.

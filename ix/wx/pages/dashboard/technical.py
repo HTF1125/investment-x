@@ -88,7 +88,7 @@ layout = dbc.Container(
         className="py-3",
         style={"backgroundColor": "transparent", "color": "#f8f9fa"},
         children=[
-            html.Meta(name="style", content=css),
+            # html.Meta(name="style", content=css),
             dbc.Card(
                 className="shadow rounded-3 w-100",
                 style={
