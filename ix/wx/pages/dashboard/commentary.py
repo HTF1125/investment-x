@@ -1,15 +1,6 @@
 from ix.wx.utils import get_user_from_token
-from dash import (
-    html,
-    callback,
-    Input,
-    Output,
-    State,
-    no_update,
-    clientside_callback,
-)
+from dash import html, dcc, callback, Input, Output, State, no_update
 import dash_bootstrap_components as dbc
-import dash_summernote
 from ix.db.models import MarketCommentary
 
 
@@ -26,7 +17,7 @@ def update_market_commentary(n_clicks, content, token):
     """
     user = get_user_from_token(token)
     is_admin = user.is_admin if user else False
-    # On initial load (n_clicks is None), fetch and display the latest commentary.
+
     if n_clicks is None:
         try:
             commentary_doc = MarketCommentary.find_one(
@@ -39,16 +30,12 @@ def update_market_commentary(n_clicks, content, token):
         except Exception as e:
             return f"Error loading market commentary: {str(e)}", no_update
 
-    # When the Save button is clicked:
-    # Non-admin users are not allowed to update the commentary.
     if not is_admin:
         return "You are not authorized to update commentary.", no_update
 
-    # For admin users, update the commentary if new content is provided.
     if content:
         try:
             new_commentary = MarketCommentary(content=content)
-            # Delete any existing commentary with the same as-of date
             MarketCommentary.find_many(
                 {"asofdate": new_commentary.asofdate}
             ).delete().run()
@@ -58,49 +45,6 @@ def update_market_commentary(n_clicks, content, token):
             return f"Error saving commentary: {str(e)}", no_update
     else:
         return "No content to save.", no_update
-
-
-# Inject custom CSS for Summernote dark mode.
-clientside_callback(
-    """
-    function() {
-        const style = document.createElement('style');
-        style.type = 'text/css';
-        style.innerHTML = `
-            .note-editor.note-frame {
-                background-color: #343a40 !important;
-                border-color: #454d55 !important;
-                color: #ffffff !important;
-            }
-            .note-editor.note-frame .note-toolbar {
-                background-color: #454d55 !important;
-                border-color: #454d55 !important;
-            }
-            .note-editor.note-frame .note-statusbar {
-                background-color: #454d55 !important;
-                border-color: #454d55 !important;
-            }
-            .note-editor.note-frame .note-editing-area .note-editable {
-                background-color: #343a40 !important;
-                color: #ffffff !important;
-            }
-            .note-editor.note-frame .note-btn {
-                background-color: #454d55 !important;
-                border-color: #454d55 !important;
-                color: #ffffff !important;
-            }
-            .note-editor.note-frame .note-btn:hover {
-                background-color: #5a6268 !important;
-                border-color: #5a6268 !important;
-            }
-        `;
-        document.head.appendChild(style);
-        return true;
-    }
-    """,
-    Output("summernote-dark-mode", "children"),
-    Input("summernote-dark-mode", "id"),
-)
 
 
 layout = dbc.Container(
@@ -162,25 +106,31 @@ layout = dbc.Container(
                         "padding": "1.5rem",
                     },
                     children=[
-                        html.Div(
-                            dash_summernote.DashSummernote(
-                                id="market-commentary",
-                                height=600,
-                                toolbar=[
-                                    ["style", ["bold", "italic", "underline", "clear"]],
-                                    ["font", ["arial"]],
-                                    ["para", ["ul", "ol", "paragraph"]],
-                                    ["table", ["table"]],
-                                    ["insert", ["link", "picture", "video", "hr"]],
-                                ],
-                                value="Write your commentary here...",
-                            )
+                        dcc.Textarea(
+                            id="market-commentary",
+                            style={
+                                "width": "100%",
+                                "height": "200px",
+                                "backgroundColor": "#343a40",
+                                "color": "#ffffff",
+                            },
+                            placeholder="Write your commentary in Markdown format...",
                         ),
-                        html.Div(id="summernote-dark-mode", style={"display": "none"}),
                         html.Div(
                             id="saved-content",
                             className="mt-2 text-success fw-bold",
                             style={"padding": "0.5rem"},
+                        ),
+                        html.Hr(),
+                        html.H4("Preview"),
+                        dcc.Markdown(
+                            id="market-commentary-preview",
+                            style={
+                                "backgroundColor": "#454d55",
+                                "color": "#ffffff",
+                                "padding": "10px",
+                                "borderRadius": "5px",
+                            },
                         ),
                     ],
                 ),
@@ -188,3 +138,11 @@ layout = dbc.Container(
         ),
     ],
 )
+
+
+@callback(
+    Output("market-commentary-preview", "children"),
+    Input("market-commentary", "value"),
+)
+def update_preview(content):
+    return content if content else ""

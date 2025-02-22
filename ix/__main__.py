@@ -17,14 +17,7 @@ app = Dash(
     assets_folder="wx/assets",
     pages_folder="wx/pages",
     suppress_callback_exceptions=True,
-    external_stylesheets=[
-        dbc.themes.DARKLY,
-        dbc.icons.FONT_AWESOME,
-        "https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote.min.css",
-    ],
-    external_scripts=[
-        "https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote.min.js",
-    ],
+    external_stylesheets=[dbc.themes.DARKLY, dbc.icons.FONT_AWESOME],
 )
 
 # Get the underlying Flask server

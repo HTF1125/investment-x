@@ -16,11 +16,11 @@ def create_chart_layout():
             "xanchor": "center",
             "x": 0.5,
         },
-        "xaxis": {"rangeslider": {"visible": False}, "gridcolor": "#555"},
-        "yaxis": {"fixedrange": False, "gridcolor": "#555"},
+        "xaxis": {"rangeslider": {"visible": False}},
+        "yaxis": {"fixedrange": False},
         "font": {"family": "Arial, sans-serif", "size": 12, "color": "#ffffff"},
-        "paper_bgcolor": "rgba(0,0,0,0)",
-        "plot_bgcolor": "rgba(0,0,0,0)",
+        "paper_bgcolor": "#212529",
+        "plot_bgcolor": "#212529",
     }
 
 
@@ -55,176 +55,97 @@ def update_dashboard(asset, start_date, end_date):
         return empty_fig, empty_fig
 
 
-css = """
-.technical-asset-select {
-    background-color: #212529;
-    color: #f8f9fa;
-    border: 1px solid #6c757d;
-    border-radius: 4px;
-    padding: 0.25rem 0.5rem;
-    outline: none;
-    box-shadow: none;
-    appearance: none;
-    cursor: pointer;
-    font-size: 1rem;
-    width: 100%;
-    height: 2.5rem;
-    transition: background-color 0.2s, border-color 0.2s;
-}
-
-.technical-asset-select:hover {
-    background-color: #343a40;
-}
-
-.technical-asset-select:focus {
-    background-color: #495057;
-    border-color: #adb5bd;
-}
-"""
-
-
 layout = dbc.Container(
-        fluid=True,
-        className="py-3",
-        style={"backgroundColor": "transparent", "color": "#f8f9fa"},
-        children=[
-            # html.Meta(name="style", content=css),
-            dbc.Card(
-                className="shadow rounded-3 w-100",
-                style={
-                    "backgroundColor": "transparent",
-                    "color": "#f8f9fa",
-                    "border": "1px solid #f8f9fa",
-                    "marginBottom": "1rem",
-                },
-                children=[
-                    dbc.CardHeader(
-                        dbc.Row(
-                            [
-                                dbc.Col(
-                                    html.H3("Technical Analysis", className="mb-0"),
-                                    width=True,
+    fluid=True,
+    children=[
+        dbc.Card(
+            style={
+                "backgroundColor": "#212529",
+                "color": "#ffffff",
+                "border": "1px solid #f8f9fa",
+            },
+            children=[
+                dbc.CardHeader(
+                    style={
+                        "backgroundColor": "#212529",
+                        "borderBottom": "2px solid #f8f9fa",
+                    },
+                    children=dbc.Row(
+                        [
+                            dbc.Col(
+                                html.H3(
+                                    "Technical Analysis", style={"color": "#ffffff"}
+                                )
+                            ),
+                            dbc.Col(
+                                dcc.Dropdown(
+                                    id="asset-select",
+                                    options=[
+                                        {"label": "IAU", "value": "IAU US Equity"},
+                                        {"label": "SPY", "value": "SPY US Equity"},
+                                    ],
+                                    value="IAU US Equity",
+                                    style={
+                                        "backgroundColor": "#343a40",
+                                        "color": "#ffffff",
+                                    },
+                                )
+                            ),
+                            dbc.Col(
+                                dcc.DatePickerSingle(
+                                    id="start-date",
+                                    date=(datetime.now() - timedelta(days=365)).date(),
+                                    display_format="YYYY-MM-DD",
+                                    style={
+                                        "backgroundColor": "#343a40",
+                                        "color": "#ffffff",
+                                        "border": "1px solid #f8f9fa",
+                                    },
+                                )
+                            ),
+                            dbc.Col(
+                                dcc.DatePickerSingle(
+                                    id="end-date",
+                                    date=datetime.now().date(),
+                                    display_format="YYYY-MM-DD",
+                                    style={
+                                        "backgroundColor": "#343a40",
+                                        "color": "#ffffff",
+                                        "border": "1px solid #f8f9fa",
+                                    },
+                                )
+                            ),
+                        ]
+                    ),
+                ),
+                dbc.CardBody(
+                    style={"backgroundColor": "#212529", "color": "#ffffff"},
+                    children=[
+                        dcc.Loading(
+                            id="loading-performance-graphs",
+                            type="default",
+                            children=[
+                                dbc.Row(
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            id="sm-chart",
+                                            config={"displayModeBar": False},
+                                        )
+                                    )
                                 ),
-                                dbc.Col(
-                                    dbc.Select(
-                                        id="asset-select",
-                                        options=[
-                                            {"label": "IAU", "value": "IAU US Equity"},
-                                            {"label": "SPY", "value": "SPY US Equity"},
-                                        ],
-                                        value="IAU US Equity",
-                                        className="technical-asset-select",
-                                    ),
-                                    width="auto",
-                                ),
-                                dbc.Col(
-                                    dcc.DatePickerSingle(
-                                        id="start-date",
-                                        date=(
-                                            datetime.now() - timedelta(days=365)
-                                        ).date(),
-                                        display_format="YYYY-MM-DD",
-                                        style={
-                                            "backgroundColor": "transparent",
-                                            "color": "#f8f9fa",
-                                            "border": "1px solid #f8f9fa",
-                                            "borderRadius": "4px",
-                                            "padding": "0.25rem",
-                                        },
-                                    ),
-                                    width="auto",
-                                ),
-                                dbc.Col(
-                                    dcc.DatePickerSingle(
-                                        id="end-date",
-                                        date=datetime.now().date(),
-                                        display_format="YYYY-MM-DD",
-                                        style={
-                                            "backgroundColor": "transparent",
-                                            "color": "#f8f9fa",
-                                            "border": "1px solid #f8f9fa",
-                                            "borderRadius": "4px",
-                                            "padding": "0.25rem",
-                                        },
-                                    ),
-                                    width="auto",
+                                dbc.Row(
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            id="rsi-chart",
+                                            config={"displayModeBar": False},
+                                        )
+                                    )
                                 ),
                             ],
-                            align="center",
-                            className="g-2",
                         ),
-                        style={
-                            "backgroundColor": "transparent",
-                            "color": "#f8f9fa",
-                            "borderBottom": "2px solid #f8f9fa",
-                            "padding": "1rem",
-                        },
-                    ),
-                    dbc.CardBody(
-                        style={
-                            "backgroundColor": "transparent",
-                            "color": "#f8f9fa",
-                            "padding": "1.5rem",
-                        },
-                        children=[
-                            dcc.Loading(
-                                id="loading-performance-graphs",
-                                type="default",
-                                children=[
-                                    dbc.Row(
-                                        dbc.Col(
-                                            dbc.Card(
-                                                dbc.CardBody(
-                                                    dcc.Graph(
-                                                        id="sm-chart",
-                                                        config={
-                                                            "displayModeBar": False
-                                                        },
-                                                        style={
-                                                            "height": "300px",
-                                                            "width": "100%",
-                                                        },
-                                                    )
-                                                ),
-                                                className="mb-3",
-                                                style={
-                                                    "backgroundColor": "transparent",
-                                                    "border": "1px solid #f8f9fa",
-                                                    "padding": "0.5rem",
-                                                },
-                                            ),
-                                            width=12,
-                                        )
-                                    ),
-                                    dbc.Row(
-                                        dbc.Col(
-                                            dbc.Card(
-                                                dbc.CardBody(
-                                                    dcc.Graph(
-                                                        id="rsi-chart",
-                                                        config={
-                                                            "displayModeBar": False
-                                                        },
-                                                        style={
-                                                            "height": "300px",
-                                                            "width": "100%",
-                                                        },
-                                                    )
-                                                ),
-                                                style={
-                                                    "backgroundColor": "transparent",
-                                                    "border": "1px solid #f8f9fa",
-                                                    "padding": "0.5rem",
-                                                },
-                                            ),
-                                            width=12,
-                                        )
-                                    ),
-                                ],
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    )
+                    ],
+                ),
+            ],
+        ),
+    ],
+)
