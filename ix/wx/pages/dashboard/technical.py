@@ -19,7 +19,6 @@ def create_chart_layout():
         "xaxis": {"rangeslider": {"visible": False}, "gridcolor": "#555"},
         "yaxis": {"fixedrange": False, "gridcolor": "#555"},
         "font": {"family": "Arial, sans-serif", "size": 12, "color": "#ffffff"},
-        # Make backgrounds transparent.
         "paper_bgcolor": "rgba(0,0,0,0)",
         "plot_bgcolor": "rgba(0,0,0,0)",
     }
@@ -40,7 +39,7 @@ def update_dashboard(asset, start_date, end_date):
             window=14,
             overbought=70,
             oversold=30,
-            ma_type="SMA",
+            ma_type="SMA + BBands",
             ma_length=14,
         )
         sm = SqueezeMomentum.from_meta(asset)
