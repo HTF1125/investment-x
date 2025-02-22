@@ -1,15 +1,20 @@
-import json
-
-import pandas as pd
 from dash import dcc, html, Input, Output, State, callback, ALL
 import dash_bootstrap_components as dbc
 import dash
+import json
+import pandas as pd
+
+# Import your specific modules
 from ix.bt.analysis.performance import performance_fig
 from ix import db
+
+
+# Global list of periods
+periods = ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "MTD", "YTD"]
+
 from ix.misc import periods
 
-
-# --- Layout ---
+# Define the layout
 layout = dbc.Container(
     [
         # Interval component to trigger refresh every 5 minutes (300,000 ms)
@@ -18,8 +23,7 @@ layout = dbc.Container(
             interval=300000,
             n_intervals=0,
         ),
-        # Using compressed data in the store (as a string)
-        dcc.Store(id="performance-store", storage_type="memory"),
+        dcc.Store(id="performance-store", storage_type="local"),
         dbc.Card(
             [
                 dbc.CardHeader(
@@ -115,14 +119,12 @@ layout = dbc.Container(
     style={"backgroundColor": "transparent"},
 )
 
+
 # --- Callback 1: Refresh Performance Data ---
-@callback(
-    Output("performance-store", "data"),
-    Input("refresh-interval", "n_intervals"),
-)
+@callback(Output("performance-store", "data"), Input("refresh-interval", "n_intervals"))
 def refresh_data(n_intervals):
     """
-    Refresh performance data every 5 minutes and store a compressed version in local storage.
+    This callback refreshes performance data every 5 minutes.
     """
     universes = [
         "LocalIndices",
@@ -144,13 +146,12 @@ def refresh_data(n_intervals):
             metadata = db.Metadata.find_one({"code": asset.code}).run()
             if metadata is None:
                 continue
-            # Build a lean performance dictionary rather than a full model dump.
-            perf = {"name": asset.code}  # Use code or asset name as identifier.
+            perf = asset.model_dump()
             for period in periods:
                 perf[period] = metadata.tp(field=f"PCT_CHG_{period}").data
             data[universe].append(perf)
-    # Compress the data before storing it.
     return data
+
 
 # --- Callback 2: Update Graphs Based on Selected Period ---
 @callback(
@@ -160,13 +161,12 @@ def refresh_data(n_intervals):
 )
 def update_graphs(n_clicks_list, data):
     """
-    Update performance graphs based on the selected period.
-    Decompress the stored data before processing.
+    This callback updates the performance graphs based on the selected period.
+    It uses the data stored in 'performance-store'.
     """
-    if not data:
+    if data is None:
         return []  # No data yet; dcc.Loading will show a spinner
 
-    # Decompress the data stored in the dcc.Store.
     ctx = dash.callback_context
     selected_period = "1D"  # default period
     for t in ctx.triggered:
@@ -181,16 +181,13 @@ def update_graphs(n_clicks_list, data):
 
     graph_divs = []
     for universe, performances in data.items():
-        # Build a DataFrame from the lean performance data.
         performance_data = pd.DataFrame(performances)
         if "name" not in performance_data.columns:
             continue
         performance_data = performance_data.set_index("name")
         if selected_period not in performance_data.columns:
             continue
-
-        # Create the figure using only the required column.
-        fig = performance_fig(performance_data[selected_period])
+        fig = performance_fig(performance_data[selected_period].copy())
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
@@ -226,6 +223,7 @@ def update_graphs(n_clicks_list, data):
         )
     return graph_divs
 
+
 # --- Callback 3: Update Period Button Styles ---
 @callback(
     Output({"type": "period-button", "period": ALL}, "style"),
@@ -245,7 +243,9 @@ def update_button_styles(n_clicks_list):
     return [
         {
             "backgroundColor": "transparent",
-            "border": ("2px solid #f8f9fa" if period == active_period else "1px solid #f8f9fa"),
+            "border": (
+                "2px solid #f8f9fa" if period == active_period else "1px solid #f8f9fa"
+            ),
             "padding": "0.5rem",
             "margin": "0.25rem",
             "color": "#f8f9fa",
