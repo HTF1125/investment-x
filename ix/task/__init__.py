@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
-from ix.misc import get_logger, yesterday
+from ix.misc import get_logger
 from ix.db import Metadata
 from ix.misc import as_date, onemonthbefore, onemonthlater
-from ix.misc.date import periods, yesterday, to_timestamp, relative_timestamp
+from ix.misc.date import periods, last_business_day, to_timestamp, relative_timestamp
 from ix.core.perf import to_log_return
 
 from ix.db import EconomicCalendar
@@ -52,7 +52,7 @@ def update_economic_calendar():
     EconomicCalendar.insert_many(objs)
 
 def update_performance():
-    asofdate = yesterday()
+    asofdate = last_business_day()
     logger.debug("Starting metadata performance processing...")
     for _, metadata in enumerate(Metadata.find({"has_performance": True}).run()):
         try:

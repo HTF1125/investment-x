@@ -5,8 +5,7 @@ import io
 from datetime import datetime
 import base64
 from ix.misc import get_logger
-from .models import Metadata, Universe
-from .conn import Insight
+from .models import Metadata, Universe, Insight, TacticalView
 from .boto import Boto
 
 # Configure logging
@@ -72,7 +71,7 @@ def get_insight_by_id(id: str) -> Insight:
     Retrieves an insight by its ID from the database.
     Caching is enabled to avoid repeated database lookups for the same insight.
     """
-    insight = Insight.find_one({"id" : str(id)}).run()
+    insight = Insight.find_one({"id": str(id)}).run()
     if insight is None:
         raise ValueError(f"Insight not found for id: {id}")
     return insight
@@ -285,3 +284,8 @@ def get_performances(universe: str = "LocalIndices", period: str = "1D") -> pd.S
             continue
         performance[asset.name] = metadata.tp(field=f"PCT_CHG_{period}").data
     return pd.Series(performance)
+
+
+def get_recent_tactical_view() -> Optional[TacticalView]:
+
+    return TacticalView.find_one({}, sort=[("published_date", -1)]).run()
