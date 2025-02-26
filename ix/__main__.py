@@ -36,8 +36,15 @@ def get_metadata():
     except Exception as e:
         logger.error("Error fetching metadata: %s", e)
         return jsonify({"error": "Failed to fetch metadata"}), 500
-
     return jsonify(metadatas.to_dict("records"))
+
+
+@server.route("/api/performance")
+def get_performance():
+    """
+    API endpoint to retrieve metadata.
+    """
+    return jsonify(ix.db.Perforamnce.get_dataframe().to_dict("records"))
 
 
 # Define the layout for the Dash app

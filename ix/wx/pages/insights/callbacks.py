@@ -14,8 +14,9 @@ from ix.db.conn import Insight
 from ix.db.boto import Boto
 from ix.misc.terminal import get_logger
 from ix.misc import PDFSummarizer, Settings
+from .insight_card import InsightCard
 
-from .helpers import create_insight_card
+
 
 # Configure logging.
 logger = get_logger(__name__)
@@ -147,7 +148,7 @@ def update_insights_cards(insights_data: List[str]) -> Any:
             "No insights available.", color="info", className="text-center"
         )
     try:
-        cards = [create_insight_card(json.loads(insight)) for insight in insights_data]
+        cards = [InsightCard().layout(json.loads(insight)) for insight in insights_data]
         return [dbc.Row(dbc.Col(card, width=12)) for card in cards]
     except Exception as e:
         return dbc.Alert(

@@ -1,19 +1,7 @@
 from pymongo import MongoClient, errors
 from bunnet import init_bunnet
 from ix.misc import Settings, get_logger
-from .models import (
-    Metadata,
-    TimeSeries,
-    TimePoint,
-    InsightSource,
-    MarketCommentary,
-    Prediction,
-    Universe,
-    EconomicCalendar,
-    User,
-    Insight,
-    TacticalView,
-)
+from .models import *
 
 logger = get_logger(__name__)
 
@@ -53,12 +41,11 @@ try:
             MarketCommentary,
             Prediction,
             Universe,
+            Perforamnce,
         ],
     )
 
-    logger.info(
-        f"Successfully initialized Bunnet with database: {Settings.db_name}"
-    )
+    logger.info(f"Successfully initialized Bunnet with database: {Settings.db_name}")
 except errors.ServerSelectionTimeoutError as e:
     logger.error(f"MongoDB connection timeout: {e}")
 except errors.ConnectionFailure as e:

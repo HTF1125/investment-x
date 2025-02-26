@@ -262,9 +262,6 @@ class EconomicCalendar(Document):
         return releases
 
 
-
-
-
 class Book(BaseModel):
     d: List[str] = []
     v: List[float] = []
@@ -276,7 +273,7 @@ class Book(BaseModel):
     a: List[Dict[str, float]] = []
 
 
-class StrategyKeyInfo(Document):
+class Strategy(Document):
     code: Annotated[str, Indexed(unique=True)]
     frequency: str = "ME"
     last_updated: Optional[str] = None
@@ -354,3 +351,35 @@ class TacticalView(Document):
         if not document.published_date:
             document.published_date = datetime.now()
         return document
+
+
+class Perforamnce(Document):
+
+    code: Annotated[str, Indexed(unique=True)]
+    px_last: Optional[float] = None
+    pct_chg_1d: Optional[float] = None
+    pct_chg_1w: Optional[float] = None
+    pct_chg_1m: Optional[float] = None
+    pct_chg_3m: Optional[float] = None
+    pct_chg_6m: Optional[float] = None
+    pct_chg_1y: Optional[float] = None
+    pct_chg_3y: Optional[float] = None
+    pct_chg_5y: Optional[float] = None
+    pct_chg_mtd: Optional[float] = None
+    pct_chg_ytd: Optional[float] = None
+    vol_1d: Optional[float] = None
+    vol_1w: Optional[float] = None
+    vol_1m: Optional[float] = None
+    vol_3m: Optional[float] = None
+    vol_6m: Optional[float] = None
+    vol_1y: Optional[float] = None
+    vol_3y: Optional[float] = None
+    vol_5y: Optional[float] = None
+    vol_mtd: Optional[float] = None
+    vol_ytd: Optional[float] = None
+
+    @classmethod
+    def get_dataframe(cls) -> pd.DataFrame:
+        return pd.DataFrame([p.model_dump() for p in cls.find().run()]).set_index(
+            keys=["id"], drop=True
+        )

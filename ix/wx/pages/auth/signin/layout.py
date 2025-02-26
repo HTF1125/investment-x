@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State
+from dash import html, dcc, callback, Input, Output, State, callback_context, no_update
 import dash_bootstrap_components as dbc
 from datetime import datetime, timedelta
 from jose import jwt
@@ -198,7 +198,10 @@ layout = dbc.Container(
         Output("signin-url", "href"),
         Output("signin-output", "children"),
     ],
-    Input("signin-button", "n_clicks"),
+    [
+        Input("signin-button", "n_clicks"),
+        Input("logout-btn", "n_clicks"),
+    ],
     [
         State("username-input", "value"),
         State("password-input", "value"),
@@ -207,30 +210,44 @@ layout = dbc.Container(
     ],
     prevent_initial_call=True,
 )
-def handle_signin(n_clicks, username, password, current_pathname, token):
+def handle_auth(signin_clicks, logout_clicks, username, password, current_pathname, token):
     """
-    Handle sign-in button clicks:
-      - Validate input fields.
-      - Authenticate the user.
-      - Generate and store an access token upon success.
-      - Redirect to the dashboard if sign-in is successful.
-      - Display an error message if authentication fails.
+    Handle both sign-in and logout events:
+      - For sign-in:
+          * Validate input fields.
+          * Authenticate the user.
+          * Generate and store an access token upon success.
+          * Redirect to the dashboard if sign-in is successful.
+          * Display an error message if authentication fails.
+      - For logout:
+          * Clear the token.
+          * Redirect to the sign-in page.
     """
-    if n_clicks is None or n_clicks == 0:
-        return dash.no_update, dash.no_update, dash.no_update
+    ctx = callback_context
+    if not ctx.triggered:
+        return no_update, no_update, no_update
 
-    if not username or not password:
-        return (
-            dash.no_update,
-            dash.no_update,
-            "Please enter both username and password.",
-        )
+    triggered_id = ctx.triggered[0]["prop_id"].split('.')[0]
 
-    user = authenticate_user(username, password)
-    if user:
-        access_token = create_access_token(data={"sub": user.username})
-        token_data = {"access_token": access_token, "token_type": "bearer"}
-        redirect_path = "/" if current_pathname == "/signin" else current_pathname
-        return token_data, redirect_path, ""
-    else:
-        return dash.no_update, dash.no_update, "Invalid username or password."
+    # Handle sign-in
+    if triggered_id == "signin-button":
+        if signin_clicks is None or signin_clicks == 0:
+            return no_update, no_update, no_update
+
+        if not username or not password:
+            return no_update, no_update, "Please enter both username and password."
+
+        user = authenticate_user(username, password)
+        if user:
+            access_token = create_access_token(data={"sub": user.username})
+            token_data = {"access_token": access_token, "token_type": "bearer"}
+            redirect_path = "/" if current_pathname == "/signin" else current_pathname
+            return token_data, redirect_path, ""
+        else:
+            return no_update, no_update, "Invalid username or password."
+
+    # Handle logout
+    elif triggered_id == "logout-btn":
+        return None, "/signin", ""
+
+    return no_update, no_update, no_update

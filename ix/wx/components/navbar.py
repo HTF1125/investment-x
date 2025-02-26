@@ -191,7 +191,8 @@ def update_user_menu(token_data):
         dbc.DropdownMenuItem("Profile", href="/profile", className="dropdown-item"),
         dbc.DropdownMenuItem("Settings", href="/settings", className="dropdown-item"),
         dbc.DropdownMenuItem(divider=True),
-        dbc.DropdownMenuItem("Log Out", href="/logout", className="dropdown-item"),
+        dbc.DropdownMenuItem("Log Out", id="logout-btn", className="dropdown-item"),
+
     ]
     if user.is_admin:
         dropdown_items.insert(

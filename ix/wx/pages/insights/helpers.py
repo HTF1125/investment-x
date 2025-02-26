@@ -1,4 +1,3 @@
-import json
 from typing import Dict, Any
 from dash import html
 import dash_bootstrap_components as dbc

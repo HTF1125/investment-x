@@ -1,10 +1,8 @@
-from dash import dcc, html, Input, Output, State, callback, ALL
+from dash import dcc, html
+from dash import Input, Output, State, callback, callback_context, ALL
 import dash_bootstrap_components as dbc
-import dash
 import json
 import pandas as pd
-from datetime import datetime, timedelta
-import plotly.graph_objects as go
 from ix.bt.analysis.performance import performance_fig
 from ix import db
 from ix.misc import periods
@@ -24,8 +22,6 @@ def create_chart_layout():
 layout = dbc.Container(
     fluid=True,
     children=[
-        dcc.Interval(id="refresh-interval", interval=300000, n_intervals=0),
-        dcc.Store(id="performance-store", storage_type="local"),
         dbc.Card(
             style={
                 "backgroundColor": "#212529",
@@ -85,9 +81,13 @@ layout = dbc.Container(
     ],
 )
 
+from cachetools import cached, TTLCache
 
-@callback(Output("performance-store", "data"), Input("refresh-interval", "n_intervals"))
-def refresh_data(n_intervals):
+cache = TTLCache(maxsize=1, ttl=300)  # 1-hour cache
+
+@cached(cache)
+def get_performance() -> dict:
+
     universes = [
         "LocalIndices",
         "GicsUS",
@@ -118,12 +118,9 @@ def refresh_data(n_intervals):
 @callback(
     Output("performance-graphs-container", "children"),
     Input({"type": "period-button", "period": ALL}, "n_clicks"),
-    State("performance-store", "data"),
 )
-def update_graphs(n_clicks_list, data):
-    if data is None:
-        return []
-    ctx = dash.callback_context
+def update_graphs(n_clicks_list):
+    ctx = callback_context
     selected_period = "1D"
     for t in ctx.triggered:
         if "period-button" in t["prop_id"]:
@@ -135,7 +132,7 @@ def update_graphs(n_clicks_list, data):
             except (json.JSONDecodeError, KeyError):
                 selected_period = "1D"
     graph_divs = []
-    for universe, performances in data.items():
+    for universe, performances in get_performance().items():
         performance_data = pd.DataFrame(performances)
         if "name" not in performance_data.columns:
             continue
