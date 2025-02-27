@@ -4,9 +4,10 @@ import re
 import io
 from datetime import datetime
 import base64
-from ix.misc import get_logger
+from ix.misc import get_logger, periods
 from .models import Metadata, Universe, Insight, TacticalView
 from .boto import Boto
+
 
 # Configure logging
 logger = get_logger(__name__)
@@ -270,20 +271,16 @@ def create_insight_with_pdf(base64_content: str, filename: str):
         raise Exception(f"Error creating insight from PDF: {str(e)}")
 
 
-def get_performances(universe: str = "LocalIndices", period: str = "1D") -> pd.Series:
-    """
-    Retrieve performance data for a given universe.
-    """
-    universe_obj = Universe.find_one({"code": universe}).run()
-    if not universe_obj:
-        raise ValueError(f"Universe {universe} not found.")
-    performance = {}
-    for asset in universe_obj.assets:
-        metadata = Metadata.find_one({"code": asset.code}).run()
-        if metadata is None:
-            continue
-        performance[asset.name] = metadata.tp(field=f"PCT_CHG_{period}").data
-    return pd.Series(performance)
+def get_performances() -> pd.DataFrame:
+    performances = []
+    for metadata in Metadata.find({"has_performance": True}).run():
+        timepoint = metadata.tp().data
+        performance = {"code": metadata.code, "PX_LAST": timepoint.get("PX_LAST")}
+        for period in periods:
+            field = f"PCT_CHG_{period}"
+            performance[field] = timepoint.get(field)
+        performances.append(performance)
+    return pd.DataFrame(performances)
 
 
 def get_recent_tactical_view() -> Optional[TacticalView]:

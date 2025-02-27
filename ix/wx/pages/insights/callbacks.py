@@ -10,7 +10,7 @@ from dash import html, callback, Input, Output, State, ALL, no_update
 from dash.exceptions import PreventUpdate
 
 from ix.db.client import get_insights
-from ix.db.conn import Insight
+from ix.db.models import Insight
 from ix.db.boto import Boto
 from ix.misc.terminal import get_logger
 from ix.misc import PDFSummarizer, Settings

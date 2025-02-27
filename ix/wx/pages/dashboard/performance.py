@@ -109,8 +109,9 @@ def get_performance() -> dict:
             if metadata is None:
                 continue
             perf = asset.model_dump()
+            tp_data = metadata.tp().data
             for period in periods:
-                perf[period] = metadata.tp(field=f"PCT_CHG_{period}").data
+                perf[period] = tp_data[f"PCT_CHG_{period}"]
             data[universe].append(perf)
     return data
 

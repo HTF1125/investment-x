@@ -8,7 +8,7 @@ from ix.misc.email import EmailSender
 from ix.misc.settings import Settings
 from ix.misc.terminal import get_logger
 from dash.long_callback import DiskcacheManager
-
+from ix.db.client import get_performances
 logger = get_logger(__name__)
 
 # Initialize cache for background callbacks
@@ -177,22 +177,10 @@ def send_email_callback(n_clicks):
 
         datas = []
         metadatas = []
-        performances = []
         from ix.misc import periods
 
         for metadata in Metadata.find_all().run():
             metadatas.append(metadata.model_dump())
-            if metadata.has_performance:
-                performance = {
-                    "code": metadata.code,
-                    "PX_LAST": metadata.tp("PX_LAST").data,
-                }
-                for period in periods:
-                    field = f"PCT_CHG_{period}"
-                    performance[field] = metadata.tp(field).data
-                    field = f"VOL_{period}"
-                    performance[field] = metadata.tp(field).data
-                performances.append(performance)
             for ts in TimeSeries.find_many({"meta_id": str(metadata.id)}).run():
                 if ts.field not in [
                     "PX_OPEN",
@@ -208,7 +196,7 @@ def send_email_callback(n_clicks):
                     datas.append(data.loc["2024":])
         datas = pd.concat(datas, axis=1)
         metdatas = pd.DataFrame(metadatas)
-        performances = pd.DataFrame(performances)
+        performances = get_performances()
         releases = EconomicCalendar.get_dataframe()
 
         # Create an in-memory Excel file with multiple sheets.

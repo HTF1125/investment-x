@@ -1,7 +1,7 @@
 from pymongo import MongoClient, errors
 from bunnet import init_bunnet
 from ix.misc import Settings, get_logger
-from .models import *
+from ix.db import models
 
 logger = get_logger(__name__)
 
@@ -29,20 +29,7 @@ try:
     # Initialize Bunnet ODM
     init_bunnet(
         database=database,
-        document_models=[
-            Metadata,
-            TimeSeries,
-            TimePoint,
-            EconomicCalendar,
-            User,
-            Insight,
-            TacticalView,
-            InsightSource,
-            MarketCommentary,
-            Prediction,
-            Universe,
-            Perforamnce,
-        ],
+        document_models=models.all(),
     )
 
     logger.info(f"Successfully initialized Bunnet with database: {Settings.db_name}")

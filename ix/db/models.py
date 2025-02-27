@@ -1,4 +1,4 @@
-from typing import Annotated, Dict, Optional, Union, List
+from typing import Annotated, Dict, Optional, Union, List, Type
 from bunnet import Document, Indexed
 from datetime import date, datetime
 import pandas as pd
@@ -85,14 +85,6 @@ class Metadata(Document):
                 logger.debug(
                     f"Set timeseries field {target_field} for code {self.code}"
                 )
-
-                # For PX_LAST, update the TP (timepoint) value and calculate performance.
-                if target_field == "PX_LAST":
-                    last_value = series.iloc[-1]
-                    self.tp(field=target_field).data = last_value
-                    logger.debug(
-                        f"Set timepoint {target_field} (last value: {last_value}) for code {self.code}"
-                    )
                 logger.info(
                     f"Successfully updated {target_field} for metadata code: {self.code}"
                 )
@@ -109,13 +101,10 @@ class Metadata(Document):
             ts = TimeSeries(meta_id=str(self.id), field=field).create()
         return ts
 
-    def tp(self, field: str = "PX_LAST") -> "TimePoint":
-        if not self.id:
-            raise
-        tp = TimePoint.find_one({"meta_id": str(self.id), "field": field}).run()
+    def tp(self) -> "TimePoint":
+        tp = TimePoint.find_one({"code": self.code}).run()
         if tp is None:
-            logger.debug(f"Create new TimePoint for {self.code} - {field}")
-            return TimePoint(meta_id=str(self.id), field=field).create()
+            return TimePoint(code=self.code).create()
         return tp
 
 
@@ -132,14 +121,6 @@ class TimeSeries(Document):
             raise
         return metadata
 
-    @property
-    def timepoint(self) -> "TimePoint":
-        timepoint = TimePoint.find_one(
-            {"meta_id": str(self.id), "field": self.field}
-        ).run()
-        if timepoint:
-            return timepoint
-        return TimePoint(meta_id=str(self.id), field=self.field).create()
 
     @property
     def metadata_code(self) -> str:
@@ -194,18 +175,22 @@ class TimeSeries(Document):
 
 
 class TimePoint(Document):
-    meta_id: str
-    field: str
-    i_data: float | None = None
+    code: Annotated[str, Indexed(unique=True)]
+    i_data: Dict[str, str | int | float] = {}
 
     @property
-    def data(self) -> float | None:
-        return self.i_data
+    def data(self) -> pd.Series:
+        return pd.Series(data=self.i_data)
 
     @data.setter
-    def data(self, data: float) -> None:
-        self.set({"i_data": data})
-
+    def data(self, data: Union[pd.Series, Dict[date, float]]) -> None:
+        if isinstance(data, dict):
+            data = pd.Series(data=data)
+        if self.i_data:
+            data = data.combine_first(self.data)
+        if data is not None:
+            data = data.dropna()
+            self.set({"i_data": data.to_dict()})
 
 class InsightSource(Document):
     url: str
@@ -357,27 +342,27 @@ import numpy as np
 class Perforamnce(Document):
 
     code: Annotated[str, Indexed(unique=True)]
-    px_last: Optional[float] = None
-    pct_chg_1d: Optional[float] = None
-    pct_chg_1w: Optional[float] = None
-    pct_chg_1m: Optional[float] = None
-    pct_chg_3m: Optional[float] = None
-    pct_chg_6m: Optional[float] = None
-    pct_chg_1y: Optional[float] = None
-    pct_chg_3y: Optional[float] = None
-    pct_chg_5y: Optional[float] = None
-    pct_chg_mtd: Optional[float] = None
-    pct_chg_ytd: Optional[float] = None
-    vol_1d: Optional[float] = None
-    vol_1w: Optional[float] = None
-    vol_1m: Optional[float] = None
-    vol_3m: Optional[float] = None
-    vol_6m: Optional[float] = None
-    vol_1y: Optional[float] = None
-    vol_3y: Optional[float] = None
-    vol_5y: Optional[float] = None
-    vol_mtd: Optional[float] = None
-    vol_ytd: Optional[float] = None
+    PX_LAST: Optional[float] = None
+    PCT_CHG_1D: Optional[float] = None
+    PCT_CHG_1W: Optional[float] = None
+    PCT_CHG_1M: Optional[float] = None
+    PCT_CHG_3M: Optional[float] = None
+    PCT_CHG_6M: Optional[float] = None
+    PCT_CHG_1Y: Optional[float] = None
+    PCT_CHG_3Y: Optional[float] = None
+    PCT_CHG_5Y: Optional[float] = None
+    PCT_CHG_MTD: Optional[float] = None
+    PCT_CHG_YTD: Optional[float] = None
+    VOL_1D: Optional[float] = None
+    VOL_1W: Optional[float] = None
+    VOL_1M: Optional[float] = None
+    VOL_3M: Optional[float] = None
+    VOL_6M: Optional[float] = None
+    VOL_1Y: Optional[float] = None
+    VOL_3Y: Optional[float] = None
+    VOL_5Y: Optional[float] = None
+    VOL_MTD: Optional[float] = None
+    VOL_YTD: Optional[float] = None
 
     @classmethod
     def get_dataframe(cls) -> pd.DataFrame:
@@ -386,3 +371,19 @@ class Perforamnce(Document):
             .set_index(keys=["id"], drop=True)
             .replace({np.nan: None})
         )
+
+
+def all():
+    return [
+        Metadata,
+        TimeSeries,
+        TimePoint,
+        EconomicCalendar,
+        User,
+        Insight,
+        TacticalView,
+        InsightSource,
+        MarketCommentary,
+        Prediction,
+        Universe,
+    ]
