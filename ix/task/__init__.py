@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 def run():
     update_px_last()
     update_economic_calendar()
+    update_performance()
 
 def update_px_last():
     logger.debug("Initialize update PX_LAST data")
@@ -50,3 +51,30 @@ def update_economic_calendar():
     EconomicCalendar.insert_many(objs)
 
 
+def update_performance():
+    asofdate = last_business_day()
+    for metadata in Metadata.find({"has_performance": True}).run():
+        px_last = pd.to_numeric(metadata.ts(field="PX_LAST").data, errors="coerce").dropna()
+        px_last.name = metadata.code
+        if px_last.empty:
+            continue
+        px_last = px_last.dropna().loc[:asofdate]
+        performance = {
+            "PX_LAST": float(px_last.iloc[-1]),
+        }
+        pct_change = to_log_return(px=px_last).iloc[1:]
+        init_date = to_timestamp(str(pct_change.index[0]), normalize=True)
+        if pct_change.empty:
+            continue
+        for period in periods:
+            rel_date = relative_timestamp(asofdate, period, offset_1d=True, normalize=True)
+            if rel_date < init_date:
+                continue
+            pct_chg_slice = pct_change.loc[str(rel_date) :].copy().astype(float)
+            pct_chg_value = np.exp(pct_chg_slice.sum()) - 1
+            performance[f"PCT_CHG_{period}"] = round(pct_chg_value, 6) * 100
+            if period == "1D":
+                continue
+            vol_value = pct_chg_slice.std() * np.sqrt(252)
+            performance[f"VOL_{period}"] = round(float(vol_value), 6) * 100
+        metadata.tp().data = pd.Series(performance).astype(float)

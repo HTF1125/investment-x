@@ -42,7 +42,7 @@ class Metadata(Document):
     bbg_ticker: Optional[str] = None
     yah_ticker: Optional[str] = None
     fre_ticker: Optional[str] = None
-    ts_fields : Optional[str] = None
+    ts_fields: Optional[str] = None
     tp_fields: Optional[str] = None
     has_performance: bool = False
 
@@ -52,7 +52,6 @@ class Metadata(Document):
         out = pd.DataFrame(out)
         out = out.set_index(keys=["id"], drop=True)
         return out
-
 
     def update_px(self):
         if self.yah_ticker:
@@ -121,7 +120,6 @@ class TimeSeries(Document):
             raise
         return metadata
 
-
     @property
     def metadata_code(self) -> str:
         if not ObjectId.is_valid(self.meta_id):  # Make sure 'self.meta_id' is valid
@@ -157,8 +155,6 @@ class TimeSeries(Document):
         if data is not None:
             data = data.dropna()
             self.set({"i_data": data.to_dict()})
-            tp = self.timepoint
-            tp.set({"i_data": float(data.iloc[-1])})
             logger.info(f"Update {self.metadata_code} {self.field}")
 
     def get_data(
@@ -191,6 +187,7 @@ class TimePoint(Document):
         if data is not None:
             data = data.dropna()
             self.set({"i_data": data.to_dict()})
+
 
 class InsightSource(Document):
     url: str
@@ -337,7 +334,9 @@ class TacticalView(Document):
             document.published_date = datetime.now()
         return document
 
+
 import numpy as np
+
 
 class Perforamnce(Document):
 
