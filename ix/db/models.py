@@ -352,6 +352,7 @@ class TacticalView(Document):
             document.published_date = datetime.now()
         return document
 
+import numpy as np
 
 class Perforamnce(Document):
 
@@ -380,6 +381,8 @@ class Perforamnce(Document):
 
     @classmethod
     def get_dataframe(cls) -> pd.DataFrame:
-        return pd.DataFrame([p.model_dump() for p in cls.find().run()]).set_index(
-            keys=["id"], drop=True
+        return (
+            pd.DataFrame([p.model_dump() for p in cls.find().run()])
+            .set_index(keys=["id"], drop=True)
+            .replace({np.nan: None})
         )
