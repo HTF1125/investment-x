@@ -65,6 +65,7 @@ inline_styles = dcc.Markdown(css_text, dangerously_allow_html=True)
 # Navigation items for the navbar.
 NAV_ITEMS = [
     {"name": "Dashboard", "href": "/"},
+    {"name": "Macro", "href": "/macro"},
     {"name": "Insights", "href": "/insights"},
     {"name": "Views", "href": "/views"},
     {"name": "Strategies", "href": "/strategies"},

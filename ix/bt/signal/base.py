@@ -1,22 +1,24 @@
-from typing import Union
+from typing import Optional, Union
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 from ix.core import to_log_return
-from ix.db import get_ts, get_px_last
-from ix import db
-from ix import misc
+from ix.db import get_px_last
+from ix import db, misc
 from ix.db import Metadata
-import matplotlib.pyplot as plt
 
 logger = misc.get_logger(__name__)
 
 
 class Signal:
     def __init__(self) -> None:
-        code = f"{self.__class__.__name__}"
+        """
+        Base class for defining a financial signal.
+        Automatically retrieves metadata or creates a new record if not found.
+        """
+        code = self.__class__.__name__
         self.metadata = (
-            Metadata.find_one({"code" : code}).run()
-            or Metadata(code=code).create()
+            Metadata.find_one({"code": code}).run() or Metadata(code=code).create()
         )
 
     def fit(self) -> pd.Series:
@@ -24,11 +26,11 @@ class Signal:
         raise NotImplementedError(f"Must implement `{self.fit.__name__}` method.")
 
     def refresh(self) -> "Signal":
-        """Refreshes the signal data by recalculating and saving to the database."""
+        """Refreshes the signal data by recalculating and saving it to the database."""
         logger.info("Starting data refresh")
         data = self.fit().dropna().round(2)
         self.metadata.ts(field="PX_LAST").data = data
-        return self
+        return self  # Return self to allow method chaining
 
     @property
     def data(self) -> pd.Series:
@@ -41,107 +43,95 @@ class Signal:
 
     def get_performance(
         self,
-        long: str | None = None,
-        short: str | None = None,
+        long: Optional[str] = None,
+        short: Optional[str] = None,
         periods: int = 1,
-        commission: int = 0,
-    ) -> Union[pd.Series, pd.DataFrame]:
-
+        commission: float = 0.0,
+    ) -> pd.Series:
+        """Calculates the cumulative returns of the signal when applied to given assets."""
         if not long and not short:
-            raise ValueError("both long and short could not be none.")
+            raise ValueError("Both long and short cannot be None.")
+
+        l_returns = s_returns = 0
+
         if long:
             l_px = get_px_last([long]).squeeze()
             l_pri_return = to_log_return(px=l_px, periods=periods, forward=True)
-            l_signal_shifted = self.data.reindex(l_pri_return.index).ffill().shift(1)
+            l_signal_shifted = (
+                self.data.reindex(l_pri_return.index).ffill().shift(1).fillna(0)
+            )
             l_returns = l_pri_return.mul(l_signal_shifted)
-        else:
-            l_returns = 0
+
         if short:
             s_px = get_px_last([short]).squeeze()
             s_pri_return = to_log_return(px=s_px, periods=periods, forward=True)
-            s_signal_shifted = self.data.reindex(s_pri_return.index).ffill().shift(1)
+            s_signal_shifted = (
+                self.data.reindex(s_pri_return.index).ffill().shift(1).fillna(0)
+            )
             s_returns = s_pri_return.mul(-s_signal_shifted)
-        else:
-            s_returns = 0
 
         returns = l_returns + s_returns
+
         if commission:
-            returns -= (
+            trading_cost = (
                 l_signal_shifted.diff(periods).abs() * commission / 10_000 / periods
             )
-        assert isinstance(returns, pd.Series)
+            returns -= trading_cost
+
         return returns.div(periods).cumsum().rename(periods)
 
     def plot(
         self,
-        long: str | None = None,
-        short: str | None = None,
+        long: Optional[str] = None,
+        short: Optional[str] = None,
         periods: int = 1,
-        commission: int = 0,
+        commission: float = 0.0,
     ) -> None:
-        """
-        Plots the signal data and its performance with dual y-axes,
-        more transparent tone, improved design, and clarity.
-        """
-        # Get the signal data
+        """Plots the signal data and performance using an interactive Plotly chart."""
         signal_data = self.data
-
-        # Get the performance data
         performance_data = self.get_performance(
             long=long, short=short, periods=periods, commission=commission
         )
 
-        # Create a plot with dual y-axes
-        fig, ax1 = plt.subplots(figsize=(12, 6))
+        fig = go.Figure()
 
-        # Plot signal data on the left y-axis
-        ax1.set_xlabel("Date", fontsize=12)
-        ax1.set_ylabel("Signal Data", color="tab:blue", fontsize=12)
-        ax1.plot(
-            signal_data.index,
-            signal_data,
-            color="tab:blue",
-            label="Signal Data",
-            linewidth=2,
-            alpha=0.9,
+        # Add Signal Data to the primary y-axis
+        fig.add_trace(
+            go.Scatter(
+                x=signal_data.index,
+                y=signal_data,
+                mode="lines",
+                name="Signal Data",
+                line=dict(color="blue", width=2),
+                fill="tozeroy",
+                opacity=0.6,
+            )
         )
-        ax1.fill_between(
-            signal_data.index, signal_data, color="tab:blue", alpha=0.2
-        )  # Light fill under signal
-        ax1.tick_params(axis="y", labelcolor="tab:blue")
 
-        # Plot performance on the right y-axis
-        ax2 = ax1.twinx()
-        ax2.set_ylabel("Performance", color="tab:green", fontsize=12)
-        ax2.plot(
-            performance_data.index,
-            performance_data,
-            color="tab:green",
-            label="Performance",
-            linestyle="--",
-            linewidth=2,
-            alpha=0.9,
+        # Add Performance Data to the secondary y-axis (on the right side)
+        fig.add_trace(
+            go.Scatter(
+                x=performance_data.index,
+                y=performance_data,
+                mode="lines",
+                name="Performance",
+                line=dict(color="green", width=2, dash="dash"),
+                fill="tozeroy",
+                opacity=0.4,
+                yaxis="y2",
+            )
         )
-        ax2.fill_between(
-            performance_data.index, performance_data, color="tab:green", alpha=0.1
-        )  # Light fill under performance
-        ax2.tick_params(axis="y", labelcolor="tab:green")
 
-        # Title and grid settings
-        plt.title(f"{self.metadata.code} Signal and Performance", fontsize=14)
-        ax1.grid(
-            True, which="both", axis="both", linestyle="--", linewidth=0.5, alpha=0.7
-        )  # Subtle gridlines
+        # Layout configuration
+        fig.update_layout(
+            xaxis_title="Date",
+            yaxis=dict(title="Signal Data"),
+            yaxis2=dict(title="Performance", overlaying="y", side="right"),
+            legend=dict(x=0.5, y=1.1, xanchor="center", orientation="h"),
+            template="plotly_white",
+        )
 
-        # Add a legend with custom location
-        ax1.legend(loc="upper left", fontsize=10)
-        ax2.legend(loc="upper right", fontsize=10)
-
-        # Layout adjustments for better spacing
-        plt.tight_layout()
-
-        # Show the plot
-        plt.show()
+        fig.show()
 
 
 class OecdCliUsChg1(Signal):

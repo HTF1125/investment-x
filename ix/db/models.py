@@ -94,10 +94,10 @@ class Metadata(Document):
     ) -> "TimeSeries":
         if not self.id:
             raise
-        ts = TimeSeries.find_one({"meta_id": str(self.id), "field": field}).run()
+        ts = TimeSeries.find_one({"code": self.code, "field": field}).run()
         if ts is None:
             logger.debug(f"Create new TimeSeries for {self.code} - {field}")
-            ts = TimeSeries(meta_id=str(self.id), field=field).create()
+            ts = TimeSeries(code=self.code, field=field).create()
         return ts
 
     def tp(self) -> "TimePoint":
@@ -108,30 +108,16 @@ class Metadata(Document):
 
 
 class TimeSeries(Document):
-    meta_id: str
+    code: str
     field: str
-    latest_date: Optional[date] = None
     i_data: Dict[date | str, str | int | float] = {}
 
     @property
     def metadata(self) -> Metadata:
-        metadata = Metadata.find_one(Metadata.id == ObjectId(self.meta_id)).run()
+        metadata = Metadata.find_one({"code" : self.code}).run()
         if metadata is None:
             raise
         return metadata
-
-    @property
-    def metadata_code(self) -> str:
-        if not ObjectId.is_valid(self.meta_id):  # Make sure 'self.meta_id' is valid
-            raise ValueError(
-                f"Invalid ObjectId: {self.meta_id}"
-            )  # Raise a more meaningful error
-        metadata = Metadata.find_one(Metadata.id == ObjectId(self.meta_id)).run()
-        if not metadata:
-            raise ValueError(
-                f"Metadata not found for id {self.meta_id}"
-            )  # Raise an error if metadata is not found
-        return metadata.code
 
     @property
     def data(self) -> pd.Series:
@@ -155,7 +141,7 @@ class TimeSeries(Document):
         if data is not None:
             data = data.dropna()
             self.set({"i_data": data.to_dict()})
-            logger.info(f"Update {self.metadata_code} {self.field}")
+            logger.info(f"Update {self.code} {self.field}")
 
     def get_data(
         self,

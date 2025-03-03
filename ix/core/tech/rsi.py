@@ -7,12 +7,6 @@ from ix.db.client import get_timeseries  # your custom data loader
 
 class RSI:
 
-
-    
-
-
-
-
     @classmethod
     def from_meta(
         cls,
@@ -319,7 +313,9 @@ class RSI:
         df = self.to_dataframe(start=start, end=end)
 
         if df.empty:
-            print("Warning: The DataFrame is empty. Check your input data and filtering parameters.")
+            print(
+                "Warning: The DataFrame is empty. Check your input data and filtering parameters."
+            )
             return go.Figure()  # Return an empty figure
 
         fig = go.Figure()

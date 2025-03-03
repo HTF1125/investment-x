@@ -14,28 +14,28 @@ dash.register_page(__name__, path="/signin", title="Sign In", name="Sign In")
 crypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+# Function to verify passwords
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify that the provided password matches the stored hash."""
     return crypt_context.verify(plain_password, hashed_password)
 
 
+# Function to authenticate users
 def authenticate_user(username: str, password: str):
-    """Fetch the user and verify credentials."""
     user = db.User.find_one(db.User.username == username).run()
     if not user or not verify_password(password, user.password):
         return None
     return user
 
 
+# Function to create JWT token
 def create_access_token(data: dict) -> str:
-    """Create a JWT access token with an expiration time."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=Settings.access_token_expire_minutes)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, Settings.secret_key, algorithm=Settings.algorithm)
 
 
-# Revised layout with dark theme, full viewport height, enhanced design, and a taller login card
+# Layout of the Sign-In Page
 layout = dbc.Container(
     fluid=True,
     style={
@@ -43,11 +43,12 @@ layout = dbc.Container(
         "display": "flex",
         "justifyContent": "center",
         "alignItems": "center",
-        "background": "linear-gradient(135deg, #2c3e50, #000000)",  # dark gradient background
+        "background": "linear-gradient(135deg, #2c3e50, #000000)",
     },
     children=[
-        # Location for redirecting and a hidden store for the token
+        # Location for redirecting and a store for the token
         dcc.Location(id="signin-url", refresh=True),
+        dcc.Store(id="token-store", storage_type="session"),
         dbc.Row(
             dbc.Col(
                 dbc.Card(
@@ -121,7 +122,7 @@ layout = dbc.Container(
                                     dbc.Button(
                                         "Sign In",
                                         id="signin-button",
-                                        color="primary",  # You may change this if desired
+                                        color="primary",
                                         n_clicks=0,
                                         style={
                                             "borderRadius": "0.5rem",
@@ -156,18 +157,13 @@ layout = dbc.Container(
                                         },
                                     ),
                                 ],
-                                style={
-                                    "textAlign": "center",
-                                    "marginTop": "1rem",
-                                },
+                                style={"textAlign": "center", "marginTop": "1rem"},
                             ),
                         ],
-                        # Center the card content vertically and apply dark text colors
                         style={
                             "display": "flex",
                             "flexDirection": "column",
                             "justifyContent": "center",
-                            "height": "100%",
                         },
                     ),
                     style={
@@ -175,10 +171,10 @@ layout = dbc.Container(
                         "maxWidth": "400px",
                         "width": "100%",
                         "minWidth": "350px",
-                        "minHeight": "500px",  # Increases the card height
+                        "minHeight": "500px",
                         "boxShadow": "0 1rem 3rem rgba(0,0,0,0.175)",
-                        "backgroundColor": "#343a40",  # dark card background
-                        "color": "#ffffff",  # light text color for the card
+                        "backgroundColor": "#343a40",
+                        "color": "#ffffff",
                     },
                 ),
                 xs=12,
@@ -192,62 +188,41 @@ layout = dbc.Container(
 )
 
 
+# Callback to handle authentication
 @callback(
     [
         Output("token-store", "data"),
         Output("signin-url", "href"),
         Output("signin-output", "children"),
     ],
-    [
-        Input("signin-button", "n_clicks"),
-        Input("logout-btn", "n_clicks"),
-    ],
+    [Input("signin-button", "n_clicks")],
     [
         State("username-input", "value"),
         State("password-input", "value"),
         State("signin-url", "pathname"),
-        State("token-store", "data"),
     ],
     prevent_initial_call=True,
 )
-def handle_auth(signin_clicks, logout_clicks, username, password, current_pathname, token):
+def handle_signin(signin_clicks, username, password, current_pathname):
     """
-    Handle both sign-in and logout events:
-      - For sign-in:
-          * Validate input fields.
-          * Authenticate the user.
-          * Generate and store an access token upon success.
-          * Redirect to the dashboard if sign-in is successful.
-          * Display an error message if authentication fails.
-      - For logout:
-          * Clear the token.
-          * Redirect to the sign-in page.
+    Handle sign-in:
+      - Validate input fields.
+      - Authenticate the user.
+      - Generate and store an access token upon success.
+      - Redirect to the dashboard if sign-in is successful.
+      - Display an error message if authentication fails.
     """
-    ctx = callback_context
-    if not ctx.triggered:
+    if signin_clicks is None or signin_clicks == 0:
         return no_update, no_update, no_update
 
-    triggered_id = ctx.triggered[0]["prop_id"].split('.')[0]
+    if not username or not password:
+        return no_update, no_update, "Please enter both username and password."
 
-    # Handle sign-in
-    if triggered_id == "signin-button":
-        if signin_clicks is None or signin_clicks == 0:
-            return no_update, no_update, no_update
-
-        if not username or not password:
-            return no_update, no_update, "Please enter both username and password."
-
-        user = authenticate_user(username, password)
-        if user:
-            access_token = create_access_token(data={"sub": user.username})
-            token_data = {"access_token": access_token, "token_type": "bearer"}
-            redirect_path = "/" if current_pathname == "/signin" else current_pathname
-            return token_data, redirect_path, ""
-        else:
-            return no_update, no_update, "Invalid username or password."
-
-    # Handle logout
-    elif triggered_id == "logout-btn":
-        return None, "/signin", ""
-
-    return no_update, no_update, no_update
+    user = authenticate_user(username, password)
+    if user:
+        access_token = create_access_token(data={"sub": user.username})
+        token_data = {"access_token": access_token, "token_type": "bearer"}
+        redirect_path = "/" if current_pathname == "/signin" else current_pathname
+        return token_data, redirect_path, ""
+    else:
+        return no_update, no_update, "Invalid username or password."

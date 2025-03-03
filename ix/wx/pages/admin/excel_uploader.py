@@ -113,15 +113,15 @@ def process_uploaded_file(contents, filename):
         decoded = base64.b64decode(content_string)
         in_file = io.BytesIO(decoded)
 
-        metadatas = pd.read_excel(in_file, sheet_name="Metadata")
-        metadatas = metadatas.set_index(keys=["id"], drop=True)
-        for metadata in Metadata.find_all().run():
-            _id = str(metadata.id)
-            if _id not in metadatas.index:
-                Metadata.find({"id": str(_id)}).delete().run()
-                print(f"delete {metadata.code}")
-                continue
-            metadata.set(metadatas.loc[_id].dropna().to_dict())
+        # metadatas = pd.read_excel(in_file, sheet_name="Metadata")
+        # metadatas = metadatas.set_index(keys=["id"], drop=True)
+        # for metadata in Metadata.find_all().run():
+        #     _id = str(metadata.id)
+        #     if _id not in metadatas.index:
+        #         Metadata.find({"id": str(_id)}).delete().run()
+        #         print(f"delete {metadata.code}")
+        #         continue
+        #     metadata.set(metadatas.loc[_id].dropna().to_dict())
 
         data = pd.read_excel(
             in_file, sheet_name="Data", parse_dates=True, index_col=[0]
@@ -177,7 +177,6 @@ def send_email_callback(n_clicks):
 
         datas = []
         metadatas = []
-        from ix.misc import periods
 
         for metadata in Metadata.find_all().run():
             metadatas.append(metadata.model_dump())

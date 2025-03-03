@@ -64,7 +64,7 @@ def tomorrow() -> pd.Timestamp:
 
 
 def relative_timestamp(
-    asofdate: pd.Timestamp,
+    asofdate: str | pd.Timestamp = "today",
     period: str = "1D",
     offset_1d: bool = False,
     normalize: bool = False,
@@ -100,6 +100,9 @@ def relative_timestamp(
     ValueError
         If the period provided is not supported.
     """
+    if isinstance(asofdate, str):
+        asofdate = pd.Timestamp(asofdate)
+
     # Mapping for standard day and month offsets
     period_mapping = {
         "1D": pd.DateOffset(days=1),
@@ -110,6 +113,7 @@ def relative_timestamp(
         "1Y": pd.DateOffset(months=12),
         "3Y": pd.DateOffset(months=36),
         "5Y": pd.DateOffset(months=60),
+        "10Y": pd.DateOffset(months=120),
     }
 
     if period in period_mapping:
@@ -142,6 +146,7 @@ periods = {
     "1Y": "One Year",
     "3Y": "Three Years",
     "5Y": "Five Years",
+    # "10Y": "Ten Years",
     "MTD": "Month-to-Date (Start of the Current Month)",
     "YTD": "Year-to-Date (Start of the Current Year)",
 }

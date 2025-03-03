@@ -157,7 +157,7 @@ def update_graphs(n_clicks_list):
                         dcc.Graph(
                             figure=fig,
                             config={"displayModeBar": False},
-                            style={"height": "300px"},
+                            style={"height": "250px"},
                         ),
                     ],
                     style={

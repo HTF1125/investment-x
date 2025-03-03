@@ -7,7 +7,6 @@ from ix.misc import get_logger
 
 logger = get_logger(__name__)
 
-
 class SqueezeMomentum:
     def __init__(
         self,
