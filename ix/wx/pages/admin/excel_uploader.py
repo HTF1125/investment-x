@@ -9,6 +9,7 @@ from ix.misc.settings import Settings
 from ix.misc.terminal import get_logger
 from dash.long_callback import DiskcacheManager
 from ix.db.client import get_performances
+
 logger = get_logger(__name__)
 
 # Initialize cache for background callbacks
@@ -112,17 +113,6 @@ def process_uploaded_file(contents, filename):
         _, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string)
         in_file = io.BytesIO(decoded)
-
-        # metadatas = pd.read_excel(in_file, sheet_name="Metadata")
-        # metadatas = metadatas.set_index(keys=["id"], drop=True)
-        # for metadata in Metadata.find_all().run():
-        #     _id = str(metadata.id)
-        #     if _id not in metadatas.index:
-        #         Metadata.find({"id": str(_id)}).delete().run()
-        #         print(f"delete {metadata.code}")
-        #         continue
-        #     metadata.set(metadatas.loc[_id].dropna().to_dict())
-
         data = pd.read_excel(
             in_file, sheet_name="Data", parse_dates=True, index_col=[0]
         ).dropna(how="all")
@@ -176,25 +166,30 @@ def send_email_callback(n_clicks):
         )
 
         datas = []
-        metadatas = []
 
-        for metadata in Metadata.find_all().run():
-            metadatas.append(metadata.model_dump())
-            for ts in TimeSeries.find_many({"meta_id": str(metadata.id)}).run():
-                if ts.field not in [
-                    "PX_OPEN",
-                    "PX_HIGH",
-                    "PX_LOW",
-                    "PX_VOLUME",
-                    "PX_CLOSE",
-                ]:
-                    data = ts.data
-                    if data.empty:
-                        continue
-                    data.name = f"{metadata.code}:{ts.field}"
-                    datas.append(data.loc["2024":])
+        for ts in TimeSeries.find(
+            {
+                "field": {
+                    "$nin": [
+                        "PX_OPEN",
+                        "PX_HIGH",
+                        "PX_LOW",
+                        "PX_VOLUME",
+                        "PX_CLOSE",
+                        "PX_SPLITS",
+                        "PX_DVDNS",
+                        "CAPTIAL_GAINS",
+                    ]
+                }
+            }
+        ).run():
+            data = ts.data
+            if data.empty:
+                continue
+            data.name = f"{ts.code}:{ts.field}"
+            datas.append(data.loc["2024":])
         datas = pd.concat(datas, axis=1)
-        metdatas = pd.DataFrame(metadatas)
+        metdatas = Metadata.to_dataframe()
         performances = get_performances()
         releases = EconomicCalendar.get_dataframe()
 

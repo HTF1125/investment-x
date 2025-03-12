@@ -1,68 +1,123 @@
 import dash_bootstrap_components as dbc
-from dash import html, dcc, callback, Input, Output, State
-from ix.wx.utils import (
-    get_user_from_token,
-)  # Your utility for extracting user info from token.
+from dash import html, dcc, callback, Input, Output, State, dcc
+from ix.wx.utils import get_user_from_token  # Your token utility
 
-# Updated inline CSS definitions wrapped in a <style> tag.
-css_text = """
+CSS_TEXT = """
 <style>
-/* Navbar Links */
+/* Gradient Overlay */
+.navbar-gradient {
+    background: linear-gradient(135deg, #1a1a1a 0%, #000000 100%);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Improved Logo Styles */
+.navbar-logo {
+    transition: transform 0.3s ease-in-out, filter 0.3s ease;
+}
+.navbar-logo:hover {
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
+}
+
+/* Enhanced Nav Links */
 .nav-link-custom {
-    color: var(--bs-light);
-    border-bottom: 2px solid transparent;
-    transition: border-bottom 0.3s ease-in-out;
-    padding-bottom: 3px;
+    color: #e0e0e0;
+    position: relative;
+    padding: 1rem 1.25rem;
+    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .nav-link-custom:hover {
-    border-bottom: 2px solid var(--bs-light);
+    color: #ffffff;
+}
+.nav-link-custom::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #00f2ff, #ff00ff);
+    transition: all 0.3s ease;
+}
+.nav-link-custom:hover::after {
+    width: 100%;
+    left: 0;
 }
 
-/* Sign In Button */
+/* Animated Sign In Button */
 .signin-btn {
-    border-color: #FFFFFF;
-    color: #FFFFFF;
-    background-color: transparent;
-    transition: background-color 0.3s ease-in-out;
+    border: 2px solid #ffffff;
+    color: #ffffff;
+    padding: 0.375rem 1.5rem;
+    transition: all 0.3s ease-in-out;
+}
+.signin-btn:hover {
+    background: linear-gradient(135deg, #00f2ff 0%, #ff00ff 100%);
+    border-color: transparent;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0, 242, 255, 0.3);
 }
 
-/* User Dropdown Toggle */
+/* Modern User Dropdown */
 .user-dropdown-menu .dropdown-toggle {
-    min-width: 120px;
-    color: #FFFFFF;
-    background-color: #000000;
-    border: 1px solid #FFFFFF;
-    border-radius: 4px;
-    padding: 0.25rem 0.75rem;
-    transition: background-color 0.3s ease-in-out;
+    background: linear-gradient(135deg, #1a1a1a 0%, #000000 100%);
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    min-width: 140px;
+}
+.user-dropdown-menu .dropdown-toggle:focus {
+    box-shadow: 0 0 0 3px rgba(0, 242, 255, 0.5);
 }
 
-/* Override default dropdown menu styles */
 .user-dropdown-menu .dropdown-menu {
-    background-color: #000000 !important;
-    border: 1px solid #FFFFFF;
-    margin-top: 0.5rem;
-    opacity: 1 !important;
-    transform: none !important;
-    box-shadow: none !important;
+    background: linear-gradient(135deg, #1a1a1a 0%, #000000 100%);
+    border: 2px solid #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    transform: translateY(8px);
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    opacity: 0;
+    pointer-events: none;
+}
+.user-dropdown-menu.show .dropdown-menu {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
 }
 
-/* User Dropdown Items */
 .user-dropdown-menu .dropdown-item {
-    background-color: #000000;
-    color: #FFFFFF;
+    border-radius: 4px;
+    margin: 4px 0;
+    transition: all 0.3s ease;
 }
 .user-dropdown-menu .dropdown-item:hover {
-    background-color: #333333;
-    color: #FFFFFF;
+    background: linear-gradient(135deg, #333333 0%, #262626 100%);
+    transform: translateX(8px);
+}
+
+/* Mobile Improvements */
+@media (max-width: 992px) {
+    .navbar-collapse {
+        background: linear-gradient(135deg, #1a1a1a 0%, #000000 100%);
+        border-radius: 0 0 10px 10px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .navbar-toggler {
+        border-color: #ffffff !important;
+    }
+    .navbar-toggler-icon {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 0.8%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
+    }
 }
 </style>
 """
 
-# Inject the CSS into the layout using a Markdown component with raw HTML enabled.
-inline_styles = dcc.Markdown(css_text, dangerously_allow_html=True)
+# Inject CSS
+inline_styles = dcc.Markdown(CSS_TEXT, dangerously_allow_html=True)
 
-# Navigation items for the navbar.
+# Navigation items
 NAV_ITEMS = [
     {"name": "Dashboard", "href": "/"},
     {"name": "Macro", "href": "/macro"},
@@ -73,22 +128,20 @@ NAV_ITEMS = [
 
 
 def create_nav_link(item):
-    """Create a navigation link using dbc.NavLink with our custom CSS class."""
+    """Create enhanced navigation link"""
     return dbc.NavItem(
         dbc.NavLink(
             item["name"],
             href=item["href"],
             active="exact",
-            className="mx-2 nav-link-custom",
+            className="nav-link-custom",
         )
     )
 
 
 def create_navbar():
-    """Construct a responsive, production-ready navbar with logo, links, and a user menu placeholder."""
-    # Build the nav links.
+    """Create enhanced navbar component"""
     nav_links = [create_nav_link(item) for item in NAV_ITEMS]
-    # Append a container for the user menu.
     nav_links.append(
         html.Div(id="user-menu", className="d-flex align-items-center ms-2")
     )
@@ -96,35 +149,35 @@ def create_navbar():
     return dbc.Navbar(
         dbc.Container(
             [
-                # Logo and branding area.
                 html.A(
                     dbc.Row(
-                        dbc.Col(
-                            html.Img(
-                                src="/assets/images/investment-x-logo-light.svg",
-                                height="30",
-                                className="navbar-logo",
-                                alt="Investment X Logo",
-                                style={
-                                    "maxWidth": "300px",
-                                    "width": "100%",
-                                    "objectFit": "contain",
-                                },
+                        [
+                            dbc.Col(
+                                html.Img(
+                                    src="/assets/images/investment-x-logo-light.svg",
+                                    height="30",
+                                    className="navbar-logo",
+                                    alt="Investment X Logo",
+                                    style={
+                                        "maxWidth": "280px",
+                                        "width": "100%",
+                                        "objectFit": "contain",
+                                        "filter": "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))",
+                                    },
+                                )
                             )
-                        ),
+                        ],
                         align="center",
-                        className="g-0",
+                        className="g-0 flex-nowrap",
                     ),
                     href="/",
                     style={"textDecoration": "none"},
                 ),
-                # Navbar toggler for mobile view.
-                dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
-                # Collapsible area for navigation links and user menu.
+                dbc.NavbarToggler(id="navbar-toggler", n_clicks=0, className="ms-2"),
                 dbc.Collapse(
                     dbc.Nav(
                         nav_links,
-                        className="ms-auto",
+                        className="ms-auto align-items-lg-center",
                         navbar=True,
                     ),
                     id="navbar-collapse",
@@ -134,92 +187,79 @@ def create_navbar():
             ],
             fluid=True,
             style={
-                "display": "flex",
-                "alignItems": "center",
-                "height": "60px",
                 "maxWidth": "1680px",
                 "margin": "0 auto",
+                "padding": "0 1rem",
             },
         ),
         color="dark",
         dark=True,
         fixed="top",
         expand="lg",
+        className="navbar-gradient",
         style={
-            "paddingTop": "0.5rem",
-            "paddingBottom": "0.5rem",
-            "backgroundColor": "#000000",
-            "boxShadow": "0 2px 4px rgba(255, 255, 255, 0.1)",
-            "borderBottom": "1px solid #FFFFFF",
-            "transition": "background-color 0.3s ease-in-out",
-            "minHeight": "60px",
+            "padding": "0.75rem 0",
+            "transition": "all 0.3s ease-in-out",
+            "boxShadow": "0 2px 8px rgba(0, 0, 0, 0.3)",
         },
     )
 
 
-# Instantiate the navbar component.
 navbar = create_navbar()
 
 
-# Callback to update the user menu based on token data.
 @callback(Output("user-menu", "children"), Input("token-store", "data"))
 def update_user_menu(token_data):
-    """
-    If no token is provided or the token is invalid, display a "Sign In" button.
-    Otherwise, display a dropdown with Profile, Settings, and Log Out options.
-    """
     if not token_data:
         return dbc.Button(
             "Sign In",
             href="/signin",
-            color="light",
             outline=True,
-            size="sm",
             className="signin-btn",
+            style={"borderWidth": "2px"},
         )
+
     user = get_user_from_token(token_data)
-    if user is None:
+    if not user:
         return dbc.Button(
             "Sign In",
             href="/signin",
-            color="light",
             outline=True,
-            size="sm",
             className="signin-btn",
+            style={"borderWidth": "2px"},
         )
-    # Define dropdown items.
-    dropdown_items = [
-        dbc.DropdownMenuItem("Profile", href="/profile", className="dropdown-item"),
-        dbc.DropdownMenuItem("Settings", href="/settings", className="dropdown-item"),
-        dbc.DropdownMenuItem(divider=True),
-        dbc.DropdownMenuItem("Log Out", id="logout-btn", className="dropdown-item"),
 
+    dropdown_items = [
+        dbc.DropdownMenuItem("Profile", href="/profile"),
+        dbc.DropdownMenuItem("Settings", href="/settings"),
+        dbc.DropdownMenuItem(divider=True),
+        dbc.DropdownMenuItem("Log Out", id="logout-btn"),
     ]
+
     if user.is_admin:
         dropdown_items.insert(
             0,
-            dbc.DropdownMenuItem("Admin", href="/admin", className="dropdown-item"),
+            dbc.DropdownMenuItem("Admin", href="/admin"),
         )
+
     return dbc.DropdownMenu(
         label=user.username,
         children=dropdown_items,
         nav=True,
         in_navbar=True,
-        toggle_style={},  # Styling is handled via CSS.
         className="user-dropdown-menu",
+        toggle_style={"padding": "0.375rem 1rem"},
     )
 
 
-# Callback to handle the navbar collapse on mobile devices.
 @callback(
     Output("navbar-collapse", "is_open"),
     Input("navbar-toggler", "n_clicks"),
     State("navbar-collapse", "is_open"),
 )
-def toggle_navbar_collapse(n_clicks, is_open):
-    """Toggle the collapse state of the navbar."""
+def toggle_navbar(n_clicks, is_open):
     return not is_open if n_clicks else is_open
 
 
-# Define the overall layout, including the inline CSS and the navbar.
+# Final layout
 layout = html.Div([inline_styles, navbar])

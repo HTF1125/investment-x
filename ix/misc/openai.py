@@ -39,7 +39,7 @@ use not bullet points, just use normal text foramt.
 Content :
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str = "qwen-plus"):
         """
         Initializes the PDFSummarizer class.
 
@@ -47,7 +47,10 @@ Content :
             api_key (str): API key for OpenAI.
             model (str): The model to use for summarization.
         """
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        )
         self.model = model
 
     def pdf_bytes_to_text(self, pdf_bytes: bytes) -> str:
@@ -224,7 +227,10 @@ Provided Insights:
             api_key (str): API key for OpenAI.
             model (str): The model to use for summarization.
         """
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        )
         self.model = model
 
     def generate_tactical_views(self, insights: str) -> Optional[Dict[str, Any]]:

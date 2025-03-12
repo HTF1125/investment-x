@@ -279,6 +279,15 @@ def get_performances() -> pd.DataFrame:
         for period in periods:
             field = f"PCT_CHG_{period}"
             performance[field] = timepoint.get(field)
+
+            field = f"PX_DIFF_{period}"
+            performance[field] = timepoint.get(field)
+
+            field = f"VOL_{period}"
+            performance[field] = timepoint.get(field)
+
+
+
         performances.append(performance)
     return pd.DataFrame(performances)
 

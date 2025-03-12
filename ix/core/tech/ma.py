@@ -7,6 +7,7 @@ from ix.misc import get_logger
 
 logger = get_logger(__name__)
 
+
 class SqueezeMomentum:
     def __init__(
         self,
@@ -21,20 +22,8 @@ class SqueezeMomentum:
     ) -> None:
         """
         Initialize the Squeeze Momentum indicator.
-
         If either `px_high` or `px_low` is not provided, they default to `px_close`.
-
-        Parameters:
-            px_close (pd.Series): Series of closing prices.
-            px_high (Optional[pd.Series]): Series of high prices.
-            px_low (Optional[pd.Series]): Series of low prices.
-            bb_length (int): Period for Bollinger Bands.
-            bb_mult (float): Multiplier for Bollinger Bands.
-            kc_length (int): Period for Keltner Channels.
-            kc_mult (float): Multiplier for Keltner Channels.
-            use_true_range (bool): Whether to use the True Range for KC computation.
         """
-        # Ensure high/low data are provided
         self.px_close = px_close.copy()
         self.px_high = (
             px_high.copy()
@@ -48,8 +37,9 @@ class SqueezeMomentum:
         )
 
         # Combine the price series into a single DataFrame
-        self.hlc = pd.concat([self.px_close, self.px_high, self.px_low], axis=1)
-        self.hlc.columns = ["close", "high", "low"]
+        self.hlc = pd.DataFrame(
+            {"close": self.px_close, "high": self.px_high, "low": self.px_low}
+        )
 
         # Store indicator parameters
         self.bb_length = bb_length
@@ -76,26 +66,14 @@ class SqueezeMomentum:
     ) -> "SqueezeMomentum":
         """
         Create a SqueezeMomentum instance using a meta-code by retrieving the price data.
-
-        Parameters:
-            code (str): The meta-code for retrieving price data.
-            bb_length (int): Period for Bollinger Bands.
-            bb_mult (float): Multiplier for Bollinger Bands.
-            kc_length (int): Period for Keltner Channels.
-            kc_mult (float): Multiplier for Keltner Channels.
-            use_true_range (bool): Whether to use the True Range for KC computation.
-
-        Returns:
-            SqueezeMomentum: An instance of the SqueezeMomentum indicator.
         """
         px_close = get_timeseries(code=code, field="PX_LAST")
         px_high = get_timeseries(code=code, field="PX_HIGH")
         px_low = get_timeseries(code=code, field="PX_LOW")
 
-        if px_high.empty:
-            px_high = None
-        if px_low.empty:
-            px_low = None
+        # Handle missing high/low data
+        px_high = px_high if not px_high.empty else None
+        px_low = px_low if not px_low.empty else None
 
         return cls(
             px_close=px_close,
@@ -112,19 +90,12 @@ class SqueezeMomentum:
     def _linreg_last(arr: np.ndarray) -> float:
         """
         Compute the last value of a linear regression fit on the input array.
-
-        Parameters:
-            arr (np.ndarray): Array of values for regression.
-
-        Returns:
-            float: The predicted value at the last index (or NaN if any value is NaN).
         """
-        n = len(arr)
         if np.isnan(arr).any():
             return np.nan
-        x = np.arange(n)
+        x = np.arange(len(arr))
         slope, intercept = np.polyfit(x, arr, 1)
-        return intercept + slope * (n - 1)
+        return intercept + slope * (len(arr) - 1)
 
     def _calculate_indicator(self) -> None:
         """
@@ -175,7 +146,6 @@ class SqueezeMomentum:
 
         avg1 = (highest_high + lowest_low) / 2
         avg_val = (avg1 + sma_close) / 2
-
         diff_series = source - avg_val
 
         momentum = diff_series.rolling(
@@ -220,13 +190,6 @@ class SqueezeMomentum:
     ) -> pd.DataFrame:
         """
         Return the computed indicator data as a DataFrame.
-
-        Parameters:
-            start (Optional[str or pd.Timestamp]): Starting date to filter the data.
-            end (Optional[str or pd.Timestamp]): Ending date to filter the data.
-
-        Returns:
-            pd.DataFrame: DataFrame with momentum values, color assignments, squeeze conditions, and price.
         """
         cols = [
             "momentum",
@@ -254,18 +217,6 @@ class SqueezeMomentum:
     ) -> go.Figure:
         """
         Create an interactive Plotly chart of the Squeeze Momentum indicator.
-
-        The chart includes:
-          - A bar trace for the momentum values with dynamic colors.
-          - A scatter trace marking the 0-level with colors indicating the squeeze condition.
-          - A line trace for price data on a secondary y-axis.
-
-        Parameters:
-            start (Optional[str or pd.Timestamp]): Starting date to filter the data.
-            end (Optional[str or pd.Timestamp]): Ending date to filter the data.
-
-        Returns:
-            go.Figure: A Plotly Figure object.
         """
         df = self.to_dataframe(start=start, end=end)
         if df.empty:
@@ -282,7 +233,7 @@ class SqueezeMomentum:
                 name="Price",
                 line=dict(color="grey", width=2),
                 yaxis="y2",
-                hovertemplate="Date: %{x|%Y-%m-%d}<br>Price: %{y:.2f}<extra></extra>",
+                hovertemplate="Date: %{x|%Y-%m-%d} Price: %{y:.2f}",
             )
         )
 
@@ -293,7 +244,7 @@ class SqueezeMomentum:
                 y=df["momentum"],
                 marker_color=df["bar_color"],
                 name="Squeeze Momentum",
-                hovertemplate="Date: %{x|%Y-%m-%d}<br>Momentum: %{y:.2f}<extra></extra>",
+                hovertemplate="Date: %{x|%Y-%m-%d} Momentum: %{y:.2f}",
             )
         )
 
@@ -303,18 +254,22 @@ class SqueezeMomentum:
                 x=df.index,
                 y=[0] * len(df),
                 mode="markers",
-                marker=dict(
-                    symbol="x",
-                    size=5,
-                    color=df["marker_color"].tolist(),
-                ),
+                marker=dict(symbol="x", size=5, color=df["marker_color"].tolist()),
                 name="Squeeze Condition",
-                hovertemplate="Date: %{x|%Y-%m-%d}<br>Condition Color: %{marker.color}<extra></extra>",
+                hovertemplate="Date: %{x|%Y-%m-%d} Condition Color: %{marker.color}",
             )
         )
 
         # --- Layout Configuration ---
         fig.update_layout(
+            title={
+                "text": "Squeeze Momentum Indicator",
+                "x": 0.05,
+                "y": 0.95,
+                "xanchor": "left",
+                "yanchor": "top",
+                "font": {"size": 18, "color": "#ffffff"},
+            },
             xaxis=dict(
                 title="Date",
                 showgrid=True,
@@ -322,30 +277,20 @@ class SqueezeMomentum:
                 type="date",
                 range=[df.index.min(), df.index.max()],
             ),
-            yaxis=dict(
-                title="Squeeze Momentum",
-                showgrid=True,
-                gridcolor="lightgrey",
-            ),
-            yaxis2=dict(
-                title="Price",
-                overlaying="y",
-                side="right",
-                showgrid=False,
-            ),
+            yaxis=dict(title="Squeeze Momentum", showgrid=True, gridcolor="lightgrey"),
+            yaxis2=dict(title="Price", overlaying="y", side="right", showgrid=False),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
                 y=1.02,
-                xanchor="center",
-                x=0.5,
+                xanchor="right",
+                x=1,
+                font={"color": "#ffffff"},
             ),
             hovermode="x unified",
-            hoverlabel=dict(
-                bgcolor="black",
-                font=dict(color="white"),
-            ),
+            hoverlabel=dict(bgcolor="black", font=dict(color="white")),
             margin=dict(l=50, r=50, t=80, b=50),
+            template="plotly_dark",
         )
 
         return fig

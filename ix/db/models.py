@@ -1,4 +1,4 @@
-from typing import Annotated, Dict, Optional, Union, List, Type
+from typing import Annotated, Dict, Optional, Union, List
 from bunnet import Document, Indexed
 from datetime import date, datetime
 import pandas as pd
@@ -6,9 +6,8 @@ from ix.misc import get_logger
 from ix.misc import get_yahoo_data
 from ix.misc import get_fred_data
 from ix.misc import relative_timestamp
-from bson import ObjectId
 from pydantic import BaseModel, Field
-
+import os
 
 logger = get_logger(__name__)
 
@@ -114,7 +113,7 @@ class TimeSeries(Document):
 
     @property
     def metadata(self) -> Metadata:
-        metadata = Metadata.find_one({"code" : self.code}).run()
+        metadata = Metadata.find_one({"code": self.code}).run()
         if metadata is None:
             raise
         return metadata
@@ -142,6 +141,85 @@ class TimeSeries(Document):
             data = data.dropna()
             self.set({"i_data": data.to_dict()})
             logger.info(f"Update {self.code} {self.field}")
+    @classmethod
+    def get_parquet(cls, filepath: str = "docs/timeseries.parquet") -> pd.DataFrame:
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+        try:
+            # Load existing data if file exists
+            data = pd.read_parquet(filepath)
+        except (FileNotFoundError, pd.errors.EmptyDataError):
+            data = pd.DataFrame()
+        return data
+
+    @classmethod
+    def to_parquet(cls, data: pd.DataFrame, filepath: str = "docs/timeseries.parquet") -> None:
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+        try:
+            # Load existing data if file exists
+            data_parquet = pd.read_parquet(filepath)
+        except (FileNotFoundError, pd.errors.EmptyDataError):
+            data_parquet = pd.DataFrame()
+
+        # Append new data
+        data_parquet = data_parquet.combine_first(other=data)
+
+        # Ensure the index is datetime
+        data_parquet.index = pd.to_datetime(data_parquet.index, errors="coerce")
+
+        # Convert all data to numeric (coerce non-numeric values to NaN)
+        data_parquet = data_parquet.map(lambda x: pd.to_numeric(x, errors="coerce"))
+
+        # Ensure the index name is "Date"
+        data_parquet.index.name = "Date"
+
+        # Save back to Parquet
+        data_parquet.sort_index().to_parquet(filepath, compression=None)
+
+    @classmethod
+    def get_csv(cls, filepath: str = "docs/timeseries.csv") -> pd.DataFrame:
+        # Ensure the directory exists
+        import os
+
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+        try:
+            # Load existing data if file exists
+            data = pd.read_csv(filepath, index_col=0, parse_dates=True)
+        except (FileNotFoundError, pd.errors.EmptyDataError):
+            data = pd.DataFrame()
+        return data
+
+    @classmethod
+    def to_csv(cls, data: pd.DataFrame, filepath: str = "docs/timeseries.csv") -> None:
+        # Ensure the directory exists
+        import os
+
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+        try:
+            # Load existing data if file exists
+            data_csv = pd.read_csv(filepath, index_col=0, parse_dates=True)
+        except (FileNotFoundError, pd.errors.EmptyDataError):
+            data_csv = pd.DataFrame()
+
+        # Append new data
+        data_csv = data_csv.combine_first(other=data)
+
+        # Ensure the index is datetime
+        data_csv.index = pd.to_datetime(data_csv.index, errors="coerce")
+
+        # Convert all data to numeric (coerce non-numeric values to NaN)
+        data_csv = data_csv.map(lambda x: pd.to_numeric(x, errors="coerce"))
+
+        # Ensure the index name is "Date"
+        data_csv.index.name = "Date"
+
+        # Save back to CSV
+        data_csv.sort_index().to_csv(filepath)
 
     def get_data(
         self,

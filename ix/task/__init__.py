@@ -15,9 +15,15 @@ def run():
     update_economic_calendar()
     update_performance()
 
-def update_px_last():
+def update_px_last(has_performance: bool = False):
     logger.debug("Initialize update PX_LAST data")
-    for metadata in Metadata.find_all().run():
+
+    if has_performance:
+        query = {"has_performance": True}
+    else:
+        query = {}
+
+    for metadata in Metadata.find(query).run():
         try:
             # Process Yahoo ticker data if available.
             if metadata.yah_ticker:
@@ -59,9 +65,8 @@ def update_performance():
         if px_last.empty:
             continue
         px_last = px_last.dropna().loc[:asofdate]
-        performance = {
-            "PX_LAST": float(px_last.iloc[-1]),
-        }
+        px_last_end = float(px_last.iloc[-1])
+        performance = {"PX_LAST": px_last_end}
         pct_change = to_log_return(px=px_last).iloc[1:]
         init_date = to_timestamp(str(pct_change.index[0]), normalize=True)
         if pct_change.empty:
@@ -72,7 +77,9 @@ def update_performance():
                 continue
             pct_chg_slice = pct_change.loc[str(rel_date) :].copy().astype(float)
             pct_chg_value = np.exp(pct_chg_slice.sum()) - 1
+            px_last_start = float(px_last.loc[:rel_date].iloc[-1])
             performance[f"PCT_CHG_{period}"] = round(pct_chg_value, 6) * 100
+            performance[f"PX_DIFF_{period}"] = round(px_last_end - px_last_start, 6)
             if period == "1D":
                 continue
             vol_value = pct_chg_slice.std() * np.sqrt(252)
