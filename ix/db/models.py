@@ -128,6 +128,7 @@ class TimeSeries(Document):
             data = data[valid_dates.notna()]
             data.index = pd.to_datetime(data.index)
             self.set({"i_data": data.to_dict()})
+        data = data.map(lambda x: pd.to_numeric(x, errors="coerce")).dropna()
         return data.sort_index()
 
     @data.setter
@@ -139,6 +140,7 @@ class TimeSeries(Document):
             data = data.combine_first(self.data)
         if data is not None:
             data = data.dropna()
+            data = data.map(lambda x: pd.to_numeric(x, errors="coerce"))
             self.set({"i_data": data.to_dict()})
             logger.info(f"Update {self.code} {self.field}")
     @classmethod

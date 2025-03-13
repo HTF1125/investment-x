@@ -135,13 +135,12 @@ def upload_bbg_data(data: pd.DataFrame):
         if ":" not in ticker_field:
             logger.warning(f"Invalid format: {ticker_field}")
             continue
+        d = data[ticker_field].dropna()
         ticker, field = map(str.strip, ticker_field.split(":", maxsplit=1))
-        metadata = Metadata.find_one({"bbg_ticker": ticker}).run()
-        if not metadata:
-            metadata = Metadata(code=ticker, name="...", bbg_ticker=ticker).create()
-        ts = data[ticker_field].dropna()
-        if not ts.empty:
-            metadata.ts(field=field).data = ts
+        ts = TimeSeries.find_one({"code": ticker, "field": field}).run()
+        if ts is None:
+            ts = TimeSeries(code=ticker, field=field).create()
+        ts.data = d.map(lambda x: pd.to_numeric(x, errors="coerce"))
     return True
 
 
