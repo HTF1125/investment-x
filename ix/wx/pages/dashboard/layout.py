@@ -7,7 +7,7 @@ import dash_bootstrap_components as dbc
 from ix.wx.pages.dashboard import performance
 from ix.wx.pages.dashboard import commentary
 from ix.wx.pages.dashboard import technical
-
+from ix.wx.components.ticker import TickerEditor
 # Register Page
 dash.register_page(__name__, path="/", title="Dashboard", name="Dashboard")
 
@@ -24,6 +24,7 @@ layout = dbc.Container(
                 performance.layout,
                 technical.layout,
                 commentary.layout,
+                TickerEditor(),
             ],
             style={
                 "display": "flex",

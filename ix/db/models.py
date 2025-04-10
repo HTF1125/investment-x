@@ -61,11 +61,11 @@ class Metadata(Document):
 
             # Mapping of source field to metadata field.
             field_mappings = {
-                "Open": "PX_OPEN",
-                "High": "PX_HIGH",
-                "Low": "PX_LOW",
-                "Close": "PX_CLOSE",
-                "Volume": "PX_VOLUME",
+                # "Open": "PX_OPEN",
+                # "High": "PX_HIGH",
+                # "Low": "PX_LOW",
+                # "Close": "PX_CLOSE",
+                # "Volume": "PX_VOLUME",
                 "Adj Close": "PX_LAST",
             }
             for source_field, target_field in field_mappings.items():
@@ -143,6 +143,7 @@ class TimeSeries(Document):
             data = data.map(lambda x: pd.to_numeric(x, errors="coerce"))
             self.set({"i_data": data.to_dict()})
             logger.info(f"Update {self.code} {self.field}")
+
     @classmethod
     def get_parquet(cls, filepath: str = "docs/timeseries.parquet") -> pd.DataFrame:
         # Ensure the directory exists
@@ -156,7 +157,9 @@ class TimeSeries(Document):
         return data
 
     @classmethod
-    def to_parquet(cls, data: pd.DataFrame, filepath: str = "docs/timeseries.parquet") -> None:
+    def to_parquet(
+        cls, data: pd.DataFrame, filepath: str = "docs/timeseries.parquet"
+    ) -> None:
         # Ensure the directory exists
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
@@ -438,6 +441,90 @@ class Perforamnce(Document):
         )
 
 
+from typing import Literal
+
+ValidSources = Literal[
+    "Yahoo", "Fred", "Infomax", "Eikon", "FactSet", "Bloomberg", "InvestmentX"
+]
+
+
+
+
+class Source(BaseModel):
+    field: str
+    source: ValidSources
+    source_ticker: Optional[str] = None
+    source_field: Optional[str] = None
+
+
+class Ticker(Document):
+
+    code: Annotated[str, Indexed(unique=True)]
+    name: Optional[str] = None
+    category: Optional[str] = None
+    asset_class: Optional[str] = None
+    frequency: Optional[str] = None
+    fields: List[Source] = []
+
+    def add_field(self, source: Source) -> None:
+        """
+        Add or update a field entry in the Ticker's fields dictionary.
+
+        Args:
+            field (str): The name of the field to add or update.
+            sources (Sources): The Sources object containing source mappings.
+
+        Raises:
+            ValueError: If the input arguments are invalid.
+        """
+        self.fields.append(source)
+        self.save()
+
+    def get_timeseries(
+        self, field: str = "PX_LAST", create: bool = True
+    ) -> "TimeSeries":
+        if not self.id:
+            raise
+        ts = TimeSeries.find_one({"code": self.code, "field": field}).run()
+        if ts is None:
+            if create:
+                logger.debug(f"Create new TimeSeries for {self.code} - {field}")
+                ts = TimeSeries(code=self.code, field=field).create()
+            else:
+                raise ValueError(f"TimeSeries not found for {self.code} - {field}")
+        return ts
+
+    def get_data(
+        self,
+        field: str = "PX_LAST",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> pd.Series:
+
+        timeseries = self.get_timeseries(field=field, create=False)
+        if timeseries is None:
+            raise ValueError(f"TimeSeries not found for {self.code} - {field}")
+        data = timeseries.get_data(start_date=start_date, end_date=end_date)
+        return data
+
+    def get_sources(self) -> pd.DataFrame:
+        """
+        Returns a dictionary of sources for the Ticker.
+        """
+        sources = pd.DataFrame([source.model_dump() for source in self.fields])
+        sources = sources.set_index(keys=["field"], drop=True)
+        return sources
+
+    @classmethod
+    def get_dataframe(cls) -> pd.DataFrame:
+        tickers = []
+        for ticker in cls.find().run():
+            tickers.append(ticker.model_dump())
+        return pd.DataFrame(tickers)
+
+
+
+
 def all():
     return [
         Metadata,
@@ -451,4 +538,5 @@ def all():
         MarketCommentary,
         Prediction,
         Universe,
+        Ticker,
     ]

@@ -1,6 +1,4 @@
 
-*.xlsx
-*.xlsm
 .vscode
 *.env
 

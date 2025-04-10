@@ -49,7 +49,7 @@ import os
 
 def get_logger(
     arg: str | typing.Callable,
-    level: int | str = logging.DEBUG,
+    level: int | str = logging.INFO,
     fmt: str = "%(asctime)s:%(name)s:%(levelname)s:%(message)s",
     stream: bool = True,
     filename: str | None = None,

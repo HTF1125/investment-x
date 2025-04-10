@@ -5,12 +5,22 @@ import io
 from datetime import datetime
 import base64
 from ix.misc import get_logger, periods
-from .models import Metadata, Universe, Insight, TacticalView
+from .models import Metadata, Universe, Insight, TacticalView, TimeSeries, Ticker
 from .boto import Boto
 
 
 # Configure logging
 logger = get_logger(__name__)
+
+
+def get_ticker(code: str, create: bool = False) -> Ticker:
+
+    ticker = Ticker.find_one({"code": code}).run()
+    if ticker is not None:
+        return ticker
+    if create:
+        return Ticker(code = code).create()
+    raise ValueError(f"Ticker not found for code: {code}")
 
 
 def get_timeseries(
@@ -25,10 +35,7 @@ def get_timeseries(
     Caching is enabled so that repeated calls with the same parameters
     do not re-query the database.
     """
-    metadata = Metadata.find_one({"code": code}).run()
-    if metadata is None:
-        raise ValueError(f"No metadata found for code: {code}")
-    ts = metadata.ts(field=field)
+    ts = TimeSeries.find_one({"code": code, "field": field}).run()
     if ts is None:
         return pd.Series(dtype=float)
     data = ts.get_data(start_date=start_date, end_date=end_date)
@@ -285,8 +292,6 @@ def get_performances() -> pd.DataFrame:
 
             field = f"VOL_{period}"
             performance[field] = timepoint.get(field)
-
-
 
         performances.append(performance)
     return pd.DataFrame(performances)

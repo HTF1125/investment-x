@@ -19,6 +19,7 @@ app = Dash(
 server = app.server
 
 
+
 # Define the layout for the Dash app
 app.layout = html.Div(
     style={
