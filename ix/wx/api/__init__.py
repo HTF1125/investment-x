@@ -41,22 +41,22 @@ def upload_data():
         df["column"] = df["ticker"] + ":" + df["field"]
         data = df.pivot(index="date", columns="column", values="value").sort_index()
         data = data.dropna(how="all", axis=1).dropna(how="all", axis=0)
+        for ticker_field in data.columns:
+            if ":" not in ticker_field:
+                print(f"Invalid format: {ticker_field}")
+                continue
+            ticker_code, field_code = map(
+                str.strip, ticker_field.split(":", maxsplit=1)
+            )
 
-        logger.info("Received %d records from VBA upload", len(df))
-        logger.debug("Preview of received data:\n%s", df.head())
-
-        # === Save file in docs/ directory with timestamp ===
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_dir = "docs"
-        os.makedirs(save_dir, exist_ok=True)
-        file_path = os.path.join(save_dir, f"Data_{timestamp}.csv")
-        data.to_csv(file_path, index=True)
+            ticker = get_ticker(code=ticker_code, create=True)
+            timeseries = ticker.get_timeseries(field=field_code, create=True)
+            timeseries.data = data[ticker_field].dropna()
 
         return (
             jsonify(
                 {
                     "message": f"Successfully received {len(df)} records.",
-                    "saved_file": file_path,
                 }
             ),
             200,
@@ -110,32 +110,6 @@ def get_fields():
         return jsonify({"error": str(e)}), 500
 
 
-@server.route("/api/metadata")
-def get_metadata():
-    """
-    API endpoint to retrieve metadata.
-    """
-    try:
-        metadatas = pd.DataFrame(
-            [metadata.model_dump() for metadata in Metadata.find().run()]
-        )
-    except Exception as e:
-        logger.error("Error fetching metadata: %s", e)
-        return jsonify({"error": "Failed to fetch metadata"}), 500
-    return jsonify(metadatas.to_dict("records"))
-
-
-@server.route("/api/performance")
-def get_performance():
-    """
-    API endpoint to retrieve metadata.
-    """
-    import numpy as np
-    from ix.db.client import get_performances
-
-    performances = get_performances()
-    performances = performances.replace(np.nan, None)
-    return jsonify(performances.to_dict("records"))
 
 
 @server.route("/api/timeseries")
@@ -150,51 +124,6 @@ def get_timeseries():
     import os
     import pandas as pd
     from ix.db import get_ticker
-
-    DOCS_DIR = "docs"
-
-    def upload_data_from_saved(data: pd.DataFrame) -> bool:
-        try:
-            for ticker_field in data.columns:
-                if ":" not in ticker_field:
-                    print(f"Invalid format: {ticker_field}")
-                    continue
-                ticker_code, field_code = map(
-                    str.strip, ticker_field.split(":", maxsplit=1)
-                )
-
-                ticker = get_ticker(code=ticker_code, create=True)
-                timeseries = ticker.get_timeseries(field=field_code, create=True)
-                timeseries.data = data[ticker_field].dropna()
-            return True
-        except Exception as e:
-            print(f"❌ Upload failed due to error: {e}")
-            return False
-
-    def process_all_csv_files(directory: str) -> None:
-        # List CSV files with full paths and sort by modification time (oldest first)
-        csv_files = [
-            os.path.join(directory, f)
-            for f in os.listdir(directory)
-            if f.lower().endswith(".csv")
-        ]
-        csv_files.sort(key=os.path.getmtime)
-
-        for file_path in csv_files:
-            filename = os.path.basename(file_path)
-            try:
-                print(f"📄 Processing {file_path} ...")
-                df = pd.read_csv(file_path, index_col=0, parse_dates=[0])
-                success = upload_data_from_saved(df)
-                if success:
-                    os.remove(file_path)
-                    print(f"✅ Successfully processed and deleted {filename}")
-                else:
-                    print(f"⚠️ Upload failed — file retained: {filename}")
-            except Exception as e:
-                print(f"❌ Failed to process {filename}: {e}")
-
-    process_all_csv_files("docs")
     datas = []
     for ts in TimeSeries.find(
         {
@@ -222,7 +151,6 @@ def get_timeseries():
     datas.index = pd.to_datetime(datas.index)
     datas = datas.resample("D").last().loc["2024":]
     datas.index.name = "Date"
-    datas.index = datas.index.strftime("%Y-%m-%d")
     datas = datas.reset_index()
     return jsonify(datas.to_dict("records"))
 
