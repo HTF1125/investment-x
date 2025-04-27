@@ -48,7 +48,6 @@ def upload_data():
             ticker_code, field_code = map(
                 str.strip, ticker_field.split(":", maxsplit=1)
             )
-
             ticker = get_ticker(code=ticker_code, create=True)
             timeseries = ticker.get_timeseries(field=field_code, create=True)
             timeseries.data = data[ticker_field].dropna()
@@ -110,8 +109,6 @@ def get_fields():
         return jsonify({"error": str(e)}), 500
 
 
-
-
 @server.route("/api/timeseries")
 def get_timeseries():
     """
@@ -124,6 +121,7 @@ def get_timeseries():
     import os
     import pandas as pd
     from ix.db import get_ticker
+
     datas = []
     for ts in TimeSeries.find(
         {
@@ -151,6 +149,7 @@ def get_timeseries():
     datas.index = pd.to_datetime(datas.index)
     datas = datas.resample("D").last().loc["2024":]
     datas.index.name = "Date"
+    datas.index = datas.index.strftime("%Y-%m-%d")
     datas = datas.reset_index()
     return jsonify(datas.to_dict("records"))
 
@@ -198,3 +197,13 @@ def download_file():
         mimetype="application/vnd.ms-excel.sheet.macroEnabled.12",
         headers={"Content-Disposition": "attachment; filename=0.DataLoader.xlsm"},
     )
+
+
+@server.route("/api/tickers")
+def get_tickers():
+    """
+    API endpoint to retrieve metadata.
+    """
+    from ix.db import Ticker
+
+    return jsonify([ticker.model_dump() for ticker in Ticker.find().run()])

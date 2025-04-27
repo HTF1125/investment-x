@@ -112,13 +112,6 @@ class TimeSeries(Document):
     i_data: Dict[date | str, str | int | float] = {}
 
     @property
-    def metadata(self) -> Metadata:
-        metadata = Metadata.find_one({"code": self.code}).run()
-        if metadata is None:
-            raise
-        return metadata
-
-    @property
     def data(self) -> pd.Series:
         data = pd.Series(data=self.i_data)
         try:
@@ -132,17 +125,19 @@ class TimeSeries(Document):
         return data.sort_index()
 
     @data.setter
-    def data(self, data: Union[pd.Series, Dict[date, float]]) -> None:
+    def data(self, data: Union[pd.Series, Dict[Union[date, str], float]]) -> None:
         if isinstance(data, dict):
-            data = pd.Series(data=data)
-            data.index = pd.to_datetime(data.index)
-        if self.i_data:
-            data = data.combine_first(self.data)
-        if data is not None:
-            data = data.dropna()
-            data = data.map(lambda x: pd.to_numeric(x, errors="coerce"))
-            self.set({"i_data": data.to_dict()})
-            logger.info(f"Update {self.code} {self.field}")
+            data = pd.Series(data)
+
+        # Normalize index and values
+        data.index = pd.to_datetime(data.index, errors="coerce")
+        data = pd.to_numeric(data, errors="coerce")
+        data = data.dropna()
+        data = data[~data.index.isna()]  # remove any rows with bad datetime index
+        # Update i_data in-place: new keys added, existing keys overwritten
+        i_data = self.i_data.copy()
+        i_data.update(data.to_dict())
+        self.set({"i_data": i_data})
 
     @classmethod
     def get_parquet(cls, filepath: str = "docs/timeseries.parquet") -> pd.DataFrame:
@@ -448,8 +443,6 @@ ValidSources = Literal[
 ]
 
 
-
-
 class Source(BaseModel):
     field: str
     source: ValidSources
@@ -486,13 +479,13 @@ class Ticker(Document):
         if not self.id:
             raise
         ts = TimeSeries.find_one({"code": self.code, "field": field}).run()
-        if ts is None:
-            if create:
-                logger.debug(f"Create new TimeSeries for {self.code} - {field}")
-                ts = TimeSeries(code=self.code, field=field).create()
-            else:
-                raise ValueError(f"TimeSeries not found for {self.code} - {field}")
-        return ts
+        if ts is not None:
+            return ts
+        if create:
+            logger.debug(f"Create new TimeSeries for {self.code} - {field}")
+            ts = TimeSeries(code=self.code, field=field).create()
+            return ts
+        raise ValueError(f"TimeSeries not found for {self.code} - {field}")
 
     def get_data(
         self,
@@ -521,8 +514,6 @@ class Ticker(Document):
         for ticker in cls.find().run():
             tickers.append(ticker.model_dump())
         return pd.DataFrame(tickers)
-
-
 
 
 def all():
