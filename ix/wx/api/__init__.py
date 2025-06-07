@@ -2,7 +2,6 @@ import pandas as pd
 from flask import jsonify
 from ix.wx.app import server
 from ix.misc import get_logger
-from ix.db import Metadata, get_ticker
 
 logger = get_logger(__name__)
 
@@ -10,6 +9,7 @@ logger = get_logger(__name__)
 from flask import request
 import os
 from datetime import datetime
+from ix import db
 
 
 @server.route("/api/upload_data", methods=["POST"])
@@ -48,8 +48,8 @@ def upload_data():
             ticker_code, field_code = map(
                 str.strip, ticker_field.split(":", maxsplit=1)
             )
-            ticker = get_ticker(code=ticker_code, create=True)
-            timeseries = ticker.get_timeseries(field=field_code, create=True)
+            ticker = db.get_ticker(code=ticker_code, create=True)
+            timeseries = ticker.get_historical(field=field_code, create=True)
             timeseries.data = data[ticker_field].dropna()
 
         return (
@@ -207,3 +207,73 @@ def get_tickers():
     from ix.db import Ticker
 
     return jsonify([ticker.model_dump() for ticker in Ticker.find().run()])
+
+
+@server.route("/api/tickers", methods=["POST"])
+def upload_tickers():
+    """
+    API endpoint to upload ticker metadata.
+
+    Expects JSON array where each row contains:
+    - id (primary key)
+    - code (ticker code)
+    - name, frequency, asset_class, category (optional metadata)
+    - fields: a string of 'field|source|source_ticker|source_field' joined by '/'
+    """
+    import pandas as pd
+    from flask import request, jsonify
+    from ix.db import SourceF
+    from ix import db
+
+    try:
+        # Parse JSON body into DataFrame
+        data = pd.DataFrame(request.get_json(force=True))
+        if "id" not in data.columns or "code" not in data.columns:
+            return jsonify({"error": "Missing required fields: 'id' or 'code'"}), 400
+
+        data = data.set_index("id", drop=True)
+
+        for ticker_id, row in data.iterrows():
+            ticker = db.get_ticker(code=row["code"], create=True)
+
+            ticker.name = row.get("name", "")
+            ticker.frequency = row.get("frequency", "")
+            ticker.asset_class = row.get("asset_class", "")
+            ticker.category = row.get("category", "")
+            ticker.fields = []
+
+            fields_str = row.get("fields", "")
+            if fields_str:
+                try:
+                    for entry in fields_str.split("/"):
+                        parts = entry.split("|")
+                        if len(parts) != 4:
+                            raise ValueError(f"Invalid field format: '{entry}'")
+                        field, source, source_ticker, source_field = parts
+                        ticker.fields.append(
+                            SourceF(
+                                field=field.strip(),
+                                source=source.strip(),
+                                source_ticker=source_ticker.strip(),
+                                source_field=source_field.strip(),
+                            )
+                        )
+                except Exception as e:
+                    return (
+                        jsonify(
+                            {
+                                "error": f"Error parsing 'fields' for ticker {ticker_id}: {str(e)}"
+                            }
+                        ),
+                        400,
+                    )
+
+            ticker.save()
+
+        return (
+            jsonify({"status": "success", "message": f"{len(data)} tickers processed"}),
+            200,
+        )
+
+    except Exception as e:
+        return jsonify({"error": f"Unexpected server error: {str(e)}"}), 500

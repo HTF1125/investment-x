@@ -1,5 +1,4 @@
 import pandas as pd
-from ix.db import get_px_last
 from .base import Strategy
 
 
@@ -27,9 +26,7 @@ class SectorRotationMom90(Strategy):
         self.mom = self.pxs.pct_change(self.momentum_window)
         pct_change = self.pxs.pct_change()
         corr_diff = pct_change.rolling(20).corr() - pct_change.rolling(250).corr()
-        corr_difff = (
-            corr_diff.unstack()["SPY"].drop(labels="SPY", axis=1).mean(axis=1)
-        )
+        corr_difff = corr_diff.unstack()["SPY"].drop(labels="SPY", axis=1).mean(axis=1)
         self.corr_signal = corr_difff
 
     def allocate(self) -> pd.Series:
@@ -78,7 +75,10 @@ class SectorRotationCESI(Strategy):
 
 
 class UsIsmPmiManuEB(Strategy):
-    assets = ["SPY", "AGG"]
+    assets = [
+        "SPY US Equity",
+        "AGG US Equity",
+    ]
     frequency = "ME"
     start = pd.Timestamp("2004-11-18")
     bm_assets: dict[str, float] = {"SPY": 0.5, "AGG": 0.5}
@@ -98,45 +98,59 @@ class UsIsmPmiManuEB(Strategy):
         return pd.Series({"SPY": w, "AGG": 0.0})
 
 
+
+
 class UsOecdLeiEB(Strategy):
-    assets = ["SPY", "AGG"]
+    assets = [
+        "SPY US Equity",
+        "AGG US Equity",
+    ]
     frequency = "ME"
     start = pd.Timestamp("2004-11-18")
-    bm_assets: dict[str, float] = {"SPY": 0.6, "AGG": 0.4}
+    bm_assets: dict[str, float] = {"SPY US Equity": 0.6, "AGG US Equity": 0.4}
 
     def initialize(self) -> None:
-        from ix.bt.signal import OecdCliUsChg1
-        self.signal = OecdCliUsChg1().refresh().data
+        self.signal = get_ticker("USA.LOLITOAA.STSA").get_data("PX_DIFF_DIFF")
+        self.signal.index += pd.DateOffset(days=10)
         self.momentum = self.pxs.pct_change(20)
 
     def allocate(self) -> pd.Series:
 
-        w = 0.6 + 0.4 * self.signal.loc[: self.d].iloc[-1]
-        m = self.momentum["AGG"].loc[self.d]
-        if m > 0:
-            return pd.Series({"SPY": w, "AGG": 1.0 - w})
-        return pd.Series({"SPY": w, "AGG": 0.0})
+        signal = self.signal.loc[: self.d].iloc[-1]
+        m = self.momentum["AGG US Equity"].loc[self.d]
+        if signal > 0:
+            return pd.Series(
+                {"SPY US Equity": 0.8, "AGG US Equity": 0.2 if m > 0 else 0}
+            )
 
+        return pd.Series({"SPY US Equity": 0.3, "AGG US Equity": 0.7})
 
 
 class UsOecdLeiEB2(Strategy):
-    assets = ["SPY", "AGG"]
+    assets = ["SPY US Equity", "AGG US Equity"]
     frequency = "ME"
     start = pd.Timestamp("2004-11-18")
-    bm_assets: dict[str, float] = {"SPY": 0.5, "AGG": 0.5}
+    bm_assets: dict[str, float] = {"SPY US Equity": 0.6, "AGG US Equity": 0.4}
 
     def initialize(self) -> None:
         from ix.core.tech import WaveTrend
-        self.signal = WaveTrend.from_meta("^OEUSKLAC").hlc["wt_diff"].clip(-10, 10).div(10)
+
+        self.signal = (
+            WaveTrend.from_meta("USA.LOLITOAA.STSA")
+            .hlc["wt_diff"]
+            .clip(-10, 10)
+            .div(10)
+        )
         self.momentum = self.pxs.pct_change(20)
 
     def allocate(self) -> pd.Series:
 
         w = 0.5 + 0.5 * self.signal.loc[: self.d].iloc[-1]
-        m = self.momentum["AGG"].loc[self.d]
+        m = self.momentum["AGG US Equity"].loc[self.d]
         if m > 0:
-            return pd.Series({"SPY": w, "AGG": 1.0 - w})
-        return pd.Series({"SPY": w, "AGG": 0.0})
+            return pd.Series({"SPY US Equity": w, "AGG US Equity": 1.0 - w})
+        return pd.Series({"SPY US Equity": w, "AGG US Equity": 0.0})
+
 
 class MAM60CF(Strategy):
     assets = [
@@ -175,6 +189,28 @@ class MAM60CF(Strategy):
         return allocation
 
 
+
+
+class SPX_Earnings(Strategy):
+
+    assets = [
+        "SPY US Equity",
+    ]
+
+    start = pd.Timestamp("2007-01-03")
+    frequency = "ME"
+    min_assets = 1
+
+    def initialize(self):
+        eps = get_ticker("SPX Index").eps_ntma_yoy
+        self.earnings_momentum = eps.diff(50)
+        return
+
+    def allocate(self) -> pd.Series:
+
+        if self.earnings_momentum.loc[str(self.d)] > 0:
+            return pd.Series({"SPY US Equity": 1.0})
+        return pd.Series({"SPY US Equity": 0.0})
 
 
 def all_strategies() -> list[type[Strategy]]:

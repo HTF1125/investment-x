@@ -3,9 +3,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from ix.core import to_log_return
-from ix.db import get_px_last
 from ix import db, misc
-from ix.db import Metadata
 
 logger = misc.get_logger(__name__)
 
@@ -17,36 +15,22 @@ class Signal:
         Automatically retrieves metadata or creates a new record if not found.
         """
         code = self.__class__.__name__
-        self.metadata = (
-            Metadata.find_one({"code": code}).run() or Metadata(code=code).create()
-        )
 
     def fit(self) -> pd.Series:
         """Override this method to define how the signal is calculated."""
         raise NotImplementedError(f"Must implement `{self.fit.__name__}` method.")
 
-    def refresh(self) -> "Signal":
-        """Refreshes the signal data by recalculating and saving it to the database."""
-        logger.info("Starting data refresh")
-        data = self.fit().dropna().round(2)
-        self.metadata.ts(field="PX_LAST").data = data
-        return self  # Return self to allow method chaining
-
     @property
     def data(self) -> pd.Series:
         """Fetches the signal from the database, refreshing if not present."""
-        data = self.metadata.ts(field="PX_LAST").data
-        if data.empty:
-            self.refresh()
-        data.name = self.metadata.code
-        return data
+        return self.fit()
 
     def get_performance(
         self,
         long: Optional[str] = None,
         short: Optional[str] = None,
         periods: int = 1,
-        commission: float = 0.0,
+        commission: int = 15,
     ) -> pd.Series:
         """Calculates the cumulative returns of the signal when applied to given assets."""
         if not long and not short:
@@ -152,7 +136,7 @@ class OecdCliUsChg1(Signal):
         DATE_SHIFT_DAYS: int = 20  # Days to shift the signal forward
         CLIP_RANGE_INITIAL: tuple = (-2, 2)  # Initial clipping range before scaling
         SCALE_FACTOR: float = 0.5  # Factor to scale the clipped signal
-        raw_data = get_px_last(codes=["^OEUSKLAC"]).squeeze().ewm(span=EWM_SPAN).mean()
+        raw_data = get_px_last(codes=["USA.LOLITOAA.STSA"]).squeeze().ewm(span=EWM_SPAN).mean()
         raw_data.name = "OecdCliUs"
         roc_data = raw_data.diff().dropna()
         roroc_data = roc_data.diff().dropna()
@@ -170,6 +154,19 @@ class OecdCliUsChg1(Signal):
         shifted_signal = normalized_signal.shift(periods=DATE_SHIFT_DAYS, freq="D")
         shifted_signal = shifted_signal.fillna(0)
         return shifted_signal
+
+
+
+
+
+class UsLei(Signal):
+
+    def fit(self) -> pd.Series:
+
+        lei = get_px_last(codes=["USLEI"])
+
+
+
 
 
 class UsIsmPmiManu(Signal):
@@ -278,8 +275,8 @@ class JunkBondDemand(Signal):
         zscore_clip = 2.0  # Clipping threshold for z-score
 
         # Get percentage change data
-        st = get_px_last(["SPY"]).pct_change(lookback_spread).squeeze()
-        bd = get_px_last(["AGG"]).pct_change(lookback_spread).squeeze()
+        st = get_px_last(["SPY US Equity"]).pct_change(lookback_spread).squeeze()
+        bd = get_px_last(["AGG US Equity"]).pct_change(lookback_spread).squeeze()
 
         # Validate data
         if st.empty or bd.empty:

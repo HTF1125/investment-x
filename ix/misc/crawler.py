@@ -10,8 +10,10 @@ def get_bloomberg_data(
     code: str,
     field: str = "PX_LAST",
     start: str = "1950-1-1",
-    end: str = tomorrow().date().strftime("%Y-%m-%d"),
+    end: str = "",
 ) -> pd.DataFrame:
+    if not end:
+        end = tomorrow().date().strftime("%Y-%m-%d")
     try:
         from xbbg import blp
         data = blp.bdh(code, field, start_date=start, end_date=end)
@@ -26,11 +28,13 @@ def get_bloomberg_data(
 def get_yahoo_data(
     code: str,
     start: str = "1950-1-1",
-    end: str = tomorrow().date().strftime("%Y-%m-%d"),
+    end: str = "",
     progress: bool = False,
     actions: bool = True,
 ) -> pd.DataFrame:
-    logger = get_logger(get_fred_data)
+    logger = get_logger(get_yahoo_data)
+    if not end:
+        end = tomorrow().date().strftime("%Y-%m-%d")
     try:
         import yfinance as yf
         data = yf.download(

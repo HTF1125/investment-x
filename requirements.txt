@@ -3,7 +3,7 @@ blpapi==3.24.6
 click==8.1.7
 fastapi==0.112.1
 uvicorn==0.30.6
-yfinance==0.2.54
+yfinance
 motor==3.5.1
 investpy==1.0.8
 numpy==2.0.1

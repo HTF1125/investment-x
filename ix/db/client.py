@@ -5,73 +5,23 @@ import io
 from datetime import datetime
 import base64
 from ix.misc import get_logger, periods
-from .models import Metadata, Universe, Insight, TacticalView, TimeSeries, Ticker
+from .models import Universe, Insight, TacticalView, Timeseries
 from .boto import Boto
 
 
 # Configure logging
 logger = get_logger(__name__)
 
-
-def get_ticker(code: str, create: bool = False) -> Ticker:
-
-    ticker = Ticker.find_one({"code": code}).run()
-    if ticker is not None:
-        return ticker
-    if create:
-        return Ticker(code = code).create()
-    raise ValueError(f"Ticker not found for code: {code}")
-
-
-def get_timeseries(
-    code: str,
-    field: str = "PX_LAST",
-    name: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-) -> pd.Series:
+def get_timeseries(code: str) -> Timeseries:
     """
     Retrieves a time series for the specified asset code.
     Caching is enabled so that repeated calls with the same parameters
     do not re-query the database.
     """
-    ts = TimeSeries.find_one({"code": code, "field": field}).run()
+    ts = Timeseries.find_one({"code": code}).run()
     if ts is None:
-        return pd.Series(dtype=float)
-    data = ts.get_data(start_date=start_date, end_date=end_date)
-    data.name = name or code
-    return data
-
-
-def get_ts(
-    *args: Dict[str, str],
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-) -> pd.DataFrame:
-    """
-    Fetches price data from the database for specified asset codes.
-
-    Args:
-        args: Dictionaries with keys like "code", "field", and "name".
-        start: Optional start date to filter the data from.
-
-    Returns:
-        A DataFrame containing price data with assets as columns and dates as the index.
-    """
-    timeseries = []
-    for arg in args:
-        data = get_timeseries(
-            **arg,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        timeseries.append(data)
-    data = pd.concat(timeseries, axis=1)
-    return data
-
-
-def get_px_last(codes: List[str]) -> pd.DataFrame:
-    return get_ts(*[{"code": code, "field": "PX_LAST", "name": code} for code in codes])
+        raise
+    return ts
 
 
 def get_insight_by_id(id: str) -> Insight:
@@ -278,25 +228,5 @@ def create_insight_with_pdf(base64_content: str, filename: str):
         raise Exception(f"Error creating insight from PDF: {str(e)}")
 
 
-def get_performances() -> pd.DataFrame:
-    performances = []
-    for metadata in Metadata.find({"has_performance": True}).run():
-        timepoint = metadata.tp().data
-        performance = {"code": metadata.code, "PX_LAST": timepoint.get("PX_LAST")}
-        for period in periods:
-            field = f"PCT_CHG_{period}"
-            performance[field] = timepoint.get(field)
-
-            field = f"PX_DIFF_{period}"
-            performance[field] = timepoint.get(field)
-
-            field = f"VOL_{period}"
-            performance[field] = timepoint.get(field)
-
-        performances.append(performance)
-    return pd.DataFrame(performances)
-
-
 def get_recent_tactical_view() -> Optional[TacticalView]:
-
     return TacticalView.find_one({}, sort=[("published_date", -1)]).run()

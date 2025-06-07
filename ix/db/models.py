@@ -3,8 +3,6 @@ from bunnet import Document, Indexed
 from datetime import date, datetime
 import pandas as pd
 from ix.misc import get_logger
-from ix.misc import get_yahoo_data
-from ix.misc import get_fred_data
 from ix.misc import relative_timestamp
 from pydantic import BaseModel, Field
 import os
@@ -12,108 +10,38 @@ import os
 logger = get_logger(__name__)
 
 
-def get_performance(px_last: pd.Series) -> dict:
-    px_last = px_last.resample("D").last().ffill()
-    asofdate = pd.Timestamp(str(px_last.index[-1]))
-    level = px_last.loc[asofdate]
-    pct_chg = (level / px_last).sub(1).mul(100).round(2)
-    out = {}
-    for period in ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "MTD", "YTD"]:
-        r_date = relative_timestamp(asofdate=asofdate, period=period)
-        try:
-            out[f"PCT_CHG_{period}"] = pct_chg.loc[r_date]
-        except:
-            pass
-    return out
-
-
-from typing import Any
-
-
-class Metadata(Document):
-    code: Annotated[str, Indexed(unique=True)]
-    exchange: Optional[str] = None
-    market: Optional[str] = None
-    id_isin: Optional[str] = None
-    name: Optional[str] = None
-    remark: Optional[str] = None
-    disabled: bool = False
-    bbg_ticker: Optional[str] = None
-    yah_ticker: Optional[str] = None
-    fre_ticker: Optional[str] = None
-    ts_fields: Optional[str] = None
-    tp_fields: Optional[str] = None
-    has_performance: bool = False
-
-    @classmethod
-    def to_dataframe(cls) -> pd.DataFrame:
-        out = [metadata.model_dump() for metadata in cls.find().run()]
-        out = pd.DataFrame(out)
-        out = out.set_index(keys=["id"], drop=True)
-        return out
-
-    def update_px(self):
-        if self.yah_ticker:
-            ts = get_yahoo_data(code=self.yah_ticker)
-            if ts.empty:
-                logger.warning(f"No Yahoo data returned for ticker {self.yah_ticker}")
-                return False
-
-            # Mapping of source field to metadata field.
-            field_mappings = {
-                # "Open": "PX_OPEN",
-                # "High": "PX_HIGH",
-                # "Low": "PX_LOW",
-                # "Close": "PX_CLOSE",
-                # "Volume": "PX_VOLUME",
-                "Adj Close": "PX_LAST",
-            }
-            for source_field, target_field in field_mappings.items():
-                try:
-                    # Ensure the data is converted to float.
-                    series = ts[source_field].astype(float)
-                except Exception as conv_err:
-                    logger.error(
-                        f"Error converting {source_field} to float for code {self.code}: {conv_err}"
-                    )
-                    continue
-
-                # Update the timeseries data.
-                self.ts(field=target_field).data = series
-                logger.debug(
-                    f"Set timeseries field {target_field} for code {self.code}"
-                )
-                logger.info(
-                    f"Successfully updated {target_field} for metadata code: {self.code}"
-                )
-
-    def ts(
-        self,
-        field: str = "PX_LAST",
-    ) -> "TimeSeries":
-        if not self.id:
-            raise
-        ts = TimeSeries.find_one({"code": self.code, "field": field}).run()
-        if ts is None:
-            logger.debug(f"Create new TimeSeries for {self.code} - {field}")
-            ts = TimeSeries(code=self.code, field=field).create()
-        return ts
-
-    def tp(self) -> "TimePoint":
-        tp = TimePoint.find_one({"code": self.code}).run()
-        if tp is None:
-            return TimePoint(code=self.code).create()
-        return tp
-
-
-class TimeSeries(Document):
-    code: str
-    field: str
+class TimeseriesData(Document):
+    key: Annotated[str, Indexed(unique=True)]
     i_data: Dict[date | str, str | int | float] = {}
+
+
+class Timeseries(Document):
+    code: Annotated[str, Indexed(unique=True)]
+    name: Optional[str] = None
+    provider: Optional[str] = None
+    asset_class: Optional[str] = None
+    category: Optional[str] = None
+    start: Optional[date] = None
+    end: Optional[date] = None
+    num_data: Optional[int] = None
+    source: str = "InvestmentX"
+    frequency: Optional[str] = None
+    source_ticker: Optional[str] = None
+    source_field: Optional[str] = None
+    source_func: Optional[str] = None
+    to_excel_query: bool = False
+    disabled: bool = False
+
+    @property
+    def timeseries_data(self) -> TimeseriesData:
+        tsd = TimeseriesData.find_one({"key": str(self.id)}).run()
+        if tsd is None:
+            tsd = TimeseriesData(key=str(self.id)).create()
+        return tsd
 
     @property
     def data(self) -> pd.Series:
-        data = pd.Series(data=self.i_data)
+        data = pd.Series(data=self.timeseries_data.i_data)
         try:
             data.index = pd.to_datetime(data.index)
         except:
@@ -122,6 +50,7 @@ class TimeSeries(Document):
             data.index = pd.to_datetime(data.index)
             self.set({"i_data": data.to_dict()})
         data = data.map(lambda x: pd.to_numeric(x, errors="coerce")).dropna()
+        data.name = self.code
         return data.sort_index()
 
     @data.setter
@@ -133,11 +62,27 @@ class TimeSeries(Document):
         data.index = pd.to_datetime(data.index, errors="coerce")
         data = pd.to_numeric(data, errors="coerce")
         data = data.dropna()
-        data = data[~data.index.isna()]  # remove any rows with bad datetime index
-        # Update i_data in-place: new keys added, existing keys overwritten
-        i_data = self.i_data.copy()
+        data = data[~data.index.isna()]
+
+        if isinstance(self.num_data, int) and len(data) >= self.num_data:
+            self.reset()
+
+        i_data = self.timeseries_data.i_data.copy()
         i_data.update(data.to_dict())
-        self.set({"i_data": i_data})
+        if i_data:
+            self.set(
+                {
+                    "start": data.index[0],
+                    "end": data.index[-1],
+                    "num_data": len(data),
+                }
+            )
+            self.timeseries_data.set({"i_data": i_data})
+
+    def reset(self) -> bool:
+        self.set({"start": None, "end": None, "num_data": 0})
+        self.timeseries_data.set({"i_data": {}})
+        return True
 
     @classmethod
     def get_parquet(cls, filepath: str = "docs/timeseries.parquet") -> pd.DataFrame:
@@ -223,34 +168,15 @@ class TimeSeries(Document):
 
     def get_data(
         self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start: Optional[str] = None,
+        end: Optional[str] = None,
     ) -> pd.Series:
         data = self.data
-        if start_date:
-            data = data.loc[start_date:]
-        if end_date:
-            data = data.loc[:end_date]
+        if start:
+            data = data.loc[start:]
+        if end:
+            data = data.loc[:end]
         return data
-
-
-class TimePoint(Document):
-    code: Annotated[str, Indexed(unique=True)]
-    i_data: Dict[str, str | int | float] = {}
-
-    @property
-    def data(self) -> pd.Series:
-        return pd.Series(data=self.i_data)
-
-    @data.setter
-    def data(self, data: Union[pd.Series, Dict[date, float]]) -> None:
-        if isinstance(data, dict):
-            data = pd.Series(data=data)
-        if self.i_data:
-            data = data.combine_first(self.data)
-        if data is not None:
-            data = data.dropna()
-            self.set({"i_data": data.to_dict()})
 
 
 class InsightSource(Document):
@@ -399,43 +325,6 @@ class TacticalView(Document):
         return document
 
 
-import numpy as np
-
-
-class Perforamnce(Document):
-
-    code: Annotated[str, Indexed(unique=True)]
-    PX_LAST: Optional[float] = None
-    PCT_CHG_1D: Optional[float] = None
-    PCT_CHG_1W: Optional[float] = None
-    PCT_CHG_1M: Optional[float] = None
-    PCT_CHG_3M: Optional[float] = None
-    PCT_CHG_6M: Optional[float] = None
-    PCT_CHG_1Y: Optional[float] = None
-    PCT_CHG_3Y: Optional[float] = None
-    PCT_CHG_5Y: Optional[float] = None
-    PCT_CHG_MTD: Optional[float] = None
-    PCT_CHG_YTD: Optional[float] = None
-    VOL_1D: Optional[float] = None
-    VOL_1W: Optional[float] = None
-    VOL_1M: Optional[float] = None
-    VOL_3M: Optional[float] = None
-    VOL_6M: Optional[float] = None
-    VOL_1Y: Optional[float] = None
-    VOL_3Y: Optional[float] = None
-    VOL_5Y: Optional[float] = None
-    VOL_MTD: Optional[float] = None
-    VOL_YTD: Optional[float] = None
-
-    @classmethod
-    def get_dataframe(cls) -> pd.DataFrame:
-        return (
-            pd.DataFrame([p.model_dump() for p in cls.find().run()])
-            .set_index(keys=["id"], drop=True)
-            .replace({np.nan: None})
-        )
-
-
 from typing import Literal
 
 ValidSources = Literal[
@@ -443,84 +332,8 @@ ValidSources = Literal[
 ]
 
 
-class Source(BaseModel):
-    field: str
-    source: ValidSources
-    source_ticker: Optional[str] = None
-    source_field: Optional[str] = None
-
-
-class Ticker(Document):
-
-    code: Annotated[str, Indexed(unique=True)]
-    name: Optional[str] = None
-    category: Optional[str] = None
-    asset_class: Optional[str] = None
-    frequency: Optional[str] = None
-    fields: List[Source] = []
-
-    def add_field(self, source: Source) -> None:
-        """
-        Add or update a field entry in the Ticker's fields dictionary.
-
-        Args:
-            field (str): The name of the field to add or update.
-            sources (Sources): The Sources object containing source mappings.
-
-        Raises:
-            ValueError: If the input arguments are invalid.
-        """
-        self.fields.append(source)
-        self.save()
-
-    def get_timeseries(
-        self, field: str = "PX_LAST", create: bool = True
-    ) -> "TimeSeries":
-        if not self.id:
-            raise
-        ts = TimeSeries.find_one({"code": self.code, "field": field}).run()
-        if ts is not None:
-            return ts
-        if create:
-            logger.debug(f"Create new TimeSeries for {self.code} - {field}")
-            ts = TimeSeries(code=self.code, field=field).create()
-            return ts
-        raise ValueError(f"TimeSeries not found for {self.code} - {field}")
-
-    def get_data(
-        self,
-        field: str = "PX_LAST",
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> pd.Series:
-
-        timeseries = self.get_timeseries(field=field, create=False)
-        if timeseries is None:
-            raise ValueError(f"TimeSeries not found for {self.code} - {field}")
-        data = timeseries.get_data(start_date=start_date, end_date=end_date)
-        return data
-
-    def get_sources(self) -> pd.DataFrame:
-        """
-        Returns a dictionary of sources for the Ticker.
-        """
-        sources = pd.DataFrame([source.model_dump() for source in self.fields])
-        sources = sources.set_index(keys=["field"], drop=True)
-        return sources
-
-    @classmethod
-    def get_dataframe(cls) -> pd.DataFrame:
-        tickers = []
-        for ticker in cls.find().run():
-            tickers.append(ticker.model_dump())
-        return pd.DataFrame(tickers)
-
-
 def all():
     return [
-        Metadata,
-        TimeSeries,
-        TimePoint,
         EconomicCalendar,
         User,
         Insight,
@@ -529,5 +342,7 @@ def all():
         MarketCommentary,
         Prediction,
         Universe,
-        Ticker,
+        Strategy,
+        Timeseries,
+        TimeseriesData,
     ]

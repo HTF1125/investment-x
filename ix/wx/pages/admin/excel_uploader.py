@@ -3,12 +3,11 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import io, base64
 import diskcache
-from ix.db import Metadata, TimeSeries, EconomicCalendar
+from ix.db import Timeseries, EconomicCalendar
 from ix.misc.email import EmailSender
 from ix.misc.settings import Settings
 from ix.misc.terminal import get_logger
 from dash.long_callback import DiskcacheManager
-from ix.db.client import get_performances
 
 logger = get_logger(__name__)
 

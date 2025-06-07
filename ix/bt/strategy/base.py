@@ -8,9 +8,9 @@ logger = get_logger(__name__)
 
 class Strategy:
     principal: int = 10_000
-    assets: list[str] = ["SPY", "AGG", "TLT"]
-    bm_assets: dict[str, float] = {"SPY": 1.00}
-    start: pd.Timestamp = pd.Timestamp("2000-1-3")
+    assets: list[str] = ["SPY US Equity", "AGG US Equity", "TLT US Equity",]
+    bm_assets: dict[str, float] = {"SPY US Equity": 1.00}
+    start: pd.Timestamp = pd.Timestamp("2020-1-3")
     frequency: str = "ME"
     commission: int = 15
 
