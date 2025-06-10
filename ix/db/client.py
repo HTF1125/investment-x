@@ -7,10 +7,11 @@ import base64
 from ix.misc import get_logger, periods
 from .models import Universe, Insight, TacticalView, Timeseries
 from .boto import Boto
-
+from .query import *
 
 # Configure logging
 logger = get_logger(__name__)
+
 
 def get_timeseries(code: str) -> Timeseries:
     """

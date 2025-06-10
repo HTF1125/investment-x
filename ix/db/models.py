@@ -64,9 +64,6 @@ class Timeseries(Document):
         data = data.dropna()
         data = data[~data.index.isna()]
 
-        if isinstance(self.num_data, int) and len(data) >= self.num_data:
-            self.reset()
-
         i_data = self.timeseries_data.i_data.copy()
         i_data.update(data.to_dict())
         if i_data:

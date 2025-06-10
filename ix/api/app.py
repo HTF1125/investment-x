@@ -69,7 +69,6 @@ async def get_timeseries():
     try:
         datas: List[pd.Series] = []
 
-
         for ts in Timeseries.find({"to_excel_query": True}).run():
             datas.append(ts.data)
 
@@ -123,18 +122,6 @@ async def download_file():
     )
 
 
-@app.get("/api/tickers", status_code=status.HTTP_200_OK)
-async def get_tickers():
-    """
-    - 모든 Ticker 모델을 조회하여 JSON 리스트로 반환.
-    """
-    try:
-        return [ticker.model_dump() for ticker in Ticker.find().run()]
-    except Exception as e:
-        logger.exception("Failed to fetch tickers")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 from ix.db.models import Timeseries
 from fastapi import Body, HTTPException, status
 
@@ -175,53 +162,30 @@ async def post_timeseries(payload: list[Timeseries] = Body(...)):
         logger.exception("Unexpected server error during ticker upload")
         raise HTTPException(status_code=500, detail=str(e))
 
-from typing import List
-
 
 from typing import Optional
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, status, HTTPException
+from fastapi import status, HTTPException
+from typing import Annotated
+from ix.db.query import Series
+from ix.misc.date import today
 
 
-@app.get("/api/historical", status_code=status.HTTP_200_OK)
-async def get_historical(
-    series: str,
+@app.get("/api/series", status_code=status.HTTP_200_OK)
+async def _get_series(
+    series: Annotated[list[str], Query(description="One code per occurrence")],
     start: Optional[str] = None,
     end: Optional[str] = None,
-    periods: Optional[int] = None,
-    frequency: str = "D",
-    ffill: bool = False,
     include_dates: bool = False,
 ):
-    """
-    - JSON 리스트 형태로 전달된 각 행에 대해 id, code 필수.
-    - 선택적으로 name, frequency, asset_class, category, fields 컬럼을 처리.
-    - fields 컬럼은 'field|source|source_ticker|source_field' 쌍을 '/'로 연결한 문자열.
-    """
-    index = get_dates(
-        start=start,
-        end=end,
-        frequency=frequency,
-        periods=periods,
-    )
-
-    datas = []
-
-    for code in series.split(","):
-        ts = Timeseries.find_one({"code" : code}).run()
-        if ts is None:
-            datas.append(pd.Series(name=code))
-            continue
-        datas.append(ts.data)
-
-    datas = pd.concat(datas, axis=1)
-    datas = datas.reindex(index, method="ffill" if ffill else None)
-    if include_dates:
-        datas.index = index.strftime("%Y-%m-%d")
-        datas = datas.reset_index()
+    datas = pd.concat([Series(code) for code in series], axis=1)
     datas = datas.replace(np.nan, None)
-
+    if start: datas = datas.loc[start:]
+    if end: datas = datas.loc[:end]
+    if include_dates:
+        datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
+        datas = datas.reset_index()
     output = []
     for c in datas.columns:
         output.append(datas[c].to_list())
@@ -249,3 +213,29 @@ def get_dates(
         freq=frequency,
         periods=periods,
     )
+
+
+# file: image_api.py
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+from PIL import Image, ImageDraw
+
+
+def create_sample_image() -> BytesIO:
+    # (예시) 간단한 동적으로 생성된 이미지
+    img = Image.new("RGB", (200, 100), color=(73, 109, 137))
+    draw = ImageDraw.Draw(img)
+    draw.text((10, 40), "Hello, Excel!", fill=(255, 255, 0))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
+
+
+@app.get("/image")
+def get_image():
+    """
+    PNG 포맷 이미지 스트림을 직접 반환
+    """
+    img_buf = create_sample_image()
+    return StreamingResponse(img_buf, media_type="image/png")
