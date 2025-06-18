@@ -27,7 +27,7 @@ async def upload_data(payload: List[Dict[str, Any]]):
             )
 
         df = pd.DataFrame(payload)
-        required_columns = {"date", "ticker", "field", "value"}
+        required_columns = {"date", "code", "value"}
         missing = required_columns - set(df.columns)
         if missing:
             raise HTTPException(
@@ -37,10 +37,9 @@ async def upload_data(payload: List[Dict[str, Any]]):
 
         df["value"] = pd.to_numeric(df["value"], errors="coerce")
         df = df.dropna(subset=["value"])
-        df["column"] = df["ticker"].astype(str) + ":" + df["field"].astype(str)
 
         pivoted = (
-            df.pivot(index="date", columns="column", values="value")
+            df.pivot(index="date", columns="code", values="value")
             .sort_index()
             .dropna(how="all", axis=1)
             .dropna(how="all", axis=0)
@@ -69,7 +68,7 @@ async def get_timeseries():
     try:
         datas: List[pd.Series] = []
 
-        for ts in Timeseries.find({"to_excel_query": True}).run():
+        for ts in Timeseries.find().run():
             datas.append(ts.data)
 
         if not datas:
@@ -90,13 +89,13 @@ async def get_timeseries():
 
 
 @app.get("/api/economic_calendar", status_code=status.HTTP_200_OK)
-async def get_economic_calendar():
+async def _get_economic_calendar():
     """
     - 매 호출 시마다 update_economic_calendar()를 실행하여 최신 데이터를 DB에 반영.
     - EconomicCalendar.get_dataframe()를 호출해 Pandas DataFrame으로 가져온 뒤 JSON으로 반환.
     """
     try:
-        update_economic_calendar()
+        # update_economic_calendar()
         df = EconomicCalendar.get_dataframe()
         return df.to_dict("records")
 
@@ -180,6 +179,7 @@ async def _get_series(
     include_dates: bool = False,
 ):
     datas = pd.concat([Series(code) for code in series], axis=1)
+    datas.index = pd.to_datetime(datas.index)
     datas = datas.replace(np.nan, None)
     if start: datas = datas.loc[start:]
     if end: datas = datas.loc[:end]
@@ -239,3 +239,28 @@ def get_image():
     """
     img_buf = create_sample_image()
     return StreamingResponse(img_buf, media_type="image/png")
+
+
+from ix.db.query import *
+
+@app.get("/api/query")
+def _query(
+    command: str,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    include_dates: bool = False,
+):
+    print(command)
+    datas = eval(command)
+    print(datas)
+    datas = datas.replace(np.nan, None)
+    datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
+    if start: datas = datas.loc[start:]
+    if end: datas = datas.loc[:end]
+    if include_dates:
+        datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
+        datas = datas.reset_index()
+    output = []
+    for i in range(len(datas.columns)):
+        output.append(datas.iloc[:, i].to_list())
+    return output

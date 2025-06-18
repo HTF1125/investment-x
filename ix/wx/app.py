@@ -18,8 +18,6 @@ app = Dash(
 # Get the underlying Flask server
 server = app.server
 
-
-
 # Define the layout for the Dash app
 app.layout = html.Div(
     style={

@@ -28,9 +28,6 @@ class Timeseries(Document):
     frequency: Optional[str] = None
     source_ticker: Optional[str] = None
     source_field: Optional[str] = None
-    source_func: Optional[str] = None
-    to_excel_query: bool = False
-    disabled: bool = False
 
     @property
     def timeseries_data(self) -> TimeseriesData:
