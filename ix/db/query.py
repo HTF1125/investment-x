@@ -4,9 +4,17 @@ import pandas as pd
 from scipy.optimize import curve_fit
 from ix.db.models import Timeseries
 from cachetools import TTLCache, cached
-
+from ix import core
 # 최대 32개 엔트리, TTL 600초
 cacher = TTLCache(maxsize=32, ttl=600)
+
+
+def Regime1(series) -> pd.Series:
+
+    macd = core.MACD(px=series).histogram
+    regime = core.Regime1(series=macd).to_dataframe()["regime"]
+    return regime
+
 
 def MultiSeries(
     *series: str | list[str] | dict | pd.Series,
@@ -80,12 +88,21 @@ def MonthEndOffset(
     return series
 
 
-def DaysOffset(
+def MonthsOffset(
     series: pd.Series,
-    days: int = 3,
+    months: int,
 ) -> pd.Series:
+    shifted = series.index + pd.DateOffset(months=months)
+    series.index = shifted
+    return series
 
-    shifted = series.index + pd.DateOffset(days=days)
+
+def Offset(
+    series: pd.Series,
+    months: int = 0,
+    days: int = 0,
+) -> pd.Series:
+    shifted = series.index + pd.DateOffset(months=months, days=days)
     series.index = shifted
     return series
 
@@ -255,6 +272,75 @@ def CycleForecast(series: pd.Series, forecast_steps=12, window_size=None):
     return fitted_series
 
 
+
+def Drawdown(series:pd.Series, window: int | None = None) -> pd.Series:
+
+    if window:
+        return series.div(series.rolling(window=window).max()).abs()
+    return series.div(series.expanding().max()).abs()
+
+
 def Rebase(series: pd.Series):
 
     return series / series.dropna().iloc[0]
+
+def CustomSeries(code: str) -> pd.Series | pd.DataFrame:
+
+    if code == "GlobalGrowthRegime":
+        manufacturing_pmis = [
+            "NTCPMIMFGSA_WLD:PX_LAST",
+            "NTCPMIMFGMESA_US:PX_LAST",
+            "ISMPMI_M:PX_LAST",
+            "NTCPMIMFGSA_CA:PX_LAST",
+            "NTCPMIMFGSA_EUZ:PX_LAST",
+            "NTCPMIMFGSA_DE:PX_LAST",
+            "NTCPMIMFGSA_FR:PX_LAST",
+            "NTCPMIMFGSA_IT:PX_LAST",
+            "NTCPMIMFGSA_ES:PX_LAST",
+            "NTCPMIMFGSA_GB:PX_LAST",
+            "NTCPMIMFGSA_JP:PX_LAST",
+            "NTCPMIMFGSA_KR",
+            "NTCPMIMFGSA_IN:PX_LAST",
+            "NTCPMIMFGNSA_CN:PX_LAST",
+        ]
+        regimes = []
+        for manufacturing_pmi in manufacturing_pmis:
+            regime = core.Regime1(core.MACD(Series(manufacturing_pmi)).histogram).regime
+            regimes.append(regime)
+
+        regimes_df = pd.concat(regimes, axis=1)
+        regime_counts = regimes_df.apply(
+            lambda row: row.value_counts(normalize=True) * 100, axis=1
+        )
+        regime_pct = regime_counts.fillna(0).round(2)
+        return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]]
+
+    if code == "NumOfOECDLeadingPositiveMoM":
+
+        codes = [
+            "USA.LOLITOAA.STSA:PX_LAST",
+            "TUR.LOLITOAA.STSA:PX_LAST",
+            "IND.LOLITOAA.STSA:PX_LAST",
+            "IDN.LOLITOAA.STSA:PX_LAST",
+            "A5M.LOLITOAA.STSA:PX_LAST",
+            "CHN.LOLITOAA.STSA:PX_LAST",
+            "KOR.LOLITOAA.STSA:PX_LAST",
+            "BRA.LOLITOAA.STSA:PX_LAST",
+            "AUS.LOLITOAA.STSA:PX_LAST",
+            "CAN.LOLITOAA.STSA:PX_LAST",
+            "DEU.LOLITOAA.STSA:PX_LAST",
+            "ESP.LOLITOAA.STSA:PX_LAST",
+            "FRA.LOLITOAA.STSA:PX_LAST",
+            "G4E.LOLITOAA.STSA:PX_LAST",
+            "G7M.LOLITOAA.STSA:PX_LAST",
+            "GBR.LOLITOAA.STSA:PX_LAST",
+            "ITA.LOLITOAA.STSA:PX_LAST",
+            "JPN.LOLITOAA.STSA:PX_LAST",
+            "MEX.LOLITOAA.STSA:PX_LAST",
+        ]
+        data = MultiSeries(*codes).diff()
+        df_numeric = data.apply(pd.to_numeric, errors="coerce")
+        positive_counts = (df_numeric > 0).sum(axis=1)
+        valid_counts = df_numeric.notna().sum(axis=1)
+        percent_positive = (positive_counts / valid_counts) * 100
+        return percent_positive

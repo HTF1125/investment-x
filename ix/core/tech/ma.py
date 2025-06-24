@@ -67,9 +67,9 @@ class SqueezeMomentum:
         """
         Create a SqueezeMomentum instance using a meta-code by retrieving the price data.
         """
-        px_close = get_timeseries(code=code, field="PX_LAST")
-        px_high = get_timeseries(code=code, field="PX_HIGH")
-        px_low = get_timeseries(code=code, field="PX_LOW")
+        px_close = get_timeseries(code=f"{code}:PX_LAST").data
+        px_high = get_timeseries(code=f"{code}:PX_HIGH").data
+        px_low = get_timeseries(code=f"{code}:PX_LOW").data
 
         # Handle missing high/low data
         px_high = px_high if not px_high.empty else None
@@ -293,4 +293,175 @@ class SqueezeMomentum:
             template="plotly_dark",
         )
 
+        return fig
+
+
+
+class MACD:
+    """
+    Moving Average Convergence Divergence (MACD) indicator with Plotly visualisation.
+    """
+
+    def __init__(
+        self,
+        px: pd.Series,
+        fast_span: int = 12,
+        slow_span: int = 26,
+        signal_span: int = 9,
+    ) -> None:
+        self.px = px.copy()
+        self.fast_span = fast_span
+        self.slow_span = slow_span
+        self.signal_span = signal_span
+        self._store: dict = {}
+        self.df: pd.DataFrame = pd.DataFrame()
+        self._calculate_indicator()
+
+    @classmethod
+    def from_meta(
+        cls,
+        code: str,
+        fast_span: int = 12,
+        slow_span: int = 26,
+        signal_span: int = 9,
+    ) -> "MACD":
+        px = get_timeseries(code=code).data
+        return cls(
+            px=px, fast_span=fast_span, slow_span=slow_span, signal_span=signal_span
+        )
+
+    # --------------------------- cached properties ------------------------- #
+    @property
+    def macd_line(self) -> pd.Series:
+        if "macd_line" not in self._store:
+            ema_fast = self.px.ewm(span=self.fast_span, adjust=False).mean()
+            ema_slow = self.px.ewm(span=self.slow_span, adjust=False).mean()
+            self._store["macd_line"] = ema_fast - ema_slow
+        return self._store["macd_line"]
+
+    @property
+    def signal_line(self) -> pd.Series:
+        if "signal_line" not in self._store:
+            self._store["signal_line"] = self.macd_line.ewm(
+                span=self.signal_span, adjust=False
+            ).mean()
+        return self._store["signal_line"]
+
+    @property
+    def histogram(self) -> pd.Series:
+        if "histogram" not in self._store:
+            self._store["histogram"] = self.macd_line - self.signal_line
+        return self._store["histogram"]
+
+    # ----------------------------- core compute ---------------------------- #
+    def _calculate_indicator(self) -> None:
+        self.df = pd.DataFrame(
+            {
+                "px": self.px,
+                "macd": self.macd_line,
+                "signal": self.signal_line,
+                "hist": self.histogram,
+            }
+        )
+
+    # ---------------------------- public helpers --------------------------- #
+    def to_dataframe(
+        self,
+        start: Optional[Union[str, pd.Timestamp]] = None,
+        end: Optional[Union[str, pd.Timestamp]] = None,
+    ) -> pd.DataFrame:
+        df = self.df.copy()
+        if start is not None:
+            df = df.loc[start:]
+        if end is not None:
+            df = df.loc[:end]
+        return df
+
+    def plot(
+        self,
+        start: Optional[Union[str, pd.Timestamp]] = None,
+        end: Optional[Union[str, pd.Timestamp]] = None,
+    ) -> go.Figure:
+        df = self.to_dataframe(start=start, end=end)
+        if df.empty:
+            logger.warning("No data available for the selected date range.")
+            return go.Figure()
+
+        hist_color = np.where(
+            df["hist"] >= 0,
+            np.where(df["hist"].diff() >= 0, "lime", "green"),
+            np.where(df["hist"].diff() <= 0, "maroon", "red"),
+        )
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["px"],
+                name="Price",
+                line=dict(color="grey", width=2),
+                yaxis="y2",
+                hovertemplate="Date: %{x|%Y-%m-%d}<br>Price: %{y:.2f}",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["macd"],
+                name="MACD",
+                line=dict(color="cyan", width=1.5),
+                hovertemplate="MACD: %{y:.4f}",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["signal"],
+                name="Signal",
+                line=dict(color="orange", width=1.0, dash="dash"),
+                hovertemplate="Signal: %{y:.4f}",
+            )
+        )
+        fig.add_trace(
+            go.Bar(
+                x=df.index,
+                y=df["hist"],
+                name="Histogram",
+                marker_color=hist_color,
+                hovertemplate="Hist: %{y:.4f}",
+            )
+        )
+
+        fig.update_layout(
+            title=dict(
+                text="MACD Indicator",
+                x=0.05,
+                y=0.95,
+                xanchor="left",
+                yanchor="top",
+                font=dict(size=18, color="#ffffff"),
+            ),
+            xaxis=dict(
+                title="Date",
+                showgrid=True,
+                gridcolor="lightgrey",
+                type="date",
+                range=[df.index.min(), df.index.max()],
+            ),
+            yaxis=dict(title="MACD / Histogram", showgrid=True, gridcolor="lightgrey"),
+            yaxis2=dict(title="Price", overlaying="y", side="right", showgrid=False),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(color="#ffffff"),
+            ),
+            hovermode="x unified",
+            hoverlabel=dict(bgcolor="black", font=dict(color="white")),
+            margin=dict(l=50, r=50, t=80, b=50),
+            template="plotly_dark",
+        )
         return fig

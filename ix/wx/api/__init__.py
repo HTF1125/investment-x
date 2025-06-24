@@ -2,6 +2,7 @@ import pandas as pd
 from flask import jsonify
 from ix.wx.app import server
 from ix.misc import get_logger
+from ix.db.query import *
 
 logger = get_logger(__name__)
 
@@ -109,7 +110,7 @@ def download_file():
 
 
 @server.route("/api/timeseries", methods=["GET"])
-def get_tickers():
+def _get_timeseries():
     """
     API endpoint to retrieve metadata.
     """
@@ -120,7 +121,6 @@ def get_tickers():
 
 @server.route("/api/series", methods=["GET"])
 def get_series():
-    from ix.db.query import Series
     import numpy as np
     series = request.args.getlist("series")
     start = request.args.get("start")
@@ -131,10 +131,9 @@ def get_series():
         return jsonify({"error": "Missing 'series' query parameter"}), 400
 
     try:
-        datas = pd.concat([Series(code) for code in series], axis=1)
+        datas = pd.concat([eval(code) for code in series], axis=1)
         datas.index = pd.to_datetime(datas.index)
         datas = datas.replace(np.nan, None)
-
         if start:
             datas = datas.loc[start:]
         if end:
@@ -143,10 +142,11 @@ def get_series():
         if include_dates:
             datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
             datas = datas.reset_index()
-        output = [datas[c].tolist() for c in datas.columns]
+        output = datas.T.values.tolist()
         return jsonify(output)
 
     except Exception as e:
+        print(str(e))
         return jsonify({"error": str(e)}), 500
 
 
@@ -173,7 +173,10 @@ def upload_tickers():
 
         data = data.set_index("id", drop=True)
         for ts_id, ts_row in data.iterrows():
-            db_timeseries = Timeseries.find_one(Timeseries.id == ObjectId(str(ts_id))).run()
+            if ts_id is None:
+                db_timeseries = Timeseries(code=ts_row["code"]).create()
+            else:
+                db_timeseries = Timeseries.find_one(Timeseries.id == ObjectId(str(ts_id))).run()
             if db_timeseries is None:
                 db_timeseries = Timeseries(code=ts_row["code"]).create()
             db_timeseries.update({"$set": ts_row.to_dict()})
@@ -183,3 +186,14 @@ def upload_tickers():
         )
     except Exception as e:
         return jsonify({"error": f"Unexpected server error: {str(e)}"}), 500
+
+# @server.route("/api/timeseries_data", methods = ["GET"])
+# def _get_timeseries_data():
+
+#     ff = []
+#     for ts in Timeseries.find().run():
+
+#         if ts.code.endswith("Equity:PX_LAST") or ts.code.endswith(":PX_YTM"):
+#             ff.append(ts.data)
+
+#     return pd.concat(ff, axis=1).iloc[-300:].to_dict("records")
