@@ -5,6 +5,7 @@ from scipy.optimize import curve_fit
 from ix.db.models import Timeseries
 from cachetools import TTLCache, cached
 from ix import core
+
 # 최대 32개 엔트리, TTL 600초
 cacher = TTLCache(maxsize=32, ttl=600)
 
@@ -36,16 +37,33 @@ def MultiSeries(
     return output
 
 
-def Series(code: str) -> pd.Series:
-    ts = Timeseries.find_one({"code": code}).run()
-    if ts is not None:
-        return ts.data
+def Series(code: str, freq: str | None = None) -> pd.Series:
     try:
-        data = eval(code)
-        assert isinstance(data, pd.Series)
-        data.name = code
-        return data
+        ts = Timeseries.find_one({"code": code}).run()
+        if ts is not None:
+            data = ts.data
+            if freq:
+                data = data.resample(freq).last()
+            return data
     except:
+        pass
+
+    try:
+        if "=" in code:
+            name, new_code = code.split("=", maxsplit=1)
+            print(name, new_code)
+
+            data = eval(new_code)
+            assert isinstance(data, pd.Series)
+            data.name = name
+        else:
+            data = eval(code)
+        assert isinstance(data, pd.Series)
+        if freq:
+            data = data.resample(freq).last()
+        return data
+    except Exception as e:
+        print(e)
         return pd.Series(name=code)
 
 
@@ -272,8 +290,7 @@ def CycleForecast(series: pd.Series, forecast_steps=12, window_size=None):
     return fitted_series
 
 
-
-def Drawdown(series:pd.Series, window: int | None = None) -> pd.Series:
+def Drawdown(series: pd.Series, window: int | None = None) -> pd.Series:
 
     if window:
         return series.div(series.rolling(window=window).max()).abs()
@@ -284,36 +301,50 @@ def Rebase(series: pd.Series):
 
     return series / series.dropna().iloc[0]
 
+
+def GlobalGrowthRegime():
+    manufacturing_pmis = [
+        "NTCPMIMFGSA_WLD:PX_LAST",
+        "NTCPMIMFGMESA_US:PX_LAST",
+        "ISMPMI_M:PX_LAST",
+        "NTCPMIMFGSA_CA:PX_LAST",
+        "NTCPMIMFGSA_EUZ:PX_LAST",
+        "NTCPMIMFGSA_DE:PX_LAST",
+        "NTCPMIMFGSA_FR:PX_LAST",
+        "NTCPMIMFGSA_IT:PX_LAST",
+        "NTCPMIMFGSA_ES:PX_LAST",
+        "NTCPMIMFGSA_GB:PX_LAST",
+        "NTCPMIMFGSA_JP:PX_LAST",
+        "NTCPMIMFGSA_KR",
+        "NTCPMIMFGSA_IN:PX_LAST",
+        "NTCPMIMFGNSA_CN:PX_LAST",
+    ]
+    regimes = []
+    for manufacturing_pmi in manufacturing_pmis:
+        regime = core.Regime1(core.MACD(Series(manufacturing_pmi)).histogram).regime
+        regimes.append(regime)
+
+    regimes_df = pd.concat(regimes, axis=1)
+    regime_counts = regimes_df.apply(
+        lambda row: row.value_counts(normalize=True) * 100, axis=1
+    )
+    regime_pct = regime_counts.fillna(0).round(2)
+    return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
+
+
 def CustomSeries(code: str) -> pd.Series | pd.DataFrame:
 
-    if code == "GlobalGrowthRegime":
-        manufacturing_pmis = [
-            "NTCPMIMFGSA_WLD:PX_LAST",
-            "NTCPMIMFGMESA_US:PX_LAST",
-            "ISMPMI_M:PX_LAST",
-            "NTCPMIMFGSA_CA:PX_LAST",
-            "NTCPMIMFGSA_EUZ:PX_LAST",
-            "NTCPMIMFGSA_DE:PX_LAST",
-            "NTCPMIMFGSA_FR:PX_LAST",
-            "NTCPMIMFGSA_IT:PX_LAST",
-            "NTCPMIMFGSA_ES:PX_LAST",
-            "NTCPMIMFGSA_GB:PX_LAST",
-            "NTCPMIMFGSA_JP:PX_LAST",
-            "NTCPMIMFGSA_KR",
-            "NTCPMIMFGSA_IN:PX_LAST",
-            "NTCPMIMFGNSA_CN:PX_LAST",
-        ]
-        regimes = []
-        for manufacturing_pmi in manufacturing_pmis:
-            regime = core.Regime1(core.MACD(Series(manufacturing_pmi)).histogram).regime
-            regimes.append(regime)
+    if code == "GlobalGrowthRegime-Expansion":
+        return GlobalGrowthRegime()["Expansion"]
 
-        regimes_df = pd.concat(regimes, axis=1)
-        regime_counts = regimes_df.apply(
-            lambda row: row.value_counts(normalize=True) * 100, axis=1
-        )
-        regime_pct = regime_counts.fillna(0).round(2)
-        return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]]
+    if code == "GlobalGrowthRegime-Slowdown":
+        return GlobalGrowthRegime()["Slowdown"]
+
+    if code == "GlobalGrowthRegime-Contraction":
+        return GlobalGrowthRegime()["Contraction"]
+
+    if code == "GlobalGrowthRegime-Recovery":
+        return GlobalGrowthRegime()["Recovery"]
 
     if code == "NumOfOECDLeadingPositiveMoM":
 
@@ -344,3 +375,17 @@ def CustomSeries(code: str) -> pd.Series | pd.DataFrame:
         valid_counts = df_numeric.notna().sum(axis=1)
         percent_positive = (positive_counts / valid_counts) * 100
         return percent_positive
+
+
+    if code == "GlobalM2":
+
+        data = pd.concat([
+            Series('US.MAM2').dropna()/1000,
+            Series('EUZ.MAM2')*Resample(Series('EURUSD Curncy:PX_LAST'), 'ME').dropna()/1000/1000,
+            Series('GB.MAM2')/Resample(Series('USDGBP Curncy:PX_LAST'), 'ME').dropna()/1000/1000,
+            Series('JP.MAM2')/Resample(Series('USDJPY Curncy:PX_LAST'), 'ME').dropna()/10/1000,
+            Series('CN.MAM2')/Resample(Series('USDCNY Curncy:PX_LAST'), 'ME').dropna()/10/1000,
+        ], axis=1).dropna()
+        data =  data.sum(axis=1).dropna()
+        print(data)
+        return data

@@ -118,7 +118,8 @@ def _get_timeseries():
 
     return jsonify([timeseries.model_dump() for timeseries in Timeseries.find().run()])
 
-
+from collections import OrderedDict
+import json
 @server.route("/api/series", methods=["GET"])
 def get_series():
     import numpy as np
@@ -126,25 +127,27 @@ def get_series():
     start = request.args.get("start")
     end = request.args.get("end")
     include_dates = request.args.get("include_dates", "false").lower() == "true"
-
     if not series:
         return jsonify({"error": "Missing 'series' query parameter"}), 400
-
     try:
-        datas = pd.concat([eval(code) for code in series], axis=1)
+        datas = pd.DataFrame()
+
+        for code in series:
+            datas = pd.concat([datas, Series(code)], axis=1)
         datas.index = pd.to_datetime(datas.index)
+        datas = datas.dropna(how='all')
         datas = datas.replace(np.nan, None)
         if start:
             datas = datas.loc[start:]
         if end:
             datas = datas.loc[:end]
-
         if include_dates:
             datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
+            datas.index.name = "Idx"
             datas = datas.reset_index()
-        output = datas.T.values.tolist()
-        return jsonify(output)
-
+        payload = OrderedDict((col, datas[col].tolist()) for col in datas.columns)
+        text = json.dumps(payload, ensure_ascii=False, sort_keys=False)
+        return Response(text, mimetype="application/json")
     except Exception as e:
         print(str(e))
         return jsonify({"error": str(e)}), 500
