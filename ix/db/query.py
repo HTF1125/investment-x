@@ -51,7 +51,6 @@ def Series(code: str, freq: str | None = None) -> pd.Series:
     try:
         if "=" in code:
             name, new_code = code.split("=", maxsplit=1)
-            print(name, new_code)
 
             data = eval(new_code)
             assert isinstance(data, pd.Series)
@@ -60,7 +59,7 @@ def Series(code: str, freq: str | None = None) -> pd.Series:
             data = eval(code)
         assert isinstance(data, pd.Series)
         if freq:
-            data = data.resample(freq).last()
+            data = data.resample(freq).last().ffill()
         return data
     except Exception as e:
         print(e)
@@ -191,9 +190,9 @@ def Cycle(series: pd.Series, max_points_per_cycle: Optional[int] = None) -> pd.S
 
     # 6) Curve fitting
     if use_bounds:
-        popt, pcov = curve_fit(sine_model, t, y, p0=p0, bounds=bounds, max_nfev=10000)
+        popt, pcov = curve_fit(sine_model, t, y, p0=p0, bounds=bounds)
     else:
-        popt, pcov = curve_fit(sine_model, t, y, p0=p0, max_nfev=10000)
+        popt, pcov = curve_fit(sine_model, t, y, p0=p0)
 
     A_fit, f_fit, phi_fit, C_fit = popt
 
@@ -332,7 +331,80 @@ def GlobalGrowthRegime():
     return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
 
 
-def CustomSeries(code: str) -> pd.Series | pd.DataFrame:
+def FinancialConditionsIndex1() -> pd.Series:
+    series = [
+        StandardScalar(Series("VIX Index:PX_LAST"), 160),
+        StandardScalar(Series("MOVE Index:PX_LAST"), 160),
+        StandardScalar(Series("BAMLH0A0HYM2"), 160),
+        StandardScalar(Series("BAMLC0A0CM"), 160),
+    ]
+
+    return pd.concat(series, axis=1).ffill().mean(axis=1)
+
+def FedNetLiquidity() -> pd.Series:
+    # 1) Load raw series
+    asset_mil    = Series('WALCL')      # millions USD
+    treasury_bil = Series('WTREGEN')    # billions USD
+    repo_bil     = Series('RRPONTSYD')  # billions USD
+
+    # 2) Normalize to trillions USD
+    asset   = asset_mil.div(1_000_000)  # → trillions
+    treasury= treasury_bil.div(1_000)   # → trillions
+    repo    = repo_bil.div(1_000)       # → trillions
+    # 3) Combine
+    df = pd.concat({
+        'asset'   : asset,
+        'treasury': treasury,
+        'repo'    : repo
+    }, axis=1)
+    # 4) Weekly on Wednesday, take last value & forward-fill
+    weekly = df.resample('W-WED').last().ffill()
+    # 5) Compute net liquidity
+    weekly['net_liquidity_T'] = (
+        weekly['asset']
+      - weekly['treasury']
+      - weekly['repo']
+    )
+    daily = weekly['net_liquidity_T'].resample("B").ffill()
+    return daily.dropna()
+
+
+def OecdCliRegime():
+    manufacturing_pmis = [
+        "USA.LOLITOAA.STSA:PX_LAST",
+        "TUR.LOLITOAA.STSA:PX_LAST",
+        "IND.LOLITOAA.STSA:PX_LAST",
+        "IDN.LOLITOAA.STSA:PX_LAST",
+        "A5M.LOLITOAA.STSA:PX_LAST",
+        "CHN.LOLITOAA.STSA:PX_LAST",
+        "KOR.LOLITOAA.STSA:PX_LAST",
+        "BRA.LOLITOAA.STSA:PX_LAST",
+        "AUS.LOLITOAA.STSA:PX_LAST",
+        "CAN.LOLITOAA.STSA:PX_LAST",
+        "DEU.LOLITOAA.STSA:PX_LAST",
+        "ESP.LOLITOAA.STSA:PX_LAST",
+        "FRA.LOLITOAA.STSA:PX_LAST",
+        "G4E.LOLITOAA.STSA:PX_LAST",
+        "G7M.LOLITOAA.STSA:PX_LAST",
+        "GBR.LOLITOAA.STSA:PX_LAST",
+        "ITA.LOLITOAA.STSA:PX_LAST",
+        "JPN.LOLITOAA.STSA:PX_LAST",
+        "MEX.LOLITOAA.STSA:PX_LAST",
+    ]
+    regimes = []
+    for manufacturing_pmi in manufacturing_pmis:
+        regime = core.Regime1(core.MACD(Series(manufacturing_pmi)).histogram).regime
+        regimes.append(regime)
+
+    regimes_df = pd.concat(regimes, axis=1)
+    regime_counts = regimes_df.apply(
+        lambda row: row.value_counts(normalize=True) * 100, axis=1
+    )
+    regime_pct = regime_counts.fillna(0).round(2)
+    return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
+
+
+def CustomSeries(code: str) -> pd.Series:
 
     if code == "GlobalGrowthRegime-Expansion":
         return GlobalGrowthRegime()["Expansion"]
@@ -376,6 +448,30 @@ def CustomSeries(code: str) -> pd.Series | pd.DataFrame:
         percent_positive = (positive_counts / valid_counts) * 100
         return percent_positive
 
+    if code == "NumOfPmiPositiveMoM":
+
+        codes = [
+            "NTCPMIMFGSA_WLD:PX_LAST",
+            "NTCPMIMFGMESA_US:PX_LAST",
+            "ISMPMI_M:PX_LAST",
+            "NTCPMIMFGSA_CA:PX_LAST",
+            "NTCPMIMFGSA_EUZ:PX_LAST",
+            "NTCPMIMFGSA_DE:PX_LAST",
+            "NTCPMIMFGSA_FR:PX_LAST",
+            "NTCPMIMFGSA_IT:PX_LAST",
+            "NTCPMIMFGSA_ES:PX_LAST",
+            "NTCPMIMFGSA_GB:PX_LAST",
+            "NTCPMIMFGSA_JP:PX_LAST",
+            "NTCPMIMFGSA_KR",
+            "NTCPMIMFGSA_IN:PX_LAST",
+            "NTCPMIMFGNSA_CN:PX_LAST",
+        ]
+        data = MultiSeries(*codes).diff()
+        df_numeric = data.apply(pd.to_numeric, errors="coerce")
+        positive_counts = (df_numeric > 0).sum(axis=1)
+        valid_counts = df_numeric.notna().sum(axis=1)
+        percent_positive = (positive_counts / valid_counts) * 100
+        return percent_positive
 
     if code == "GlobalM2":
 
@@ -387,5 +483,79 @@ def CustomSeries(code: str) -> pd.Series | pd.DataFrame:
             Series('CN.MAM2')/Resample(Series('USDCNY Curncy:PX_LAST'), 'ME').dropna()/10/1000,
         ], axis=1).dropna()
         data =  data.sum(axis=1).dropna()
-        print(data)
         return data
+
+    if code == "LocalIndices2":
+
+        from ix import get_timeseries
+
+        # 1) 벤치마크 티커 정의
+        codes = {
+            "SP500": "SPX Index:PX_LAST",
+            "DJIA30": "INDU Index:PX_LAST",
+            "NASDAQ": "CCMP Index:PX_LAST",
+            "Russell2": "RTY Index:PX_LAST",
+            "Stoxx50": "SX5E Index:PX_LAST",
+            "FTSE100": "UKX Index:PX_LAST",
+            "DAX": "DAX Index:PX_LAST",
+            "CAC": "CAC Index:PX_LAST",
+            "Nikkei225": "NKY Index:PX_LAST",
+            "TOPIX": "TPX Index:PX_LAST",
+            "KOSPI": "KOSPI Index:PX_LAST",
+            "NIFTY": "NIFTY Index:PX_LAST",
+            "HangSeng": "HSI Index:PX_LAST",
+            "SSE": "SHCOMP Index:PX_LAST",
+        }
+
+        # 2) 시계열 불러와서 일별로 리샘플 → 결측일 전일치 보간
+        series_list = []
+        for name, ticker in codes.items():
+            ts = get_timeseries(ticker).data
+            ts.name = name
+            series_list.append(ts)
+
+        datas = pd.concat(series_list, axis=1)
+        datas = datas.resample("D").last().ffill()
+
+        # 3) 오늘 날짜와 기준일 정의
+        today = datas.index[-1]
+        start_year = pd.Timestamp(year=today.year, month=1, day=1)
+        one_month = today - pd.DateOffset(months=1)
+        three_mo = today - pd.DateOffset(months=3)
+        one_year = today - pd.DateOffset(years=1)
+
+        # 4) 기준 시세(asof)로부터 퍼센트 변동 계산 함수
+        def pct_from(base_date):
+            base = datas.asof(base_date)
+            return (datas.iloc[-1] / base - 1).round(4) * 100
+
+        # 5) 각 기간별 결과 조합
+        output = []
+
+        level = datas.iloc[-1].round(2)
+        level.name = "Level"
+        output.append(level)
+        output.append(pct_from(today - pd.DateOffset(days=1)).rename("1D"))
+        output.append(pct_from(today - pd.DateOffset(days=7)).rename("1W"))
+        output.append(pct_from(one_month).rename("1M"))
+        output.append(pct_from(three_mo).rename("3M"))
+        output.append(pct_from(one_year).rename("1Y"))
+        output.append(pct_from(start_year).rename("YTD"))
+
+        result = pd.concat(output, axis=1)
+        return result
+
+    if code == "FedNetLiquidity":
+        return FedNetLiquidity()
+
+    if code == "OecdCliRegime-Expansion":
+        return OecdCliRegime()["Expansion"]
+
+    if code == "OecdCliRegime-Slowdown":
+        return OecdCliRegime()["Slowdown"]
+
+    if code == "OecdCliRegime-Contraction":
+        return OecdCliRegime()["Contraction"]
+
+    if code == "OecdCliRegime-Recovery":
+        return OecdCliRegime()["Recovery"]

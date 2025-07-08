@@ -118,6 +118,7 @@ def _get_timeseries():
 
     return jsonify([timeseries.model_dump() for timeseries in Timeseries.find().run()])
 
+
 from collections import OrderedDict
 import json
 @server.route("/api/series", methods=["GET"])
@@ -143,6 +144,7 @@ def get_series():
             datas = datas.loc[:end]
         if include_dates:
             datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
+            datas = datas.sort_index()
             datas.index.name = "Idx"
             datas = datas.reset_index()
         payload = OrderedDict((col, datas[col].tolist()) for col in datas.columns)
