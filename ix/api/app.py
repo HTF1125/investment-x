@@ -169,27 +169,75 @@ from fastapi import status, HTTPException
 from typing import Annotated
 from ix.db.query import Series
 from ix.misc.date import today
+import json
+from ix.db.query import *
 
-
-@app.get("/api/series", status_code=status.HTTP_200_OK)
-async def _get_series(
-    series: Annotated[list[str], Query(description="One code per occurrence")],
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-    include_dates: bool = False,
+@app.get(
+    "/api/series",
+    status_code=status.HTTP_200_OK,
+    response_model=Dict[str, List[Optional[Any]]],
+    summary="Query one or more series by code",
+)
+async def get_series(
+    series: List[str] = Query(
+        ...,
+        description="Specify one or more series codes. You can alias a series by using `alias=CODE`.",
+    ),
+    start: Optional[str] = Query(None, description="Start date in YYYY-MM-DD format"),
+    end: Optional[str] = Query(None, description="End date in YYYY-MM-DD format"),
+    include_dates: bool = Query(
+        False,
+        description="If true, returns a 'date' column and shifts each series into its own list",
+    ),
 ):
-    datas = pd.concat([Series(code) for code in series], axis=1)
-    datas.index = pd.to_datetime(datas.index)
-    datas = datas.replace(np.nan, None)
-    if start: datas = datas.loc[start:]
-    if end: datas = datas.loc[:end]
+    frames: List[pd.Series] = []
+
+    for spec in series:
+        if "=" in spec:
+            alias, code = spec.split("=", 1)
+        else:
+            alias, code = spec, spec
+
+        try:
+            ser = eval(code)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid series code '{code}': {e}",
+            )
+
+        if not isinstance(ser, pd.Series):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Fetched object for '{code}' is not a pandas Series",
+            )
+
+        ser.name = alias
+        frames.append(ser)
+
+    if not frames:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No valid series provided"
+        )
+
+    df = pd.concat(frames, axis=1)
+    df.index = pd.to_datetime(df.index)
+    df = df.dropna(how="all")  # 모든 열이 NaN인 행 제거
+
+    if start:
+        df = df.loc[df.index >= pd.to_datetime(start)]
+    if end:
+        df = df.loc[df.index <= pd.to_datetime(end)]
+
+    df = df.replace({np.nan: None})
+    df.index = pd.to_datetime(df.index).strftime("%Y-%m-%d")
     if include_dates:
-        datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
-        datas = datas.reset_index()
-    output = []
-    for c in datas.columns:
-        output.append(datas[c].to_list())
-    return output
+        df = df.sort_index().reset_index().rename(columns={"index": "Idx"})
+        payload = df.to_dict(orient="list")
+    else:
+        payload = {col: df[col].tolist() for col in df.columns}
+
+    return JSONResponse(content=payload)
 
 
 def get_dates(

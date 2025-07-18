@@ -559,3 +559,26 @@ def CustomSeries(code: str) -> pd.Series:
 
     if code == "OecdCliRegime-Recovery":
         return OecdCliRegime()["Recovery"]
+
+
+
+
+def NumofOecdCliMoMPositveEM():
+
+    codes = [
+        "TUR.LOLITOAA.STSA:PX_LAST",
+        "IND.LOLITOAA.STSA:PX_LAST",
+        "IDN.LOLITOAA.STSA:PX_LAST",
+        "CHN.LOLITOAA.STSA:PX_LAST",
+        "KOR.LOLITOAA.STSA:PX_LAST",
+        "BRA.LOLITOAA.STSA:PX_LAST",
+        "ESP.LOLITOAA.STSA:PX_LAST",
+        "ITA.LOLITOAA.STSA:PX_LAST",
+        "MEX.LOLITOAA.STSA:PX_LAST",
+    ]
+    data = MultiSeries(*codes).diff()
+    df_numeric = data.apply(pd.to_numeric, errors="coerce")
+    positive_counts = (df_numeric > 0).sum(axis=1)
+    valid_counts = df_numeric.notna().sum(axis=1)
+    percent_positive = (positive_counts / valid_counts) * 100
+    return percent_positive
