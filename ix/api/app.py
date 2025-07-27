@@ -95,7 +95,8 @@ async def _get_economic_calendar():
     - EconomicCalendar.get_dataframe()를 호출해 Pandas DataFrame으로 가져온 뒤 JSON으로 반환.
     """
     try:
-        # update_economic_calendar()
+        from ix.task import update_economic_calendar
+        update_economic_calendar()
         df = EconomicCalendar.get_dataframe()
         return df.to_dict("records")
 
@@ -136,7 +137,7 @@ async def api_get_timeseries():
     - 선택적으로 name, frequency, asset_class, category, fields 컬럼을 처리.
     - fields 컬럼은 'field|source|source_ticker|source_field' 쌍을 '/'로 연결한 문자열.
     """
-    return Timeseries.find().to_list()
+    return Timeseries.find().run()
 
 
 @app.post("/api/timeseries", status_code=status.HTTP_200_OK)
@@ -172,6 +173,7 @@ from ix.misc.date import today
 import json
 from ix.db.query import *
 
+
 @app.get(
     "/api/series",
     status_code=status.HTTP_200_OK,
@@ -200,20 +202,17 @@ async def get_series(
 
         try:
             ser = eval(code)
+            if isinstance(ser, pd.DataFrame):
+                for _name in ser.columns:
+                    frames.append(ser[_name])
+            elif isinstance(ser, pd.Series):
+                ser.name = alias
+                frames.append(ser)
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid series code '{code}': {e}",
             )
-
-        if not isinstance(ser, pd.Series):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Fetched object for '{code}' is not a pandas Series",
-            )
-
-        ser.name = alias
-        frames.append(ser)
 
     if not frames:
         raise HTTPException(
@@ -291,6 +290,7 @@ def get_image():
 
 from ix.db.query import *
 
+
 @app.get("/api/query")
 def _query(
     command: str,
@@ -303,8 +303,10 @@ def _query(
     print(datas)
     datas = datas.replace(np.nan, None)
     datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
-    if start: datas = datas.loc[start:]
-    if end: datas = datas.loc[:end]
+    if start:
+        datas = datas.loc[start:]
+    if end:
+        datas = datas.loc[:end]
     if include_dates:
         datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
         datas = datas.reset_index()

@@ -11,7 +11,6 @@ cacher = TTLCache(maxsize=32, ttl=600)
 
 
 def Regime1(series) -> pd.Series:
-
     macd = core.MACD(px=series).histogram
     regime = core.Regime1(series=macd).to_dataframe()["regime"]
     return regime
@@ -290,14 +289,12 @@ def CycleForecast(series: pd.Series, forecast_steps=12, window_size=None):
 
 
 def Drawdown(series: pd.Series, window: int | None = None) -> pd.Series:
-
     if window:
         return series.div(series.rolling(window=window).max()).abs()
     return series.div(series.expanding().max()).abs()
 
 
 def Rebase(series: pd.Series):
-
     return series / series.dropna().iloc[0]
 
 
@@ -341,31 +338,24 @@ def FinancialConditionsIndex1() -> pd.Series:
 
     return pd.concat(series, axis=1).ffill().mean(axis=1)
 
+
 def FedNetLiquidity() -> pd.Series:
     # 1) Load raw series
-    asset_mil    = Series('WALCL')      # millions USD
-    treasury_bil = Series('WTREGEN')    # billions USD
-    repo_bil     = Series('RRPONTSYD')  # billions USD
+    asset_mil = Series("WALCL")  # millions USD
+    treasury_bil = Series("WTREGEN")  # billions USD
+    repo_bil = Series("RRPONTSYD")  # billions USD
 
     # 2) Normalize to trillions USD
-    asset   = asset_mil.div(1_000_000)  # → trillions
-    treasury= treasury_bil.div(1_000)   # → trillions
-    repo    = repo_bil.div(1_000)       # → trillions
+    asset = asset_mil.div(1_000_000)  # → trillions
+    treasury = treasury_bil.div(1_000)  # → trillions
+    repo = repo_bil.div(1_000)  # → trillions
     # 3) Combine
-    df = pd.concat({
-        'asset'   : asset,
-        'treasury': treasury,
-        'repo'    : repo
-    }, axis=1)
+    df = pd.concat({"asset": asset, "treasury": treasury, "repo": repo}, axis=1)
     # 4) Weekly on Wednesday, take last value & forward-fill
-    weekly = df.resample('W-WED').last().ffill()
+    weekly = df.resample("W-WED").last().ffill()
     # 5) Compute net liquidity
-    weekly['net_liquidity_T'] = (
-        weekly['asset']
-      - weekly['treasury']
-      - weekly['repo']
-    )
-    daily = weekly['net_liquidity_T'].resample("B").ffill()
+    weekly["net_liquidity_T"] = weekly["asset"] - weekly["treasury"] - weekly["repo"]
+    daily = weekly["net_liquidity_T"].resample("B").ffill()
     return daily.dropna()
 
 
@@ -405,7 +395,6 @@ def OecdCliRegime():
 
 
 def CustomSeries(code: str) -> pd.Series:
-
     if code == "GlobalGrowthRegime-Expansion":
         return GlobalGrowthRegime()["Expansion"]
 
@@ -419,7 +408,6 @@ def CustomSeries(code: str) -> pd.Series:
         return GlobalGrowthRegime()["Recovery"]
 
     if code == "NumOfOECDLeadingPositiveMoM":
-
         codes = [
             "USA.LOLITOAA.STSA:PX_LAST",
             "TUR.LOLITOAA.STSA:PX_LAST",
@@ -449,7 +437,6 @@ def CustomSeries(code: str) -> pd.Series:
         return percent_positive
 
     if code == "NumOfPmiPositiveMoM":
-
         codes = [
             "NTCPMIMFGSA_WLD:PX_LAST",
             "NTCPMIMFGMESA_US:PX_LAST",
@@ -474,19 +461,32 @@ def CustomSeries(code: str) -> pd.Series:
         return percent_positive
 
     if code == "GlobalM2":
-
-        data = pd.concat([
-            Series('US.MAM2').dropna()/1000,
-            Series('EUZ.MAM2')*Resample(Series('EURUSD Curncy:PX_LAST'), 'ME').dropna()/1000/1000,
-            Series('GB.MAM2')/Resample(Series('USDGBP Curncy:PX_LAST'), 'ME').dropna()/1000/1000,
-            Series('JP.MAM2')/Resample(Series('USDJPY Curncy:PX_LAST'), 'ME').dropna()/10/1000,
-            Series('CN.MAM2')/Resample(Series('USDCNY Curncy:PX_LAST'), 'ME').dropna()/10/1000,
-        ], axis=1).dropna()
-        data =  data.sum(axis=1).dropna()
+        data = pd.concat(
+            [
+                Series("US.MAM2").dropna() / 1000,
+                Series("EUZ.MAM2")
+                * Resample(Series("EURUSD Curncy:PX_LAST"), "ME").dropna()
+                / 1000
+                / 1000,
+                Series("GB.MAM2")
+                / Resample(Series("USDGBP Curncy:PX_LAST"), "ME").dropna()
+                / 1000
+                / 1000,
+                Series("JP.MAM2")
+                / Resample(Series("USDJPY Curncy:PX_LAST"), "ME").dropna()
+                / 10
+                / 1000,
+                Series("CN.MAM2")
+                / Resample(Series("USDCNY Curncy:PX_LAST"), "ME").dropna()
+                / 10
+                / 1000,
+            ],
+            axis=1,
+        ).dropna()
+        data = data.sum(axis=1).dropna()
         return data
 
     if code == "LocalIndices2":
-
         from ix import get_timeseries
 
         # 1) 벤치마크 티커 정의
@@ -561,10 +561,7 @@ def CustomSeries(code: str) -> pd.Series:
         return OecdCliRegime()["Recovery"]
 
 
-
-
 def NumofOecdCliMoMPositveEM():
-
     codes = [
         "TUR.LOLITOAA.STSA:PX_LAST",
         "IND.LOLITOAA.STSA:PX_LAST",
@@ -582,3 +579,111 @@ def NumofOecdCliMoMPositveEM():
     valid_counts = df_numeric.notna().sum(axis=1)
     percent_positive = (positive_counts / valid_counts) * 100
     return percent_positive
+
+
+def FinancialConditionsUS() -> pd.Series:
+    dd = (
+        pd.concat(
+            [
+                StandardScalar(-Series("DXY Index:PX_LAST", freq="W"), 4 * 6),
+                StandardScalar(-Series("TRYUS10Y:PX_YTM", freq="W"), 4 * 6),
+                StandardScalar(-Series("TRYUS30Y:PX_YTM", freq="W"), 4 * 6),
+                StandardScalar(Series("SPX Index:PX_LAST", freq="W"), 4 * 6),
+                StandardScalar(-Series("MORTGAGE30US", freq="W"), 4 * 6),
+                StandardScalar(-Series("CL1 Comdty:PX_LAST", freq="W"), 4 * 6),
+                StandardScalar(-Series("BAMLC0A0CM", freq="W"), 4 * 6),
+            ],
+            axis=1,
+        )
+        .mean(axis=1)
+        .ewm(span=4 * 12)
+        .mean()
+    )
+
+    dd.name = "FCI2"
+    return dd
+
+
+def FinancialConditionsKR():
+    dd = (
+        pd.concat(
+            [
+                StandardScalar(-Series("USDKRW Curncy:PX_LAST", freq="W"), 4 * 6),
+                StandardScalar(-Series("TRYKR10Y:PX_YTM", freq="W"), 4 * 6),
+                StandardScalar(-Series("TRYKR30Y:PX_YTM", freq="W"), 4 * 6),
+                StandardScalar(Series("KOSPI Index:PX_LAST", freq="W"), 4 * 6),
+                # StandardScalar(-Series("MORTGAGE30US", freq="W"), 4 * 6),
+                # StandardScalar(-Series("CL1 Comdty:PX_LAST", freq="W"), 4 * 6),
+                # StandardScalar(-Series("BAMLC0A0CM", freq="W"), 4 * 6),
+            ],
+            axis=1,
+        )
+        .mean(axis=1)
+        .ewm(span=4 * 12)
+        .mean()
+    )
+
+    dd.name = "FinancialConditionsKR"
+    return dd
+
+
+def NumOfPmiPositiveMoM():
+    codes = [
+        "NTCPMIMFGSA_WLD:PX_LAST",
+        "NTCPMIMFGMESA_US:PX_LAST",
+        "ISMPMI_M:PX_LAST",
+        "NTCPMIMFGSA_CA:PX_LAST",
+        "NTCPMIMFGSA_EUZ:PX_LAST",
+        "NTCPMIMFGSA_DE:PX_LAST",
+        "NTCPMIMFGSA_FR:PX_LAST",
+        "NTCPMIMFGSA_IT:PX_LAST",
+        "NTCPMIMFGSA_ES:PX_LAST",
+        "NTCPMIMFGSA_GB:PX_LAST",
+        "NTCPMIMFGSA_JP:PX_LAST",
+        "NTCPMIMFGSA_KR",
+        "NTCPMIMFGSA_IN:PX_LAST",
+        "NTCPMIMFGNSA_CN:PX_LAST",
+    ]
+    data = MultiSeries(*codes).diff()
+    df_numeric = data.apply(pd.to_numeric, errors="coerce")
+    positive_counts = (df_numeric > 0).sum(axis=1)
+    valid_counts = df_numeric.notna().sum(axis=1)
+    percent_positive = (positive_counts / valid_counts) * 100
+    return percent_positive
+
+
+def InvestorPositions():
+    data = {
+        "S&P500": Series("CFTNCLOI%ALLS5C3512CMEOF_US")
+        - Series("CFTNCSOI%ALLS5C3512CMEOF_US"),
+        "USD": Series("CFTNCLOI%ALLJUSDNYBTOF_US")
+        - Series("CFTNCSOI%ALLJUSDNYBTOF_US"),
+        "Gold": Series("CFTNCLOI%ALLGOLDCOMOF_US") - Series("CFTNCSOI%ALLGOLDCOMOF_US"),
+        "JPY": Series("CFTNCLOI%ALLYENCMEOF_US") - Series("CFTNCSOI%ALLYENCMEOF_US"),
+        "UST-10Y": Series("CFTNCLOI%ALLTN10YCBOTOF_US")
+        - Series("CFTNCSOI%ALLTN10YCBOTOF_US"),
+        "UST-Ultra": Series("CFTNCLOI%ALLLUT3163CBOTOF_US")
+        - Series("CFTNCSOI%ALLLUT3163CBOTOF_US"),
+        "Commodities": Series("CFTNCLOI%ALLDJUBSERCBOTOF_US")
+        - Series("CFTNCSOI%ALLDJUBSERCBOTOF_US"),
+    }
+    data = pd.DataFrame(data)
+    return data
+
+def InvestorPositionsvsTrend(weeks: int = 52):
+    data = {
+        "S&P500": Series("CFTNCLOI%ALLS5C3512CMEOF_US")
+        - Series("CFTNCSOI%ALLS5C3512CMEOF_US"),
+        "USD": Series("CFTNCLOI%ALLJUSDNYBTOF_US")
+        - Series("CFTNCSOI%ALLJUSDNYBTOF_US"),
+        "Gold": Series("CFTNCLOI%ALLGOLDCOMOF_US") - Series("CFTNCSOI%ALLGOLDCOMOF_US"),
+        "JPY": Series("CFTNCLOI%ALLYENCMEOF_US") - Series("CFTNCSOI%ALLYENCMEOF_US"),
+        "UST-10Y": Series("CFTNCLOI%ALLTN10YCBOTOF_US")
+        - Series("CFTNCSOI%ALLTN10YCBOTOF_US"),
+        "UST-Ultra": Series("CFTNCLOI%ALLLUT3163CBOTOF_US")
+        - Series("CFTNCSOI%ALLLUT3163CBOTOF_US"),
+        "Commodities": Series("CFTNCLOI%ALLDJUBSERCBOTOF_US")
+        - Series("CFTNCSOI%ALLDJUBSERCBOTOF_US"),
+    }
+    data = pd.DataFrame(data)
+    return data - data.rolling(weeks).mean()

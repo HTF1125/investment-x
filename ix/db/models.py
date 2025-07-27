@@ -24,10 +24,13 @@ class Timeseries(Document):
     start: Optional[date] = None
     end: Optional[date] = None
     num_data: Optional[int] = None
-    source: str = "InvestmentX"
+    source: Optional[str] = None
     frequency: Optional[str] = None
     source_ticker: Optional[str] = None
     source_field: Optional[str] = None
+    unit: Optional[str] = None
+    currency: Optional[str] = None
+    country: Optional[str] = None
 
     @property
     def timeseries_data(self) -> TimeseriesData:
