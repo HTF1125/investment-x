@@ -42,7 +42,7 @@ def Series(code: str, freq: str | None = None) -> pd.Series:
         if ts is not None:
             data = ts.data
             if freq:
-                data = data.resample(freq).last()
+                data = data.resample(freq).last().ffill()
             return data
     except:
         pass
@@ -50,13 +50,18 @@ def Series(code: str, freq: str | None = None) -> pd.Series:
     try:
         if "=" in code:
             name, new_code = code.split("=", maxsplit=1)
-
-            data = eval(new_code)
-            assert isinstance(data, pd.Series)
+            ts = Timeseries.find_one({"code": new_code}).run()
+            if not ts:
+                raise
+            data = ts.data
             data.name = name
+
         else:
-            data = eval(code)
-        assert isinstance(data, pd.Series)
+            ts = Timeseries.find_one({"code": code}).run()
+            if not ts:
+                raise
+            data = ts.data
+        data.index = pd.to_datetime(data.index)
         if freq:
             data = data.resample(freq).last().ffill()
         return data
@@ -298,7 +303,7 @@ def Rebase(series: pd.Series):
     return series / series.dropna().iloc[0]
 
 
-def GlobalGrowthRegime():
+def PMI_Manufacturing_Regime():
     manufacturing_pmis = [
         "NTCPMIMFGSA_WLD:PX_LAST",
         "NTCPMIMFGMESA_US:PX_LAST",
@@ -325,6 +330,38 @@ def GlobalGrowthRegime():
         lambda row: row.value_counts(normalize=True) * 100, axis=1
     )
     regime_pct = regime_counts.fillna(0).round(2)
+    return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
+
+def PMI_Services_Regime():
+    manufacturing_pmis = [
+        "NTCPMISVCBUSACTSA_WLD:PX_LAST",
+        "NTCPMISVCBUSACTMESA_US:PX_LAST",
+        "ISMNMI_NM:PX_LAST",
+        "NTCPMISVCBUSACTSA_EUZ:PX_LAST",
+        "NTCPMISVCBUSACTSA_DE:PX_LAST",
+        "NTCPMISVCBUSACTSA_FR:PX_LAST",
+        "NTCPMISVCBUSACTSA_IT:PX_LAST",
+        "'NTCPMISVCBUSACTSA_ES",
+        "NTCPMISVCBUSACTSA_GB:PX_LAST",
+        "NTCPMISVCPSISA_AU",
+        "NTCPMISVCBUSACTSA_JP:PX_LAST",
+        "NTCPMISVCBUSACTSA_CN:PX_LAST",
+        "NTCPMISVCBUSACTSA_IN",
+        "NTCPMISVCBUSACTSA_BR:PX_LAST"
+
+    ]
+    regimes = []
+    for manufacturing_pmi in manufacturing_pmis:
+        regime = core.Regime1(core.MACD(Series(manufacturing_pmi)).histogram).regime
+        regimes.append(regime)
+
+    regimes_df = pd.concat(regimes, axis=1)
+    regime_counts = regimes_df.apply(
+        lambda row: row.value_counts(normalize=True) * 100, axis=1
+    )
+    regime_pct = regime_counts.fillna(0).round(2)
+    regime_pct.index = pd.to_datetime(regime_pct.index)
+    regime_pct = regime_pct.sort_index()
     return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
 
 
@@ -357,6 +394,36 @@ def FedNetLiquidity() -> pd.Series:
     weekly["net_liquidity_T"] = weekly["asset"] - weekly["treasury"] - weekly["repo"]
     daily = weekly["net_liquidity_T"].resample("B").ffill()
     return daily.dropna()
+
+
+def NumOfPmiServicesPositiveMoM():
+    manufacturing_pmis = [
+        "NTCPMISVCBUSACTSA_WLD:PX_LAST",
+        "NTCPMISVCBUSACTMESA_US:PX_LAST",
+        "ISMNMI_NM:PX_LAST",
+        "NTCPMISVCBUSACTSA_EUZ:PX_LAST",
+        "NTCPMISVCBUSACTSA_DE:PX_LAST",
+        "NTCPMISVCBUSACTSA_FR:PX_LAST",
+        "NTCPMISVCBUSACTSA_IT:PX_LAST",
+        "'NTCPMISVCBUSACTSA_ES",
+        "NTCPMISVCBUSACTSA_GB:PX_LAST",
+        "NTCPMISVCBUSACTSA_JP:PX_LAST",
+        "NTCPMISVCBUSACTSA_CN:PX_LAST",
+        "NTCPMISVCBUSACTSA_IN",
+        "NTCPMISVCBUSACTSA_BR:PX_LAST"
+
+    ]
+    regimes = []
+    for manufacturing_pmi in manufacturing_pmis:
+        regimes.append(Series(manufacturing_pmi))
+    regimes_df = pd.concat(regimes, axis=1)
+    df_numeric = regimes_df.apply(pd.to_numeric, errors="coerce").diff()
+    positive_counts = (df_numeric > 0).sum(axis=1)
+    valid_counts = df_numeric.notna().sum(axis=1)
+    percent_positive = (positive_counts / valid_counts) * 100
+    percent_positive.index = pd.to_datetime(percent_positive.index)
+    percent_positive = percent_positive.sort_index()
+    return percent_positive
 
 
 def OecdCliRegime():
@@ -396,16 +463,16 @@ def OecdCliRegime():
 
 def CustomSeries(code: str) -> pd.Series:
     if code == "GlobalGrowthRegime-Expansion":
-        return GlobalGrowthRegime()["Expansion"]
+        return PMI_Manufacturing_Regime()["Expansion"]
 
     if code == "GlobalGrowthRegime-Slowdown":
-        return GlobalGrowthRegime()["Slowdown"]
+        return PMI_Manufacturing_Regime()["Slowdown"]
 
     if code == "GlobalGrowthRegime-Contraction":
-        return GlobalGrowthRegime()["Contraction"]
+        return PMI_Manufacturing_Regime()["Contraction"]
 
     if code == "GlobalGrowthRegime-Recovery":
-        return GlobalGrowthRegime()["Recovery"]
+        return PMI_Manufacturing_Regime()["Recovery"]
 
     if code == "NumOfOECDLeadingPositiveMoM":
         codes = [
@@ -652,6 +719,11 @@ def NumOfPmiPositiveMoM():
     return percent_positive
 
 
+def USD_Open_Interest():
+        data = Series("CFTNCLOI%ALLJUSDNYBTOF_US") - Series("CFTNCSOI%ALLJUSDNYBTOF_US")
+        return data
+
+
 def InvestorPositions():
     data = {
         "S&P500": Series("CFTNCLOI%ALLS5C3512CMEOF_US")
@@ -687,3 +759,269 @@ def InvestorPositionsvsTrend(weeks: int = 52):
     }
     data = pd.DataFrame(data)
     return data - data.rolling(weeks).mean()
+
+
+class CalendarYearSeasonality:
+    """
+    Analyze seasonality of a daily time series by calendar day (month, day), across years.
+    Provides original and rebased returns, as well as summary statistics.
+    """
+
+    def __init__(self, series: pd.Series):
+        """
+        Parameters:
+        ----------
+        series : pd.Series
+            Daily or higher-frequency time series with a DateTimeIndex.
+        """
+        if not isinstance(series.index, pd.DatetimeIndex):
+            raise ValueError("Input series must have a DateTimeIndex.")
+        self.series = series.resample("D").last().ffill()
+        self.series.index = pd.to_datetime(self.series.index)
+
+    def _prepare_pivot(self, exclude_years=None, rebase=False) -> pd.DataFrame:
+        """
+        Internal helper to pivot the series to (month, day) index and year columns.
+
+        Parameters:
+        ----------
+        exclude_years : list[int], optional
+            Years to exclude from analysis.
+        rebase : bool
+            If True, rebase each year's values to the first value (as relative return).
+
+        Returns:
+        -------
+        pivot : pd.DataFrame
+            Pivoted DataFrame with (month, day) index and years as columns.
+        """
+        df = self.series.dropna().to_frame(name="value")
+        df["year"] = df.index.year
+        df["month"] = df.index.month
+        df["day"] = df.index.day
+        df = df[~((df["month"] == 2) & (df["day"] == 29))]
+        pivot = df.pivot_table(index=["month", "day"], columns="year", values="value")
+
+        if exclude_years:
+            pivot = pivot.drop(columns=exclude_years, errors="ignore")
+
+        if rebase:
+            pivot = pivot.div(pivot.iloc[0]).sub(1)
+
+        return pivot
+
+    def calculate_statistics(self, pivot: pd.DataFrame) -> pd.DataFrame:
+        """
+        Compute average, median, and ±1 standard deviation bands.
+
+        Parameters:
+        ----------
+        pivot : pd.DataFrame
+            Pivoted series from _prepare_pivot.
+
+        Returns:
+        -------
+        stats_df : pd.DataFrame
+            DataFrame with calculated seasonal statistics.
+        """
+        mean = pivot.mean(axis=1).rename("Average")
+        std = pivot.std(axis=1)
+        return pd.DataFrame(
+            {
+                "Average": pivot.mean(axis=1).rename("Average"),
+                # "+1STD": (mean + std).rename("+1STD"),
+                # "-1STD": (mean - std).rename("-1STD"),
+            }
+        )
+
+
+    def seasonality(self, exclude_years=None, include_stats=True) -> pd.DataFrame:
+        """
+        Returns the original unrebased seasonality view.
+
+        Parameters:
+        ----------
+        exclude_years : list[int], optional
+            Years to exclude from analysis.
+        include_stats : bool
+            If True, include average, median, ±1STD.
+
+        Returns:
+        -------
+        pd.DataFrame
+        """
+        pivot = self._prepare_pivot(exclude_years=exclude_years, rebase=False)
+        latest_year = pivot.columns.max()
+        current_year_series = pivot[latest_year].rename(str(latest_year))
+        components = [current_year_series]
+        stats = self.calculate_statistics(pivot)
+        components = [stats, current_year_series]
+        return pd.concat(components, axis=1)
+
+    def rebased(self, exclude_years=None) -> pd.DataFrame:
+        """
+        Returns the rebased seasonality (e.g., relative returns starting from 0).
+
+        Parameters:
+        ----------
+        exclude_years : list[int], optional
+            Years to exclude from analysis.
+        include_stats : bool
+            If True, include average, median, ±1STD.
+
+        Returns:
+        -------
+        pd.DataFrame
+        """
+        pivot = self._prepare_pivot(exclude_years=exclude_years, rebase=True)
+        latest_year = pivot.columns.max()
+        current_year_series = pivot[latest_year].rename(str(latest_year))
+        components = [current_year_series]
+        stats = self.calculate_statistics(pivot)
+        components = [stats, current_year_series]
+        return pd.concat(components, axis=1)
+
+def NumOfOECDLeadingPositiveMoM():
+    codes = [
+        "USA.LOLITOAA.STSA:PX_LAST",
+        "TUR.LOLITOAA.STSA:PX_LAST",
+        "IND.LOLITOAA.STSA:PX_LAST",
+        "IDN.LOLITOAA.STSA:PX_LAST",
+        "A5M.LOLITOAA.STSA:PX_LAST",
+        "CHN.LOLITOAA.STSA:PX_LAST",
+        "KOR.LOLITOAA.STSA:PX_LAST",
+        "BRA.LOLITOAA.STSA:PX_LAST",
+        "AUS.LOLITOAA.STSA:PX_LAST",
+        "CAN.LOLITOAA.STSA:PX_LAST",
+        "DEU.LOLITOAA.STSA:PX_LAST",
+        "ESP.LOLITOAA.STSA:PX_LAST",
+        "FRA.LOLITOAA.STSA:PX_LAST",
+        "G4E.LOLITOAA.STSA:PX_LAST",
+        "G7M.LOLITOAA.STSA:PX_LAST",
+        "GBR.LOLITOAA.STSA:PX_LAST",
+        "ITA.LOLITOAA.STSA:PX_LAST",
+        "JPN.LOLITOAA.STSA:PX_LAST",
+        "MEX.LOLITOAA.STSA:PX_LAST",
+    ]
+    data = MultiSeries(*codes).diff()
+    df_numeric = data.apply(pd.to_numeric, errors="coerce")
+    positive_counts = (df_numeric > 0).sum(axis=1)
+    valid_counts = df_numeric.notna().sum(axis=1)
+    percent_positive = (positive_counts / valid_counts) * 100
+    return percent_positive
+
+
+
+
+class M2:
+
+    def __init__(self, freq: str = 'ME', currency: str = "USD") -> None:
+        self.freq = freq
+
+    @property
+    def US(self) -> pd.Series:
+        series = Series("US.MAM2", freq=self.freq) / 1000
+        series.name = "US"
+        return series
+
+    @property
+    def EU(self) -> pd.Series:
+        fx = Series("EURUSD Curncy:PX_LAST", freq=self.freq)
+        series = Series("EUZ.MAM2", freq=self.freq).mul(fx).div(1000_000)
+        series.name = "EU"
+        return series
+
+    @property
+    def UK(self) -> pd.Series:
+        fx = Series("USDGBP Curncy:PX_LAST", freq=self.freq)
+        series = (
+            Series("GB.MAM2", freq=self.freq).div(1000_000).div(fx)
+        )
+        series.name = "UK"
+        return series
+    @property
+    def CN(self) -> pd.Series:
+        fx = Series("USDCNY Curncy:PX_LAST", freq=self.freq)
+        series= Series("CN.MAM2", freq=self.freq).div(10_000).div(fx)
+        series.name = "CN"
+        return series
+    @property
+    def JP(self) -> pd.Series:
+        fx = Series("USDJPY Curncy:PX_LAST", freq=self.freq)
+        series = Series("JP.MAM2", freq=self.freq).div(10_000).div(fx)
+        series.name = "JP"
+        return series
+    @property
+    def World(self) -> pd.DataFrame:
+        data = pd.concat(
+            [self.US, self.UK, self.EU, self.CN, self.JP],
+            axis=1,
+        ).ffill()
+        return data
+
+    @property
+    def WorldTotal(self) -> pd.Series:
+        series = self.World.sum(axis=1).ffill()
+        return series
+
+
+
+
+def LocalIndices():
+    from ix import get_timeseries
+
+    # 1) 벤치마크 티커 정의
+    codes = {
+        "SP500": "SPX Index:PX_LAST",
+        "DJIA30": "INDU Index:PX_LAST",
+        "NASDAQ": "CCMP Index:PX_LAST",
+        "Russell2": "RTY Index:PX_LAST",
+        "Stoxx50": "SX5E Index:PX_LAST",
+        "FTSE100": "UKX Index:PX_LAST",
+        "DAX": "DAX Index:PX_LAST",
+        "CAC": "CAC Index:PX_LAST",
+        "Nikkei225": "NKY Index:PX_LAST",
+        "TOPIX": "TPX Index:PX_LAST",
+        "KOSPI": "KOSPI Index:PX_LAST",
+        "NIFTY": "NIFTY Index:PX_LAST",
+        "HangSeng": "HSI Index:PX_LAST",
+        "SSE": "SHCOMP Index:PX_LAST",
+    }
+
+    # 2) 시계열 불러와서 일별로 리샘플 → 결측일 전일치 보간
+    series_list = []
+    for name, ticker in codes.items():
+        ts = get_timeseries(ticker).data
+        ts.name = name
+        series_list.append(ts)
+
+    datas = pd.concat(series_list, axis=1)
+    datas = datas.resample("D").last().ffill()
+
+    # 3) 오늘 날짜와 기준일 정의
+    today = datas.index[-1]
+    start_year = pd.Timestamp(year=today.year, month=1, day=1)
+    one_month = today - pd.DateOffset(months=1)
+    three_mo = today - pd.DateOffset(months=3)
+    one_year = today - pd.DateOffset(years=1)
+
+    # 4) 기준 시세(asof)로부터 퍼센트 변동 계산 함수
+    def pct_from(base_date):
+        base = datas.asof(base_date)
+        return (datas.iloc[-1] / base - 1).round(4) * 100
+
+    # 5) 각 기간별 결과 조합
+    output = []
+
+    level = datas.iloc[-1].round(2)
+    level.name = "Level"
+    output.append(level)
+    output.append(pct_from(today - pd.DateOffset(days=1)).rename("1D"))
+    output.append(pct_from(today - pd.DateOffset(days=7)).rename("1W"))
+    output.append(pct_from(one_month).rename("1M"))
+    output.append(pct_from(three_mo).rename("3M"))
+    output.append(pct_from(one_year).rename("1Y"))
+    output.append(pct_from(start_year).rename("YTD"))
+
+    result = pd.concat(output, axis=1)
+    return result

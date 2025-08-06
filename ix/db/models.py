@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 class TimeseriesData(Document):
     key: Annotated[str, Indexed(unique=True)]
-    i_data: Dict[date | str, str | int | float] = {}
+    i_data: Dict[date, str | int | float] = {}
 
 
 class Timeseries(Document):

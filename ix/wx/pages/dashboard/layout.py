@@ -1,13 +1,22 @@
-from dash import html, dcc, register_page, callback_context, callback
+from dash import html, dcc, register_page
 import dash_bootstrap_components as dbc
-import pandas as pd
-import plotly.graph_objects as go
-from dash.dependencies import Input, Output, MATCH
-from ix.db.query import MultiSeries, Series
 
-# 페이지 등록
-register_page(__name__, path="/", title="Dashboard", name="Dashboard")
+# Register the page with a path and optional name (shown in page registry)
+register_page(__name__, path="/", name="Home")
 
-# 레이아웃: Bootstrap 그리드로 3열 혹은 반응형 배치
-layout = dbc.Textarea(id="ff")
-
+# Layout of the page
+layout = html.Div(
+    [
+        dbc.Container(
+            [
+                html.H2("Home Page"),
+                html.P("This is the home page of your Dash app."),
+                dbc.Textarea(
+                    id="ff", placeholder="Type something...", style={"width": "100%"}
+                ),
+                html.Br(),
+                dcc.Link("Go to Another Page", href="/dash/about"),
+            ]
+        )
+    ]
+)

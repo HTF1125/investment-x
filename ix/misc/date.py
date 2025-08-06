@@ -62,6 +62,9 @@ def oneweekbefore() -> pd.Timestamp:
     """Returns the date one month before today."""
     return today() - pd.DateOffset(days=7)
 
+def twentyyearsbefore() -> pd.Timestamp:
+    """Returns the date one month before today."""
+    return today() - pd.DateOffset(years=20)
 
 def tomorrow() -> pd.Timestamp:
     """Returns tomorrow's date as a timestamp."""

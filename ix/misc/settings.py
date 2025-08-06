@@ -6,6 +6,7 @@ import ast
 # Load environment variables
 load_dotenv()
 
+
 class Settings:
     db_url: str = os.getenv("DB_URL", "")
     db_name: str = os.getenv("DB_NAME", "")
@@ -23,3 +24,6 @@ class Settings:
     email_login: str = os.getenv("EMAIL_LOGIN", "")
     email_password: str = os.getenv("EMAIL_PASSWORD", "")
     email_recipients: List[str] = ast.literal_eval(os.getenv("EMAIL_RECIPIENTS", "[]"))
+
+    coinbase_id: str = os.getenv("COINBASE_ID", "")
+    coinbase_key: str = os.getenv("COINBASE_KEY", "")

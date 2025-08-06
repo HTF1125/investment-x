@@ -1,42 +1,48 @@
-import dash_bootstrap_components as dbc
-from dash import Dash, dcc, html, page_container
-from ix.misc import get_logger
-from ix.wx.components.navbar import navbar
+import pandas as pd
+import plotly.express as px
+from dash import Dash, Input, Output, dash_table, dcc, html
+from dash_bootstrap_components import themes
 
-logger = get_logger("InvestmentX")
+# Incorporate data
+df = pd.read_csv(
+    "https://raw.githubusercontent.com/plotly/datasets/master/gapminder2007.csv"
+)
 
-# Initialize the Dash app with dark mode (using the DARKLY theme)
-app = Dash(
+
+# Initialize the app
+dashboard = Dash(
     __name__,
-    use_pages=True,
-    assets_folder="assets",
-    pages_folder="pages",
-    suppress_callback_exceptions=True,
-    external_stylesheets=[dbc.themes.DARKLY, dbc.icons.FONT_AWESOME],
+    requests_pathname_prefix="/hello_world/",
+    external_stylesheets=[themes.BOOTSTRAP],
 )
 
-# Get the underlying Flask server
-server = app.server
 
-# Define the layout for the Dash app
-app.layout = html.Div(
-    style={
-        "backgroundColor": "#000000",
-        "color": "#ffffff",
-        "minHeight": "100vh",
-        "fontFamily": "Cascadia Code, sans-serif",
-        "fontSize": "16px",
-    },
-    children=[
-        dcc.Location(id="url", refresh=False),
-        dcc.Store(id="token-store", storage_type="local"),
-        navbar,
-        html.Div(style={"height": "70px"}),
-        dbc.Container(
-            page_container,
-            fluid=True,
-            className="py-2",
-            style={"maxWidth": "1680px", "margin": "0 auto"},
+# App layout
+dashboard.layout = html.Div(
+    [
+        html.Div(children="Hello World!"),
+        html.Hr(),
+        dcc.RadioItems(
+            options=["pop", "lifeExp", "gdpPercap"],
+            value="lifeExp",
+            id="controls-and-radio-item",
         ),
-    ],
+        dash_table.DataTable(data=df.to_dict("records"), page_size=6),
+        dcc.Graph(figure={}, id="controls-and-graph"),
+    ]
 )
+
+
+# Add controls to build the interaction
+@dashboard.callback(
+    Output(component_id="controls-and-graph", component_property="figure"),
+    Input(component_id="controls-and-radio-item", component_property="value"),
+)
+def update_graph(col_chosen):
+    fig = px.histogram(df, x="continent", y=col_chosen, histfunc="avg")
+    return fig
+
+
+# Run the app
+if __name__ == "__main__":
+    dashboard.run()

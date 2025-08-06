@@ -1,15 +1,30 @@
 import os
-from typing import Any, Dict, List, Optional
+import logging
+from datetime import datetime, date
+from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import FastAPI, HTTPException, Query, Body, status, Depends
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.wsgi import WSGIMiddleware
+from pydantic import BaseModel, Field, validator
 
+# Custom imports (assuming these exist in your project)
 from ix.misc import get_logger
 from ix.db import Timeseries, EconomicCalendar
-
+from ix.db.models import Timeseries as TimeseriesModel
+from ix.db.query import Series
+from ix.misc.date import today
+from ix.task import update_economic_calendar
 logger = get_logger(__name__)
+
+
+
+
+
+
 app = FastAPI()
 
 
@@ -45,7 +60,6 @@ async def upload_data(payload: List[Dict[str, Any]]):
             .dropna(how="all", axis=0)
         )
         for code in pivoted.columns:
-
             ts = Timeseries.find_one({"code": code}).run()
             if ts is None:
                 ts = Timeseries(code=code).create()
@@ -96,6 +110,7 @@ async def _get_economic_calendar():
     """
     try:
         from ix.task import update_economic_calendar
+
         update_economic_calendar()
         df = EconomicCalendar.get_dataframe()
         return df.to_dict("records")
@@ -173,6 +188,16 @@ from ix.misc.date import today
 import json
 from ix.db.query import *
 
+from typing import Dict, List, Optional, Any, Union
+from fastapi import Query, HTTPException, status
+from fastapi.responses import JSONResponse
+import pandas as pd
+import numpy as np
+from datetime import datetime, date
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 @app.get(
     "/api/series",
@@ -192,26 +217,47 @@ async def get_series(
         description="If true, returns a 'date' column and shifts each series into its own list",
     ),
 ):
+    """
+    Improved series endpoint that handles various index types (string, float, datetime).
+    """
     frames: List[pd.Series] = []
 
+    # Process each series specification
     for spec in series:
         if "=" in spec:
             alias, code = spec.split("=", 1)
+            alias = alias.strip()
+            code = code.strip()
         else:
-            alias, code = spec, spec
+            alias, code = spec.strip(), spec.strip()
 
         try:
             ser = eval(code)
+
             if isinstance(ser, pd.DataFrame):
-                for _name in ser.columns:
-                    frames.append(ser[_name])
+                # Handle DataFrame: add all columns as separate series
+                for col_name in ser.columns:
+                    col_series = ser[col_name].copy()
+                    # Use original column name or create compound name if aliased
+                    col_series.name = (
+                        f"{alias}_{col_name}" if alias != code else col_name
+                    )
+                    frames.append(col_series)
+
             elif isinstance(ser, pd.Series):
+                ser = ser.copy()
                 ser.name = alias
                 frames.append(ser)
+            else:
+                raise ValueError(
+                    f"Expected pandas Series or DataFrame, got {type(ser)}"
+                )
+
         except Exception as e:
+            logger.error(f"Error processing series code '{code}': {e}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid series code '{code}': {e}",
+                detail=f"Invalid series code '{code}': {str(e)}",
             )
 
     if not frames:
@@ -219,98 +265,295 @@ async def get_series(
             status_code=status.HTTP_400_BAD_REQUEST, detail="No valid series provided"
         )
 
-    df = pd.concat(frames, axis=1)
-    df.index = pd.to_datetime(df.index)
-    df = df.dropna(how="all")  # 모든 열이 NaN인 행 제거
+    # Combine all series into a single DataFrame
+    try:
+        df = pd.concat(frames, axis=1).round(2)
+    except Exception as e:
+        logger.error(f"Error concatenating series: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error combining series: {str(e)}",
+        )
 
-    if start:
-        df = df.loc[df.index >= pd.to_datetime(start)]
-    if end:
-        df = df.loc[df.index <= pd.to_datetime(end)]
+    # Handle different index types and convert to datetime if possible
+    df = _normalize_index(df)
 
-    df = df.replace({np.nan: None})
-    df.index = pd.to_datetime(df.index).strftime("%Y-%m-%d")
-    if include_dates:
-        df = df.sort_index().reset_index().rename(columns={"index": "Idx"})
-        payload = df.to_dict(orient="list")
-    else:
-        payload = {col: df[col].tolist() for col in df.columns}
+    # Remove rows where all values are NaN
+    df = df.dropna(how="all")
+
+    if df.empty:
+        logger.warning("All data was filtered out, returning empty result")
+        return JSONResponse(content={})
+
+    # Apply date filtering if start/end dates are provided
+    df = _apply_date_filtering(df, start, end)
+
+    if df.empty:
+        logger.warning("No data remains after date filtering")
+        return JSONResponse(content={})
+
+    # Prepare the response payload
+    payload = _prepare_response_payload(df, include_dates)
 
     return JSONResponse(content=payload)
 
 
-def get_dates(
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-    frequency: str = "D",
-    periods: Optional[int] = None,
-) -> pd.DatetimeIndex:
+def _normalize_index(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Helper to build a DatetimeIndex via pandas.date_range.
-    If periods is provided, at least one of start or end must be non-None.
+    Normalize the DataFrame index to handle string, float, or datetime indices.
+    Attempts to convert to datetime where possible.
     """
-    if periods is not None and (start is None and end is None):
-        raise ValueError(
-            "If `periods` is specified, either `start` or `end` must be provided."
+    try:
+        # If index is already datetime, we're good
+        if isinstance(df.index, pd.DatetimeIndex):
+            return df
+
+        # Try to convert index to datetime
+        if df.index.dtype == "object":  # String index
+            # Try different date parsing strategies
+            try:
+                # First, try standard datetime conversion
+                df.index = pd.to_datetime(df.index, errors="raise")
+                logger.info("Successfully converted string index to datetime")
+                return df
+            except:
+                try:
+                    # Try with different formats
+                    df.index = pd.to_datetime(
+                        df.index, format="%Y-%m-%d", errors="raise"
+                    )
+                    logger.info(
+                        "Successfully converted string index to datetime with explicit format"
+                    )
+                    return df
+                except:
+                    try:
+                        # Try infer_datetime_format
+                        df.index = pd.to_datetime(
+                            df.index, infer_datetime_format=True, errors="raise"
+                        )
+                        logger.info(
+                            "Successfully converted string index to datetime with inferred format"
+                        )
+                        return df
+                    except:
+                        logger.warning(
+                            "Could not convert string index to datetime, keeping as string"
+                        )
+                        return df
+
+        elif df.index.dtype in ["int64", "float64"]:  # Numeric index
+            # Check if numeric values could be Excel date serial numbers or Unix timestamps
+            numeric_values = df.index.values
+
+            # Check for Excel date serial numbers (typically 1 to ~50000 for reasonable date range)
+            if np.all((numeric_values >= 1) & (numeric_values <= 100000)):
+                try:
+                    # Try converting as Excel date serial numbers (days since 1900-01-01)
+                    base_date = pd.Timestamp("1900-01-01")
+                    df.index = pd.to_datetime(
+                        base_date + pd.to_timedelta(numeric_values - 1, unit="D")
+                    )
+                    logger.info(
+                        "Successfully converted numeric index as Excel date serial numbers"
+                    )
+                    return df
+                except:
+                    pass
+
+            # Check for Unix timestamps (seconds since epoch)
+            if np.all(
+                (numeric_values >= 946684800) & (numeric_values <= 4102444800)
+            ):  # 2000-2100 range
+                try:
+                    df.index = pd.to_datetime(numeric_values, unit="s")
+                    logger.info(
+                        "Successfully converted numeric index as Unix timestamps (seconds)"
+                    )
+                    return df
+                except:
+                    pass
+
+            # Check for Unix timestamps in milliseconds
+            if np.all(
+                (numeric_values >= 946684800000) & (numeric_values <= 4102444800000)
+            ):
+                try:
+                    df.index = pd.to_datetime(numeric_values, unit="ms")
+                    logger.info(
+                        "Successfully converted numeric index as Unix timestamps (milliseconds)"
+                    )
+                    return df
+                except:
+                    pass
+
+            logger.warning(
+                "Could not convert numeric index to datetime, keeping as numeric"
+            )
+            return df
+
+        else:
+            logger.info(f"Index type {df.index.dtype} kept as-is")
+            return df
+
+    except Exception as e:
+        logger.error(f"Error normalizing index: {e}")
+        return df
+
+
+def _apply_date_filtering(
+    df: pd.DataFrame, start: Optional[str], end: Optional[str]
+) -> pd.DataFrame:
+    """
+    Apply date filtering to the DataFrame based on start and end parameters.
+    """
+    try:
+        if start or end:
+            # Only apply date filtering if we have a datetime index
+            if not isinstance(df.index, pd.DatetimeIndex):
+                logger.warning(
+                    "Date filtering requested but index is not datetime type"
+                )
+                return df
+
+            if start:
+                try:
+                    start_date = pd.to_datetime(start)
+                    df = df.loc[df.index >= start_date]
+                    logger.info(f"Applied start date filter: {start}")
+                except Exception as e:
+                    logger.error(f"Error parsing start date '{start}': {e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Invalid start date format '{start}'. Use YYYY-MM-DD format.",
+                    )
+
+            if end:
+                try:
+                    end_date = pd.to_datetime(end)
+                    df = df.loc[df.index <= end_date]
+                    logger.info(f"Applied end date filter: {end}")
+                except Exception as e:
+                    logger.error(f"Error parsing end date '{end}': {e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Invalid end date format '{end}'. Use YYYY-MM-DD format.",
+                    )
+
+        return df
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error applying date filtering: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error applying date filters: {str(e)}",
         )
 
-    return pd.date_range(
-        start=start,
-        end=end,
-        freq=frequency,
-        periods=periods,
-    )
 
-
-# file: image_api.py
-from fastapi.responses import StreamingResponse
-from io import BytesIO
-from PIL import Image, ImageDraw
-
-
-def create_sample_image() -> BytesIO:
-    # (예시) 간단한 동적으로 생성된 이미지
-    img = Image.new("RGB", (200, 100), color=(73, 109, 137))
-    draw = ImageDraw.Draw(img)
-    draw.text((10, 40), "Hello, Excel!", fill=(255, 255, 0))
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf
-
-
-@app.get("/image")
-def get_image():
+def _prepare_response_payload(
+    df: pd.DataFrame, include_dates: bool
+) -> Dict[str, List[Optional[Any]]]:
     """
-    PNG 포맷 이미지 스트림을 직접 반환
+    Prepare the response payload based on the include_dates parameter.
     """
-    img_buf = create_sample_image()
-    return StreamingResponse(img_buf, media_type="image/png")
+    try:
+        # Replace NaN values with None for JSON serialization
+        df = df.replace({np.nan: None, pd.NaT: None})
+
+        if include_dates:
+            # Convert index to string format for consistent JSON serialization
+            if isinstance(df.index, pd.DatetimeIndex):
+                df.index = df.index.strftime("%Y-%m-%d")
+            else:
+                # Convert other index types to string
+                df.index = df.index.astype(str)
+
+            # Sort by index and reset to create a 'date' column
+            df = df.sort_index().reset_index()
+
+            # Rename the index column to something more descriptive
+            index_col_name = (
+                "date"
+                if isinstance(df.iloc[:, 0].iloc[0], str)
+                and "-" in str(df.iloc[:, 0].iloc[0])
+                else "index"
+            )
+            df = df.rename(columns={df.columns[0]: index_col_name})
+
+            # Convert to dictionary with lists
+            payload = df.to_dict(orient="list")
+
+        else:
+            # Return just the series data without index
+            payload = {}
+            for col in df.columns:
+                # Convert series to list, handling different data types
+                series_data = df[col].tolist()
+                payload[col] = series_data
+
+        # Ensure all values are JSON serializable
+        payload = _ensure_json_serializable(payload)
+
+        return payload
+
+    except Exception as e:
+        logger.error(f"Error preparing response payload: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error preparing response: {str(e)}",
+        )
 
 
-from ix.db.query import *
+def _ensure_json_serializable(obj: Any) -> Any:
+    """
+    Recursively ensure all values in the object are JSON serializable.
+    """
+    if isinstance(obj, dict):
+        return {key: _ensure_json_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [_ensure_json_serializable(item) for item in obj]
+    elif isinstance(obj, (pd.Timestamp, datetime, date)):
+        return obj.strftime("%Y-%m-%d") if hasattr(obj, "strftime") else str(obj)
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif pd.isna(obj):
+        return None
+    else:
+        return obj
+# Add any additional FastAPI routes below
+@app.get("/ping")
+async def ping():
+    return {"message": "pong"}
 
 
-@app.get("/api/query")
-def _query(
-    command: str,
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-    include_dates: bool = False,
-):
-    print(command)
-    datas = eval(command)
-    print(datas)
-    datas = datas.replace(np.nan, None)
-    datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
-    if start:
-        datas = datas.loc[start:]
-    if end:
-        datas = datas.loc[:end]
-    if include_dates:
-        datas.index = pd.to_datetime(datas.index).strftime("%Y-%m-%d")
-        datas = datas.reset_index()
-    output = []
-    for i in range(len(datas.columns)):
-        output.append(datas.iloc[:, i].to_list())
-    return output
+from fastapi.middleware.wsgi import WSGIMiddleware
+
+from .dash.app import create_dash_app
+
+
+@app.get("/status")
+def get_status():
+    return {"status": "ok"}
+
+
+from . import dash
+
+# A bit odd, but the only way I've been able to get prefixing of the Dash app
+# to work is by allowing the Dash/Flask app to prefix itself, then mounting
+# it to root
+app.mount(
+    "/dash",
+    WSGIMiddleware(dash.app.create_dash_app(requests_pathname_prefix="/dash/").server),
+)
+
+
+app.mount(
+    "/macro",
+    WSGIMiddleware(
+        dash.macro.app.create_dash_app(requests_pathname_prefix="/macro/").server
+    ),
+)
