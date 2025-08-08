@@ -33,3 +33,5 @@ dash[diskcache]
 nbformat == 5.10.4
 gunicorn
 cachetools
+motor==2.5.1
+pymongo==3.12.3
