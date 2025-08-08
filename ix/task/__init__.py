@@ -17,8 +17,6 @@ logger = get_logger(__name__)
 
 def update_economic_calendar():
 
-
-
     data = investpy.economic_calendar(
         from_date=as_date(onemonthbefore(), "%d/%m/%Y"),
         to_date=as_date(onemonthlater(), "%d/%m/%Y"),
@@ -42,7 +40,6 @@ def update_economic_calendar():
 
 def update_yahoo_data():
 
-
     logger.info("Starting Yahoo data update process.")
 
     count_total = 0
@@ -52,25 +49,27 @@ def update_yahoo_data():
 
     for ts in Timeseries.find({"source": "Yahoo"}).run():
         count_total += 1
-        if ts.source_ticker is None:
+        if ts.source_code is None:
             logger.debug(f"Skipping timeseries {ts.code} (no source_ticker).")
             count_skipped_no_ticker += 1
             continue
 
-        logger.debug(f"Fetching data for {ts.source_ticker} (field: {ts.source_field}).")
+        ticker, field = str(ts.source_code).split(":")
+
+        logger.debug(f"Fetching data for {ticker} (field: {field}).")
         try:
-            _data = get_yahoo_data(code=ts.source_ticker)[ts.source_field]
+            _data = get_yahoo_data(code=ticker)[field]
         except Exception as e:
-            logger.warning(f"Error fetching data for {ts.source_ticker}: {e}")
+            logger.warning(f"Error fetching data for {ts.source_code}: {e}")
             continue
 
         if _data.empty:
-            logger.debug(f"No data returned for {ts.source_ticker}. Skipping.")
+            logger.debug(f"No data returned for {ts.source_code}. Skipping.")
             count_skipped_empty_data += 1
             continue
 
         ts.data = _data
-        logger.info(f"Updated data for {ts.code} from {ts.source_ticker}.")
+        logger.info(f"Updated data for {ts.code} from {ts.source_code}.")
         count_updated += 1
 
     logger.info(f"Yahoo data update complete: "
@@ -92,25 +91,25 @@ def update_fred_data():
 
     for ts in Timeseries.find({"source": "Fred"}).run():
         count_total += 1
-        if ts.source_ticker is None:
+        if ts.source_code is None:
             logger.debug(f"Skipping timeseries {ts.code} (no source_ticker).")
             count_skipped_no_ticker += 1
             continue
-
-        logger.debug(f"Fetching data for {ts.source_ticker} (field: {ts.source_field}).")
+        ticker, field = str(ts.source_code).split(":")
+        logger.debug(f"Fetching data for {ticker} (field: {field}).")
         try:
-            _data = get_fred_data(ts.source_ticker)[ts.source_field]
+            _data = get_fred_data(ticker)[field]
         except Exception as e:
-            logger.warning(f"Error fetching data for {ts.source_ticker}: {e}")
+            logger.warning(f"Error fetching data for {ts.source_code}: {e}")
             continue
 
         if _data.empty:
-            logger.debug(f"No data returned for {ts.source_ticker}. Skipping.")
+            logger.debug(f"No data returned for {ts.source_code}. Skipping.")
             count_skipped_empty_data += 1
             continue
 
         ts.data = _data
-        logger.info(f"Updated data for {ts.code} from {ts.source_ticker}.")
+        logger.info(f"Updated data for {ts.code} from {ts.source_code}.")
         count_updated += 1
 
     logger.info(f"Fred data update complete: "
