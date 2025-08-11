@@ -5,7 +5,7 @@ from scipy.optimize import curve_fit
 from ix.db.models import Timeseries
 from cachetools import TTLCache, cached
 from ix import core
-
+from ix.misc.date import oneyearbefore
 # 최대 32개 엔트리, TTL 600초
 cacher = TTLCache(maxsize=32, ttl=600)
 
@@ -912,7 +912,6 @@ def NumOfOECDLeadingPositiveMoM():
 
 
 
-
 class M2:
 
     def __init__(self, freq: str = 'ME', currency: str = "USD") -> None:
@@ -944,25 +943,46 @@ class M2:
         fx = Series("USDCNY Curncy:PX_LAST", freq=self.freq)
         series= Series("CN.MAM2", freq=self.freq).div(10_000).div(fx)
         series.name = "CN"
-        return series
+        return series.dropna()
     @property
     def JP(self) -> pd.Series:
         fx = Series("USDJPY Curncy:PX_LAST", freq=self.freq)
         series = Series("JP.MAM2", freq=self.freq).div(10_000).div(fx)
         series.name = "JP"
-        return series
+        return series.dropna()
+    @property
+    def KR(self) -> pd.Series:
+        fx = Series("USDKRW Curncy:PX_LAST", freq=self.freq)
+        series = Series("KR.MAM2", freq=self.freq).div(1_000).div(fx)
+        series.name = "KR"
+        return series.dropna()
+    @property
+    def CH(self) -> pd.Series:
+        fx = Series("USDCHF Curncy:PX_LAST", freq=self.freq)
+        series = Series("CH.MAM2", freq=self.freq).div(1_000_000).div(fx)
+        series.name = "CH"
+        return series.dropna()
+    @property
+    def CA(self) -> pd.Series:
+        fx = Series("USDCAD Curncy:PX_LAST", freq=self.freq).ffill()
+        series = Series("CA.MAM2", freq=self.freq).div(1_000_000).div(fx)
+        series.name = "CA"
+        return series.dropna()
     @property
     def World(self) -> pd.DataFrame:
         data = pd.concat(
-            [self.US, self.UK, self.EU, self.CN, self.JP],
+            [self.US, self.UK, self.EU, self.CN, self.JP, self.KR, self.CA, self.CH,],
             axis=1,
         ).ffill()
-        return data
+        return data.dropna()
 
     @property
     def WorldTotal(self) -> pd.Series:
         series = self.World.sum(axis=1).ffill()
         return series
+
+
+
 
 
 

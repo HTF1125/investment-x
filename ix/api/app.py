@@ -18,6 +18,8 @@ from ix.db.models import Timeseries as TimeseriesModel
 from ix.db.query import Series
 from ix.misc.date import today
 from ix.task import update_economic_calendar
+
+
 logger = get_logger(__name__)
 
 
