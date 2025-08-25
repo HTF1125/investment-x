@@ -7,6 +7,7 @@ import pandas as pd
 from ix.db.models import Timeseries
 from ix.misc.crawler import get_yahoo_data
 from ix.misc.crawler import get_fred_data
+from ix.misc.crawler import get_naver_data
 
 
 
@@ -118,6 +119,48 @@ def update_fred_data():
                 f"{count_skipped_no_ticker} skipped (no ticker), "
                 f"{count_skipped_empty_data} skipped (empty data).")
 
+
+
+def update_naver_data():
+
+
+    logger.info("Starting Naver data update process.")
+
+    count_total = 0
+    count_skipped_no_ticker = 0
+    count_skipped_empty_data = 0
+    count_updated = 0
+
+    for ts in Timeseries.find({"source": "Naver"}).run():
+        count_total += 1
+        if ts.source_code is None:
+            logger.debug(f"Skipping timeseries {ts.code} (no source_ticker).")
+            count_skipped_no_ticker += 1
+            continue
+        ticker, field = str(ts.source_code).split(":")
+        logger.debug(f"Fetching data for {ticker} (field: {field}).")
+        try:
+            _data = get_naver_data(ticker)[field]
+        except Exception as e:
+            logger.warning(f"Error fetching data for {ts.source_code}: {e}")
+            continue
+
+        if _data.empty:
+            logger.debug(f"No data returned for {ts.source_code}. Skipping.")
+            count_skipped_empty_data += 1
+            continue
+
+        ts.data = _data
+        logger.info(f"Updated data for {ts.code} from {ts.source_code}.")
+        count_updated += 1
+
+    logger.info(f"Fred data update complete: "
+                f"{count_total} total, "
+                f"{count_updated} updated, "
+                f"{count_skipped_no_ticker} skipped (no ticker), "
+                f"{count_skipped_empty_data} skipped (empty data).")
+
+
 def send_price_data():
     import io
     import pandas as pd
@@ -154,4 +197,5 @@ def send_price_data():
 def daily():
     update_yahoo_data()
     update_fred_data()
-    send_price_data()
+    update_naver_data()
+    # send_price_data()

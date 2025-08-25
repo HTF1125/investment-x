@@ -5,7 +5,7 @@ from scipy.optimize import curve_fit
 from ix.db.models import Timeseries
 from cachetools import TTLCache, cached
 from ix import core
-from ix.misc.date import oneyearbefore
+from ix.misc.date import oneyearbefore, today
 # 최대 32개 엔트리, TTL 600초
 cacher = TTLCache(maxsize=32, ttl=600)
 
@@ -42,28 +42,13 @@ def Series(code: str, freq: str | None = None) -> pd.Series:
         if ts is not None:
             data = ts.data
             if freq:
-                data = data.resample(freq).last().ffill()
-            return data
-    except:
-        pass
-
-    try:
-        if "=" in code:
+                data = data.resample(freq).last()
+        elif "=" in code:
             name, new_code = code.split("=", maxsplit=1)
-            ts = Timeseries.find_one({"code": new_code}).run()
-            if not ts:
-                raise
-            data = ts.data
+            data = Series(code=new_code, freq=freq)
             data.name = name
-
         else:
-            ts = Timeseries.find_one({"code": code}).run()
-            if not ts:
-                raise
-            data = ts.data
-        data.index = pd.to_datetime(data.index)
-        if freq:
-            data = data.resample(freq).last().ffill()
+            raise
         return data
     except Exception as e:
         print(e)

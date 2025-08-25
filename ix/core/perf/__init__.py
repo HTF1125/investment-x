@@ -62,7 +62,7 @@ def to_pri_return(
     Returns:
         pd.Series: Series containing the calculated percentage price returns.
     """
-    pct_return = px.pct_change(periods=periods)
+    pct_return = px.dropna().pct_change(periods=periods)
     if forward:
         pct_return = pct_return.shift(periods=-periods)
     return pct_return

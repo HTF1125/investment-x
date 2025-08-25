@@ -1,161 +1,103 @@
-import os
-import logging
-from datetime import datetime, date
-from typing import Any, Dict, List, Optional, Union
-
-import pandas as pd
+from fastapi import FastAPI, HTTPException, Query, Body, status
+from fastapi.responses import JSONResponse
+from typing import List, Optional, Any, Dict
+from pydantic import BaseModel
+import asyncio
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query, Body, status, Depends
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.wsgi import WSGIMiddleware
-from pydantic import BaseModel, Field, validator
-
-# Custom imports (assuming these exist in your project)
+import pandas as pd
 from ix.misc import get_logger
 from ix.db import Timeseries, EconomicCalendar
-from ix.db.models import Timeseries as TimeseriesModel
-from ix.db.query import Series
-from ix.misc.date import today
-from ix.task import update_economic_calendar
-
+from ix.task import daily
 
 logger = get_logger(__name__)
 
+# NOTE: Do not start/stop the scheduler at import time.
+# Create it at module level (optional), but manage its lifecycle in lifespan.
+scheduler = AsyncIOScheduler()
 
 
-
-
-
-app = FastAPI()
-
-
-@app.post("/api/upload_data", status_code=status.HTTP_200_OK)
-async def upload_data(payload: List[Dict[str, Any]]):
-    """
-    - 요청 바디로 JSON 리스트를 받고, 'date', 'ticker', 'field', 'value' 컬럼이 있어야 함.
-    - Pandas DataFrame으로 변환 후 pivot하여 각 시계열을 DB에 저장.
-    """
+async def run_daily_task():
+    """Wrapper to run the daily task asynchronously."""
     try:
-        if not isinstance(payload, list):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid payload: expected a list of records.",
-            )
-
-        df = pd.DataFrame(payload)
-        required_columns = {"date", "code", "value"}
-        missing = required_columns - set(df.columns)
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Missing required fields: {missing}",
-            )
-
-        df["value"] = pd.to_numeric(df["value"], errors="coerce")
-        df = df.dropna(subset=["value"])
-
-        pivoted = (
-            df.pivot(index="date", columns="code", values="value")
-            .sort_index()
-            .dropna(how="all", axis=1)
-            .dropna(how="all", axis=0)
-        )
-        for code in pivoted.columns:
-            ts = Timeseries.find_one({"code": code}).run()
-            if ts is None:
-                ts = Timeseries(code=code).create()
-            ts.data = pivoted[code].dropna()
-        return {"message": f"Successfully received {len(df)} records."}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Failed to process VBA upload")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.info("Running scheduled daily task...")
+        # Offload blocking CPU/IO-bound work to a thread
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, daily)
+        logger.info("Daily task completed successfully")
+    except Exception:
+        logger.exception("Failed to run daily task")
 
 
-@app.get("/api/timeseries_datas", status_code=status.HTTP_200_OK)
-async def get_timeseries():
-    """
-    - DB에 저장된 TimeSeries 중 특정 필드를 제외하고, 2024년 이후 일별(Daily)로 리샘플링하여 반환.
-    - 반환 형식: [{ "Date": "YYYY-MM-DD", "<Ticker>:<Field>": value, ... }, ...]
-    """
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("ix API starting up...")
+
+    # Ensure no duplicate job ids if app reloads
+    scheduler.add_job(
+        run_daily_task,
+        trigger=IntervalTrigger(hours=1),
+        id="daily_task_hourly",
+        name="Run daily task every hour",
+        replace_existing=True,
+    )
+
+    # Start scheduler under the current running loop
+    scheduler.start()
+    logger.info("Scheduler started - daily task will run every hour")
+
+    # Optionally trigger once on startup:
+    # await run_daily_task()
+
     try:
-        datas: List[pd.Series] = []
-
-        for ts in Timeseries.find().run():
-            datas.append(ts.data)
-
-        if not datas:
-            # 빈 결과인 경우 빈 리스트 반환
-            return []
-
-        combined = pd.concat(datas, axis=1).replace(np.nan, None).sort_index()
-        combined.index = pd.to_datetime(combined.index)
-        combined = combined.resample("D").last().loc["2024":]
-        combined.index.name = "Date"
-        combined.index = combined.index.strftime("%Y-%m-%d")
-        df = combined.reset_index()
-        return df.to_dict("records")
-
-    except Exception as e:
-        logger.exception("Failed to retrieve timeseries")
-        raise HTTPException(status_code=500, detail=str(e))
+        yield
+    finally:
+        # Shutdown
+        logger.info("ix API shutting down...")
+        # Stop scheduler while the event loop is still alive
+        scheduler.shutdown(wait=True)
+        logger.info("Scheduler stopped")
 
 
-@app.get("/api/economic_calendar", status_code=status.HTTP_200_OK)
-async def _get_economic_calendar():
+app = FastAPI(
+    title="ix API",
+    description="API for ix timeseries and economic calendar services.",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+
+@app.get("/api/economic_calendar", response_model=List[EconomicCalendar])
+async def get_economic_calendar():
     """
-    - 매 호출 시마다 update_economic_calendar()를 실행하여 최신 데이터를 DB에 반영.
-    - EconomicCalendar.get_dataframe()를 호출해 Pandas DataFrame으로 가져온 뒤 JSON으로 반환.
+    Fetch and return economic calendar data.
     """
     try:
         from ix.task import update_economic_calendar
 
-        update_economic_calendar()
-        df = EconomicCalendar.get_dataframe()
-        return df.to_dict("records")
-
-    except Exception as e:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, update_economic_calendar)
+        return EconomicCalendar.find().run()
+    except Exception:
         logger.exception("Failed to fetch economic calendar")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500, detail="Failed to fetch economic calendar data"
+        )
 
 
-@app.get("/download/0.DataLoader.xlsm", status_code=status.HTTP_200_OK)
-async def download_file():
+@app.get("/api/timeseries", response_model=List[Timeseries])
+async def get_timeseries():
     """
-    - 로컬의 'docs/0.DataLoader.xlsm' 파일을 다운로드 응답으로 제공.
-    - 파일이 없으면 404 에러 반환.
+    Retrieve all timeseries data.
     """
-    file_path = os.path.join("docs", "0.DataLoader.xlsm")
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-
-    return FileResponse(
-        path=file_path,
-        media_type="application/vnd.ms-excel.sheet.macroEnabled.12",
-        filename="0.DataLoader.xlsm",
-    )
-
-
-from ix.db.models import Timeseries
-from fastapi import Body, HTTPException, status
-
-
-@app.get(
-    "/api/timeseries",
-    status_code=status.HTTP_200_OK,
-    response_model=list[Timeseries],
-)
-async def api_get_timeseries():
-    """
-    - JSON 리스트 형태로 전달된 각 행에 대해 id, code 필수.
-    - 선택적으로 name, frequency, asset_class, category, fields 컬럼을 처리.
-    - fields 컬럼은 'field|source|source_ticker|source_field' 쌍을 '/'로 연결한 문자열.
-    """
-    return Timeseries.find().run()
-
+    try:
+        return Timeseries.find().run()
+    except Exception:
+        logger.exception("Failed to fetch timeseries data")
+        raise HTTPException(status_code=500, detail="Failed to fetch timeseries data")
 
 @app.post("/api/timeseries", status_code=status.HTTP_200_OK)
 async def post_timeseries(payload: list[Timeseries] = Body(...)):
@@ -180,25 +122,178 @@ async def post_timeseries(payload: list[Timeseries] = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-from typing import Optional
-import numpy as np
-import pandas as pd
-from fastapi import status, HTTPException
-from typing import Annotated
-from ix.db.query import Series
-from ix.misc.date import today
-import json
-from ix.db.query import *
+class UploadData(BaseModel):
+    date: str
+    code: str
+    value: float
 
+
+@app.post("/api/upload_data", status_code=status.HTTP_200_OK)
+async def upload_data(payload: List[Dict[str, Any]]):
+    """
+    - Accepts a JSON list in the request body, requiring 'date', 'code', and 'value' columns.
+    - Converts to a Pandas DataFrame, pivots, and saves each timeseries to the DB.
+    """
+    try:
+        if not isinstance(payload, list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid payload: expected a list of records.",
+            )
+
+        df = pd.DataFrame(payload)
+        required_columns = {"date", "code", "value"}
+        missing = required_columns - set(df.columns)
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Missing required fields: {missing}",
+            )
+
+        # Convert 'value' to numeric, coercing errors to NaN
+        df["value"] = pd.to_numeric(df["value"], errors="coerce")
+        # Drop rows where 'value' is NaN
+        df = df.dropna(subset=["value"])
+        # Convert 'date' to datetime, coercing errors to NaT
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        # Drop rows where 'date' or 'code' is missing
+        df = df.dropna(subset=["date", "code"])
+
+        if df.empty:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid records to upload after cleaning.",
+            )
+
+        # Pivot the DataFrame so each code becomes a column, indexed by date
+        pivoted = (
+            df.pivot(index="date", columns="code", values="value")
+            .sort_index()
+            .dropna(how="all", axis=1)
+            .dropna(how="all", axis=0)
+        )
+        pivoted.index = pd.to_datetime(pivoted.index)
+
+        updated_codes = []
+        for code in pivoted.columns:
+            ts = Timeseries.find_one({"code": code}).run()
+            if ts is None:
+                continue
+            # Store as a Series with date index and float values
+            series = pivoted[code].dropna()
+            # Convert index to Python date objects for consistent storage
+            ts.data = series
+            updated_codes.append(code)
+
+        return {
+            "message": f"Successfully received {len(df)} records.",
+            "updated_codes": updated_codes,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to process data upload")
+        raise HTTPException(status_code=500, detail="Internal server error: " + str(e))
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+
+@app.get("/api/trigger_daily_task")
+async def trigger_daily_task():
+    """Manual trigger for the daily task."""
+    try:
+        await run_daily_task()
+        return {"status": "Daily task executed successfully"}
+    except Exception:
+        logger.exception("Failed to trigger daily task")
+        raise HTTPException(status_code=500, detail="Failed to execute daily task")
+
+
+from ix.db.query import *
 from typing import Dict, List, Optional, Any, Union
 from fastapi import Query, HTTPException, status
-from fastapi.responses import JSONResponse
-import pandas as pd
-import numpy as np
 from datetime import datetime, date
-import logging
 
-logger = logging.getLogger(__name__)
+
+# add at top if not present
+import re, json
+from typing import List, Dict, Any, Optional
+
+# numpy, pandas, etc. already imported in your file
+
+
+# --- helper: parse ["KEY=VALUE", "K=V"] or "KEY=VALUE,K=V" or even a JSON array string ---
+def _parse_params_list(params: Optional[List[str]]) -> Dict[str, Any]:
+    """
+    Parse parameter lists in various formats:
+    - ["SORT=FALSE", "HEADER=TRUE"]
+    - ["KEY=VALUE,K=V"]
+    - JSON array string: '["SORT=FALSE", "HEADER=TRUE"]'
+    - Comma-separated: "SORT=FALSE,HEADER=TRUE"
+    """
+    out: Dict[str, Any] = {}
+    if not params:
+        return out
+
+    def coerce(v: str) -> Any:
+        """Convert string values to appropriate Python types."""
+        v_stripped = v.strip().strip("'\"")
+        vu = v_stripped.upper()
+        if vu in ("TRUE", "YES", "1"):
+            return True
+        if vu in ("FALSE", "NO", "0"):
+            return False
+        if re.fullmatch(r"[-+]?\d+", v_stripped):
+            try:
+                return int(v_stripped)
+            except Exception:
+                pass
+        if re.fullmatch(r"[-+]?\d*\.\d+", v_stripped):
+            try:
+                return float(v_stripped)
+            except Exception:
+                pass
+        return v_stripped
+
+    for raw in params:
+        if raw is None:
+            continue
+
+        items: List[str] = []
+        raw = raw.strip()
+
+        # Handle JSON array string format: '["SORT=FALSE", "HEADER=TRUE"]'
+        if raw.startswith("[") and raw.endswith("]"):
+            try:
+                arr = json.loads(raw)
+                if isinstance(arr, list):
+                    items.extend([str(item) for item in arr])
+            except Exception:
+                # If JSON parsing fails, treat as a regular string
+                pass
+
+        # If no items from JSON parsing, split on commas
+        if not items:
+            # Handle comma-separated values: "SORT=FALSE,HEADER=TRUE"
+            items = [item.strip() for item in raw.split(",") if item.strip()]
+
+        # Parse each key=value pair
+        for kv in items:
+            if not kv or "=" not in kv:
+                continue
+            try:
+                k, v = kv.split("=", 1)
+                k = k.strip().upper()
+                out[k] = coerce(v)
+            except Exception as e:
+                logger.warning(f"Failed to parse parameter '{kv}': {e}")
+                continue
+
+    return out
 
 
 @app.get(
@@ -214,14 +309,32 @@ async def get_series(
     ),
     start: Optional[str] = Query(None, description="Start date in YYYY-MM-DD format"),
     end: Optional[str] = Query(None, description="End date in YYYY-MM-DD format"),
-    include_dates: bool = Query(
-        False,
-        description="If true, returns a 'date' column and shifts each series into its own list",
+    # Enhanced parameter support for various formats
+    params: Optional[List[str]] = Query(
+        None,
+        alias="PARAMS",
+        description=(
+            "List of KEY=VALUE flags in various formats. Examples: "
+            '["SORT=FALSE"], ["SORT=DESC,INCLUDE_INDEX=TRUE"], '
+            '"SORT=FALSE". '
+            "Supported flags: "
+            "INCLUDE_INDEX=TRUE|FALSE (include date/index column in response), "
+            "SORT=ASC|DESC or SORT=TRUE|FALSE (TRUE means descending), "
+            "FORMAT=JSON|CSV (response format - future use)."
+        ),
     ),
 ):
     """
-    Improved series endpoint that handles various index types (string, float, datetime).
+    Enhanced series endpoint that handles various index types (string, float, datetime),
+    with flexible PARAMS supporting multiple input formats and comprehensive flags.
+
+    Example usage:
+    - /api/series?series=GDP&params=["SORT=FALSE", "INCLUDE_HEADERS=TRUE"]
+    - /api/series?series=GDP&params="SORT=DESC,INCLUDE_INDEX=TRUE"
+    - /api/series?series=GDP&params=SORT=FALSE&params=INCLUDE_INDEX=TRUE
     """
+    print(f"Params got = {params}")
+
     frames: List[pd.Series] = []
 
     # Process each series specification
@@ -237,10 +350,8 @@ async def get_series(
             ser = eval(code)
 
             if isinstance(ser, pd.DataFrame):
-                # Handle DataFrame: add all columns as separate series
                 for col_name in ser.columns:
                     col_series = ser[col_name].copy()
-                    # Use original column name or create compound name if aliased
                     col_series.name = (
                         f"{alias}_{col_name}" if alias != code else col_name
                     )
@@ -282,20 +393,81 @@ async def get_series(
 
     # Remove rows where all values are NaN
     df = df.dropna(how="all")
-
     if df.empty:
         logger.warning("All data was filtered out, returning empty result")
         return JSONResponse(content={})
 
     # Apply date filtering if start/end dates are provided
     df = _apply_date_filtering(df, start, end)
-
     if df.empty:
         logger.warning("No data remains after date filtering")
         return JSONResponse(content={})
 
+    # Parse parameter flags; keep user's overrides
+    flags = _parse_params_list(params)
+    logger.info(f"Parsed parameter flags: {flags}")
+
+    # === Set new defaults ONLY if not set by user ===
+    if "SORT" not in flags:
+        flags["SORT"] = "ASC"  # default: descending (latest first)
+    if "INCLUDE_INDEX" not in flags:
+        flags["INCLUDE_INDEX"] = True
+
+    # Continue to extract flags (now using your defaulted "flags" dict)
+    include_index_flag = bool(flags.get("INCLUDE_INDEX", False))
+    format_flag = str(flags.get("FORMAT", "JSON")).upper()
+
+    # Handle SORT parameter as before
+    ascending = True
+    sort_requested = False
+    sort_val = flags.get("SORT", None)
+
+
+    if sort_val is not None:
+        sort_requested = True
+        try:
+            if isinstance(sort_val, bool):
+                # TRUE => descending, FALSE => ascending
+                ascending = not sort_val
+            elif isinstance(sort_val, str):
+                s = sort_val.strip().upper()
+                if s == "DESC":
+                    ascending = False
+                elif s == "ASC":
+                    ascending = True
+                elif s == "TRUE":
+                    ascending = (
+                        False  # TRUE means descending for backward compatibility
+                    )
+                elif s == "FALSE":
+                    ascending = True  # FALSE means ascending
+                else:
+                    raise ValueError("SORT must be ASC|DESC or TRUE|FALSE")
+            else:
+                raise ValueError("SORT must be ASC|DESC or TRUE|FALSE")
+
+            # Sort the dataframe
+            df = df.sort_index(ascending=ascending)
+            logger.info(f"Applied sorting: ascending={ascending}")
+
+        except Exception as e:
+            logger.error(f"Failed to sort by index: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid SORT flag: {str(e)}",
+            )
+
     # Prepare the response payload
-    payload = _prepare_response_payload(df, include_dates)
+    payload = _prepare_response_payload(
+        df,
+        include_index=include_index_flag,
+    )
+
+    # Future: handle different output formats
+    if format_flag == "CSV":
+        # This could be implemented to return CSV format
+        # For now, log the request and continue with JSON
+        logger.info("CSV format requested but not yet implemented, returning JSON")
 
     return JSONResponse(content=payload)
 
@@ -455,45 +627,37 @@ def _apply_date_filtering(
 
 
 def _prepare_response_payload(
-    df: pd.DataFrame, include_dates: bool
-) -> Dict[str, List[Optional[Any]]]:
+    df: pd.DataFrame,
+    include_index: bool = False,
+) -> Dict[str, Any]:
     """
-    Prepare the response payload based on the include_dates parameter.
+    Prepare the response payload based on the parameters.
+
+    Args:
+        df: DataFrame to process
+        include_index: Whether to include date/index column in output
     """
     try:
         # Replace NaN values with None for JSON serialization
         df = df.replace({np.nan: None, pd.NaT: None})
 
-        if include_dates:
+        payload = {}
+
+        if include_index:
             # Convert index to string format for consistent JSON serialization
             if isinstance(df.index, pd.DatetimeIndex):
-                df.index = df.index.strftime("%Y-%m-%d")
+                index_data = df.index.strftime("%Y-%m-%d").tolist()
             else:
                 # Convert other index types to string
-                df.index = df.index.astype(str)
+                index_data = df.index.astype(str).tolist()
 
-            # Sort by index and reset to create a 'date' column
-            df = df.sort_index().reset_index()
+            payload["Idx"] = index_data
 
-            # Rename the index column to something more descriptive
-            index_col_name = (
-                "date"
-                if isinstance(df.iloc[:, 0].iloc[0], str)
-                and "-" in str(df.iloc[:, 0].iloc[0])
-                else "index"
-            )
-            df = df.rename(columns={df.columns[0]: index_col_name})
-
-            # Convert to dictionary with lists
-            payload = df.to_dict(orient="list")
-
-        else:
-            # Return just the series data without index
-            payload = {}
-            for col in df.columns:
-                # Convert series to list, handling different data types
-                series_data = df[col].tolist()
-                payload[col] = series_data
+        # Add series data
+        for col in df.columns:
+            # Convert series to list, handling different data types
+            series_data = df[col].tolist()
+            payload[col] = series_data
 
         # Ensure all values are JSON serializable
         payload = _ensure_json_serializable(payload)
@@ -526,36 +690,3 @@ def _ensure_json_serializable(obj: Any) -> Any:
         return None
     else:
         return obj
-# Add any additional FastAPI routes below
-@app.get("/ping")
-async def ping():
-    return {"message": "pong"}
-
-
-from fastapi.middleware.wsgi import WSGIMiddleware
-
-from .dash.app import create_dash_app
-
-
-@app.get("/status")
-def get_status():
-    return {"status": "ok"}
-
-
-from . import dash
-
-# A bit odd, but the only way I've been able to get prefixing of the Dash app
-# to work is by allowing the Dash/Flask app to prefix itself, then mounting
-# it to root
-app.mount(
-    "/dash",
-    WSGIMiddleware(dash.app.create_dash_app(requests_pathname_prefix="/dash/").server),
-)
-
-
-app.mount(
-    "/macro",
-    WSGIMiddleware(
-        dash.macro.app.create_dash_app(requests_pathname_prefix="/macro/").server
-    ),
-)

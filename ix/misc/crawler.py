@@ -2,6 +2,7 @@ from typing import Optional, List
 import pandas as pd
 from ix.misc.terminal import get_logger
 from ix.misc.date import tomorrow, onemonthbefore, onemonthlater
+import pandas_datareader as pdr
 
 logger = get_logger(__name__)
 
@@ -63,7 +64,6 @@ def get_fred_data(
 
     logger = get_logger(get_fred_data)
     try:
-        import pandas_datareader as pdr
 
         data = pdr.DataReader(
             name=ticker,
@@ -100,3 +100,27 @@ def get_economic_releases(
         logger.error(f"Error retrieving releases: {e}")
         releases = pd.DataFrame()  # Return an empty DataFrame on error
     return releases
+
+
+def get_naver_data(
+    ticker: str,
+    start: str = "1990-1-1",
+    end: str = tomorrow().date().strftime("%Y-%m-%d"),
+) -> pd.DataFrame:
+
+    logger = get_logger(get_naver_data)
+    try:
+
+        data = pdr.DataReader(
+            name=ticker,
+            data_source="naver",
+            # start=start,
+            # end=end,
+        )
+        data.index = pd.to_datetime(data.index)
+        data = data.apply(pd.to_numeric)
+        return data
+    except Exception as exc:
+        logger.warning(f"Download data from `naver` fail for ticker {ticker}")
+        logger.exception(exc)
+        return pd.DataFrame()

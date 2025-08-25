@@ -158,3 +158,4 @@ periods = {
     "MTD": "Month-to-Date (Start of the Current Month)",
     "YTD": "Year-to-Date (Start of the Current Year)",
 }
+
