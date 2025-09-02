@@ -90,8 +90,6 @@ class SeriesQueryParams(BaseModel):
     end: Optional[str] = Field(None, regex=r'^\d{4}-\d{2}-\d{2}$')
     include_dates: bool = False
 
-
-
 @router.get(
     "/series",
     status_code=status.HTTP_200_OK,

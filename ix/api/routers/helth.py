@@ -4,12 +4,13 @@ Router for health check endpoints.
 """
 
 from datetime import datetime
-from typing import Any, Dict,Optional
+from typing import Any, Dict, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from ix.db import Timeseries
 from ix.misc.terminal import get_logger
+
 router = APIRouter()
 logger = get_logger(__name__)
 
@@ -28,10 +29,12 @@ async def ping():
     """Simple ping endpoint for health checks."""
     return {"message": "pong"}
 
+
 @router.get("/status", response_model=Dict[str, str])
 async def get_status():
     """Get application status."""
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
 
 @router.get("/health", response_model=HealthCheckResponse)
 async def health_check():

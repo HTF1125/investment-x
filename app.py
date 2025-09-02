@@ -1,359 +1,890 @@
-# app.py
 import streamlit as st
-import pandas as pd
-import numpy as np
-from math import sqrt
-from typing import Iterable, Tuple
-import plotly.express as px
 import plotly.graph_objects as go
-import ix
+import plotly.express as px
+from ix import Series
+import pandas as pd
+import io
+import base64
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Image,
+    Table,
+    TableStyle,
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+import tempfile
+import os
 
-# =========================
-# Helpers
-# =========================
-@st.cache_data(show_spinner=False)
-def load_yahoo(sym: str) -> pd.DataFrame:
-    df = ix.misc.crawler.get_yahoo_data(sym)
-    df = df.sort_index()
-    df = df.rename(columns={c: c.title() for c in df.columns})
-    for c in ["Open", "High", "Low", "Close"]:
-        if c not in df.columns:
-            raise ValueError(f"Missing column '{c}' in data for {sym}: {df.columns.tolist()}")
-    return df
+# Set page config
+st.set_page_config(
+    page_title="Tech Companies CAPEX Analysis", page_icon="📊", layout="wide"
+)
 
-def build_thresholds(
-    vix_df: pd.DataFrame,
-    mode: str,
-    abs_spike: float,
-    abs_cool: float,
-    full_pct_spike: float,
-    full_pct_cool: float,
-    roll_window: int,
-    roll_pct_spike: float,
-    roll_pct_cool: float,
-    zspike_sigma: float,
-    zcool_sigma: float,
-) -> pd.DataFrame:
-    out = vix_df.copy()
+# Title and description
+st.title("📊 Tech Companies CAPEX Analysis")
+st.markdown("Analyzing quarterly capital expenditure data for major tech companies")
 
-    if mode == "static_absolute":
-        out["spike_thr"] = float(abs_spike)
-        out["cool_thr"]  = float(abs_cool)
 
-    elif mode == "static_percentile":
-        spk = out["High"].quantile(full_pct_spike)
-        cll = out["Close"].quantile(full_pct_cool)
-        out["spike_thr"] = spk
-        out["cool_thr"]  = cll
+# Data processing function
+@st.cache_data
+def load_data():
+    # Forward-looking CAPEX data
+    ff_data = {
+        code: Series(f"{code}:FF_CAPEX_Q")
+        for code in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]
+    }
 
-    elif mode == "rolling_percentile":
-        out["spike_thr"] = out["High"].rolling(roll_window, min_periods=roll_window).quantile(roll_pct_spike)
-        out["cool_thr"]  = out["Close"].rolling(roll_window, min_periods=roll_window).quantile(roll_pct_cool)
-
-    elif mode == "zscore":
-        high_mean, high_std = out["High"].mean(), out["High"].std(ddof=1)
-        close_mean, close_std = out["Close"].mean(), out["Close"].std(ddof=1)
-        out["spike_thr"] = high_mean + zspike_sigma * high_std
-        out["cool_thr"]  = close_mean + zcool_sigma * close_std
-    else:
-        raise ValueError(f"Unknown threshold mode: {mode}")
-
-    return out
-
-def find_signals_dynamic(vix_df: pd.DataFrame, use_low_for_cool: bool) -> pd.DataFrame:
-    """
-    Expects columns: High, Close, (Low if use_low_for_cool), spike_thr, cool_thr.
-    Rule:
-      - Start 'spike block' on first day with High >= spike_thr.
-      - End block at first subsequent day where (Close or Low) < cool_thr; that day = signal_date.
-      - Multiple highs above threshold before cool-off = one block (one eventual signal).
-    """
-    cool_series = vix_df["Low"] if use_low_for_cool else vix_df["Close"]
-
-    in_spike = False
-    spike_start = None
-    signals = []
-
-    for dt in vix_df.index:
-        spk_thr = vix_df.at[dt, "spike_thr"]
-        cool_thr = vix_df.at[dt, "cool_thr"]
-        if pd.isna(spk_thr) or pd.isna(cool_thr):
-            continue
-
-        h = vix_df.at[dt, "High"]
-        c = cool_series.at[dt]
-
-        if not in_spike:
-            if h >= spk_thr:
-                in_spike = True
-                spike_start = dt
-        else:
-            if c < cool_thr:
-                signal_date = dt
-                prev_ix = vix_df.index.get_loc(dt) - 1
-                spike_end = vix_df.index[max(prev_ix, 0)]
-                signals.append({
-                    "spike_start": spike_start,
-                    "spike_end": spike_end,
-                    "signal_date": signal_date,
-                    "spike_thr": float(spk_thr),
-                    "cool_thr": float(cool_thr),
-                })
-                in_spike = False
-                spike_start = None
-
-    return pd.DataFrame(signals)
-
-def fwd_returns(price: pd.Series, horizons: Iterable[int]) -> pd.DataFrame:
-    out = pd.DataFrame(index=price.index)
-    for h in horizons:
-        out[f"fwd_{h}d"] = price.shift(-h) / price - 1.0
-    return out
-
-def attach_perf(signals_df: pd.DataFrame, fr_df: pd.DataFrame, horizons: Iterable[int]) -> pd.DataFrame:
-    if signals_df.empty:
-        return pd.DataFrame(columns=list(signals_df.columns) + [f"fwd_{h}d" for h in horizons])
-    rows = []
-    for _, row in signals_df.iterrows():
-        d = row["signal_date"]
-        if d in fr_df.index:
-            r = row.to_dict()
-            r.update(fr_df.loc[d].to_dict())
-            rows.append(r)
-    return pd.DataFrame(rows)
-
-def summarize_event_perf(df: pd.DataFrame, horizons: Iterable[int]) -> pd.DataFrame:
-    stats = []
-    for h in horizons:
-        col = f"fwd_{h}d"
-        s = df[col].dropna()
-        stats.append({
-            "horizon_days": h,
-            "n": int(s.shape[0]),
-            "mean": float(s.mean()) if s.size else np.nan,
-            "median": float(s.median()) if s.size else np.nan,
-            "stdev": float(s.std(ddof=1)) if s.size > 1 else np.nan,
-            "hit_ratio": float((s > 0).mean()) if s.size else np.nan,
-            "min": float(s.min()) if s.size else np.nan,
-            "max": float(s.max()) if s.size else np.nan,
-        })
-    return pd.DataFrame(stats)
-
-def onesample_t(s: pd.Series, mu=0.0):
-    s = s.dropna()
-    n = s.shape[0]
-    if n < 2:
-        return {"n": int(n), "t": np.nan, "se": np.nan, "mean": float(s.mean()) if n else np.nan}
-    se = s.std(ddof=1) / sqrt(n)
-    t = (s.mean() - mu) / se if se > 0 else np.nan
-    return {"n": int(n), "t": float(t), "se": float(se), "mean": float(s.mean())}
-
-def apply_quiet_period(signals_df: pd.DataFrame, quiet_days: int) -> pd.DataFrame:
-    if signals_df.empty:
-        return signals_df.copy()
-    d = signals_df.sort_values("signal_date").copy()
-    d["gap"] = d["signal_date"].diff()
-    keep = d["gap"].isna() | (d["gap"] > pd.Timedelta(days=quiet_days))
-    return d.loc[keep, ["spike_start", "spike_end", "signal_date", "spike_thr", "cool_thr"]]
-
-def robustness_dynamic(
-    vix_df_base: pd.DataFrame,
-    bench_close: pd.Series,
-    horizons: Iterable[int],
-    mode: str,
-    abs_spike: float,
-    abs_cool: float,
-    roll_window: int,
-    use_low_for_cool: bool,
-) -> pd.DataFrame:
-    """Small grid around chosen mode's parameters; meant for quick sensitivity checks."""
-    fr_local = fwd_returns(bench_close, horizons)
-    results = []
-
-    if mode == "static_absolute":
-        for spk in (abs_spike-5, abs_spike, abs_spike+5):
-            for cool in (abs_cool-2, abs_cool, abs_cool+2):
-                tmp = vix_df_base.copy()
-                tmp["spike_thr"] = spk
-                tmp["cool_thr"]  = cool
-                sigs = find_signals_dynamic(tmp, use_low_for_cool)
-                ep = attach_perf(sigs, fr_local, horizons)
-                mean_63 = ep.get("fwd_63d", pd.Series(dtype=float)).mean() if not ep.empty else np.nan
-                results.append({"spike_param": spk, "cool_param": cool, "n": int(ep.shape[0]), "fwd_63d_mean": float(mean_63) if pd.notna(mean_63) else np.nan})
-
-    elif mode in ("static_percentile", "rolling_percentile"):
-        spk_grid = (0.97, 0.98, 0.99)
-        cool_grid = (0.50, 0.60, 0.70)
-        for spk_q in spk_grid:
-            for cool_q in cool_grid:
-                tmp = vix_df_base.copy()
-                if mode == "static_percentile":
-                    tmp["spike_thr"] = tmp["High"].quantile(spk_q)
-                    tmp["cool_thr"]  = tmp["Close"].quantile(cool_q)
-                else:
-                    tmp["spike_thr"] = tmp["High"].rolling(roll_window, min_periods=roll_window).quantile(spk_q)
-                    tmp["cool_thr"]  = tmp["Close"].rolling(roll_window, min_periods=roll_window).quantile(cool_q)
-                sigs = find_signals_dynamic(tmp, use_low_for_cool)
-                ep = attach_perf(sigs, fr_local, horizons)
-                mean_63 = ep.get("fwd_63d", pd.Series(dtype=float)).mean() if not ep.empty else np.nan
-                results.append({"spike_param": spk_q, "cool_param": cool_q, "n": int(ep.shape[0]), "fwd_63d_mean": float(mean_63) if pd.notna(mean_63) else np.nan})
-
-    elif mode == "zscore":
-        spk_grid = (2.0, 2.5, 3.0)
-        cool_grid = (-1.0, -0.5, 0.0)
-        for spk_s in spk_grid:
-            for cool_s in cool_grid:
-                tmp = vix_df_base.copy()
-                h_mean, h_std = tmp["High"].mean(), tmp["High"].std(ddof=1)
-                c_mean, c_std = tmp["Close"].mean(), tmp["Close"].std(ddof=1)
-                tmp["spike_thr"] = h_mean + spk_s * h_std
-                tmp["cool_thr"]  = c_mean + cool_s * c_std
-                sigs = find_signals_dynamic(tmp, use_low_for_cool)
-                ep = attach_perf(sigs, fr_local, horizons)
-                mean_63 = ep.get("fwd_63d", pd.Series(dtype=float)).mean() if not ep.empty else np.nan
-                results.append({"spike_param": spk_s, "cool_param": cool_s, "n": int(ep.shape[0]), "fwd_63d_mean": float(mean_63) if pd.notna(mean_63) else np.nan})
-
-    res = pd.DataFrame(results)
-    if not res.empty:
-        res = res.sort_values(["n", "fwd_63d_mean"], ascending=[False, False])
-    return res
-
-# =========================
-# UI
-# =========================
-st.set_page_config(page_title="VIX Spike → Cool-off Event Study", layout="wide")
-st.title("VIX Spike → Cool-off Event Study")
-
-with st.sidebar:
-    st.header("Data & Bench")
-    vix_symbol = st.text_input("VIX symbol", value="^VIX")
-    bench_symbol = st.selectbox("Benchmark", options=["^GSPC", "SPY"], index=0)
-
-    st.header("Threshold Mode")
-    mode = st.selectbox(
-        "Mode",
-        options=["rolling_percentile", "static_absolute", "static_percentile", "zscore"],
-        index=0,
-        help="Choose how spike and cool-off thresholds are defined."
+    ff = (
+        pd.DataFrame(ff_data)
+        .resample("B")
+        .last()
+        .ffill()
+        .dropna()
+        .reindex(pd.date_range("2010-1-1", pd.Timestamp("today")))
+        .ffill()
     )
 
-    st.subheader("Parameters")
-    abs_spike = st.number_input("ABS spike (High ≥)", value=60.0, step=1.0)
-    abs_cool  = st.number_input("ABS cool (Close/Low <)", value=30.0, step=1.0)
+    # Historical CAPEX data
+    fe_data = {
+        code: Series(f"{code}:FE_CAPEX_Q")
+        for code in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]
+    }
 
-    full_pct_spike = st.slider("Full-sample percentile (spike thr)", 0.80, 0.999, 0.98, step=0.001)
-    full_pct_cool  = st.slider("Full-sample percentile (cool thr)", 0.10, 0.90, 0.60, step=0.01)
+    fe = pd.DataFrame(fe_data).resample("B").last().ffill().dropna()
 
-    roll_window = st.number_input("Rolling window (trading days)", value=504, step=21, min_value=60)
-    roll_pct_spike = st.slider("Rolling percentile (spike thr)", 0.80, 0.999, 0.98, step=0.001)
-    roll_pct_cool  = st.slider("Rolling percentile (cool thr)", 0.10, 0.90, 0.60, step=0.01)
+    return ff, fe
 
-    zspike_sigma = st.number_input("Z-score spike σ", value=2.5, step=0.1)
-    zcool_sigma  = st.number_input("Z-score cool σ", value=-0.5, step=0.1)
 
-    st.header("Rules")
-    use_low_for_cool = st.selectbox("Cool-off uses", options=["Close < thr", "Low < thr"], index=0) == "Low < thr"
-    quiet_days = st.number_input("Quiet period (days)", value=126, step=21, min_value=0)
+# PDF generation function
+def generate_pdf_report(fig, weekly_pct_change, ff, fe):
+    """Generate a PDF report with the plot and data"""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=72,
+        bottomMargin=18,
+    )
 
-    st.header("Horizons")
-    default_horizons = "21,63,126,252"
-    horizons_str = st.text_input("Forward horizons (days, comma-separated)", value=default_horizons)
-    horizons = tuple(int(x.strip()) for x in horizons_str.split(",") if x.strip().isdigit())
+    # Get styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "CustomTitle",
+        parent=styles["Heading1"],
+        fontSize=18,
+        spaceAfter=30,
+        alignment=1,  # Center alignment
+    )
 
-    show_robust = st.checkbox("Show robustness grid", value=True)
+    # Build content
+    story = []
 
-# =========================
-# Data
-# =========================
+    # Title
+    story.append(Paragraph("Tech Companies CAPEX Analysis Report", title_style))
+    story.append(Spacer(1, 12))
+
+    # Description
+    story.append(
+        Paragraph(
+            "Analyzing quarterly capital expenditure data for major tech companies (NVDA, MSFT, AMZN, META, GOOG)",
+            styles["Normal"],
+        )
+    )
+    story.append(Spacer(1, 20))
+
+    # Save plot as image
+    tmp_file_path = None
+    try:
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+            tmp_file_path = tmp_file.name
+
+        # Try using kaleido first (faster and better quality)
+        try:
+            fig.write_image(tmp_file_path, width=800, height=600, scale=2)
+        except Exception as kaleido_error:
+            # Fallback to matplotlib if kaleido fails
+            import matplotlib.pyplot as plt
+            import matplotlib.dates as mdates
+
+            # Create matplotlib figure
+            plt.figure(figsize=(12, 8))
+            plt.plot(
+                weekly_pct_change.index,
+                weekly_pct_change.values * 100,
+                color="#1f77b4",
+                linewidth=2,
+                label="Weekly CAPEX % Change (52-week)",
+            )
+            plt.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+            plt.title(
+                "Tech Companies CAPEX - 52-Week Percentage Change", fontsize=16, pad=20
+            )
+            plt.xlabel("Date", fontsize=12)
+            plt.ylabel("Percentage Change (%)", fontsize=12)
+            plt.grid(True, alpha=0.3)
+            plt.legend()
+            plt.tight_layout()
+
+            # Save with matplotlib
+            plt.savefig(
+                tmp_file_path,
+                dpi=300,
+                bbox_inches="tight",
+                facecolor="white",
+                edgecolor="none",
+            )
+            plt.close()
+
+        # Add plot to PDF
+        story.append(
+            Paragraph("CAPEX 52-Week Percentage Change Chart", styles["Heading2"])
+        )
+        story.append(Spacer(1, 12))
+
+        # Add image - keep file reference until PDF is built
+        img = Image(tmp_file_path, width=7 * inch, height=5.25 * inch)
+        story.append(img)
+        story.append(Spacer(1, 20))
+
+    except Exception as e:
+        # If there's an error, clean up the temp file
+        if tmp_file_path and os.path.exists(tmp_file_path):
+            try:
+                os.unlink(tmp_file_path)
+            except:
+                pass
+        raise e
+
+    # Add statistics
+    story.append(Paragraph("Key Statistics", styles["Heading2"]))
+    story.append(Spacer(1, 12))
+
+    if len(weekly_pct_change) > 0:
+        current_change = weekly_pct_change.iloc[-1] * 100
+        max_change = weekly_pct_change.max() * 100
+        min_change = weekly_pct_change.min() * 100
+
+        stats_data = [
+            ["Metric", "Value"],
+            ["Current % Change", f"{current_change:.2f}%"],
+            ["Maximum % Change", f"{max_change:.2f}%"],
+            ["Minimum % Change", f"{min_change:.2f}%"],
+        ]
+
+        stats_table = Table(stats_data)
+        stats_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, 0), 14),
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                    ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                ]
+            )
+        )
+
+        story.append(stats_table)
+        story.append(Spacer(1, 20))
+
+    # Add recent data table
+    story.append(Paragraph("Recent Data (Last 10 Observations)", styles["Heading2"]))
+    story.append(Spacer(1, 12))
+
+    recent_data = weekly_pct_change.tail(10).to_frame("52-Week % Change")
+    recent_data["Date"] = recent_data.index.strftime("%Y-%m-%d")
+    recent_data["% Change"] = (recent_data["52-Week % Change"] * 100).round(2).astype(
+        str
+    ) + "%"
+    recent_data = recent_data[["Date", "% Change"]].reset_index(drop=True)
+
+    # Convert to list for table
+    table_data = [["Date", "% Change"]] + recent_data.values.tolist()
+
+    data_table = Table(table_data)
+    data_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 12),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                ("FONTSIZE", (0, 1), (-1, -1), 10),
+            ]
+        )
+    )
+
+    story.append(data_table)
+    story.append(Spacer(1, 20))
+
+    # Add global markets table to PDF
+    try:
+        # Load global markets data for PDF
+        global_data = {
+            "ACWI": Series("ACWI US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "US": Series("SPY US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "DM ex US": Series("IDEV US Equity:PX_LAST", freq="ME")
+            .pct_change()
+            .iloc[-13:]
+            * 100,
+            "U.K.": Series("EWU US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "EAFE": Series("EFA US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "Europe": Series("FEZ US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "Germany": Series("EWG US Equity:PX_LAST", freq="ME")
+            .pct_change()
+            .iloc[-13:]
+            * 100,
+            "Japan": Series("EWJ US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "Korea": Series("EWY US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "Australia": Series("EWA US Equity:PX_LAST", freq="ME")
+            .pct_change()
+            .iloc[-13:]
+            * 100,
+            "Emerging": Series("VWO US Equity:PX_LAST", freq="ME")
+            .pct_change()
+            .iloc[-13:]
+            * 100,
+            "China": Series("MCHI US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "India": Series("INDA US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "Brazil": Series("EWZ US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "Taiwan": Series("EWT US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+            * 100,
+            "Vietnam": Series("VNM US Equity:PX_LAST", freq="ME")
+            .pct_change()
+            .iloc[-13:]
+            * 100,
+        }
+
+        global_df = pd.DataFrame(global_data).T
+        global_df.columns = [col.strftime("%b %Y") for col in global_df.columns]
+        global_df = global_df.round(2)
+
+        # Add global markets section to PDF
+        story.append(
+            Paragraph("Global Markets Monthly Performance (USD)", styles["Heading2"])
+        )
+        story.append(Spacer(1, 12))
+
+        # Create table data for PDF (show last 6 months to fit on page)
+        recent_months = global_df.columns[-6:]  # Last 6 months
+        pdf_table_data = [["Market"] + list(recent_months)]
+
+        for market in global_df.index:
+            row = [market]
+            for month in recent_months:
+                row.append(f"{global_df.loc[market, month]:.2f}%")
+            pdf_table_data.append(row)
+
+        global_table = Table(pdf_table_data)
+        global_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, 0), 10),
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                    ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                    ("FONTSIZE", (0, 1), (-1, -1), 8),
+                ]
+            )
+        )
+
+        story.append(global_table)
+
+    except Exception as e:
+        # If global markets data fails, just continue without it
+        story.append(Paragraph("Global Markets data not available", styles["Normal"]))
+
+    # Build PDF
+    doc.build(story)
+    buffer.seek(0)
+
+    # Clean up temp file after PDF is built
+    if tmp_file_path and os.path.exists(tmp_file_path):
+        try:
+            os.unlink(tmp_file_path)
+        except (OSError, PermissionError):
+            # If we can't delete it immediately, try to delete it later
+            import atexit
+
+            atexit.register(
+                lambda: (
+                    os.unlink(tmp_file_path) if os.path.exists(tmp_file_path) else None
+                )
+            )
+
+    return buffer
+
+
+# Load data
 try:
-    vix = load_yahoo(vix_symbol)
-    bench = load_yahoo(bench_symbol)
+    ff, fe = load_data()
 
-    common_idx = vix.index.intersection(bench.index)
-    vix = vix.loc[common_idx]
-    bench = bench.loc[common_idx]
-
-    vix_thr = build_thresholds(
-        vix, mode,
-        abs_spike, abs_cool,
-        full_pct_spike, full_pct_cool,
-        roll_window, roll_pct_spike, roll_pct_cool,
-        zspike_sigma, zcool_sigma
+    # Calculate the weekly percentage change
+    weekly_pct_change = (
+        fe.sum(axis=1).resample("W-Fri").last().pct_change(int(52)).loc["2007":]
     )
 
-    signals = find_signals_dynamic(vix_thr, use_low_for_cool)
-    fr = fwd_returns(bench["Close"], horizons)
-    event_perf = attach_perf(signals, fr, horizons)
-    summary_all = summarize_event_perf(event_perf, horizons)
-    t_results = {f"fwd_{h}d": onesample_t(event_perf[f"fwd_{h}d"]) for h in horizons}
+    # Create Plotly figure
+    fig = go.Figure()
 
-    signals_pruned = apply_quiet_period(signals, quiet_days)
-    event_perf_pruned = attach_perf(signals_pruned, fr, horizons)
-    summary_pruned = summarize_event_perf(event_perf_pruned, horizons)
+    # Add the main line
+    fig.add_trace(
+        go.Scatter(
+            x=weekly_pct_change.index,
+            y=weekly_pct_change.values * 100,  # Convert to percentage
+            mode="lines",
+            name="Weekly CAPEX % Change (52-week)",
+            line=dict(color="#1f77b4", width=2),
+            hovertemplate="<b>Date:</b> %{x}<br>"
+            + "<b>% Change:</b> %{y:.2f}%<br>"
+            + "<extra></extra>",
+        )
+    )
 
-    # =========================
-    # Layout
-    # =========================
-    st.markdown(f"**Mode:** `{mode}`  |  **Cool-off:** `{'Low' if use_low_for_cool else 'Close'}`  |  **Quiet days:** `{quiet_days}`")
+    # Update layout
+    fig.update_layout(
+        title={
+            "text": "Tech Companies CAPEX - 52-Week Percentage Change",
+            "x": 0.5,
+            "xanchor": "center",
+            "font": {"size": 20},
+        },
+        xaxis_title="Date",
+        yaxis_title="Percentage Change (%)",
+        hovermode="x unified",
+        template="plotly_white",
+        height=600,
+        showlegend=True,
+    )
 
-    # Top charts
-    with st.expander("Charts", expanded=True):
-        # VIX with thresholds
-        vix_plot = vix_thr[["High", "Close"]].copy()
-        vix_plot["Spike Threshold"] = vix_thr["spike_thr"]
-        vix_plot["Cool Threshold"] = vix_thr["cool_thr"]
+    # Add zero line
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=vix_plot.index, y=vix_plot["High"], name="VIX High", mode="lines"))
-        fig.add_trace(go.Scatter(x=vix_plot.index, y=vix_plot["Close"], name="VIX Close", mode="lines", opacity=0.6))
-        fig.add_trace(go.Scatter(x=vix_plot.index, y=vix_plot["Spike Threshold"], name="Spike thr", mode="lines"))
-        fig.add_trace(go.Scatter(x=vix_plot.index, y=vix_plot["Cool Threshold"], name="Cool thr", mode="lines"))
+    # Display the chart
+    st.plotly_chart(fig, width="stretch")
 
-        # Mark signal dates
-        if not signals.empty:
-            fig.add_trace(go.Scatter(
-                x=signals["signal_date"], y=vix_thr.loc[signals["signal_date"], "Close"],
-                mode="markers", name="Signal date", marker=dict(size=8, symbol="x")
-            ))
-        fig.update_layout(title="VIX & Dynamic Thresholds", legend=dict(orientation="h"))
-        st.plotly_chart(fig, use_container_width=True)
+    # Add some statistics
+    col1, col2, col3 = st.columns(3)
 
-        # Benchmark price
-        fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(x=bench.index, y=bench["Close"], name=f"{bench_symbol} Close", mode="lines"))
-        if not signals.empty:
-            yvals = bench.loc[signals["signal_date"], "Close"]
-            fig2.add_trace(go.Scatter(x=signals["signal_date"], y=yvals, mode="markers", name="Signal on bench", marker=dict(size=7)))
-        fig2.update_layout(title=f"{bench_symbol} Close with Signal Markers", legend=dict(orientation="h"))
-        st.plotly_chart(fig2, use_container_width=True)
-
-    col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Signals (raw)")
-        st.dataframe(signals)
-        st.download_button("Download signals CSV", data=signals.to_csv(index=True).encode("utf-8"), file_name="signals.csv", mime="text/csv")
+        st.metric(
+            "Current % Change",
+            (
+                f"{weekly_pct_change.iloc[-1]*100:.2f}%"
+                if len(weekly_pct_change) > 0
+                else "N/A"
+            ),
+        )
 
     with col2:
-        st.subheader("Event Performance (raw)")
-        st.dataframe(event_perf)
-        st.download_button("Download event performance CSV", data=event_perf.to_csv(index=False).encode("utf-8"), file_name="event_performance.csv", mime="text/csv")
+        st.metric(
+            "Max % Change",
+            (
+                f"{weekly_pct_change.max()*100:.2f}%"
+                if len(weekly_pct_change) > 0
+                else "N/A"
+            ),
+        )
 
-    st.subheader("Summary (all signals)")
-    st.dataframe(summary_all)
+    with col3:
+        st.metric(
+            "Min % Change",
+            (
+                f"{weekly_pct_change.min()*100:.2f}%"
+                if len(weekly_pct_change) > 0
+                else "N/A"
+            ),
+        )
 
-    st.subheader("T-stats vs 0 mean (all signals)")
-    st.json(t_results)
+    # PDF Download section
+    st.subheader("📄 Download Report")
+    st.markdown(
+        "Generate and download a comprehensive PDF report with the chart and data."
+    )
 
-    st.subheader("Quiet-period pruned")
-    st.dataframe(signals_pruned)
-    st.dataframe(summary_pruned)
+    if st.button("📥 Download PDF Report", type="primary"):
+        try:
+            with st.spinner("Generating PDF report..."):
+                pdf_buffer = generate_pdf_report(fig, weekly_pct_change, ff, fe)
 
-    if show_robust:
-        st.subheader("Robustness grid (mean 63d return)")
-        robust = robustness_dynamic(vix_thr, bench["Close"], horizons, mode, abs_spike, abs_cool, roll_window, use_low_for_cool)
-        st.dataframe(robust)
-        st.download_button("Download robustness CSV", data=robust.to_csv(index=False).encode("utf-8"), file_name="robustness.csv", mime="text/csv")
+                # Create download button
+                st.download_button(
+                    label="📄 Download PDF Report",
+                    data=pdf_buffer.getvalue(),
+                    file_name=f"tech_capex_analysis_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                )
+
+                st.success(
+                    "PDF report generated successfully! Click the download button above to save it."
+                )
+
+        except Exception as e:
+            st.error(f"Error generating PDF: {str(e)}")
+            st.info(
+                "Make sure you have the required dependencies installed: pip install reportlab kaleido matplotlib"
+            )
+
+    # Global Markets Monthly Performance Table
+    st.subheader("🌍 Global Markets Monthly Performance (USD)")
+    st.markdown("Monthly percentage changes for major global equity markets")
+
+    # Global markets data
+    @st.cache_data
+    def load_global_markets_data():
+        try:
+            global_data = {
+                "ACWI": Series("ACWI US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "US": Series("SPY US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "DM ex US": Series("IDEV US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "U.K.": Series("EWU US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "EAFE": Series("EFA US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Europe": Series("FEZ US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Germany": Series("EWG US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Japan": Series("EWJ US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Korea": Series("EWY US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Australia": Series("EWA US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Emerging": Series("VWO US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "China": Series("MCHI US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "India": Series("INDA US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Brazil": Series("EWZ US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Taiwan": Series("EWT US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Vietnam": Series("VNM US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+            }
+
+            # Create DataFrame and transpose
+            df = pd.DataFrame(global_data).T
+            df.index.name = "Market"
+
+            # Format dates as month-year
+            df.columns = [col.strftime("%b %Y") for col in df.columns]
+
+            # Round to 2 decimal places
+            df = df.round(2)
+
+            return df
+
+        except Exception as e:
+            st.error(f"Error loading global markets data: {str(e)}")
+            return None
+
+    # Load and display global markets data
+    global_markets_df = load_global_markets_data()
+
+    if global_markets_df is not None:
+        # Display the table with custom styling
+        st.dataframe(global_markets_df, width="stretch", use_container_width=True)
+
+        # Add summary statistics
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                "Best Performer (Latest Month)",
+                f"{global_markets_df.iloc[:, -1].idxmax()}: {global_markets_df.iloc[:, -1].max():.2f}%",
+            )
+
+        with col2:
+            st.metric(
+                "Worst Performer (Latest Month)",
+                f"{global_markets_df.iloc[:, -1].idxmin()}: {global_markets_df.iloc[:, -1].min():.2f}%",
+            )
+
+        with col3:
+            avg_performance = global_markets_df.iloc[:, -1].mean()
+            st.metric("Average Performance (Latest Month)", f"{avg_performance:.2f}%")
+    else:
+        st.info("Global markets data is not available. Please check your data sources.")
+
+    # Major Indices Performance Table
+    st.subheader("📈 Major Indices Monthly Performance")
+    st.markdown("Monthly percentage changes for major global stock indices")
+
+    @st.cache_data
+    def load_major_indices_data():
+        try:
+            indices_data = {
+                "S&P500": Series("SPX Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "Nasdaq": Series("CCMP Index:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "DJI30": Series("INDU Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "Russell2": Series("RTY Index:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "EuroStoxx50": Series("SX5E Index:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "FTSE100": Series("UKX Index:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "DAX": Series("DAX Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "CAC40": Series("CAC Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "Nikkie225": Series("NKY Index:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "TOPIX": Series("TPX Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "KOSPI": Series("KOSPI Index:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Nifty": Series("NIFTY Index:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "HSI": Series("HSI Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "SH": Series("SHCOMP Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+            }
+
+            df = pd.DataFrame(indices_data).T
+            df.index.name = "Index"
+            df.columns = [col.strftime("%b %Y") for col in df.columns]
+            df = df.round(2)
+            return df
+
+        except Exception as e:
+            st.error(f"Error loading major indices data: {str(e)}")
+            return None
+
+    indices_df = load_major_indices_data()
+    if indices_df is not None:
+        st.dataframe(indices_df, width="stretch", use_container_width=True)
+    else:
+        st.info("Major indices data is not available.")
+
+    # Sectors Performance Table
+    st.subheader("🏭 Sectors Monthly Performance")
+    st.markdown("Monthly percentage changes for S&P 500 sector ETFs")
+
+    @st.cache_data
+    def load_sectors_data():
+        try:
+            sectors_data = {
+                "InfoTech": Series("XLK US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Industrials": Series("XLI US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Financials": Series("XLF US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Comm": Series("XLC US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "RealEstate": Series("XLRE US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Energy": Series("XLE US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Discretionary": Series("XLY US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Materials": Series("XLB US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "HealthCare": Series("XLV US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Staples": Series("XLP US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Utilities": Series("XLU US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+            }
+
+            df = pd.DataFrame(sectors_data).T
+            df.index.name = "Sector"
+            df.columns = [col.strftime("%b %Y") for col in df.columns]
+            df = df.round(2)
+            return df
+
+        except Exception as e:
+            st.error(f"Error loading sectors data: {str(e)}")
+            return None
+
+    sectors_df = load_sectors_data()
+    if sectors_df is not None:
+        st.dataframe(sectors_df, width="stretch", use_container_width=True)
+    else:
+        st.info("Sectors data is not available.")
+
+    # Thematic ETFs Performance Table
+    st.subheader("🚀 Thematic ETFs Monthly Performance")
+    st.markdown("Monthly percentage changes for thematic and specialized ETFs")
+
+    @st.cache_data
+    def load_thematic_data():
+        try:
+            thematic_data = {
+                "FinTech": Series("FINX US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Real Estate": Series("VNQ US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Pave": Series("PAVE US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Space": Series("UFO US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Data/Infra": Series("SRVR US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "IoT": Series("SNSR US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "EV/Drive": Series("DRIV US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Pharma": Series("PPH US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Cloud": Series("SKYY US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Lit/Battery": Series("LIT US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Solar": Series("TAN US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Semis": Series("SOXX US Equity:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+            }
+
+            df = pd.DataFrame(thematic_data).T
+            df.index.name = "Thematic ETF"
+            df.columns = [col.strftime("%b %Y") for col in df.columns]
+            df = df.round(2)
+            return df
+
+        except Exception as e:
+            st.error(f"Error loading thematic ETFs data: {str(e)}")
+            return None
+
+    thematic_df = load_thematic_data()
+    if thematic_df is not None:
+        st.dataframe(thematic_df, width="stretch", use_container_width=True)
+    else:
+        st.info("Thematic ETFs data is not available.")
+
+    # Currencies Performance Table
+    st.subheader("💱 Currencies Monthly Performance")
+    st.markdown("Monthly percentage changes for major currencies (vs USD)")
+
+    @st.cache_data
+    def load_currencies_data():
+        try:
+            currencies_data = {
+                "DXY": Series("DXY Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "EUR": -Series("USDEUR Curncy:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "GBP": -Series("USDGBP Curncy:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "JPY": -Series("USDJPY Curncy:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "KRW": -Series("USDKRW Curncy:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "AUD": -Series("USDAUD Curncy:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "INR": -Series("USDINR Curncy:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+            }
+
+            df = pd.DataFrame(currencies_data).T
+            df.index.name = "Currency"
+            df.columns = [col.strftime("%b %Y") for col in df.columns]
+            df = df.round(2)
+            return df
+
+        except Exception as e:
+            st.error(f"Error loading currencies data: {str(e)}")
+            return None
+
+    currencies_df = load_currencies_data()
+    if currencies_df is not None:
+        st.dataframe(currencies_df, width="stretch", use_container_width=True)
+    else:
+        st.info("Currencies data is not available.")
+
+    # Commodities Performance Table
+    st.subheader("🥇 Commodities Monthly Performance")
+    st.markdown("Monthly percentage changes for major commodities")
+
+    @st.cache_data
+    def load_commodities_data():
+        try:
+            commodities_data = {
+                "Gold": Series("GOLDCOMP:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "Silver": Series("SLVR Curncy:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Crude": Series("WTI Comdty:PX_LAST", freq="ME").pct_change().iloc[-13:]
+                * 100,
+                "Copper": Series("HG1 Comdty:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+                "Bitcoin": Series("XBTUSD Curncy:PX_LAST", freq="ME")
+                .pct_change()
+                .iloc[-13:]
+                * 100,
+            }
+
+            df = pd.DataFrame(commodities_data).T
+            df.index.name = "Commodity"
+            df.columns = [col.strftime("%b %Y") for col in df.columns]
+            df = df.round(2)
+            return df
+
+        except Exception as e:
+            st.error(f"Error loading commodities data: {str(e)}")
+            return None
+
+    commodities_df = load_commodities_data()
+    if commodities_df is not None:
+        st.dataframe(commodities_df, width="stretch", use_container_width=True)
+    else:
+        st.info("Commodities data is not available.")
+
+    # Data table
+    st.subheader("📈 Raw Data")
+    st.dataframe(
+        weekly_pct_change.tail(20).to_frame("52-Week % Change"),
+        width="stretch",
+    )
 
 except Exception as e:
-    st.error(f"Error: {e}")
-    st.stop()
+    st.error(f"Error loading data: {str(e)}")
+    st.info("Please make sure you have the required data sources available.")

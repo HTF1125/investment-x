@@ -36,20 +36,60 @@ def MultiSeries(
     return output
 
 
+import pandas as pd
+from ix.misc.date import today
+
 def Series(code: str, freq: str | None = None) -> pd.Series:
+    """
+    Return a pandas Series for `code`, resampled to `freq` if provided,
+    otherwise to the DB frequency `ts.frequency`. Slice to [ts.start, today()].
+
+    Alias:
+      If code contains '=', e.g. 'NAME=REAL_CODE', return REAL_CODE with name 'NAME'.
+    """
     try:
+        # Alias handling first, only if there isn't a direct match
         ts = Timeseries.find_one({"code": code}).run()
-        if ts is not None:
-            data = ts.data
-            if freq:
-                data = data.resample(freq).last()
-        elif "=" in code:
+        if ts is None and "=" in code:
             name, new_code = code.split("=", maxsplit=1)
-            data = Series(code=new_code, freq=freq)
-            data.name = name
-        else:
-            raise
-        return data
+            s = Series(code=new_code, freq=freq)
+            s.name = name
+            return s
+
+        if ts is None:
+            # No series found and not an alias pattern
+            return pd.Series(name=code)
+
+        # Base data (already numeric/cleaned by Timeseries.data)
+        s = ts.data.copy()
+
+        # Ensure DateTimeIndex just in case
+        if not isinstance(s.index, pd.DatetimeIndex):
+            s.index = pd.to_datetime(s.index, errors="coerce")
+            s = s.dropna()
+
+        # Compute slice window: [start, today]
+        start_dt = pd.to_datetime(ts.start) if ts.start else s.index.min()
+        end_dt = pd.to_datetime(today())
+
+        # Slice first (in case resample is heavy)
+        s = s.reindex(pd.date_range(start_dt, end_dt,freq="D"))
+        # Choose target frequency: override > DB value
+        target_freq = freq or ts.frequency
+        if target_freq:
+            try:
+                # Resample to last observation in each bin; drop empty bins
+                s = s.resample(str(target_freq)).last().dropna()
+                # Enforce bounds again post-resample
+                s = s.loc[(s.index >= start_dt) & (s.index <= end_dt)]
+            except Exception:
+                # If target_freq is invalid, fall back to unsampled series
+                pass
+
+        # Stable name
+        s.name = getattr(ts, "code", code)
+        return s
+
     except Exception as e:
         print(e)
         return pd.Series(name=code)
@@ -896,7 +936,6 @@ def NumOfOECDLeadingPositiveMoM():
     return percent_positive
 
 
-
 class M2:
 
     def __init__(self, freq: str = 'ME', currency: str = "USD") -> None:
@@ -965,11 +1004,6 @@ class M2:
     def WorldTotal(self) -> pd.Series:
         series = self.World.sum(axis=1).ffill()
         return series
-
-
-
-
-
 
 
 def LocalIndices():
