@@ -19,6 +19,173 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 import tempfile
 import os
+import streamlit as st
+import plotly.graph_objects as go
+import pandas as pd
+from ix import Series
+
+
+class TechCapexChart:
+    """Tech Companies CAPEX Chart Component"""
+
+    def __init__(self):
+        self.colors = {
+            "NVDA": "#FF6B6B",  # Red
+            "MSFT": "#4ECDC4",  # Teal
+            "AMZN": "#45B7D1",  # Blue
+            "META": "#96CEB4",  # Green
+            "GOOG": "#FFEAA7",  # Yellow
+            "Total": "#1f77b4"  # Dark blue for total
+        }
+
+    def load_data(self):
+        """Load and process CAPEX data"""
+        # Forward-looking CAPEX data
+        ff_data = {
+            code: Series(f"{code}:FF_CAPEX_Q")
+            for code in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]
+        }
+
+        ff = (
+            pd.DataFrame(ff_data)
+            .resample("B")
+            .last()
+            .ffill()
+            .dropna()
+            .reindex(pd.date_range("2010-1-1", pd.Timestamp("today")))
+            .ffill()
+        )
+
+        # Historical CAPEX data
+        fe_data = {
+            code: Series(f"{code}:FE_CAPEX_Q")
+            for code in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]
+        }
+
+        fe = pd.DataFrame(fe_data).resample("B").last().ffill().dropna()
+
+        return ff, fe
+
+    def calculate_weekly_changes(self, fe):
+        """Calculate weekly percentage changes for individual companies and total"""
+        # Calculate the weekly percentage change for total
+        weekly_pct_change = (
+            fe.sum(axis=1).resample("W-Fri").last().pct_change(int(52)).loc["2007":]
+        )
+
+        # Calculate individual company weekly percentage changes
+        individual_weekly_changes = {}
+        for company in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]:
+            individual_weekly_changes[company] = (
+                fe[company].resample("W-Fri").last().pct_change(int(52)).loc["2007":]
+            )
+
+        return weekly_pct_change, individual_weekly_changes
+
+    def create_chart(self, weekly_pct_change, individual_weekly_changes):
+        """Create the Plotly chart with individual companies and total"""
+        fig = go.Figure()
+
+        # Add individual company lines
+        for company in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]:
+            if len(individual_weekly_changes[company]) > 0:
+                # Get the latest value for legend
+                latest_value = individual_weekly_changes[company].iloc[-1] * 100
+                legend_name = f"{company}({latest_value:.2f}%)"
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=individual_weekly_changes[company].index,
+                        y=individual_weekly_changes[company].values * 100,
+                        mode="lines",
+                        name=legend_name,
+                        line=dict(color=self.colors[company], width=1.5),
+                        hovertemplate=f"{company}: %{{y:.2f}}% (%{{x}})<extra></extra>",
+                    )
+                )
+
+        # Add the total line (thicker and more prominent)
+        # Get the latest value for total legend
+        latest_total_value = weekly_pct_change.iloc[-1] * 100
+        total_legend_name = f"Total({latest_total_value:.2f}%)"
+
+        fig.add_trace(
+            go.Scatter(
+                x=weekly_pct_change.index,
+                y=weekly_pct_change.values * 100,  # Convert to percentage
+                mode="lines",
+                name=total_legend_name,
+                line=dict(color=self.colors["Total"], width=3),
+                hovertemplate="Total: %{y:.2f}% (%{x})<extra></extra>",
+            )
+        )
+
+        # Update layout
+        fig.update_layout(
+            title={
+                "text": "Tech Companies CAPEX - 52-Week Percentage Change<br><sub>Individual Companies and Total</sub>",
+                "x": 0.5,
+                "xanchor": "center",
+                "font": {"size": 20},
+            },
+            xaxis_title="Date",
+            yaxis_title="Percentage Change (%)",
+            hovermode="x unified",
+            template="plotly_white",
+            height=700,  # Increased height for better visibility
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.1,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor="rgba(0,0,0,0.3)",
+                borderwidth=1,
+                font=dict(size=12)
+            ),
+            margin=dict(b=80),  # Bottom margin for legend
+        )
+
+        # Add zero line
+        fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+
+        return fig
+
+    def display_chart(self):
+        """Main method to load data, create chart, and display it"""
+        try:
+            # Load data
+            ff, fe = self.load_data()
+
+            # Calculate weekly changes
+            weekly_pct_change, individual_weekly_changes = self.calculate_weekly_changes(fe)
+
+            # Create chart
+            fig = self.create_chart(weekly_pct_change, individual_weekly_changes)
+
+            # Display the chart
+            st.plotly_chart(fig, width='stretch')
+
+            return weekly_pct_change, individual_weekly_changes, ff, fe
+
+        except Exception as e:
+            st.error(f"Error loading data: {str(e)}")
+            st.info("Please make sure you have the required data sources available.")
+            return None, None, None, None
+
+    def get_statistics(self, weekly_pct_change):
+        """Get statistics for the chart"""
+        if weekly_pct_change is None or len(weekly_pct_change) == 0:
+            return None, None, None
+
+        current_change = weekly_pct_change.iloc[-1] * 100
+        max_change = weekly_pct_change.max() * 100
+        min_change = weekly_pct_change.min() * 100
+
+        return current_change, max_change, min_change
+
 
 # Set page config
 st.set_page_config(
@@ -30,34 +197,8 @@ st.title("📊 Tech Companies CAPEX Analysis")
 st.markdown("Analyzing quarterly capital expenditure data for major tech companies")
 
 
-# Data processing function
-@st.cache_data
-def load_data():
-    # Forward-looking CAPEX data
-    ff_data = {
-        code: Series(f"{code}:FF_CAPEX_Q")
-        for code in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]
-    }
-
-    ff = (
-        pd.DataFrame(ff_data)
-        .resample("B")
-        .last()
-        .ffill()
-        .dropna()
-        .reindex(pd.date_range("2010-1-1", pd.Timestamp("today")))
-        .ffill()
-    )
-
-    # Historical CAPEX data
-    fe_data = {
-        code: Series(f"{code}:FE_CAPEX_Q")
-        for code in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]
-    }
-
-    fe = pd.DataFrame(fe_data).resample("B").last().ffill().dropna()
-
-    return ff, fe
+# Initialize chart component
+chart_component = TechCapexChart()
 
 
 # PDF generation function
@@ -115,22 +256,54 @@ def generate_pdf_report(fig, weekly_pct_change, ff, fe):
             import matplotlib.dates as mdates
 
             # Create matplotlib figure
-            plt.figure(figsize=(12, 8))
+            plt.figure(figsize=(14, 10))
+
+            # Define colors for each company (same as Plotly)
+            colors = {
+                "NVDA": "#FF6B6B",  # Red
+                "MSFT": "#4ECDC4",  # Teal
+                "AMZN": "#45B7D1",  # Blue
+                "META": "#96CEB4",  # Green
+                "GOOG": "#FFEAA7",  # Yellow
+                "Total": "#1f77b4"  # Dark blue for total
+            }
+
+            # Calculate individual company weekly percentage changes for PDF
+            individual_weekly_changes = {}
+            for company in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]:
+                individual_weekly_changes[company] = (
+                    fe[company].resample("W-Fri").last().pct_change(int(52)).loc["2007":]
+                )
+
+            # Plot individual company lines
+            for company in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]:
+                if len(individual_weekly_changes[company]) > 0:
+                    plt.plot(
+                        individual_weekly_changes[company].index,
+                        individual_weekly_changes[company].values * 100,
+                        color=colors[company],
+                        linewidth=1.5,
+                        label=company,
+                    )
+
+            # Plot total line (thicker)
             plt.plot(
                 weekly_pct_change.index,
                 weekly_pct_change.values * 100,
-                color="#1f77b4",
-                linewidth=2,
-                label="Weekly CAPEX % Change (52-week)",
+                color=colors["Total"],
+                linewidth=3,
+                label="Total",
             )
+
             plt.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
             plt.title(
-                "Tech Companies CAPEX - 52-Week Percentage Change", fontsize=16, pad=20
+                "Tech Companies CAPEX - 52-Week Percentage Change\nIndividual Companies and Total",
+                fontsize=16, pad=20
             )
             plt.xlabel("Date", fontsize=12)
             plt.ylabel("Percentage Change (%)", fontsize=12)
             plt.grid(True, alpha=0.3)
-            plt.legend()
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
             plt.tight_layout()
 
             # Save with matplotlib
@@ -344,86 +517,36 @@ def generate_pdf_report(fig, weekly_pct_change, ff, fe):
     return buffer
 
 
-# Load data
+# Load data and display chart
 try:
-    ff, fe = load_data()
+    weekly_pct_change, individual_weekly_changes, ff, fe = chart_component.display_chart()
 
-    # Calculate the weekly percentage change
-    weekly_pct_change = (
-        fe.sum(axis=1).resample("W-Fri").last().pct_change(int(52)).loc["2007":]
-    )
+    if weekly_pct_change is not None:
+        # Create figure for PDF generation
+        fig = chart_component.create_chart(weekly_pct_change, individual_weekly_changes)
 
-    # Create Plotly figure
-    fig = go.Figure()
+        # Add some statistics
+        current_change, max_change, min_change = chart_component.get_statistics(weekly_pct_change)
 
-    # Add the main line
-    fig.add_trace(
-        go.Scatter(
-            x=weekly_pct_change.index,
-            y=weekly_pct_change.values * 100,  # Convert to percentage
-            mode="lines",
-            name="Weekly CAPEX % Change (52-week)",
-            line=dict(color="#1f77b4", width=2),
-            hovertemplate="<b>Date:</b> %{x}<br>"
-            + "<b>% Change:</b> %{y:.2f}%<br>"
-            + "<extra></extra>",
-        )
-    )
+        col1, col2, col3 = st.columns(3)
 
-    # Update layout
-    fig.update_layout(
-        title={
-            "text": "Tech Companies CAPEX - 52-Week Percentage Change",
-            "x": 0.5,
-            "xanchor": "center",
-            "font": {"size": 20},
-        },
-        xaxis_title="Date",
-        yaxis_title="Percentage Change (%)",
-        hovermode="x unified",
-        template="plotly_white",
-        height=600,
-        showlegend=True,
-    )
+        with col1:
+            st.metric(
+                "Current % Change",
+                f"{current_change:.2f}%" if current_change is not None else "N/A",
+            )
 
-    # Add zero line
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+        with col2:
+            st.metric(
+                "Max % Change",
+                f"{max_change:.2f}%" if max_change is not None else "N/A",
+            )
 
-    # Display the chart
-    st.plotly_chart(fig, width="stretch")
-
-    # Add some statistics
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric(
-            "Current % Change",
-            (
-                f"{weekly_pct_change.iloc[-1]*100:.2f}%"
-                if len(weekly_pct_change) > 0
-                else "N/A"
-            ),
-        )
-
-    with col2:
-        st.metric(
-            "Max % Change",
-            (
-                f"{weekly_pct_change.max()*100:.2f}%"
-                if len(weekly_pct_change) > 0
-                else "N/A"
-            ),
-        )
-
-    with col3:
-        st.metric(
-            "Min % Change",
-            (
-                f"{weekly_pct_change.min()*100:.2f}%"
-                if len(weekly_pct_change) > 0
-                else "N/A"
-            ),
-        )
+        with col3:
+            st.metric(
+                "Min % Change",
+                f"{min_change:.2f}%" if min_change is not None else "N/A",
+            )
 
     # PDF Download section
     st.subheader("📄 Download Report")
@@ -431,7 +554,7 @@ try:
         "Generate and download a comprehensive PDF report with the chart and data."
     )
 
-    if st.button("📥 Download PDF Report", type="primary"):
+    if weekly_pct_change is not None and st.button("📥 Download PDF Report", type="primary"):
         try:
             with st.spinner("Generating PDF report..."):
                 pdf_buffer = generate_pdf_report(fig, weekly_pct_change, ff, fe)
@@ -454,6 +577,8 @@ try:
             st.info(
                 "Make sure you have the required dependencies installed: pip install reportlab kaleido matplotlib"
             )
+    elif weekly_pct_change is None:
+        st.warning("Chart data is not available. Please check your data sources before generating PDF.")
 
     # Global Markets Monthly Performance Table
     st.subheader("🌍 Global Markets Monthly Performance (USD)")
@@ -880,10 +1005,13 @@ try:
 
     # Data table
     st.subheader("📈 Raw Data")
-    st.dataframe(
-        weekly_pct_change.tail(20).to_frame("52-Week % Change"),
-        width="stretch",
-    )
+    if weekly_pct_change is not None:
+        st.dataframe(
+            weekly_pct_change.tail(20).to_frame("52-Week % Change"),
+            width="stretch",
+        )
+    else:
+        st.info("Raw data is not available. Please check your data sources.")
 
 except Exception as e:
     st.error(f"Error loading data: {str(e)}")

@@ -38,7 +38,11 @@ def MultiSeries(
 
 import pandas as pd
 from ix.misc.date import today
+from cachetools import cached, TTLCache
 
+cache = TTLCache(maxsize=128, ttl=600)
+
+@cached(cache)
 def Series(code: str, freq: str | None = None) -> pd.Series:
     """
     Return a pandas Series for `code`, resampled to `freq` if provided,
