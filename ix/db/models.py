@@ -167,13 +167,47 @@ class Prediction(Document):
     prediction: Dict[date, float]
 
 class Asset(BaseModel):
-    code: Annotated[str, Indexed(unique=True)]
+    code: Optional[str] = None
     name: Optional[str] = None
 
 class Universe(Document):
-    code: Annotated[str, Indexed(unique=True)]
     name: Optional[str] = None
-    assets: List[Asset]
+    assets: Optional[List[Asset]] = None
+
+    @classmethod
+    def from_name(cls, name: str) -> "Universe":
+        universe = cls.find_one({"name" : name}).run()
+        if not universe:
+            raise KeyError
+        return universe
+
+    @classmethod
+    def create_from_assets(cls, assets: list[Asset]) -> "Universe":
+        return
+
+
+    def get_series(
+        self,
+        field: str = "PX_LAST",
+        freq: str | None = None,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> pd.DataFrame:
+        from ix.db.query import MultiSeries
+        codes = [f"{asset.name}={asset.code}" for asset in self.assets]
+        multiseries = MultiSeries(codes=codes, field=field, freq=freq)
+        if start:
+            multiseries = multiseries.loc[start:]
+        if end:
+            multiseries = multiseries.loc[:end]
+        return multiseries
+
+    def get_pct_change(self, periods: int = 1) -> pd.DataFrame:
+        return self.get_series(field="PX_LAST").pct_change(periods=periods)
+
+
+
+
 
 class EconomicCalendar(Document):
     date: str

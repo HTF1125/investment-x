@@ -1,1018 +1,468 @@
-import streamlit as st
-import plotly.graph_objects as go
-import plotly.express as px
-from ix import Series
 import pandas as pd
-import io
-import base64
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Image,
-    Table,
-    TableStyle,
-)
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib import colors
-import tempfile
-import os
-import streamlit as st
+from ix import MultiSeries, Rebase
 import plotly.graph_objects as go
-import pandas as pd
-from ix import Series
+import dash
+from dash import dcc, html
+import dash_bootstrap_components as dbc
+
+# Initialize Dash app
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app.title = "Global Markets Dashboard"
+
+# Import Universe class
+from ix.db import Universe
+from .styles.index import string
+# Simple CSS styling
+app.index_string = string
 
 
-class TechCapexChart:
-    """Tech Companies CAPEX Chart Component"""
+def create_performance_chart(
+    data: pd.Series, title: str, height: int = 350
+) -> go.Figure:
+    """Create horizontal bar chart"""
+    colors = ["#48bb78" if x > 0 else "#f56565" for x in data.values]
 
-    def __init__(self):
-        self.colors = {
-            "NVDA": "#FF6B6B",  # Red
-            "MSFT": "#4ECDC4",  # Teal
-            "AMZN": "#45B7D1",  # Blue
-            "META": "#96CEB4",  # Green
-            "GOOG": "#FFEAA7",  # Yellow
-            "Total": "#1f77b4"  # Dark blue for total
-        }
-
-    def load_data(self):
-        """Load and process CAPEX data"""
-        # Forward-looking CAPEX data
-        ff_data = {
-            code: Series(f"{code}:FF_CAPEX_Q")
-            for code in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]
-        }
-
-        ff = (
-            pd.DataFrame(ff_data)
-            .resample("B")
-            .last()
-            .ffill()
-            .dropna()
-            .reindex(pd.date_range("2010-1-1", pd.Timestamp("today")))
-            .ffill()
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            y=data.index,
+            x=data.values,
+            orientation="h",
+            text=[f"{v:+.2f}%" for v in data.values],
+            textposition="auto",
+            textfont=dict(size=10, color="white", family="Inter"),
+            marker=dict(color=colors, opacity=0.8),
+            hovertemplate="<b>%{y}</b><br>Performance: %{x:.2f}%<extra></extra>",
         )
+    )
 
-        # Historical CAPEX data
-        fe_data = {
-            code: Series(f"{code}:FE_CAPEX_Q")
-            for code in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]
-        }
+    fig.update_layout(
+        height=height,
+        title=dict(
+            text=title, x=0.5, font=dict(size=16, color="#ffffff", family="Inter")
+        ),
+        xaxis=dict(
+            title="Return (%)",
+            title_font=dict(size=12, color="#a0aec0"),
+            tickfont=dict(size=10, color="#cbd5e0"),
+            gridcolor="rgba(255, 255, 255, 0.1)",
+            zeroline=True,
+            zerolinecolor="rgba(255, 255, 255, 0.3)",
+        ),
+        yaxis=dict(
+            title="",
+            tickfont=dict(size=10, color="#cbd5e0"),
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=80, r=40, t=50, b=40),
+        font=dict(family="Inter"),
+    )
+    return fig
 
-        fe = pd.DataFrame(fe_data).resample("B").last().ffill().dropna()
 
-        return ff, fe
+def create_rebased_chart(rebased_data: pd.DataFrame, title: str) -> go.Figure:
+    """Create rebased performance chart"""
+    # Use consistent color scheme with ISM charts - darker, more saturated colors
+    colors = [
+        "#3b82f6",  # Blue-500 (darker blue)
+        "#eab308",  # Yellow-500 (darker yellow)
+        "#22c55e",  # Green-500 (same as YoY bars)
+        "#ef4444",  # Red-500
+        "#8b5cf6",  # Violet-500
+        "#f97316",  # Orange-500
+        "#06b6d4",  # Cyan-500
+        "#84cc16",  # Lime-500
+        "#ec4899",  # Pink-500
+        "#6366f1",  # Indigo-500
+        "#14b8a6",  # Teal-500
+        "#ca8a04",  # Yellow-600 (darker)
+        "#dc2626",  # Red-600
+        "#7c3aed",  # Violet-600
+        "#d97706",  # Orange-600
+    ]
 
-    def calculate_weekly_changes(self, fe):
-        """Calculate weekly percentage changes for individual companies and total"""
-        # Calculate the weekly percentage change for total
-        weekly_pct_change = (
-            fe.sum(axis=1).resample("W-Fri").last().pct_change(int(52)).loc["2007":]
-        )
+    fig = go.Figure()
+    for i, column in enumerate(rebased_data.columns):
 
-        # Calculate individual company weekly percentage changes
-        individual_weekly_changes = {}
-        for company in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]:
-            individual_weekly_changes[company] = (
-                fe[company].resample("W-Fri").last().pct_change(int(52)).loc["2007":]
-            )
-
-        return weekly_pct_change, individual_weekly_changes
-
-    def create_chart(self, weekly_pct_change, individual_weekly_changes):
-        """Create the Plotly chart with individual companies and total"""
-        fig = go.Figure()
-
-        # Add individual company lines
-        for company in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]:
-            if len(individual_weekly_changes[company]) > 0:
-                # Get the latest value for legend
-                latest_value = individual_weekly_changes[company].iloc[-1] * 100
-                legend_name = f"{company}({latest_value:.2f}%)"
-
-                fig.add_trace(
-                    go.Scatter(
-                        x=individual_weekly_changes[company].index,
-                        y=individual_weekly_changes[company].values * 100,
-                        mode="lines",
-                        name=legend_name,
-                        line=dict(color=self.colors[company], width=1.5),
-                        hovertemplate=f"{company}: %{{y:.2f}}% (%{{x}})<extra></extra>",
-                    )
-                )
-
-        # Add the total line (thicker and more prominent)
-        # Get the latest value for total legend
-        latest_total_value = weekly_pct_change.iloc[-1] * 100
-        total_legend_name = f"Total({latest_total_value:.2f}%)"
+        d = rebased_data[column].dropna()
 
         fig.add_trace(
             go.Scatter(
-                x=weekly_pct_change.index,
-                y=weekly_pct_change.values * 100,  # Convert to percentage
+                x=d.index,
+                y=d.values,
                 mode="lines",
-                name=total_legend_name,
-                line=dict(color=self.colors["Total"], width=3),
-                hovertemplate="Total: %{y:.2f}% (%{x})<extra></extra>",
+                name=column,
+                line=dict(width=2, color=colors[i % len(colors)]),
+                hovertemplate=f"{column}: %{{y:.2f}}<extra></extra>",
             )
         )
 
-        # Update layout
-        fig.update_layout(
-            title={
-                "text": "Tech Companies CAPEX - 52-Week Percentage Change<br><sub>Individual Companies and Total</sub>",
-                "x": 0.5,
-                "xanchor": "center",
-                "font": {"size": 20},
-            },
-            xaxis_title="Date",
-            yaxis_title="Percentage Change (%)",
-            hovermode="x unified",
-            template="plotly_white",
-            height=700,  # Increased height for better visibility
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="top",
-                y=-0.1,
-                xanchor="center",
-                x=0.5,
-                bgcolor="rgba(255,255,255,0.9)",
-                bordercolor="rgba(0,0,0,0.3)",
-                borderwidth=1,
-                font=dict(size=12)
-            ),
-            margin=dict(b=80),  # Bottom margin for legend
-        )
-
-        # Add zero line
-        fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
-
-        return fig
-
-    def display_chart(self):
-        """Main method to load data, create chart, and display it"""
-        try:
-            # Load data
-            ff, fe = self.load_data()
-
-            # Calculate weekly changes
-            weekly_pct_change, individual_weekly_changes = self.calculate_weekly_changes(fe)
-
-            # Create chart
-            fig = self.create_chart(weekly_pct_change, individual_weekly_changes)
-
-            # Display the chart
-            st.plotly_chart(fig, width='stretch')
-
-            return weekly_pct_change, individual_weekly_changes, ff, fe
-
-        except Exception as e:
-            st.error(f"Error loading data: {str(e)}")
-            st.info("Please make sure you have the required data sources available.")
-            return None, None, None, None
-
-    def get_statistics(self, weekly_pct_change):
-        """Get statistics for the chart"""
-        if weekly_pct_change is None or len(weekly_pct_change) == 0:
-            return None, None, None
-
-        current_change = weekly_pct_change.iloc[-1] * 100
-        max_change = weekly_pct_change.max() * 100
-        min_change = weekly_pct_change.min() * 100
-
-        return current_change, max_change, min_change
-
-
-# Set page config
-st.set_page_config(
-    page_title="Tech Companies CAPEX Analysis", page_icon="📊", layout="wide"
-)
-
-# Title and description
-st.title("📊 Tech Companies CAPEX Analysis")
-st.markdown("Analyzing quarterly capital expenditure data for major tech companies")
-
-
-# Initialize chart component
-chart_component = TechCapexChart()
-
-
-# PDF generation function
-def generate_pdf_report(fig, weekly_pct_change, ff, fe):
-    """Generate a PDF report with the plot and data"""
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=72,
-        leftMargin=72,
-        topMargin=72,
-        bottomMargin=18,
+    fig.update_layout(
+        height=500,
+        title=dict(
+            text=title, x=0.5, font=dict(size=18, color="#ffffff", family="Inter")
+        ),
+        xaxis=dict(
+            title="Date",
+            title_font=dict(size=12, color="#a0aec0"),
+            tickfont=dict(size=10, color="#cbd5e0"),
+            gridcolor="rgba(255, 255, 255, 0.1)",
+        ),
+        yaxis=dict(
+            title="Rebased Value (Base = 100)",
+            title_font=dict(size=12, color="#a0aec0"),
+            tickfont=dict(size=10, color="#cbd5e0"),
+            gridcolor="rgba(255, 255, 255, 0.1)",
+            range=[0, None],  # Start y-axis from 0
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(
+            orientation="h",  # Horizontal legend
+            yanchor="top",
+            y=1.05,  # Position above the chart
+            xanchor="center",
+            x=0.5,  # Center the legend
+            bgcolor="rgba(255, 255, 255, 0.05)",
+            font=dict(size=9, color="#cbd5e0"),
+        ),
+        margin=dict(l=60, r=60, t=80, b=40),  # Increased top margin for legend
+        font=dict(family="Inter"),
+        hovermode="x unified",  # Unified hover mode
     )
+    return fig
 
-    # Get styles
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "CustomTitle",
-        parent=styles["Heading1"],
-        fontSize=18,
-        spaceAfter=30,
-        alignment=1,  # Center alignment
-    )
 
-    # Build content
-    story = []
-
-    # Title
-    story.append(Paragraph("Tech Companies CAPEX Analysis Report", title_style))
-    story.append(Spacer(1, 12))
-
-    # Description
-    story.append(
-        Paragraph(
-            "Analyzing quarterly capital expenditure data for major tech companies (NVDA, MSFT, AMZN, META, GOOG)",
-            styles["Normal"],
-        )
-    )
-    story.append(Spacer(1, 20))
-
-    # Save plot as image
-    tmp_file_path = None
+def create_universe_section(universe_name: str, icon: str):
+    """Create a section for each universe"""
     try:
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
-            tmp_file_path = tmp_file.name
+        universe = Universe.from_name(universe_name)
 
-        # Try using kaleido first (faster and better quality)
+        # Get performance data
+        perf_5d = universe.get_pct_change(5).iloc[-1].sort_values(ascending=True)
+        perf_21d = universe.get_pct_change(21).iloc[-1].sort_values(ascending=True)
+
+        # Get rebased data (try 2025, fallback to last 252 days)
         try:
-            fig.write_image(tmp_file_path, width=800, height=600, scale=2)
-        except Exception as kaleido_error:
-            # Fallback to matplotlib if kaleido fails
-            import matplotlib.pyplot as plt
-            import matplotlib.dates as mdates
-
-            # Create matplotlib figure
-            plt.figure(figsize=(14, 10))
-
-            # Define colors for each company (same as Plotly)
-            colors = {
-                "NVDA": "#FF6B6B",  # Red
-                "MSFT": "#4ECDC4",  # Teal
-                "AMZN": "#45B7D1",  # Blue
-                "META": "#96CEB4",  # Green
-                "GOOG": "#FFEAA7",  # Yellow
-                "Total": "#1f77b4"  # Dark blue for total
-            }
-
-            # Calculate individual company weekly percentage changes for PDF
-            individual_weekly_changes = {}
-            for company in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]:
-                individual_weekly_changes[company] = (
-                    fe[company].resample("W-Fri").last().pct_change(int(52)).loc["2007":]
-                )
-
-            # Plot individual company lines
-            for company in ["NVDA", "MSFT", "AMZN", "META", "GOOG"]:
-                if len(individual_weekly_changes[company]) > 0:
-                    plt.plot(
-                        individual_weekly_changes[company].index,
-                        individual_weekly_changes[company].values * 100,
-                        color=colors[company],
-                        linewidth=1.5,
-                        label=company,
-                    )
-
-            # Plot total line (thicker)
-            plt.plot(
-                weekly_pct_change.index,
-                weekly_pct_change.values * 100,
-                color=colors["Total"],
-                linewidth=3,
-                label="Total",
+            rebased_data = (
+                universe.get_series(field="PX_LAST").loc["2025"].apply(Rebase)
+            )
+            rebased_title = f"{icon} {universe_name} - 2025 Rebased Performance"
+        except:
+            rebased_data = universe.get_series(field="PX_LAST").tail(252).apply(Rebase)
+            rebased_title = (
+                f"{icon} {universe_name} - Last 252 Days Rebased Performance"
             )
 
-            plt.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
-            plt.title(
-                "Tech Companies CAPEX - 52-Week Percentage Change\nIndividual Companies and Total",
-                fontsize=16, pad=20
-            )
-            plt.xlabel("Date", fontsize=12)
-            plt.ylabel("Percentage Change (%)", fontsize=12)
-            plt.grid(True, alpha=0.3)
-            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-            plt.tight_layout()
+        # Create charts
+        rebased_chart = create_rebased_chart(rebased_data, rebased_title)
+        chart_5d = create_performance_chart(perf_5d, "5-Day Performance", 350)
+        chart_21d = create_performance_chart(perf_21d, "21-Day Performance", 350)
 
-            # Save with matplotlib
-            plt.savefig(
-                tmp_file_path,
-                dpi=300,
-                bbox_inches="tight",
-                facecolor="white",
-                edgecolor="none",
-            )
-            plt.close()
-
-        # Add plot to PDF
-        story.append(
-            Paragraph("CAPEX 52-Week Percentage Change Chart", styles["Heading2"])
+        return html.Div(
+            [
+                html.H3(f"{icon} {universe_name}", className="universe-title"),
+                # Large rebased chart first
+                html.Div(
+                    [dcc.Graph(figure=rebased_chart, className="large-chart")],
+                    className="chart-container",
+                ),
+                # Smaller performance charts side by side
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                html.Div(
+                                    [
+                                        dcc.Graph(
+                                            figure=chart_5d, className="small-chart"
+                                        )
+                                    ],
+                                    className="chart-container",
+                                )
+                            ],
+                            width=6,
+                        ),
+                        dbc.Col(
+                            [
+                                html.Div(
+                                    [
+                                        dcc.Graph(
+                                            figure=chart_21d, className="small-chart"
+                                        )
+                                    ],
+                                    className="chart-container",
+                                )
+                            ],
+                            width=6,
+                        ),
+                    ]
+                ),
+            ],
+            className="universe-section",
         )
-        story.append(Spacer(1, 12))
-
-        # Add image - keep file reference until PDF is built
-        img = Image(tmp_file_path, width=7 * inch, height=5.25 * inch)
-        story.append(img)
-        story.append(Spacer(1, 20))
 
     except Exception as e:
-        # If there's an error, clean up the temp file
-        if tmp_file_path and os.path.exists(tmp_file_path):
-            try:
-                os.unlink(tmp_file_path)
-            except:
-                pass
-        raise e
+        return html.Div(
+            [
+                html.H3(f"{icon} {universe_name}", className="universe-title"),
+                html.P(
+                    f"Error loading data: {str(e)}",
+                    style={"color": "#f56565", "text-align": "center"},
+                ),
+            ],
+            className="universe-section",
+        )
 
-    # Add statistics
-    story.append(Paragraph("Key Statistics", styles["Heading2"]))
-    story.append(Spacer(1, 12))
 
-    if len(weekly_pct_change) > 0:
-        current_change = weekly_pct_change.iloc[-1] * 100
-        max_change = weekly_pct_change.max() * 100
-        min_change = weekly_pct_change.min() * 100
+# Universe configurations
+UNIVERSES = [
+    ("Major Indices", "🌍"),
+    ("Sectors", "🏢"),
+    ("Themes", "🚀"),
+    ("Global Markets", "🗺️"),
+    ("Commodities", "💰"),
+]
 
-        stats_data = [
-            ["Metric", "Value"],
-            ["Current % Change", f"{current_change:.2f}%"],
-            ["Maximum % Change", f"{max_change:.2f}%"],
-            ["Minimum % Change", f"{min_change:.2f}%"],
+
+def ism_cycle_chart(px: pd.Series):
+    """Create ISM cycle chart with asset performance"""
+    from ix import Series, Cycle
+    import numpy as np
+
+    # Prepare ISM and Cycle data
+    twenty_years_ago = pd.Timestamp.today() - pd.DateOffset(years=20)
+
+    # Get ISM data directly
+    ism = Series("ISMPMI_M:PX_LAST").loc[twenty_years_ago:]
+
+    # Create cycle from ISM data
+    try:
+        cycle = Cycle(ism, 60)
+    except Exception:
+        # If cycle fails, create a simple moving average as fallback
+        cycle = ism.rolling(window=12).mean()
+
+    # Prepare performance YoY (keep as decimal for proper percentage display)
+    performance_yoy = px.resample("W-Fri").last().ffill().pct_change(52)
+
+    performance_yoy = performance_yoy[performance_yoy.index >= twenty_years_ago]
+
+    # Get latest values for legend
+    latest_ism = ism.iloc[-1] if not ism.empty else None
+    latest_cycle = cycle.iloc[-1] if not cycle.empty else None
+    latest_performance = performance_yoy.iloc[-1] if not performance_yoy.empty else None
+
+    # Create figure
+    fig = go.Figure()
+
+    # ISM PMI
+    fig.add_trace(
+        go.Scatter(
+            x=ism.index,
+            y=ism.values,
+            name=f"ISM PMI ({latest_ism:.2f})" if latest_ism is not None else "ISM PMI",
+            mode="lines",
+            line=dict(color="#60a5fa", width=2),
+            yaxis="y1",
+            hovertemplate="ISM PMI: %{y:.2f}<extra></extra>",
+        )
+    )
+
+    # ISM Cycle
+    fig.add_trace(
+        go.Scatter(
+            x=cycle.index,
+            y=cycle.values,
+            name=(
+                f"ISM Cycle 48M ({latest_cycle:.2f})"
+                if latest_cycle is not None
+                else "ISM Cycle 48M"
+            ),
+            mode="lines",
+            line=dict(color="#fbbf24", width=2, dash="dot"),
+            yaxis="y1",
+            hovertemplate="ISM Cycle 48M: %{y:.2f}<extra></extra>",
+        )
+    )
+
+    # Asset YoY %
+    performance_name = f"{px.name} YoY"
+    if latest_performance is not None:
+        performance_name += f" ({latest_performance:.1%})"
+
+    fig.add_trace(
+        go.Bar(
+            x=performance_yoy.index,
+            y=performance_yoy,
+            name=performance_name,
+            marker=dict(color="#22c55e"),
+            opacity=0.6,
+            yaxis="y2",
+            hovertemplate=f"{px.name} YoY: %{{y:.1%}}<extra></extra>",
+        )
+    )
+
+    # Layout with dual y-axis
+    fig.update_layout(
+        paper_bgcolor="#0f172a",
+        plot_bgcolor="#1e293b",
+        yaxis=dict(title="ISM / Cycle", color="white", gridcolor="#334155"),
+        yaxis2=dict(
+            title="YoY Return",
+            color="white",
+            overlaying="y",
+            side="right",
+            showgrid=False,
+            tickformat=".1%",
+        ),
+        legend=dict(
+            orientation="h",
+            y=1.05,
+            x=0.5,
+            xanchor="center",
+            yanchor="top",
+            font=dict(color="white", size=10),
+            bgcolor="rgba(0,0,0,0.3)",
+            bordercolor="rgba(255,255,255,0.2)",
+            borderwidth=1,
+        ),
+        margin=dict(l=40, r=40, t=60, b=60),
+        height=500,
+        hovermode="x unified",
+    )
+
+    return fig
+
+
+def create_ism_section():
+    """Create ISM cycle analysis section with all 6 charts"""
+    try:
+        from ix import Series, Cycle
+
+        # Define all the assets to analyze
+        assets = [
+            ("SPX Index:PX_LAST", "S&P 500"),
+            ("TRYUS10Y:PX_YTM", "US Treasury 10Y"),
+            ("CL1 Comdty:PX_LAST", "Crude Oil"),
+            ("XBTUSD Curncy:PX_LAST", "Bitcoin"),
+            ("DXY Index:PX_LAST", "Dollar"),
         ]
 
-        stats_table = Table(stats_data)
-        stats_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, 0), 14),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                    ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
-                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
-                ]
+        # Create charts for each asset
+        charts = []
+        for code, name in assets:
+            try:
+                asset_data = Series(code, name=name)
+                chart = ism_cycle_chart(asset_data)
+                charts.append(
+                    dbc.Col(
+                        [
+                            html.Div(
+                                [dcc.Graph(figure=chart, className="small-chart")],
+                                className="chart-container",
+                            )
+                        ],
+                        width=6,
+                        style={"margin-bottom": "20px"},
+                    )
+                )
+            except Exception as e:
+                print(f"Error creating chart for {name}: {e}")
+                continue
+
+        # Add Gold/Copper ratio chart
+        try:
+            GoldCopperRatio = Series("HG1 Comdty:PX_LAST") / Series(
+                "GC1 Comdty:PX_LAST"
             )
-        )
+            GoldCopperRatio.name = "Gold/Copper"
+            chart = ism_cycle_chart(GoldCopperRatio)
+            charts.append(
+                dbc.Col(
+                    [
+                        html.Div(
+                            [dcc.Graph(figure=chart, className="small-chart")],
+                            className="chart-container",
+                        )
+                    ],
+                    width=6,
+                    style={"margin-bottom": "20px"},
+                )
+            )
+        except Exception as e:
+            print(f"Error creating Gold/Copper chart: {e}")
 
-        story.append(stats_table)
-        story.append(Spacer(1, 20))
-
-    # Add recent data table
-    story.append(Paragraph("Recent Data (Last 10 Observations)", styles["Heading2"]))
-    story.append(Spacer(1, 12))
-
-    recent_data = weekly_pct_change.tail(10).to_frame("52-Week % Change")
-    recent_data["Date"] = recent_data.index.strftime("%Y-%m-%d")
-    recent_data["% Change"] = (recent_data["52-Week % Change"] * 100).round(2).astype(
-        str
-    ) + "%"
-    recent_data = recent_data[["Date", "% Change"]].reset_index(drop=True)
-
-    # Convert to list for table
-    table_data = [["Date", "% Change"]] + recent_data.values.tolist()
-
-    data_table = Table(table_data)
-    data_table.setStyle(
-        TableStyle(
+        return html.Div(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 12),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
-                ("GRID", (0, 0), (-1, -1), 1, colors.black),
-                ("FONTSIZE", (0, 1), (-1, -1), 10),
-            ]
+                html.H3("📊 ISM Cycle Analysis", className="universe-title"),
+                html.P(
+                    "ISM Manufacturing PMI vs Asset Performance Analysis",
+                    style={
+                        "color": "#a0aec0",
+                        "text-align": "center",
+                        "margin-bottom": "30px",
+                    },
+                ),
+                dbc.Row(charts),
+            ],
+            className="universe-section",
         )
-    )
-
-    story.append(data_table)
-    story.append(Spacer(1, 20))
-
-    # Add global markets table to PDF
-    try:
-        # Load global markets data for PDF
-        global_data = {
-            "ACWI": Series("ACWI US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "US": Series("SPY US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "DM ex US": Series("IDEV US Equity:PX_LAST", freq="ME")
-            .pct_change()
-            .iloc[-13:]
-            * 100,
-            "U.K.": Series("EWU US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "EAFE": Series("EFA US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "Europe": Series("FEZ US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "Germany": Series("EWG US Equity:PX_LAST", freq="ME")
-            .pct_change()
-            .iloc[-13:]
-            * 100,
-            "Japan": Series("EWJ US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "Korea": Series("EWY US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "Australia": Series("EWA US Equity:PX_LAST", freq="ME")
-            .pct_change()
-            .iloc[-13:]
-            * 100,
-            "Emerging": Series("VWO US Equity:PX_LAST", freq="ME")
-            .pct_change()
-            .iloc[-13:]
-            * 100,
-            "China": Series("MCHI US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "India": Series("INDA US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "Brazil": Series("EWZ US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "Taiwan": Series("EWT US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-            * 100,
-            "Vietnam": Series("VNM US Equity:PX_LAST", freq="ME")
-            .pct_change()
-            .iloc[-13:]
-            * 100,
-        }
-
-        global_df = pd.DataFrame(global_data).T
-        global_df.columns = [col.strftime("%b %Y") for col in global_df.columns]
-        global_df = global_df.round(2)
-
-        # Add global markets section to PDF
-        story.append(
-            Paragraph("Global Markets Monthly Performance (USD)", styles["Heading2"])
-        )
-        story.append(Spacer(1, 12))
-
-        # Create table data for PDF (show last 6 months to fit on page)
-        recent_months = global_df.columns[-6:]  # Last 6 months
-        pdf_table_data = [["Market"] + list(recent_months)]
-
-        for market in global_df.index:
-            row = [market]
-            for month in recent_months:
-                row.append(f"{global_df.loc[market, month]:.2f}%")
-            pdf_table_data.append(row)
-
-        global_table = Table(pdf_table_data)
-        global_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, 0), 10),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                    ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
-                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
-                    ("FONTSIZE", (0, 1), (-1, -1), 8),
-                ]
-            )
-        )
-
-        story.append(global_table)
-
     except Exception as e:
-        # If global markets data fails, just continue without it
-        story.append(Paragraph("Global Markets data not available", styles["Normal"]))
-
-    # Build PDF
-    doc.build(story)
-    buffer.seek(0)
-
-    # Clean up temp file after PDF is built
-    if tmp_file_path and os.path.exists(tmp_file_path):
-        try:
-            os.unlink(tmp_file_path)
-        except (OSError, PermissionError):
-            # If we can't delete it immediately, try to delete it later
-            import atexit
-
-            atexit.register(
-                lambda: (
-                    os.unlink(tmp_file_path) if os.path.exists(tmp_file_path) else None
-                )
-            )
-
-    return buffer
-
-
-# Load data and display chart
-try:
-    weekly_pct_change, individual_weekly_changes, ff, fe = chart_component.display_chart()
-
-    if weekly_pct_change is not None:
-        # Create figure for PDF generation
-        fig = chart_component.create_chart(weekly_pct_change, individual_weekly_changes)
-
-        # Add some statistics
-        current_change, max_change, min_change = chart_component.get_statistics(weekly_pct_change)
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric(
-                "Current % Change",
-                f"{current_change:.2f}%" if current_change is not None else "N/A",
-            )
-
-        with col2:
-            st.metric(
-                "Max % Change",
-                f"{max_change:.2f}%" if max_change is not None else "N/A",
-            )
-
-        with col3:
-            st.metric(
-                "Min % Change",
-                f"{min_change:.2f}%" if min_change is not None else "N/A",
-            )
-
-    # PDF Download section
-    st.subheader("📄 Download Report")
-    st.markdown(
-        "Generate and download a comprehensive PDF report with the chart and data."
-    )
-
-    if weekly_pct_change is not None and st.button("📥 Download PDF Report", type="primary"):
-        try:
-            with st.spinner("Generating PDF report..."):
-                pdf_buffer = generate_pdf_report(fig, weekly_pct_change, ff, fe)
-
-                # Create download button
-                st.download_button(
-                    label="📄 Download PDF Report",
-                    data=pdf_buffer.getvalue(),
-                    file_name=f"tech_capex_analysis_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                    mime="application/pdf",
-                    type="primary",
-                )
-
-                st.success(
-                    "PDF report generated successfully! Click the download button above to save it."
-                )
-
-        except Exception as e:
-            st.error(f"Error generating PDF: {str(e)}")
-            st.info(
-                "Make sure you have the required dependencies installed: pip install reportlab kaleido matplotlib"
-            )
-    elif weekly_pct_change is None:
-        st.warning("Chart data is not available. Please check your data sources before generating PDF.")
-
-    # Global Markets Monthly Performance Table
-    st.subheader("🌍 Global Markets Monthly Performance (USD)")
-    st.markdown("Monthly percentage changes for major global equity markets")
-
-    # Global markets data
-    @st.cache_data
-    def load_global_markets_data():
-        try:
-            global_data = {
-                "ACWI": Series("ACWI US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "US": Series("SPY US Equity:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "DM ex US": Series("IDEV US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "U.K.": Series("EWU US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "EAFE": Series("EFA US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Europe": Series("FEZ US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Germany": Series("EWG US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Japan": Series("EWJ US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Korea": Series("EWY US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Australia": Series("EWA US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Emerging": Series("VWO US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "China": Series("MCHI US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "India": Series("INDA US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Brazil": Series("EWZ US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Taiwan": Series("EWT US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Vietnam": Series("VNM US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-            }
-
-            # Create DataFrame and transpose
-            df = pd.DataFrame(global_data).T
-            df.index.name = "Market"
-
-            # Format dates as month-year
-            df.columns = [col.strftime("%b %Y") for col in df.columns]
-
-            # Round to 2 decimal places
-            df = df.round(2)
-
-            return df
-
-        except Exception as e:
-            st.error(f"Error loading global markets data: {str(e)}")
-            return None
-
-    # Load and display global markets data
-    global_markets_df = load_global_markets_data()
-
-    if global_markets_df is not None:
-        # Display the table with custom styling
-        st.dataframe(global_markets_df, width="stretch", use_container_width=True)
-
-        # Add summary statistics
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric(
-                "Best Performer (Latest Month)",
-                f"{global_markets_df.iloc[:, -1].idxmax()}: {global_markets_df.iloc[:, -1].max():.2f}%",
-            )
-
-        with col2:
-            st.metric(
-                "Worst Performer (Latest Month)",
-                f"{global_markets_df.iloc[:, -1].idxmin()}: {global_markets_df.iloc[:, -1].min():.2f}%",
-            )
-
-        with col3:
-            avg_performance = global_markets_df.iloc[:, -1].mean()
-            st.metric("Average Performance (Latest Month)", f"{avg_performance:.2f}%")
-    else:
-        st.info("Global markets data is not available. Please check your data sources.")
-
-    # Major Indices Performance Table
-    st.subheader("📈 Major Indices Monthly Performance")
-    st.markdown("Monthly percentage changes for major global stock indices")
-
-    @st.cache_data
-    def load_major_indices_data():
-        try:
-            indices_data = {
-                "S&P500": Series("SPX Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "Nasdaq": Series("CCMP Index:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "DJI30": Series("INDU Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "Russell2": Series("RTY Index:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "EuroStoxx50": Series("SX5E Index:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "FTSE100": Series("UKX Index:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "DAX": Series("DAX Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "CAC40": Series("CAC Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "Nikkie225": Series("NKY Index:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "TOPIX": Series("TPX Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "KOSPI": Series("KOSPI Index:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Nifty": Series("NIFTY Index:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "HSI": Series("HSI Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "SH": Series("SHCOMP Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-            }
-
-            df = pd.DataFrame(indices_data).T
-            df.index.name = "Index"
-            df.columns = [col.strftime("%b %Y") for col in df.columns]
-            df = df.round(2)
-            return df
-
-        except Exception as e:
-            st.error(f"Error loading major indices data: {str(e)}")
-            return None
-
-    indices_df = load_major_indices_data()
-    if indices_df is not None:
-        st.dataframe(indices_df, width="stretch", use_container_width=True)
-    else:
-        st.info("Major indices data is not available.")
-
-    # Sectors Performance Table
-    st.subheader("🏭 Sectors Monthly Performance")
-    st.markdown("Monthly percentage changes for S&P 500 sector ETFs")
-
-    @st.cache_data
-    def load_sectors_data():
-        try:
-            sectors_data = {
-                "InfoTech": Series("XLK US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Industrials": Series("XLI US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Financials": Series("XLF US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Comm": Series("XLC US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "RealEstate": Series("XLRE US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Energy": Series("XLE US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Discretionary": Series("XLY US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Materials": Series("XLB US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "HealthCare": Series("XLV US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Staples": Series("XLP US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Utilities": Series("XLU US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-            }
-
-            df = pd.DataFrame(sectors_data).T
-            df.index.name = "Sector"
-            df.columns = [col.strftime("%b %Y") for col in df.columns]
-            df = df.round(2)
-            return df
-
-        except Exception as e:
-            st.error(f"Error loading sectors data: {str(e)}")
-            return None
-
-    sectors_df = load_sectors_data()
-    if sectors_df is not None:
-        st.dataframe(sectors_df, width="stretch", use_container_width=True)
-    else:
-        st.info("Sectors data is not available.")
-
-    # Thematic ETFs Performance Table
-    st.subheader("🚀 Thematic ETFs Monthly Performance")
-    st.markdown("Monthly percentage changes for thematic and specialized ETFs")
-
-    @st.cache_data
-    def load_thematic_data():
-        try:
-            thematic_data = {
-                "FinTech": Series("FINX US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Real Estate": Series("VNQ US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Pave": Series("PAVE US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Space": Series("UFO US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Data/Infra": Series("SRVR US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "IoT": Series("SNSR US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "EV/Drive": Series("DRIV US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Pharma": Series("PPH US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Cloud": Series("SKYY US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Lit/Battery": Series("LIT US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Solar": Series("TAN US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Semis": Series("SOXX US Equity:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-            }
-
-            df = pd.DataFrame(thematic_data).T
-            df.index.name = "Thematic ETF"
-            df.columns = [col.strftime("%b %Y") for col in df.columns]
-            df = df.round(2)
-            return df
-
-        except Exception as e:
-            st.error(f"Error loading thematic ETFs data: {str(e)}")
-            return None
-
-    thematic_df = load_thematic_data()
-    if thematic_df is not None:
-        st.dataframe(thematic_df, width="stretch", use_container_width=True)
-    else:
-        st.info("Thematic ETFs data is not available.")
-
-    # Currencies Performance Table
-    st.subheader("💱 Currencies Monthly Performance")
-    st.markdown("Monthly percentage changes for major currencies (vs USD)")
-
-    @st.cache_data
-    def load_currencies_data():
-        try:
-            currencies_data = {
-                "DXY": Series("DXY Index:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "EUR": -Series("USDEUR Curncy:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "GBP": -Series("USDGBP Curncy:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "JPY": -Series("USDJPY Curncy:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "KRW": -Series("USDKRW Curncy:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "AUD": -Series("USDAUD Curncy:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "INR": -Series("USDINR Curncy:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-            }
-
-            df = pd.DataFrame(currencies_data).T
-            df.index.name = "Currency"
-            df.columns = [col.strftime("%b %Y") for col in df.columns]
-            df = df.round(2)
-            return df
-
-        except Exception as e:
-            st.error(f"Error loading currencies data: {str(e)}")
-            return None
-
-    currencies_df = load_currencies_data()
-    if currencies_df is not None:
-        st.dataframe(currencies_df, width="stretch", use_container_width=True)
-    else:
-        st.info("Currencies data is not available.")
-
-    # Commodities Performance Table
-    st.subheader("🥇 Commodities Monthly Performance")
-    st.markdown("Monthly percentage changes for major commodities")
-
-    @st.cache_data
-    def load_commodities_data():
-        try:
-            commodities_data = {
-                "Gold": Series("GOLDCOMP:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "Silver": Series("SLVR Curncy:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Crude": Series("WTI Comdty:PX_LAST", freq="ME").pct_change().iloc[-13:]
-                * 100,
-                "Copper": Series("HG1 Comdty:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-                "Bitcoin": Series("XBTUSD Curncy:PX_LAST", freq="ME")
-                .pct_change()
-                .iloc[-13:]
-                * 100,
-            }
-
-            df = pd.DataFrame(commodities_data).T
-            df.index.name = "Commodity"
-            df.columns = [col.strftime("%b %Y") for col in df.columns]
-            df = df.round(2)
-            return df
-
-        except Exception as e:
-            st.error(f"Error loading commodities data: {str(e)}")
-            return None
-
-    commodities_df = load_commodities_data()
-    if commodities_df is not None:
-        st.dataframe(commodities_df, width="stretch", use_container_width=True)
-    else:
-        st.info("Commodities data is not available.")
-
-    # Data table
-    st.subheader("📈 Raw Data")
-    if weekly_pct_change is not None:
-        st.dataframe(
-            weekly_pct_change.tail(20).to_frame("52-Week % Change"),
-            width="stretch",
+        return html.Div(
+            [
+                html.H3("📊 ISM Cycle Analysis", className="universe-title"),
+                html.P(
+                    f"Error loading ISM data: {str(e)}",
+                    style={"color": "#f56565", "text-align": "center"},
+                ),
+            ],
+            className="universe-section",
         )
-    else:
-        st.info("Raw data is not available. Please check your data sources.")
 
-except Exception as e:
-    st.error(f"Error loading data: {str(e)}")
-    st.info("Please make sure you have the required data sources available.")
+
+# App layout
+app.layout = dbc.Container(
+    [
+        # Header
+        html.H1("📈 Global Markets Dashboard", className="main-title"),
+        html.P(
+            "Real-time performance analysis across all asset universes",
+            className="subtitle",
+        ),
+        # ISM Cycle Analysis section
+        create_ism_section(),
+        # Universe sections
+        html.Div(
+            [
+                create_universe_section(universe_name, icon)
+                for universe_name, icon in UNIVERSES
+            ]
+        ),
+        # Footer
+        html.Div(
+            [
+                html.Hr(
+                    style={
+                        "border-color": "rgba(255, 255, 255, 0.2)",
+                        "margin": "40px 0",
+                    }
+                ),
+                html.P(
+                    "📈 Global Markets Dashboard | Powered by Dash & Plotly",
+                    style={
+                        "text-align": "center",
+                        "color": "#718096",
+                        "margin": "20px 0",
+                    },
+                ),
+            ]
+        ),
+    ],
+    fluid=True,
+)
+
+# Run the app
+if __name__ == "__main__":
+    app.run_server(debug=True)

@@ -1,0 +1,56 @@
+body {
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #0c1623 0%, #1a2332 50%, #2d3748 100%);
+    color: #ffffff;
+    margin: 0;
+    padding: 20px;
+}
+
+.main-title {
+    text-align: center;
+    font-size: 3rem;
+    font-weight: bold;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    text-align: center;
+    color: #a0aec0;
+    font-size: 1.2rem;
+    margin-bottom: 40px;
+}
+
+.universe-section {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.universe-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #ffffff;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.chart-container {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 15px;
+    padding: 15px;
+    margin: 10px 0;
+}
+
+.small-chart {
+    height: 350px;
+}
+
+.large-chart {
+    height: 500px;
+}

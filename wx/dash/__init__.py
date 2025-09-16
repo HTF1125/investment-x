@@ -1,3 +1,0 @@
-"""
-Investment Dashboard - Dash Application
-"""

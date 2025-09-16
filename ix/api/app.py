@@ -335,58 +335,16 @@ async def get_series(
     """
     print(f"Params got = {params}")
 
-    frames: List[pd.Series] = []
-
+    df = pd.DataFrame()
     # Process each series specification
     for spec in series:
-        if "=" in spec:
-            alias, code = spec.split("=", 1)
-            alias = alias.strip()
-            code = code.strip()
-        else:
-            alias, code = spec.strip(), spec.strip()
-
+        print(spec)
         try:
-            ser = eval(code)
-
-            if isinstance(ser, pd.DataFrame):
-                for col_name in ser.columns:
-                    col_series = ser[col_name].copy()
-                    col_series.name = (
-                        f"{alias}_{col_name}" if alias != code else col_name
-                    )
-                    frames.append(col_series)
-
-            elif isinstance(ser, pd.Series):
-                ser = ser.copy()
-                ser.name = alias
-                frames.append(ser)
-            else:
-                raise ValueError(
-                    f"Expected pandas Series or DataFrame, got {type(ser)}"
-                )
-
+            ser = eval(spec.strip())
+            print(ser)
+            df = pd.concat([df, ser], axis=1)
         except Exception as e:
-            logger.error(f"Error processing series code '{code}': {e}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid series code '{code}': {str(e)}",
-            )
-
-    if not frames:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="No valid series provided"
-        )
-
-    # Combine all series into a single DataFrame
-    try:
-        df = pd.concat(frames, axis=1).round(2)
-    except Exception as e:
-        logger.error(f"Error concatenating series: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error combining series: {str(e)}",
-        )
+            pass
 
     # Handle different index types and convert to datetime if possible
     df = _normalize_index(df)

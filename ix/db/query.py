@@ -16,24 +16,23 @@ def Regime1(series) -> pd.Series:
     return regime
 
 
-def MultiSeries(
-    *series: str | list[str] | dict | pd.Series,
-) -> pd.DataFrame:
-    output = []
-    for s in series:
-        if isinstance(s, str):
-            output.append(Series(s))
-        elif isinstance(s, list):
-            output.append(Series(*s))
-        elif isinstance(s, pd.Series):
-            output.append(s)
-        elif isinstance(s, dict):
-            for k, v in s.items():
-                s = Series(v)
-                s.name = k
-                output.append(s)
-    output = pd.concat(output, axis=1)
-    return output
+def MultiSeries(codes: str | list[str], field: str | None = None, freq: str|None=None) -> pd.DataFrame:
+    """Load multiple series and combine into DataFrame"""
+    if isinstance(codes, str):
+        codes = codes.split(",")
+    series_list = []
+    for code in codes:
+        if field:
+            s = Series(f"{code.strip()}:{field}", freq=freq)
+        else:
+            s = Series(code.strip(), freq=freq)
+        if not s.empty:
+            series_list.append(s)
+
+    if not series_list:
+        return pd.DataFrame()
+
+    return pd.concat(series_list, axis=1)
 
 
 import pandas as pd
@@ -43,7 +42,7 @@ from cachetools import cached, TTLCache
 cache = TTLCache(maxsize=128, ttl=600)
 
 @cached(cache)
-def Series(code: str, freq: str | None = None) -> pd.Series:
+def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Series:
     """
     Return a pandas Series for `code`, resampled to `freq` if provided,
     otherwise to the DB frequency `ts.frequency`. Slice to [ts.start, today()].
@@ -92,6 +91,8 @@ def Series(code: str, freq: str | None = None) -> pd.Series:
 
         # Stable name
         s.name = getattr(ts, "code", code)
+        if name:
+            s.name = name
         return s
 
     except Exception as e:
@@ -1068,3 +1069,25 @@ def LocalIndices():
 
     result = pd.concat(output, axis=1)
     return result
+
+
+class AiCapex:
+
+    def FE_CAPEX_NTMA(self) -> pd.DataFrame:
+        return MultiSeries('Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META', field='FE_CAPEX_NTMA', freq='B').ffill().dropna()
+    def FE_CAPEX_LTMA(self) -> pd.DataFrame:
+        return MultiSeries('Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META', field='FE_CAPEX_LTMA', freq='B').ffill().dropna()
+
+    def FE_CAPEX_Q(self) -> pd.DataFrame:
+        return MultiSeries('Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META', field='FE_CAPEX_Q', freq='B').ffill().dropna()
+
+    def FE_CAPEX_QOQ(self) -> pd.DataFrame:
+        return self.FE_CAPEX_Q().dropna().resample('W-Fri').last().pct_change(52).mul(100)
+    def TOTAL_FE_CAPEX_QOQ(self) -> pd.DataFrame:
+        return self.FE_CAPEX_Q().sum(axis=1).dropna().resample('W-Fri').last().pct_change(52).mul(100)
+    def TOTAL_FE_CAPEX_YOY(self) -> pd.DataFrame:
+        ntma= self.FE_CAPEX_NTMA().sum(axis=1).dropna().resample('W-Fri').last()
+        ltma= self.FE_CAPEX_LTMA().sum(axis=1).dropna().resample('W-Fri').last()
+        data =  (ntma / ltma - 1).mul(100)
+        data.name = "YoY"
+        return data
