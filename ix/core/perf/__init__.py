@@ -263,3 +263,8 @@ def to_sortino_ratio(
     excess_return = ann_return - risk_free
     sortino_ratio = excess_return / neg_volatility
     return sortino_ratio
+
+
+
+def rebase(px: pd.Series) -> pd.Series:
+    return px / px.dropna().iloc[0]

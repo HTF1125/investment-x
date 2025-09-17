@@ -6,6 +6,7 @@ from ix.db.models import Timeseries
 from cachetools import TTLCache, cached
 from ix import core
 from ix.misc.date import oneyearbefore, today
+
 # 최대 32개 엔트리, TTL 600초
 cacher = TTLCache(maxsize=32, ttl=600)
 
@@ -16,7 +17,9 @@ def Regime1(series) -> pd.Series:
     return regime
 
 
-def MultiSeries(codes: str | list[str], field: str | None = None, freq: str|None=None) -> pd.DataFrame:
+def MultiSeries(
+    codes: str | list[str], field: str | None = None, freq: str | None = None
+) -> pd.DataFrame:
     """Load multiple series and combine into DataFrame"""
     if isinstance(codes, str):
         codes = codes.split(",")
@@ -40,6 +43,7 @@ from ix.misc.date import today
 from cachetools import cached, TTLCache
 
 cache = TTLCache(maxsize=128, ttl=600)
+
 
 @cached(cache)
 def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Series:
@@ -76,7 +80,7 @@ def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Se
         end_dt = pd.to_datetime(today())
 
         # Slice first (in case resample is heavy)
-        s = s.reindex(pd.date_range(start_dt, end_dt,freq="D"))
+        s = s.reindex(pd.date_range(start_dt, end_dt, freq="D"))
         # Choose target frequency: override > DB value
         target_freq = freq or ts.frequency
         if target_freq:
@@ -362,6 +366,7 @@ def PMI_Manufacturing_Regime():
     regime_pct = regime_counts.fillna(0).round(2)
     return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
 
+
 def PMI_Services_Regime():
     manufacturing_pmis = [
         "NTCPMISVCBUSACTSA_WLD:PX_LAST",
@@ -377,8 +382,7 @@ def PMI_Services_Regime():
         "NTCPMISVCBUSACTSA_JP:PX_LAST",
         "NTCPMISVCBUSACTSA_CN:PX_LAST",
         "NTCPMISVCBUSACTSA_IN",
-        "NTCPMISVCBUSACTSA_BR:PX_LAST"
-
+        "NTCPMISVCBUSACTSA_BR:PX_LAST",
     ]
     regimes = []
     for manufacturing_pmi in manufacturing_pmis:
@@ -440,8 +444,7 @@ def NumOfPmiServicesPositiveMoM():
         "NTCPMISVCBUSACTSA_JP:PX_LAST",
         "NTCPMISVCBUSACTSA_CN:PX_LAST",
         "NTCPMISVCBUSACTSA_IN",
-        "NTCPMISVCBUSACTSA_BR:PX_LAST"
-
+        "NTCPMISVCBUSACTSA_BR:PX_LAST",
     ]
     regimes = []
     for manufacturing_pmi in manufacturing_pmis:
@@ -750,8 +753,8 @@ def NumOfPmiPositiveMoM():
 
 
 def USD_Open_Interest():
-        data = Series("CFTNCLOI%ALLJUSDNYBTOF_US") - Series("CFTNCSOI%ALLJUSDNYBTOF_US")
-        return data
+    data = Series("CFTNCLOI%ALLJUSDNYBTOF_US") - Series("CFTNCSOI%ALLJUSDNYBTOF_US")
+    return data
 
 
 def InvestorPositions():
@@ -771,6 +774,7 @@ def InvestorPositions():
     }
     data = pd.DataFrame(data)
     return data
+
 
 def InvestorPositionsvsTrend(weeks: int = 52):
     data = {
@@ -864,7 +868,6 @@ class CalendarYearSeasonality:
             }
         )
 
-
     def seasonality(self, exclude_years=None, include_stats=True) -> pd.DataFrame:
         """
         Returns the original unrebased seasonality view.
@@ -911,6 +914,7 @@ class CalendarYearSeasonality:
         components = [stats, current_year_series]
         return pd.concat(components, axis=1)
 
+
 def NumOfOECDLeadingPositiveMoM():
     codes = [
         "USA.LOLITOAA.STSA:PX_LAST",
@@ -943,7 +947,7 @@ def NumOfOECDLeadingPositiveMoM():
 
 class M2:
 
-    def __init__(self, freq: str = 'ME', currency: str = "USD") -> None:
+    def __init__(self, freq: str = "ME", currency: str = "USD") -> None:
         self.freq = freq
 
     @property
@@ -962,45 +966,58 @@ class M2:
     @property
     def UK(self) -> pd.Series:
         fx = Series("USDGBP Curncy:PX_LAST", freq=self.freq)
-        series = (
-            Series("GB.MAM2", freq=self.freq).div(1000_000).div(fx)
-        )
+        series = Series("GB.MAM2", freq=self.freq).div(1000_000).div(fx)
         series.name = "UK"
         return series
+
     @property
     def CN(self) -> pd.Series:
         fx = Series("USDCNY Curncy:PX_LAST", freq=self.freq)
-        series= Series("CN.MAM2", freq=self.freq).div(10_000).div(fx)
+        series = Series("CN.MAM2", freq=self.freq).div(10_000).div(fx)
         series.name = "CN"
         return series.dropna()
+
     @property
     def JP(self) -> pd.Series:
         fx = Series("USDJPY Curncy:PX_LAST", freq=self.freq)
         series = Series("JP.MAM2", freq=self.freq).div(10_000).div(fx)
         series.name = "JP"
         return series.dropna()
+
     @property
     def KR(self) -> pd.Series:
         fx = Series("USDKRW Curncy:PX_LAST", freq=self.freq)
         series = Series("KR.MAM2", freq=self.freq).div(1_000).div(fx)
         series.name = "KR"
         return series.dropna()
+
     @property
     def CH(self) -> pd.Series:
         fx = Series("USDCHF Curncy:PX_LAST", freq=self.freq)
         series = Series("CH.MAM2", freq=self.freq).div(1_000_000).div(fx)
         series.name = "CH"
         return series.dropna()
+
     @property
     def CA(self) -> pd.Series:
         fx = Series("USDCAD Curncy:PX_LAST", freq=self.freq).ffill()
         series = Series("CA.MAM2", freq=self.freq).div(1_000_000).div(fx)
         series.name = "CA"
         return series.dropna()
+
     @property
     def World(self) -> pd.DataFrame:
         data = pd.concat(
-            [self.US, self.UK, self.EU, self.CN, self.JP, self.KR, self.CA, self.CH,],
+            [
+                self.US,
+                self.UK,
+                self.EU,
+                self.CN,
+                self.JP,
+                self.KR,
+                self.CA,
+                self.CH,
+            ],
             axis=1,
         ).ffill()
         return data.dropna()
@@ -1009,6 +1026,20 @@ class M2:
     def WorldTotal(self) -> pd.Series:
         series = self.World.sum(axis=1).ffill()
         return series
+
+    @property
+    def WorldContribution(self) -> pd.DataFrame:
+        if self.freq == "ME":
+            period = 12
+        elif self.freq.startswith("W"):
+            period = 52
+
+        return (
+            self.World.diff(period)
+            .dropna()
+            .div(self.WorldTotal.shift(period), axis=0)
+            .dropna()
+        )
 
 
 def LocalIndices():
@@ -1074,20 +1105,57 @@ def LocalIndices():
 class AiCapex:
 
     def FE_CAPEX_NTMA(self) -> pd.DataFrame:
-        return MultiSeries('Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META', field='FE_CAPEX_NTMA', freq='B').ffill().dropna()
+        return (
+            MultiSeries(
+                "Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META",
+                field="FE_CAPEX_NTMA",
+                freq="B",
+            )
+            .ffill()
+            .dropna()
+        )
+
     def FE_CAPEX_LTMA(self) -> pd.DataFrame:
-        return MultiSeries('Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META', field='FE_CAPEX_LTMA', freq='B').ffill().dropna()
+        return (
+            MultiSeries(
+                "Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META",
+                field="FE_CAPEX_LTMA",
+                freq="B",
+            )
+            .ffill()
+            .dropna()
+        )
 
     def FE_CAPEX_Q(self) -> pd.DataFrame:
-        return MultiSeries('Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META', field='FE_CAPEX_Q', freq='B').ffill().dropna()
+        return (
+            MultiSeries(
+                "Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META",
+                field="FE_CAPEX_Q",
+                freq="B",
+            )
+            .ffill()
+            .dropna()
+        )
 
     def FE_CAPEX_QOQ(self) -> pd.DataFrame:
-        return self.FE_CAPEX_Q().dropna().resample('W-Fri').last().pct_change(52).mul(100)
+        return (
+            self.FE_CAPEX_Q().dropna().resample("W-Fri").last().pct_change(52).mul(100)
+        )
+
     def TOTAL_FE_CAPEX_QOQ(self) -> pd.DataFrame:
-        return self.FE_CAPEX_Q().sum(axis=1).dropna().resample('W-Fri').last().pct_change(52).mul(100)
+        return (
+            self.FE_CAPEX_Q()
+            .sum(axis=1)
+            .dropna()
+            .resample("W-Fri")
+            .last()
+            .pct_change(52)
+            .mul(100)
+        )
+
     def TOTAL_FE_CAPEX_YOY(self) -> pd.DataFrame:
-        ntma= self.FE_CAPEX_NTMA().sum(axis=1).dropna().resample('W-Fri').last()
-        ltma= self.FE_CAPEX_LTMA().sum(axis=1).dropna().resample('W-Fri').last()
-        data =  (ntma / ltma - 1).mul(100)
+        ntma = self.FE_CAPEX_NTMA().sum(axis=1).dropna().resample("W-Fri").last()
+        ltma = self.FE_CAPEX_LTMA().sum(axis=1).dropna().resample("W-Fri").last()
+        data = (ntma / ltma - 1).mul(100)
         data.name = "YoY"
         return data

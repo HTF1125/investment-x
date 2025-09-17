@@ -10,9 +10,11 @@ logger = get_logger(__name__)
 
 # --- Timeseries Data Models ---
 
+
 class TimeseriesData(Document):
     key: Annotated[str, Indexed(unique=True)]
     i_data: Dict[date, str | int | float] = {}
+
 
 class Timeseries(Document):
     code: Annotated[str, Indexed(unique=True)]
@@ -43,7 +45,9 @@ class Timeseries(Document):
     def _get_parent(self) -> Optional["Timeseries"]:
         if not self.parent_id or str(self.parent_id) == str(self.id):
             if str(self.parent_id) == str(self.id):
-                logger.warning("Timeseries %s has parent_id equal to self; ignoring.", self.id)
+                logger.warning(
+                    "Timeseries %s has parent_id equal to self; ignoring.", self.id
+                )
             return None
         try:
             return Timeseries.get(ObjectId(str(self.parent_id)))
@@ -55,7 +59,9 @@ class Timeseries(Document):
             return False
         seen = {str(self.id)}
         try:
-            cur = Timeseries.find_one(Timeseries.id == ObjectId(str(candidate_parent_id))).run()
+            cur = Timeseries.find_one(
+                Timeseries.id == ObjectId(str(candidate_parent_id))
+            ).run()
         except Exception:
             return False
         while cur is not None:
@@ -65,7 +71,9 @@ class Timeseries(Document):
             if not cur.parent_id:
                 break
             try:
-                cur = Timeseries.find_one(Timeseries.id == ObjectId(str(cur.parent_id))).run()
+                cur = Timeseries.find_one(
+                    Timeseries.id == ObjectId(str(cur.parent_id))
+                ).run()
             except Exception:
                 return False
         return False
@@ -106,11 +114,13 @@ class Timeseries(Document):
             return
         i_data = self.timeseries_data.i_data.copy()
         i_data.update(data.to_dict())
-        self.set({
-            "start": pd.to_datetime(list(i_data.keys())).min(),
-            "end": pd.to_datetime(list(i_data.keys())).max(),
-            "num_data": len(i_data),
-        })
+        self.set(
+            {
+                "start": pd.to_datetime(list(i_data.keys())).min(),
+                "end": pd.to_datetime(list(i_data.keys())).max(),
+                "num_data": len(i_data),
+            }
+        )
         self.timeseries_data.set({"i_data": i_data})
         self._feed_to_parent(data)
 
@@ -131,11 +141,13 @@ class Timeseries(Document):
             p_index = pd.to_datetime([])
         parent.timeseries_data.set({"i_data": p_i_data})
         if len(p_i_data) > 0:
-            parent.set({
-                "start": p_index.min(),
-                "end": p_index.max(),
-                "num_data": len(p_i_data),
-            })
+            parent.set(
+                {
+                    "start": p_index.min(),
+                    "end": p_index.max(),
+                    "num_data": len(p_i_data),
+                }
+            )
         else:
             parent.set({"start": None, "end": None, "num_data": 0})
 
@@ -144,7 +156,9 @@ class Timeseries(Document):
         self.timeseries_data.set({"i_data": {}})
         return True
 
+
 # --- Other Data Models ---
+
 
 class InsightSource(Document):
     url: str
@@ -153,11 +167,13 @@ class InsightSource(Document):
     remark: Optional[str] = None
     last_visited: datetime = Field(default_factory=datetime.now)
 
+
 class MarketCommentary(Document):
     asofdate: Annotated[date, Indexed(unique=True)] = Field(default_factory=date.today)
     frequency: str = "Daily"
     content: str = ""
     last_visited: datetime = Field(default_factory=datetime.now)
+
 
 class Prediction(Document):
     code: Annotated[str, Indexed(unique=True)]
@@ -166,25 +182,33 @@ class Prediction(Document):
     target: Dict[date, float]
     prediction: Dict[date, float]
 
+
 class Asset(BaseModel):
     code: Optional[str] = None
     name: Optional[str] = None
 
+
 class Universe(Document):
     name: Optional[str] = None
-    assets: Optional[List[Asset]] = None
+    assets: List[Asset] = []
 
     @classmethod
     def from_name(cls, name: str) -> "Universe":
-        universe = cls.find_one({"name" : name}).run()
+        universe = cls.find_one({"name": name}).run()
         if not universe:
             raise KeyError
         return universe
 
-    @classmethod
-    def create_from_assets(cls, assets: list[Asset]) -> "Universe":
-        return
+    def add_asset(self, asset: Asset) -> None:
+        assets = self.assets.copy()
+        assets.append(asset)
+        self.set({"assets": assets})
 
+    def delete_asset(self, asset: Asset) -> None:
+        assets = self.assets.copy()
+        # Remove asset by matching both code and name
+        assets = [a for a in assets if not (a.code == asset.code and a.name == asset.name)]
+        self.set({"assets": assets})
 
     def get_series(
         self,
@@ -194,6 +218,7 @@ class Universe(Document):
         end: str | None = None,
     ) -> pd.DataFrame:
         from ix.db.query import MultiSeries
+
         codes = [f"{asset.name}={asset.code}" for asset in self.assets]
         multiseries = MultiSeries(codes=codes, field=field, freq=freq)
         if start:
@@ -204,9 +229,6 @@ class Universe(Document):
 
     def get_pct_change(self, periods: int = 1) -> pd.DataFrame:
         return self.get_series(field="PX_LAST").pct_change(periods=periods)
-
-
-
 
 
 class EconomicCalendar(Document):
@@ -227,6 +249,7 @@ class EconomicCalendar(Document):
         releases = releases.set_index(keys=["id"], drop=True)
         return releases
 
+
 class Book(BaseModel):
     d: List[str] = []
     v: List[float] = []
@@ -237,6 +260,7 @@ class Book(BaseModel):
     w: List[Dict[str, float]] = []
     a: List[Dict[str, float]] = []
 
+
 class Strategy(Document):
     code: Annotated[str, Indexed(unique=True)]
     frequency: str = "ME"
@@ -245,6 +269,7 @@ class Strategy(Document):
     ann_volatility: Optional[float] = None
     nav_history: Optional[List[float]] = None
     book: Book = Book()
+
 
 class User(Document):
     username: Annotated[str, Indexed(unique=True)]
@@ -267,22 +292,28 @@ class User(Document):
     def exists(cls, username: str) -> bool:
         return cls.get_user(username=username) is not None
 
+
 class Insight(Document):
     """
     Represents an insight with metadata, while the actual file content is stored in GridFS.
     """
+
     issuer: str = "Unnamed"
     name: str = "Unnamed"
     published_date: date = Field(default_factory=date.today)
     summary: Optional[str] = None
+    status: str = "new"  # Status can be: new, processing, completed, failed
 
     def save_content(self, content: bytes) -> bool:
         from .boto import Boto
+
         return Boto().save_pdf(pdf_content=content, filename=f"{self.id}.pdf")
 
     def get_content(self) -> bytes:
         from .boto import Boto
+
         return Boto().get_pdf(filename=f"{self.id}.pdf")
+
 
 class TacticalView(Document):
     views: dict
@@ -294,7 +325,9 @@ class TacticalView(Document):
             document.published_date = datetime.now()
         return document
 
+
 ValidSources = Literal["Yahoo", "Fred", "Infomax", "Eikon", "FactSet", "Bloomberg"]
+
 
 def all():
     return [

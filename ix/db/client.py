@@ -109,7 +109,7 @@ def get_insights(
                     )
                 query["$and"] = conditions
 
-        insights = Insight.find(query).sort("-published_date").skip(skip).limit(limit)
+        insights = Insight.find(query).sort("-published_date").skip(skip).limit(limit).run()
         return list(insights)
     except Exception as e:
         raise Exception(f"Error occurred while fetching insights: {str(e)}")
