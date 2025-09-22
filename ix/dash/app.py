@@ -19,17 +19,6 @@ from .components.navbar import navbar, layout as navbar_layout
 import plotly.graph_objects as go
 import pandas as pd
 
-# Create Mantine theme toggle component
-theme_toggle = dmc.ActionIcon(
-    [
-        dmc.Paper(DashIconify(icon="radix-icons:sun", width=25), darkHidden=True),
-        dmc.Paper(DashIconify(icon="radix-icons:moon", width=25), lightHidden=True),
-    ],
-    variant="transparent",
-    color="yellow",
-    id="color-scheme-toggle",
-    size="lg",
-)
 
 # Include external CSS file
 app.index_string = """
@@ -53,7 +42,6 @@ app.index_string = """
     </body>
 </html>
 """
-from ix.dash.settings import Theme
 
 # App layout with MantineProvider
 app.layout = dmc.MantineProvider(
@@ -65,17 +53,6 @@ app.layout = dmc.MantineProvider(
             html.Div(
                 [
                     navbar_layout,
-                    # Add Mantine theme toggle to navbar (positioned absolutely)
-                    html.Div(
-                        theme_toggle,
-                        id="theme-toggle-container",
-                        style={
-                            "position": "fixed",
-                            "top": "17px",
-                            "right": "20px",
-                            "zIndex": 1001,
-                        },
-                    ),
                 ]
             ),
             # Page content
@@ -85,11 +62,13 @@ app.layout = dmc.MantineProvider(
             "backgroundColor": "#0f172a",
             "color": "#ffffff",
             "minHeight": "100vh",
+            "marginTop": "80px",
+            "padding": "20px",
         },
     ),
     id="mantine-provider",
     forceColorScheme="dark",
-    theme=Theme,
+
 )
 
 
@@ -180,8 +159,6 @@ clientside_callback(
     Output("color-scheme-toggle", "id"),
     Input("color-scheme-toggle", "n_clicks"),
 )
-
-
 
 
 # Export the Flask server for use in other applications

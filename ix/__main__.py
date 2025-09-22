@@ -3,6 +3,7 @@ import os
 from ix.misc import logger
 from ix.dash.app import app
 
+
 @click.command()
 @click.option("--debug", is_flag=True, help="Run the app in debug mode.")
 def cli(debug: bool = False) -> None:

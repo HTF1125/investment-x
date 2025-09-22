@@ -11,9 +11,7 @@ app.title = "Global Markets Dashboard"
 
 # Import Universe class
 from ix.db import Universe
-from .styles.index import string
 # Simple CSS styling
-app.index_string = string
 
 
 def create_performance_chart(

@@ -1,15 +1,14 @@
 import pandas as pd
 from dash import html, dcc
 import dash_bootstrap_components as dbc
-import dash_mantine_components as dmc
 import plotly.graph_objects as go
 from ix.db import Universe
 from ix.core import rebase
-from ix.dash.settings import colors
 from ix.misc.date import today, oneyearbefore
 from ix.dash.components import ChartGrid
+from functools import lru_cache
 
-def CardwithHeader(title: str, children: ...):
+def CardwithHeader(title: str, children):
     return dbc.Card(
         [
             dbc.CardHeader(
@@ -53,27 +52,108 @@ def CardwithHeader(title: str, children: ...):
         className="h-100",
     )
 
+@lru_cache(maxsize=32)
+def get_cached_universe_data(universe_name: str, start_date: str, end_date: str):
+    """Cache universe data to avoid repeated database calls"""
+    try:
+        universe_db = Universe.from_name(universe_name)
+        pxs = universe_db.get_series(field="PX_LAST")
+        return pxs.loc[start_date:end_date]
+    except Exception as e:
+        print(f"Error loading {universe_name}: {e}")
+        return pd.DataFrame()
 
 def create_performance_chart(pxs: pd.DataFrame) -> go.Figure:
+    """Create performance chart with error handling"""
+    
+    if pxs.empty:
+        # Return empty chart
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No data available",
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=16, color="#ef4444"),
+        )
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            margin=dict(l=0, r=0, t=0, b=0),
+        )
+        return fig
 
     fig = go.Figure()
-    for i, (name, series) in enumerate(pxs.items()):
-        d = rebase(series.dropna()).sub(1)
-        latest_value = float(d.iloc[-1])
+    
+    try:
+        for i, (name, series) in enumerate(pxs.items()):
+            if series.dropna().empty:
+                continue
+                
+            d = rebase(series.dropna()).sub(1)
+            if d.empty:
+                continue
+                
+            latest_value = float(d.iloc[-1])
 
-        fig.add_trace(
-            go.Scatter(
-                x=d.index,
-                y=d.values,
-                name=f"{name} : ({latest_value:.2%})",
-                line=dict(
-                    width=2,
-                    color=colors[i % len(colors)],
-                    shape="spline",
-                ),
-                hovertemplate=f"<b>{name}</b> : %{{y:.2%}} %<extra></extra>",
+            fig.add_trace(
+                go.Scatter(
+                    x=d.index,
+                    y=d.values,
+                    name=f"{name} : ({latest_value:.2%})",
+                    line=dict(
+                        width=2,
+                        shape="spline",
+                    ),
+                    hovertemplate=f"<b>{name}</b> : %{{y:.2%}} %<extra></extra>",
+                )
             )
+    except Exception as e:
+        print(f"Error creating performance chart: {e}")
+        # Return error chart
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Error: {str(e)[:50]}...",
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=16, color="#ef4444"),
         )
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            margin=dict(l=0, r=0, t=0, b=0),
+        )
+        return fig
+
+    if not fig.data:
+        # No data traces added
+        fig.add_annotation(
+            text="No valid data available",
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=16, color="#ef4444"),
+        )
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            margin=dict(l=0, r=0, t=0, b=0),
+        )
+        return fig
+
     fig.update_layout(
         xaxis=dict(
             title="Date",
@@ -105,12 +185,9 @@ def create_performance_chart(pxs: pd.DataFrame) -> go.Figure:
             valign="middle",
             xref="paper",
             yref="paper",
-            # itemwidth=100,
             itemsizing="trace",
             title_text='',
             traceorder="normal",
-            # Centered and fill horizontally
-            # Use full width by setting x=0.5 and anchor to center, and let Plotly auto-wrap
         ),
         margin=dict(l=50, r=50, t=50, b=50),
         font=dict(family="Inter", color="#f1f5f9"),
@@ -123,7 +200,6 @@ def create_performance_chart(pxs: pd.DataFrame) -> go.Figure:
     )
     return fig
 
-
 def Section(
     universes: list[str] = [
         "Major Indices",
@@ -135,44 +211,85 @@ def Section(
     ],
     periods: list[int] = [1, 5, 21, 63, 126, 252],
 ):
+    """Optimized section with caching and error handling"""
+    
+    # Get date range once
+    start_date = oneyearbefore().strftime('%Y-%m-%d')
+    end_date = today().strftime('%Y-%m-%d')
 
-    # Collect all performance charts second
+    # Collect all performance charts with caching
     chart_cards = []
+    
     for universe in universes:
-        universe_db = Universe.from_name(universe)
-        pxs = universe_db.get_series(field="PX_LAST")
-        pxs = pxs.loc[oneyearbefore() : today()]
-
-        chart_cards.append(
-            CardwithHeader(
-                title=universe,
-                children=dcc.Graph(
-                    figure=create_performance_chart(pxs),
-                    config={
-                        "displayModeBar": False,
-                        "responsive": True,
-                        "autosizable": True,
-                    },
-                    style={
-                        "width": "100%",
-                        "height": "400px",
-                        "minHeight": "300px",
-                        "maxHeight": "500px",
-                        "minWidth": "400px",
-                    },
-                ),
+        try:
+            # Use cached data
+            pxs = get_cached_universe_data(universe, start_date, end_date)
+            
+            if not pxs.empty:
+                chart_cards.append(
+                    CardwithHeader(
+                        title=universe,
+                        children=dcc.Graph(
+                            figure=create_performance_chart(pxs),
+                            config={
+                                "displayModeBar": False,
+                                "responsive": True,
+                                "autosizable": True,
+                            },
+                            style={
+                                "width": "100%",
+                                "height": "400px",
+                                "minHeight": "300px",
+                                "maxHeight": "500px",
+                                "minWidth": "400px",
+                            },
+                        ),
+                    )
+                )
+            else:
+                # Create error card
+                chart_cards.append(
+                    CardwithHeader(
+                        title=universe,
+                        children=html.Div(
+                            "No data available",
+                            style={
+                                "color": "#ef4444",
+                                "textAlign": "center",
+                                "padding": "2rem",
+                                "fontSize": "1.1rem"
+                            }
+                        ),
+                    )
+                )
+                
+        except Exception as e:
+            print(f"Error creating performance chart for {universe}: {e}")
+            # Create error card
+            chart_cards.append(
+                CardwithHeader(
+                    title=universe,
+                    children=html.Div(
+                        f"Error: {str(e)[:50]}...",
+                        style={
+                            "color": "#ef4444",
+                            "textAlign": "center",
+                            "padding": "2rem",
+                            "fontSize": "1.1rem"
+                        }
+                    ),
+                )
             )
-        )
 
     return html.Div(
         [
             html.Section(
                 [
-                    # Heatmaps section
+                    # Performance charts section
                     html.Div(
                         [
                             html.H3(
-                                "Performance Heatmaps",
+                                "Market Performance",
                                 style={
                                     "fontSize": "1.3rem",
                                     "fontWeight": "600",
@@ -183,7 +300,15 @@ def Section(
                                     "borderBottom": "2px solid #3b82f6",
                                 },
                             ),
-                            ChartGrid(chart_cards),
+                            ChartGrid(chart_cards) if chart_cards else html.Div(
+                                "Loading performance charts...",
+                                style={
+                                    "color": "#94a3b8",
+                                    "textAlign": "center",
+                                    "padding": "2rem",
+                                    "fontSize": "1.1rem"
+                                }
+                            ),
                         ]
                     ),
                 ],

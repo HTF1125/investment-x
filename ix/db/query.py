@@ -459,7 +459,7 @@ def NumOfPmiServicesPositiveMoM():
     return percent_positive
 
 
-def OecdCliRegime():
+def oecd_cli_regime():
     manufacturing_pmis = [
         "USA.LOLITOAA.STSA:PX_LAST",
         "TUR.LOLITOAA.STSA:PX_LAST",
@@ -649,16 +649,16 @@ def CustomSeries(code: str) -> pd.Series:
         return FedNetLiquidity()
 
     if code == "OecdCliRegime-Expansion":
-        return OecdCliRegime()["Expansion"]
+        return oecd_cli_regime()["Expansion"]
 
     if code == "OecdCliRegime-Slowdown":
-        return OecdCliRegime()["Slowdown"]
+        return oecd_cli_regime()["Slowdown"]
 
     if code == "OecdCliRegime-Contraction":
-        return OecdCliRegime()["Contraction"]
+        return oecd_cli_regime()["Contraction"]
 
     if code == "OecdCliRegime-Recovery":
-        return OecdCliRegime()["Recovery"]
+        return oecd_cli_regime()["Recovery"]
 
 
 def NumofOecdCliMoMPositveEM():
@@ -681,7 +681,7 @@ def NumofOecdCliMoMPositveEM():
     return percent_positive
 
 
-def FinancialConditionsUS() -> pd.Series:
+def financial_conditions_us() -> pd.Series:
     dd = (
         pd.concat(
             [
