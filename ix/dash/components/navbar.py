@@ -9,6 +9,7 @@ NAV_ITEMS = [
     {"name": "Insights", "href": "/insights", "icon": "fas fa-lightbulb"},
     {"name": "Views", "href": "/views", "icon": "fas fa-chart-bar"},
     {"name": "Strategies", "href": "/strategies", "icon": "fas fa-bolt"},
+    {"name": "Data", "href": "/data", "icon": "fas fa-bolt"},
 ]
 
 
@@ -76,8 +77,15 @@ def create_mobile_menu():
             ),
             html.Div(
                 [
-                    create_action_button("fas fa-bell", "notification-bell-mobile", is_mobile=True),
-                    create_action_button("fas fa-moon", "theme-switch-mobile", "Toggle theme", is_mobile=True),
+                    create_action_button(
+                        "fas fa-bell", "notification-bell-mobile", is_mobile=True
+                    ),
+                    create_action_button(
+                        "fas fa-moon",
+                        "theme-switch-mobile",
+                        "Toggle theme",
+                        is_mobile=True,
+                    ),
                 ],
                 style={
                     "display": "flex",
@@ -90,7 +98,7 @@ def create_mobile_menu():
         id="mobile-menu",
         style={
             "position": "fixed",
-            "top": "70px",
+            "top": "var(--navbar-height, 70px)",  # Use CSS variable for dynamic height
             "left": 0,
             "right": 0,
             "backgroundColor": "rgba(15, 15, 15, 0.98)",
@@ -108,82 +116,86 @@ def create_mobile_menu():
 
 def create_navbar():
     """Create responsive navbar"""
-    return html.Div([
-        html.Nav(
-            html.Div(
-                [
-                    # Logo
-                    html.A(
-                        html.Img(
-                            id="navbar-logo",
-                            src="/assets/images/investment-x-logo-light.svg",
-                            alt="Investment X Logo",
+    return html.Div(
+        [
+            html.Nav(
+                html.Div(
+                    [
+                        # Logo
+                        html.A(
+                            html.Img(
+                                id="navbar-logo",
+                                src="/assets/images/investment-x-logo-light.svg",
+                                alt="Investment X Logo",
+                                style={
+                                    "height": "28px",
+                                    "transition": "all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+                                    "filter": "drop-shadow(0 0 10px rgba(255, 255, 255, 0.1))",
+                                },
+                            ),
+                            href="/",
+                            style={"textDecoration": "none"},
+                        ),
+                        # Desktop navigation
+                        html.Div(
+                            [create_nav_link(item) for item in NAV_ITEMS],
+                            id="desktop-nav-links",
                             style={
-                                "height": "28px",
-                                "transition": "all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
-                                "filter": "drop-shadow(0 0 10px rgba(255, 255, 255, 0.1))",
+                                "display": "flex",
+                                "alignItems": "center",
+                                "gap": "4px",
                             },
                         ),
-                        href="/",
-                        style={"textDecoration": "none"},
-                    ),
-
-                    # Desktop navigation
-                    html.Div(
-                        [create_nav_link(item) for item in NAV_ITEMS],
-                        id="desktop-nav-links",
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "gap": "4px",
-                        },
-                    ),
-
-                    # Desktop actions
-                    html.Div(
-                        [
-                            create_action_button("fas fa-bell", "notification-bell-desktop"),
-                            create_action_button("fas fa-moon", "theme-switch-desktop", "Toggle theme"),
-                        ],
-                        id="desktop-nav-actions",
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "gap": "8px",
-                        },
-                    ),
-
-                    # Mobile menu toggle
-                    create_action_button("fas fa-bars", "mobile-menu-toggle"),
-                ],
-                id="navbar-container",
+                        # Desktop actions
+                        html.Div(
+                            [
+                                create_action_button(
+                                    "fas fa-bell", "notification-bell-desktop"
+                                ),
+                                create_action_button(
+                                    "fas fa-moon",
+                                    "theme-switch-desktop",
+                                    "Toggle theme",
+                                ),
+                            ],
+                            id="desktop-nav-actions",
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                                "gap": "8px",
+                            },
+                        ),
+                        # Mobile menu toggle
+                        create_action_button("fas fa-bars", "mobile-menu-toggle"),
+                    ],
+                    id="navbar-container",
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "center",
+                        "padding": "0 20px",
+                        "height": "70px",
+                        "maxWidth": "1680px",
+                        "margin": "0 auto",
+                    },
+                ),
+                id="main-navbar",
                 style={
-                    "display": "flex",
-                    "justifyContent": "space-between",
-                    "alignItems": "center",
-                    "padding": "0 20px",
+                    "backgroundColor": "rgba(15, 15, 15, 0.95)",
+                    "backdropFilter": "blur(20px)",
+                    "borderBottom": "1px solid rgba(255, 255, 255, 0.1)",
+                    "boxShadow": "0 8px 32px rgba(0, 0, 0, 0.3)",
+                    "position": "fixed",
+                    "top": 0,
+                    "left": 0,
+                    "right": 0,
+                    "zIndex": 1000,
                     "height": "70px",
-                    "maxWidth": "1680px",
-                    "margin": "0 auto",
                 },
             ),
-            id="main-navbar",
-            style={
-                "backgroundColor": "rgba(15, 15, 15, 0.95)",
-                "backdropFilter": "blur(20px)",
-                "borderBottom": "1px solid rgba(255, 255, 255, 0.1)",
-                "boxShadow": "0 8px 32px rgba(0, 0, 0, 0.3)",
-                "position": "fixed",
-                "top": 0,
-                "left": 0,
-                "right": 0,
-                "zIndex": 1000,
-                "height": "70px",
-            },
-        ),
-
-        create_mobile_menu(),
-    ])
+            create_mobile_menu(),
+        ]
+    )
 
 
 # Create navbar instance
@@ -325,7 +337,7 @@ clientside_callback(
 )
 
 
-# Responsive behavior
+# Responsive behavior with CSS variable updates
 clientside_callback(
     """
     function() {
@@ -341,22 +353,25 @@ clientside_callback(
             if (!navbar || !container) return;
 
             const width = window.innerWidth;
+            let navbarHeight;
 
             if (width < 768) {
                 // Mobile
-                navbar.style.height = '55px';
-                container.style.height = '55px';
-                container.style.padding = '0 8px';
-                if (logo) logo.style.height = '18px';
+                navbarHeight = '55px';
+                navbar.style.height = navbarHeight;
+                container.style.height = navbarHeight;
+                container.style.padding = '0 16px';
+                if (logo) logo.style.height = '20px';
                 if (desktopNavLinks) desktopNavLinks.style.display = 'none';
                 if (desktopNavActions) desktopNavActions.style.display = 'none';
                 if (mobileToggle) mobileToggle.style.display = 'block';
-                if (mobileMenu) mobileMenu.style.top = '55px';
+                if (mobileMenu) mobileMenu.style.top = navbarHeight;
             } else if (width < 1024) {
                 // Tablet
-                navbar.style.height = '65px';
-                container.style.height = '65px';
-                container.style.padding = '0 15px';
+                navbarHeight = '65px';
+                navbar.style.height = navbarHeight;
+                container.style.height = navbarHeight;
+                container.style.padding = '0 20px';
                 if (logo) logo.style.height = '24px';
                 if (desktopNavLinks) {
                     desktopNavLinks.style.display = 'flex';
@@ -370,10 +385,12 @@ clientside_callback(
                     desktopNavActions.style.gap = '6px';
                 }
                 if (mobileToggle) mobileToggle.style.display = 'none';
+                if (mobileMenu) mobileMenu.style.top = navbarHeight;
             } else {
                 // Desktop
-                navbar.style.height = '70px';
-                container.style.height = '70px';
+                navbarHeight = '70px';
+                navbar.style.height = navbarHeight;
+                container.style.height = navbarHeight;
                 container.style.padding = '0 20px';
                 if (logo) logo.style.height = '28px';
                 if (desktopNavLinks) {
@@ -388,7 +405,11 @@ clientside_callback(
                     desktopNavActions.style.gap = '8px';
                 }
                 if (mobileToggle) mobileToggle.style.display = 'none';
+                if (mobileMenu) mobileMenu.style.top = navbarHeight;
             }
+
+            // Set CSS variable for navbar height
+            document.documentElement.style.setProperty('--navbar-height', navbarHeight);
         }
 
         // Initial call

@@ -1,0 +1,891 @@
+# layout.py
+from dash import html, dcc, Input, Output, State, callback, ALL, dash_table
+from dash.exceptions import PreventUpdate
+import json
+import pandas as pd
+from bson import ObjectId
+from ix.db.models import Timeseries
+import dash_mantine_components as dmc
+import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+from ix.misc import get_logger
+from dash_iconify import DashIconify
+import dash
+
+# Register Page
+dash.register_page(__name__, path="/data", title="Data", name="Data")
+
+logger = get_logger(__name__)
+
+# Header component
+header = dmc.Container(
+    [
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dmc.Title(
+                            "📊 Timeseries",
+                            order=1,
+                            style={
+                                "color": "var(--text-primary)",
+                                "marginBottom": "8px",
+                                "fontSize": "1rem",
+                                "fontWeight": "700",
+                            },
+                        ),
+                        dmc.Text(
+                            "Manage and analyze your financial data",
+                            c="gray",
+                            size="md",
+                        ),
+                    ],
+                    md=8,
+                ),
+                dbc.Col(
+                    [
+                        dmc.Button(
+                            [
+                                dmc.ThemeIcon(
+                                    DashIconify(icon="material-symbols:add"),
+                                    size="sm",
+                                    variant="light",
+                                ),
+                                "New",
+                            ],
+                            id="create-btn",
+                            variant="filled",
+                            color="blue",
+                            size="md",
+                            style={"height": "40px"},
+                        ),
+                    ],
+                    md=4,
+                    style={
+                        "display": "flex",
+                        "justifyContent": "flex-end",
+                        "alignItems": "center",
+                    },
+                ),
+            ],
+            style={"marginBottom": "24px"},
+        ),
+    ],
+    size="xl",
+    px="md",
+)
+
+# Search and filters
+controls = dmc.Container(
+    [
+        dmc.Paper(
+            [
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dmc.TextInput(
+                                    id="search",
+                                    placeholder="Search timeseries...",
+                                    leftSection=DashIconify(
+                                        icon="material-symbols:search"
+                                    ),
+                                    size="md",
+                                    style={"width": "100%"},
+                                ),
+                            ],
+                            md=6,
+                        ),
+                    ],
+                    style={"marginBottom": "0"},
+                ),
+            ],
+            p="md",
+            radius="md",
+            shadow="sm",
+            style={"marginBottom": "24px"},
+        ),
+    ],
+    size="xl",
+    px="md",
+)
+
+# Data table container
+data_container = dmc.Container(
+    [
+        dmc.Paper(
+            [
+                dmc.Divider(
+                    id="stats-bar",
+                    label="Loading...",
+                    size="sm",
+                    style={"marginBottom": "16px"},
+                ),
+                dmc.ScrollArea(
+                    html.Div(id="timeseries-grid"), style={"height": "600px"}
+                ),
+                dmc.Divider(
+                    size="sm", style={"marginTop": "16px", "marginBottom": "16px"}
+                ),
+                dmc.Center(
+                    dmc.Pagination(
+                        id="pagination", total=1, value=1, size="sm", withEdges=True
+                    )
+                ),
+            ],
+            p="md",
+            radius="md",
+            shadow="sm",
+        ),
+    ],
+    size="xl",
+    px="md",
+)
+
+# Detail modal
+detail_modal = dmc.Modal(
+    [
+        # Header content
+        dmc.Group(
+            [
+                html.Div(id="modal-header"),
+                dmc.Button(
+                    "×",
+                    id="close-modal",
+                    size="sm",
+                    variant="subtle",
+                    color="gray",
+                    style={"minWidth": "32px", "height": "32px"},
+                ),
+            ],
+            justify="space-between",
+            align="center",
+            style={"marginBottom": "16px"},
+        ),
+        # Overview section
+        dmc.Divider(label="Overview", size="sm", style={"marginBottom": "16px"}),
+        html.Div(id="tab-overview", style={"marginBottom": "24px"}),
+        # Details section
+        dmc.Divider(label="Details", size="sm", style={"marginBottom": "16px"}),
+        html.Div(id="tab-details", style={"marginBottom": "24px"}),
+        # Chart section
+        dmc.Divider(label="Chart", size="sm", style={"marginBottom": "16px"}),
+        dcc.Graph(id="chart", style={"height": "400px", "marginBottom": "24px"}),
+        # Data section
+        dmc.Divider(label="Data", size="sm", style={"marginBottom": "16px"}),
+        html.Div(id="tab-data", style={"marginBottom": "24px"}),
+        # Footer actions
+        dmc.Group(
+            [
+                dmc.Button(
+                    "Edit",
+                    id="edit-btn",
+                    variant="outline",
+                    color="blue",
+                    leftSection=DashIconify(icon="material-symbols:edit"),
+                ),
+                dmc.Button(
+                    "Export",
+                    id="export-btn",
+                    variant="outline",
+                    color="green",
+                    leftSection=DashIconify(icon="material-symbols:download"),
+                ),
+                dmc.Button(
+                    "Delete",
+                    id="delete-btn",
+                    variant="outline",
+                    color="red",
+                    leftSection=DashIconify(icon="material-symbols:delete"),
+                ),
+            ],
+            gap="sm",
+            justify="flex-start",
+        ),
+    ],
+    id="detail-modal",
+    size="xl",
+    centered=True,
+    # style={"width": "75vw", "maxWidth": "75vw"},
+)
+
+# Create modal
+create_modal = dbc.Modal(
+    [
+        dbc.ModalHeader(
+            dmc.Title("Create New Timeseries", order=3),
+        ),
+        dbc.ModalBody(
+            [
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dmc.TextInput(
+                                    id="new-code",
+                                    label="Code",
+                                    placeholder="e.g., AAPL",
+                                    size="md",
+                                ),
+                            ],
+                            md=6,
+                        ),
+                        dbc.Col(
+                            [
+                                dmc.TextInput(
+                                    id="new-name",
+                                    label="Name",
+                                    placeholder="e.g., Apple Inc.",
+                                    size="md",
+                                ),
+                            ],
+                            md=6,
+                        ),
+                    ],
+                    style={"marginBottom": "16px"},
+                ),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Label("Asset Class", className="form-label"),
+                                dbc.Select(
+                                    id="new-class",
+                                    options=[
+                                        {"label": "Equity", "value": "equity"},
+                                        {"label": "Bond", "value": "bond"},
+                                        {"label": "Commodity", "value": "commodity"},
+                                    ],
+                                    size="md",
+                                ),
+                            ],
+                            md=6,
+                        ),
+                        dbc.Col(
+                            [
+                                dbc.Label("Frequency", className="form-label"),
+                                dbc.Select(
+                                    id="new-freq",
+                                    options=[
+                                        {"label": "Daily", "value": "daily"},
+                                        {"label": "Weekly", "value": "weekly"},
+                                        {"label": "Monthly", "value": "monthly"},
+                                    ],
+                                    size="md",
+                                ),
+                            ],
+                            md=6,
+                        ),
+                    ],
+                    style={"marginBottom": "16px"},
+                ),
+                dmc.Text(
+                    "Upload CSV", size="sm", fw="bold", style={"marginBottom": "8px"}
+                ),
+                dcc.Upload(
+                    dmc.Paper(
+                        [
+                            dmc.Center(
+                                [
+                                    DashIconify(
+                                        icon="material-symbols:cloud-upload", width=40
+                                    ),
+                                    dmc.Text(
+                                        "Drag & drop or click to upload",
+                                        size="sm",
+                                        c="gray",
+                                    ),
+                                ],
+                                style={"padding": "20px"},
+                            ),
+                        ],
+                        radius="md",
+                        style={
+                            "border": "2px dashed var(--mantine-color-gray-4)",
+                            "cursor": "pointer",
+                            "transition": "border-color 0.2s",
+                        },
+                    ),
+                    id="upload-csv",
+                    multiple=False,
+                ),
+            ],
+        ),
+        dbc.ModalFooter(
+            [
+                dmc.Button(
+                    "Cancel",
+                    id="cancel-create",
+                    variant="outline",
+                    color="gray",
+                ),
+                dmc.Button(
+                    "Create",
+                    id="save-create",
+                    variant="filled",
+                    color="blue",
+                ),
+            ],
+            style={"justifyContent": "flex-end", "gap": "8px"},
+        ),
+    ],
+    id="create-modal",
+    centered=True,
+)
+
+# Main layout
+layout = html.Div(
+    [
+        # Components
+        header,
+        controls,
+        data_container,
+        detail_modal,
+        create_modal,
+        html.Div(
+            id="notifications",
+            style={"position": "fixed", "top": "20px", "right": "20px", "zIndex": 1000},
+        ),
+        # Data stores
+        dcc.Store(id="selected-ts"),
+        dcc.Store(id="page-data"),
+    ],
+    style={
+        "minHeight": "100vh",
+        "backgroundColor": "var(--bg-primary)",
+        "color": "var(--text-primary)",
+        "fontFamily": "Inter, sans-serif",
+    },
+)
+
+
+# =============================================================================
+# CALLBACKS
+# =============================================================================
+
+
+def format_number(num):
+    """Format large numbers with K, M suffixes"""
+    if num >= 1_000_000:
+        return f"{num/1_000_000:.1f}M"
+    elif num >= 1_000:
+        return f"{num/1_000:.1f}K"
+    return str(num)
+
+
+def create_timeseries_card(ts):
+    """Create a simple card for timeseries"""
+    return html.Div(
+        dmc.Card(
+            [
+                dmc.CardSection(
+                    [
+                        dmc.Group(
+                            [
+                                dmc.Group(
+                                    [
+                                        dmc.Title(
+                                            ts.code, order=4, style={"margin": 0}
+                                        ),
+                                        dmc.Text(
+                                            ts.name or "Unnamed",
+                                            size="sm",
+                                            c="gray",
+                                            style={"margin": 0},
+                                        ),
+                                    ],
+                                    style={"flex": 1},
+                                ),
+                                dmc.Group(
+                                    [
+                                        dmc.Badge(
+                                            ts.asset_class or "Unknown",
+                                            color="blue",
+                                            variant="light",
+                                        ),
+                                        dmc.Badge(
+                                            f"{format_number(ts.num_data or 0)} pts",
+                                            color="gray",
+                                            variant="outline",
+                                        ),
+                                    ],
+                                    gap="xs",
+                                ),
+                            ],
+                            justify="space-between",
+                            align="flex-start",
+                            style={"marginBottom": "12px"},
+                        ),
+                        dmc.Divider(size="xs", style={"marginBottom": "12px"}),
+                        dmc.Group(
+                            [
+                                dmc.Text(
+                                    f"📅 {ts.start.strftime('%Y-%m-%d') if ts.start else 'N/A'}",
+                                    size="xs",
+                                    c="gray",
+                                ),
+                                dmc.Text(
+                                    f"🔄 {ts.frequency or 'Unknown'}",
+                                    size="xs",
+                                    c="gray",
+                                ),
+                            ],
+                            gap="md",
+                        ),
+                    ],
+                    p="md",
+                ),
+            ],
+            shadow="sm",
+            radius="md",
+            style={
+                "height": "100%",
+            },
+        ),
+        style={
+            "cursor": "pointer",
+            "transition": "transform 0.2s, box-shadow 0.2s",
+        },
+        id={"type": "ts-card", "index": str(ts.id)},
+    )
+
+
+@callback(
+    [
+        Output("timeseries-grid", "children"),
+        Output("stats-bar", "label"),
+        Output("pagination", "total"),
+    ],
+    [
+        Input("search", "value"),
+        Input("pagination", "value"),
+    ],
+)
+def update_timeseries_list(search, current_page):
+    if current_page is None:
+        current_page = 1
+
+    try:
+        # Query database
+        ts_query = Timeseries.find({}).sort("code").run()
+
+        # Filter results
+        filtered = []
+        for ts in ts_query:
+            # Search filter
+            if search and search.lower() not in (
+                ts.code.lower() + (ts.name or "").lower()
+            ):
+                continue
+            # Asset class filter
+            filtered.append(ts)
+
+        total_count = len(filtered)
+        total_pages = max(1, (total_count + 50 - 1) // 50)
+
+        # Paginate
+        start_idx = (current_page - 1) * 50
+        page_items = filtered[start_idx : start_idx + 50]
+
+        # Create grid
+        if page_items:
+            grid = dbc.Row(
+                [
+                    dbc.Col(
+                        create_timeseries_card(ts),
+                        lg=4,
+                        md=6,
+                        style={"marginBottom": "16px"},
+                    )
+                    for ts in page_items
+                ],
+                className="g-3",
+            )
+        else:
+            grid = dmc.Center(
+                [
+                    dmc.Stack(
+                        [
+                            DashIconify(
+                                icon="material-symbols:chart-line",
+                                width=60,
+                                color="var(--mantine-color-gray-5)",
+                            ),
+                            dmc.Title("No timeseries found", order=3, c="gray"),
+                            dmc.Text(
+                                "Try adjusting your search or filters",
+                                c="gray",
+                                size="sm",
+                            ),
+                        ],
+                        align="center",
+                        gap="md",
+                    ),
+                ],
+                style={"height": "300px"},
+            )
+
+        # Stats bar
+        stats_label = f"Showing {len(page_items)} of {total_count:,} timeseries"
+
+        return grid, stats_label, total_pages
+
+    except Exception as e:
+        logger.error(f"Error loading timeseries: {e}")
+        return (
+            dmc.Alert(
+                f"Error: {e}",
+                color="red",
+                variant="light",
+            ),
+            "Error",
+            1,
+        )
+
+
+@callback(
+    [Output("detail-modal", "opened"), Output("selected-ts", "data")],
+    [Input({"type": "ts-card", "index": ALL}, "n_clicks")],
+    prevent_initial_call=True,
+)
+def open_detail_modal(clicks):
+    if not any(clicks or []):
+        raise PreventUpdate
+
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    # Get clicked card ID
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    ts_id = json.loads(button_id)["index"]
+
+    return True, ts_id
+
+
+@callback(
+    [
+        Output("modal-header", "children"),
+        Output("tab-overview", "children"),
+        Output("tab-details", "children"),
+        Output("chart", "figure"),
+        Output("tab-data", "children"),
+    ],
+    [Input("selected-ts", "data")],
+    prevent_initial_call=True,
+)
+def load_modal_content(ts_id):
+    if not ts_id:
+        raise PreventUpdate
+
+    try:
+        ts = Timeseries.find_one(Timeseries.id == ObjectId(ts_id)).run()
+        if not ts:
+            return "Not found", "Error", "Error", {}, "Error"
+
+        # Header
+        header = [
+            dmc.Title(ts.code, order=2, style={"margin": 0}),
+            dmc.Text(ts.name or "Unnamed", c="gray", size="sm"),
+        ]
+
+        # Overview tab - Basic info
+        overview = dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dmc.Title(
+                            "Basic Information", order=4, style={"marginBottom": "16px"}
+                        ),
+                        dmc.Stack(
+                            [
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Code: ", fw="bold"),
+                                        ts.code or "N/A",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Name: ", fw="bold"),
+                                        ts.name or "N/A",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Provider: ", fw="bold"),
+                                        ts.provider or "N/A",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Asset Class: ", fw="bold"),
+                                        ts.asset_class or "N/A",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Category: ", fw="bold"),
+                                        ts.category or "N/A",
+                                    ]
+                                ),
+                            ],
+                            gap="xs",
+                        ),
+                    ],
+                    md=6,
+                ),
+                dbc.Col(
+                    [
+                        dmc.Title(
+                            "Data Statistics", order=4, style={"marginBottom": "16px"}
+                        ),
+                        dmc.Stack(
+                            [
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Data Points: ", fw="bold"),
+                                        f"{ts.num_data or 0:,}",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Start Date: ", fw="bold"),
+                                        (
+                                            ts.start.strftime("%Y-%m-%d")
+                                            if ts.start
+                                            else "N/A"
+                                        ),
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("End Date: ", fw="bold"),
+                                        (
+                                            ts.end.strftime("%Y-%m-%d")
+                                            if ts.end
+                                            else "N/A"
+                                        ),
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Frequency: ", fw="bold"),
+                                        ts.frequency or "N/A",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Unit: ", fw="bold"),
+                                        ts.unit or "N/A",
+                                    ]
+                                ),
+                            ],
+                            gap="xs",
+                        ),
+                    ],
+                    md=6,
+                ),
+            ],
+        )
+
+        # Details tab - All attributes
+        details = dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dmc.Title(
+                            "Source & Metadata", order=4, style={"marginBottom": "16px"}
+                        ),
+                        dmc.Stack(
+                            [
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Source: ", fw="bold"),
+                                        ts.source or "N/A",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Source Code: ", fw="bold"),
+                                        ts.source_code or "N/A",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Scale: ", fw="bold"),
+                                        (
+                                            str(ts.scale)
+                                            if ts.scale is not None
+                                            else "N/A"
+                                        ),
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Currency: ", fw="bold"),
+                                        ts.currency or "N/A",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Country: ", fw="bold"),
+                                        ts.country or "N/A",
+                                    ]
+                                ),
+                            ],
+                            gap="xs",
+                        ),
+                    ],
+                    md=6,
+                ),
+                dbc.Col(
+                    [
+                        dmc.Title(
+                            "Relationships & Notes",
+                            order=4,
+                            style={"marginBottom": "16px"},
+                        ),
+                        dmc.Stack(
+                            [
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Parent ID: ", fw="bold"),
+                                        ts.parent_id or "N/A",
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Timeseries ID: ", fw="bold"),
+                                        str(ts.id),
+                                    ]
+                                ),
+                                dmc.Text(
+                                    [
+                                        dmc.Text("Remark: ", fw="bold"),
+                                        ts.remark or "N/A",
+                                    ]
+                                ),
+                            ],
+                            gap="xs",
+                        ),
+                    ],
+                    md=6,
+                ),
+            ],
+        )
+
+        # Chart
+        df = ts.data.reset_index()
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df.iloc[:, 0],
+                mode="lines",
+                name=ts.code,
+                line=dict(color="#3b82f6", width=2),
+            )
+        )
+        fig.update_layout(
+            title=f"{ts.code} Time Series",
+            xaxis_title="Date",
+            yaxis_title="Value",
+            height=400,
+            margin=dict(l=0, r=0, t=30, b=0),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="var(--text-primary)"),
+            xaxis=dict(color="var(--text-primary)"),
+            yaxis=dict(color="var(--text-primary)"),
+        )
+
+        # Data table
+        df_display = df.head(100).copy()
+        df_display.columns = ["Date", "Value"]
+        table = dash_table.DataTable(
+            data=df_display.to_dict("records"),
+            columns=[{"name": i, "id": i} for i in df_display.columns],
+            style_table={"height": "400px", "overflowY": "auto"},
+            style_cell={
+                "textAlign": "left",
+                "padding": "10px",
+                "backgroundColor": "var(--bg-secondary)",
+                "color": "var(--text-primary)",
+            },
+            style_header={
+                "backgroundColor": "var(--bg-primary)",
+                "fontWeight": "bold",
+                "color": "var(--text-primary)",
+            },
+            page_size=50,
+        )
+
+        return header, overview, details, fig, table
+
+    except Exception as e:
+        logger.error(f"Error loading modal content: {e}")
+        return "Error", f"Error: {e}", f"Error: {e}", {}, f"Error: {e}"
+
+
+@callback(
+    Output("detail-modal", "opened", allow_duplicate=True),
+    Input("close-modal", "n_clicks"),
+    prevent_initial_call=True,
+)
+def close_modal(n_clicks):
+    return False
+
+
+@callback(
+    Output("create-modal", "is_open"),
+    [
+        Input("create-btn", "n_clicks"),
+        Input("cancel-create", "n_clicks"),
+        Input("save-create", "n_clicks"),
+    ],
+    prevent_initial_call=True,
+)
+def toggle_create_modal(create_clicks, cancel_clicks, save_clicks):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return False
+
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    return trigger == "create-btn"
+
+
+@callback(
+    Output("notifications", "children"),
+    [Input("save-create", "n_clicks")],
+    [
+        State("new-code", "value"),
+        State("new-name", "value"),
+        State("new-class", "value"),
+        State("new-freq", "value"),
+    ],
+    prevent_initial_call=True,
+)
+def create_timeseries(n_clicks, code, name, asset_class, frequency):
+    if not n_clicks or not code:
+        raise PreventUpdate
+
+    try:
+        # Create new timeseries (you'd implement database save here)
+        return dmc.Notification(
+            title="Success",
+            message=f"Timeseries '{code}' created successfully!",
+            color="green",
+            icon=DashIconify(icon="material-symbols:check-circle"),
+            id="success-notification",
+            autoClose=4000,
+        )
+    except Exception as e:
+        return dmc.Notification(
+            title="Error",
+            message=f"Error creating timeseries: {e}",
+            color="red",
+            icon=DashIconify(icon="material-symbols:error"),
+            id="error-notification",
+            autoClose=4000,
+        )
