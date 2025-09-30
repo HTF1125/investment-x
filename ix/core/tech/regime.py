@@ -23,9 +23,6 @@ class Regime1:
         self.df: pd.DataFrame = pd.DataFrame()
         self._calculate_regime()
 
-
-
-
     @classmethod
     def from_meta(
         cls,

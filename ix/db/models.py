@@ -35,6 +35,26 @@ class Timeseries(Document):
     parent_id: Optional[str] = Field(default=None)
     remark: str = Field(default="", max_length=None)
 
+    def update_data(self) -> None:
+
+        if self.source_code is None:
+            raise ValueError(f"Source code is not set for {self.code}")
+        ticker, field = str(self.source_code).rsplit(":", 1)
+        if self.source == "Yahoo":
+            from ix.misc.crawler import get_yahoo_data
+            data = get_yahoo_data(ticker)[field]
+        elif self.source == "Fred":
+            from ix.misc.crawler import get_fred_data
+            data = get_fred_data(ticker)[field]
+        elif self.source == "Naver":
+            from ix.misc.crawler import get_naver_data
+            data = get_naver_data(ticker)[field]
+        else:
+            print(f"Unsupported source: {self.source}")
+            return
+        print(data)
+        self.data = data
+
     @property
     def timeseries_data(self) -> TimeseriesData:
         tsd = TimeseriesData.find_one({"key": str(self.id)}).run()

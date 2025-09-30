@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from ix.misc import theme
 from ix.db.query import Offset, Cycle, Series, StandardScalar
+from .base import timeseries_layout
 
 
 def FinancialConditionsUS():
@@ -9,13 +10,13 @@ def FinancialConditionsUS():
     fci_us = (
         pd.concat(
             [
-                StandardScalar(-Series("DXY Index:PX_LAST", freq="W").ffill(), 52*3),
-                StandardScalar(-Series("TRYUS10Y:PX_YTM", freq="W").ffill(), 52*3),
-                StandardScalar(-Series("TRYUS30Y:PX_YTM", freq="W").ffill(), 52*3),
-                StandardScalar(Series("SPX Index:PX_LAST", freq="W").ffill(), 52*3),
-                StandardScalar(-Series("MORTGAGE30US", freq="W").ffill(), 52*3),
-                StandardScalar(-Series("CL1 Comdty:PX_LAST", freq="W").ffill(), 52*3),
-                StandardScalar(-Series("BAMLC0A0CM", freq="W").ffill(), 52*3),
+                StandardScalar(-Series("DXY Index:PX_LAST", freq="W").ffill(), 52 * 3),
+                StandardScalar(-Series("TRYUS10Y:PX_YTM", freq="W").ffill(), 52 * 3),
+                StandardScalar(-Series("TRYUS30Y:PX_YTM", freq="W").ffill(), 52 * 3),
+                StandardScalar(Series("SPX Index:PX_LAST", freq="W").ffill(), 52 * 3),
+                StandardScalar(-Series("MORTGAGE30US", freq="W").ffill(), 52 * 3),
+                StandardScalar(-Series("CL1 Comdty:PX_LAST", freq="W").ffill(), 52 * 3),
+                StandardScalar(-Series("BAMLC0A0CM", freq="W").ffill(), 52 * 3),
             ],
             axis=1,
         )
@@ -23,7 +24,7 @@ def FinancialConditionsUS():
         .ewm(span=4 * 12)
         .mean()
     )
- 
+
     fci = Offset(fci_us.resample("W").last().ffill().loc["2000":], months=6)
     cyc = Cycle(fci)
     ism = Series("ISMPMI_M:PX_LAST", freq="ME")
@@ -67,80 +68,41 @@ def FinancialConditionsUS():
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"Financial Conditions (United States)",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
+                title=dict(text="Financial Conditions", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[-1, 1],
-                title=dict(
-                    text="Financial Conditions",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="ISM", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="ISM",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0f",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[30, 70],
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     fig.add_hline(
         y=50,
@@ -207,81 +169,41 @@ def GlobalLiquidityCycle():
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"Global Liquidity Cycle (M2)",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                # range=[-1, 1],
+                title=dict(text="Global Liquidity YoY", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 tickformat=".0%",
-                title=dict(
-                    text="Global Liquidity YoY",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="ISM", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="ISM",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0f",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[30, 70],
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
     fig.add_hline(
         y=50,
         line_dash="dash",
@@ -329,81 +251,41 @@ def M2GrowthContribution():
                 hovertemplate=f"<b>{name}</b>: %{{y:.2%}}<extra></extra>",
             )
         )
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"Global M2 Growth Contributions",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                # range=[-1, 1],
+                title=dict(text="Global M2 YoY", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 tickformat=".0%",
-                title=dict(
-                    text="Global M2 YoY",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="ISM", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="ISM",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0f",
-                # range=[30, 70],
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
             "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
     fig.update_layout(barmode="relative")
     return fig
 
@@ -434,81 +316,28 @@ def M2Growth():
             )
         )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
-                text=f"Global M2 Grwoth",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                text=f"Global M2 Growth",
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                # range=[-1, 1],
+                title=dict(text="M2 YoY", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 tickformat=".0%",
-                title=dict(
-                    text="M2 YoY",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
-            # "yaxis2": dict(
-            #     overlaying="y",
-            #     side="right",
-            #     title="ISM",
-            #     tickfont=dict(color=theme.colors.text_muted, size=10),
-            #     tickformat=".0f",
-            #     range=[30, 70],
-            # ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig
 
@@ -596,81 +425,40 @@ def CreditImpulseUSvsCN():
         hovermode="x unified",
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
-                text=f"Global M2 Grwoth",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                text=f"Credit Impulse US vs CN",
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                # range=[-1, 1],
+                title=dict(text="United States", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 tickformat=".0%",
-                title=dict(
-                    text="United States",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="China", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="China",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0%",
-                # range=[30, 70],
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
     return fig
 
 
@@ -690,82 +478,28 @@ def InvestorPositionsChart():
             go.Scatter(x=series.index, y=series.values, mode="lines", name=name)
         )
 
-    # Apply layout and show the plotly figure
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"Investor Positions",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                # range=[-1, 1],
+                title=dict(text="Open Interest", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 tickformat=".0f",
-                title=dict(
-                    text="Open Interest",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
-            # "yaxis2": dict(
-            #     overlaying="y",
-            #     side="right",
-            #     title="ISM",
-            #     tickfont=dict(color=theme.colors.text_muted, size=10),
-            #     tickformat=".0f",
-            #     range=[30, 70],
-            # ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
     return fig
 
 
@@ -844,81 +578,41 @@ def FedNetLiquidityVsSP500():
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"Fed Net Liquidity vs S&P500",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
+                title=dict(text="Fed Net Liquidity YoY", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[-0.2, 0.5],
                 tickformat=".0%",
-                title=dict(
-                    text="Fed Net Liquidity YoY",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="S&P500 YoY", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="S&P500 YoY",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0%",
-                # range=[30, 70],
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     # Optionally, add a band for recession periods or highlight recent data
     # (Not implemented here, but could be added for further improvement)
@@ -1026,73 +720,28 @@ def AiCapexQuarterlyYoY():
                 hovertemplate=f"<b>{name}</b>: %{{y:.2%}}<extra></extra>",
             )
         )
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"Quarterly Capital Expenditure (AI)",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                # range=[-1, 1],
+                title=dict(text="Capex Quarterly YoY", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 tickformat=".0%",
-                title=dict(
-                    text="Capex Quarterly YoY",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
     fig.update_layout(barmode="relative")
     return fig
 
@@ -1128,72 +777,27 @@ def AiCapexYearlylyYoY():
                 hovertemplate=f"<b>{name}</b>: %{{y:.2%}}<extra></extra>",
             )
         )
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"Yearly Capital Expenditure (AI)",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                # range=[-1, 1],
+                title=dict(text="Capex Yearly YoY", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 tickformat=".0%",
-                title=dict(
-                    text="Capex Yearly YoY",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
     fig.update_layout(barmode="relative")
     return fig

@@ -194,6 +194,13 @@ def send_price_data():
 
 
 
+
+
+
+
+
+
+
 def daily():
     update_yahoo_data()
     update_fred_data()

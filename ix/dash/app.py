@@ -327,6 +327,16 @@ clientside_callback(
 )
 
 
+# Initialize scheduler
+from .scheduler import start_scheduler
+
+# Initialize and start the scheduler
+try:
+    scheduler = start_scheduler(8)
+    print("Task scheduler initialized and started")
+except Exception as e:
+    print(f"Warning: Failed to initialize scheduler: {e}")
+
 # Export the Flask server for use in other applications
 server = app.server
 
@@ -340,4 +350,6 @@ if __name__ == "__main__":
     print("  - Insights: http://localhost:8050/insights")
     print("  - Views: http://localhost:8050/views")
     print("  - Strategies: http://localhost:8050/strategies")
+    print("Scheduled tasks:")
+    print("  - Daily data updates at 9:00 AM UTC")
     app.run_server(debug=True, host="0.0.0.0", port=8050)

@@ -4,6 +4,7 @@ from ix import Series
 import plotly.graph_objects as go
 from ix.core.tech.regime import Regime1
 from ix.misc.theme import theme
+from .base import timeseries_layout
 
 REGIME_STATES = ["Expansion", "Slowdown", "Contraction", "Recovery"]
 REGIME_COLORS = [
@@ -82,78 +83,40 @@ def OecdCliRegime() -> go.Figure:
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text="OECD CLI Regime",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                title=dict(
-                    text="Regime Distribution",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
+                title=dict(text="Regime Distribution", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
             "yaxis2": dict(
+                title=dict(text="ACWI 52W % Change", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="ACWI 52W % Change",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                tickformat = ".0%",
+                tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
             "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig
 
@@ -218,78 +181,40 @@ def PmiMfgRegime() -> go.Figure:
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text="PMI Manufacturing Regime",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                title=dict(
-                    text="Regime Distribution",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
+                title=dict(text="Regime Distribution", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
             "yaxis2": dict(
+                title=dict(text="ACWI 52W % Change", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="ACWI 52W % Change",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                tickformat = ".0%",
+                tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
             "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig
 
@@ -354,77 +279,39 @@ def PmiSrvRegime() -> go.Figure:
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
-                text="PMI Manufacturing Regime",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                text="PMI Services Regime",
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
-                title=dict(
-                    text="Regime Distribution",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
+                title=dict(text="Regime Distribution", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
             "yaxis2": dict(
+                title=dict(text="ACWI 52W % Change", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="ACWI 52W % Change",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                tickformat = ".0%",
+                tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
             "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig

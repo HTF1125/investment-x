@@ -6,7 +6,7 @@ def Grid(children: ..., gap: str = "24px", marginBottom: str = "40px"):
     return html.Div(
         style={
             "display": "grid",
-            "gridTemplateColumns": "repeat(auto-fit, minmax(480px, 1fr))",
+            "gridTemplateColumns": "repeat(auto-fit, minmax(600px, 1fr))",
             "gap": gap,
             "marginBottom": marginBottom,
         },

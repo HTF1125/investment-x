@@ -30,6 +30,8 @@ from dash import (
     callback_context,
     callback,
     register_page,
+    clientside_callback,
+    ClientsideFunction,
 )
 
 # Import chart builders from your charts module
@@ -57,15 +59,15 @@ def _btn_style(active: bool):
             "background": "linear-gradient(145deg, #3b82f6, #2563eb)",
             "color": "white",
             "border": "2px solid #60a5fa",
-            "borderRadius": "10px",
-            "padding": "14px 24px",
-            "fontSize": "0.95rem",
+            "borderRadius": "8px",
+            "padding": "8px 16px",
+            "fontSize": "0.8rem",
             "fontWeight": "700",
             "cursor": "pointer",
             "transition": "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-            "boxShadow": "0 8px 25px rgba(59, 130, 246, 0.4), 0 2px 10px rgba(59, 130, 246, 0.25)",
-            "transform": "translateY(-2px) scale(1.02)",
-            "minWidth": "75px",
+            "boxShadow": "0 6px 20px rgba(59, 130, 246, 0.4), 0 2px 8px rgba(59, 130, 246, 0.25)",
+            "transform": "translateY(-1px) scale(1.01)",
+            "minWidth": "50px",
             "letterSpacing": "0.025em",
             "textAlign": "center",
         }
@@ -74,14 +76,14 @@ def _btn_style(active: bool):
             "background": "linear-gradient(145deg, #475569, #334155)",
             "color": "#e2e8f0",
             "border": "1px solid #64748b",
-            "borderRadius": "10px",
-            "padding": "14px 24px",
-            "fontSize": "0.95rem",
+            "borderRadius": "8px",
+            "padding": "8px 16px",
+            "fontSize": "0.8rem",
             "fontWeight": "600",
             "cursor": "pointer",
             "transition": "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-            "boxShadow": "0 4px 12px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.1)",
-            "minWidth": "75px",
+            "boxShadow": "0 3px 10px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.1)",
+            "minWidth": "50px",
             "letterSpacing": "0.025em",
             "textAlign": "center",
         }
@@ -93,11 +95,11 @@ def create_time_period_selector():
             "background": "linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.95))",
             "backdropFilter": "saturate(180%) blur(20px)",
             "border": "1px solid rgba(148, 163, 184, 0.25)",
-            "borderRadius": "16px",
-            "padding": "20px 28px",
-            "marginBottom": "32px",
+            "borderRadius": "12px",
+            "padding": "12px 20px",
+            "marginBottom": "24px",
             "marginTop": "0px",
-            "boxShadow": "0 8px 32px rgba(0,0,0,0.25)",
+            "boxShadow": "0 6px 24px rgba(0,0,0,0.25)",
             "position": "sticky",  # Sticky positioning
             "top": "90px",  # Position below navbar (90px buffer for desktop)
             "zIndex": 100,  # High enough to stay above charts but below navbar
@@ -108,8 +110,8 @@ def create_time_period_selector():
                 style={
                     "display": "flex",
                     "alignItems": "center",
-                    "justifyContent": "center",
-                    "gap": "24px",
+                    "justifyContent": "space-between",
+                    "gap": "16px",
                     "flexWrap": "wrap",
                 },
                 children=[
@@ -118,15 +120,15 @@ def create_time_period_selector():
                             html.Span(
                                 "⏱️",
                                 style={
-                                    "fontSize": "1.5rem",
-                                    "marginRight": "12px",
+                                    "fontSize": "1.2rem",
+                                    "marginRight": "8px",
                                     "filter": "drop-shadow(0 2px 4px rgba(0,0,0,0.3))",
                                 },
                             ),
                             html.Span(
                                 "Time Period:",
                                 style={
-                                    "fontSize": "1.1rem",
+                                    "fontSize": "0.95rem",
                                     "fontWeight": "700",
                                     "color": "#f1f5f9",
                                     "letterSpacing": "0.025em",
@@ -138,10 +140,10 @@ def create_time_period_selector():
                     html.Div(
                         style={
                             "display": "flex",
-                            "gap": "12px",
+                            "gap": "8px",
                             "flexWrap": "wrap",
                             "alignItems": "center",
-                            "justifyContent": "center",
+                            "justifyContent": "flex-end",
                         },
                         children=[
                             html.Button(
@@ -152,6 +154,31 @@ def create_time_period_selector():
                                 className="period-btn",
                             )
                             for period in ["1Y", "3Y", "5Y", "10Y", "20Y", "30Y", "50Y"]
+                        ]
+                        + [
+                            html.Button(
+                                "📥 Download Charts",
+                                id="download-charts-btn",
+                                n_clicks=0,
+                                style={
+                                    "background": "linear-gradient(145deg, #10b981, #059669)",
+                                    "color": "white",
+                                    "border": "2px solid #34d399",
+                                    "borderRadius": "8px",
+                                    "padding": "8px 16px",
+                                    "fontSize": "0.8rem",
+                                    "fontWeight": "700",
+                                    "cursor": "pointer",
+                                    "transition": "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                                    "boxShadow": "0 6px 20px rgba(16, 185, 129, 0.4), 0 2px 8px rgba(16, 185, 129, 0.25)",
+                                    "transform": "translateY(-1px) scale(1.01)",
+                                    "minWidth": "120px",
+                                    "letterSpacing": "0.025em",
+                                    "textAlign": "center",
+                                    "marginLeft": "16px",
+                                },
+                                className="download-btn",
+                            )
                         ],
                     ),
                 ],
@@ -238,6 +265,7 @@ layout = html.Div(
     },
     children=[
         dcc.Store(id="preset-store", data="5Y"),
+        dcc.Download(id="download-charts-file"),
         html.Div(
             style={
                 "maxWidth": "1600px",
@@ -294,29 +322,29 @@ def create_chart_callback(chart_func):
                 )
 
             # Ensure proper dark theme styling with legend
-            fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#e2e8f0",
-                # Increase bottom margin to accommodate legend and x-axis
-                margin=dict(l=60, r=40, t=40, b=100),
-                # Ensure legend is visible and properly styled
-                legend=dict(
-                    visible=True,
-                    orientation="h",
-                    yanchor="bottom",
-                    y=-0.2,  # Move legend further down
-                    xanchor="center",
-                    x=0.5,
-                    bgcolor="rgba(0,0,0,0)",
-                    bordercolor="rgba(148, 163, 184, 0.3)",
-                    borderwidth=1,
-                    font=dict(color="#e2e8f0", size=11),
-                    itemsizing="trace",
-                    itemwidth=30,
-                    yref="paper",
-                ),
-            )
+            # fig.update_layout(
+            #     paper_bgcolor="rgba(0,0,0,0)",
+            #     plot_bgcolor="rgba(0,0,0,0)",
+            #     font_color="#e2e8f0",
+            #     # Increase bottom margin to accommodate legend and x-axis
+            #     margin=dict(l=60, r=40, t=40, b=100),
+            #     # Ensure legend is visible and properly styled
+            #     legend=dict(
+            #         visible=True,
+            #         orientation="h",
+            #         yanchor="bottom",
+            #         y=-0.2,  # Move legend further down
+            #         xanchor="center",
+            #         x=0.5,
+            #         bgcolor="rgba(0,0,0,0)",
+            #         bordercolor="rgba(148, 163, 184, 0.3)",
+            #         borderwidth=1,
+            #         font=dict(color="#e2e8f0", size=11),
+            #         itemsizing="trace",
+            #         itemwidth=30,
+            #         yref="paper",
+            #     ),
+            # )
 
             return fig, {"is_loading": False}
 
@@ -376,3 +404,154 @@ def highlight_buttons(active_preset):
     """Update button styles based on active period"""
     periods = ["1Y", "3Y", "5Y", "10Y", "20Y", "30Y", "50Y"]
     return [_btn_style(p == active_preset) for p in periods]
+
+
+# Download charts callback
+@callback(
+    Output("download-charts-file", "data"),
+    Input("download-charts-btn", "n_clicks"),
+    State("preset-store", "data"),
+    prevent_initial_call=True,
+)
+def download_charts_html(n_clicks, period):
+    """Generate and download HTML file with all macro charts"""
+    if n_clicks is None:
+        return None
+
+    try:
+        # Build structured HTML
+        html_parts = []
+
+        # Add HTML header with styling
+        html_header = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Macro Charts Report</title>
+<style>
+body {{
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 40px;
+    background-color: #0f172a;
+    color: #e2e8f0;
+}}
+h1 {{
+    color: #f1f5f9;
+    text-align: center;
+    margin-bottom: 10px;
+}}
+h2 {{
+    margin-top: 40px;
+    color: #3b82f6;
+    border-bottom: 2px solid #3b82f6;
+    padding-bottom: 8px;
+}}
+.figure {{
+    margin: 30px 0;
+    background: rgba(30, 41, 59, 0.3);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}}
+.meta-info {{
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin-bottom: 30px;
+}}
+</style>
+</head>
+<body>
+<h1>📊 Macro Charts Analysis Report</h1>
+<div class="meta-info">
+    <p>Generated on {pd.Timestamp.now().strftime('%B %d, %Y at %I:%M %p')} • Time Period: {period} • Investment-X Dashboard</p>
+</div>"""
+
+        html_parts.append(html_header)
+
+        # Generate charts for each chart function
+        for i, chart_func in enumerate(__chts__):
+            try:
+                # Create the chart
+                fig = chart_func()
+
+                # Apply period range if period is specified
+                if period:
+                    start_dt = get_period_range(period)
+                    end_dt = today() + relativedelta(months=6)  # Add 6 months buffer
+                    xr = [
+                        pd.to_datetime(start_dt),
+                        pd.to_datetime(end_dt),
+                    ]
+
+                    fig.update_layout(
+                        xaxis=dict(
+                            range=xr,
+                            showgrid=True,
+                            gridcolor="rgba(148, 163, 184, 0.1)",
+                            zeroline=False,
+                        )
+                    )
+
+                # Add chart section
+                chart_name = chart_func.__name__.replace("_", " ").title()
+                html_parts.append(f"<h2>{i+1}. {chart_name}</h2>")
+                html_parts.append('<div class="figure">')
+
+                # Add chart HTML (include plotlyjs only for first chart)
+                if i == 0:
+                    html_parts.append(
+                        fig.to_html(full_html=False, include_plotlyjs="cdn")
+                    )
+                else:
+                    html_parts.append(
+                        fig.to_html(full_html=False, include_plotlyjs=False)
+                    )
+
+                html_parts.append("</div>")
+
+            except Exception as e:
+                # Add error section for failed charts
+                chart_name = chart_func.__name__.replace("_", " ").title()
+                html_parts.append(f"<h2>{i+1}. {chart_name}</h2>")
+                html_parts.append('<div class="figure">')
+                html_parts.append(
+                    f'<p style="color: #ef4444;">Error loading chart: {str(e)}</p>'
+                )
+                html_parts.append("</div>")
+
+        # Close HTML
+        html_footer = """
+<div style="margin-top: 60px; text-align: center; color: #94a3b8; font-size: 0.9rem;">
+    <p>Report generated by Investment-X Dashboard • Built with Dash & Plotly</p>
+</div>
+</body></html>"""
+
+        html_parts.append(html_footer)
+
+        # Join all parts and return as download
+        html_content = "\n".join(html_parts)
+
+        return {
+            "content": html_content,
+            "filename": f"macro_charts_report_{period}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.html",
+            "type": "text/html",
+        }
+
+    except Exception as e:
+        # Return error message
+        error_html = f"""
+<!DOCTYPE html>
+<html>
+<head><title>Error</title></head>
+<body>
+<h1>Error generating report</h1>
+<p>An error occurred while generating the charts report: {str(e)}</p>
+</body>
+</html>
+"""
+        return {
+            "content": error_html,
+            "filename": "error_report.html",
+            "type": "text/html",
+        }

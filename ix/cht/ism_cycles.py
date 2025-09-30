@@ -2,6 +2,7 @@ from ix import Series
 import plotly.graph_objects as go
 from ix.misc.theme import theme
 from ix.db.query import Cycle
+from .base import timeseries_layout
 
 
 def IsmCycleSP500() -> go.Figure:
@@ -45,79 +46,40 @@ def IsmCycleSP500() -> go.Figure:
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"ISM Cycle vs {name}",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
+                title=dict(text="ISM", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[30, 70],
-                title=dict(
-                    text="ISM",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="Asset YoY", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="Asset YoY",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig
 
@@ -163,79 +125,40 @@ def IsmCycleUST10Y() -> go.Figure:
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"ISM Cycle vs {name}",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
+                title=dict(text="ISM", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[30, 70],
-                title=dict(
-                    text="ISM",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="Asset YoY", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="Asset YoY",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig
 
@@ -281,79 +204,40 @@ def IsmCycleCrude() -> go.Figure:
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"ISM Cycle vs {name}",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
+                title=dict(text="ISM", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[30, 70],
-                title=dict(
-                    text="ISM",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="Asset YoY", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="Asset YoY",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig
 
@@ -399,79 +283,40 @@ def IsmCycleBitcoin() -> go.Figure:
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"ISM Cycle vs {name}",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
+                title=dict(text="ISM", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[30, 70],
-                title=dict(
-                    text="ISM",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="Asset YoY", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="Asset YoY",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig
 
@@ -517,79 +362,40 @@ def IsmCycleDollar() -> go.Figure:
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"ISM Cycle vs {name}",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
+                title=dict(text="ISM", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[30, 70],
-                title=dict(
-                    text="ISM",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="Asset YoY", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="Asset YoY",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig
 
@@ -597,7 +403,13 @@ def IsmCycleDollar() -> go.Figure:
 def IsmCycleGoldtoCopper() -> go.Figure:
 
     name = "Gold/Copper"
-    px = (Series("GC1 Comdty:PX_LAST") / Series("HG1 Comdty:PX_LAST")).resample("W").last().pct_change(52).dropna()
+    px = (
+        (Series("GC1 Comdty:PX_LAST") / Series("HG1 Comdty:PX_LAST"))
+        .resample("W")
+        .last()
+        .pct_change(52)
+        .dropna()
+    )
 
     fig = go.Figure()
 
@@ -635,78 +447,39 @@ def IsmCycleGoldtoCopper() -> go.Figure:
         )
     )
 
-    fig.update_layout(
+    # Apply dark theme layout
+    layout = timeseries_layout.copy()
+    layout.update(
         {
             "title": dict(
                 text=f"ISM Cycle vs {name}",
-                font=dict(size=16, color=theme.colors.text),
-                y=0.90,
-                x=0.5,
-                xanchor="center",
-                yanchor="bottom",
-                yref="container",
-            ),
-            "font": dict(family=theme.fonts.base, size=12, color=theme.colors.text),
-            "margin": dict(l=20, r=20, t=40, b=30),
-            "hovermode": "x unified",
-            "hoverlabel": dict(
-                bgcolor=theme.colors.surface,
-                bordercolor=theme.colors.border,
-                font=dict(color=theme.colors.text, size=11),
-            ),
-            "legend": dict(
-                x=0.5,
-                y=-0.15,
-                xanchor="center",
-                yanchor="top",
-                orientation="h",
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=theme.colors.border,
-                borderwidth=1,
-                font=dict(color=theme.colors.text, size=11),
-                itemsizing="trace",
-                itemwidth=30,
-                yref="paper",
-                traceorder="normal",
-            ),
-            "paper_bgcolor": theme.colors.background,
-            "plot_bgcolor": theme.colors.background_subtle,
-            "xaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=False,
-                showline=True,
-                linecolor=theme.colors.border,
-                tickformat="%b\n%Y",
-                automargin="height",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
+                x=0.05,
+                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
             "yaxis": dict(
-                gridcolor=theme.colors.border,
-                gridwidth=0.5,
-                zeroline=True,
-                zerolinecolor=theme.colors.text_subtle,
-                zerolinewidth=1,
-                tickfont=dict(color=theme.colors.text_muted, size=10),
-                domain=[0, 0.9],
+                title=dict(text="ISM", font=dict(color="#FFFFFF")),
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=True,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
                 range=[30, 70],
-                title=dict(
-                    text="ISM",
-                    font=dict(color=theme.colors.text, size=12),
-                ),
             ),
             "yaxis2": dict(
+                title=dict(text="Asset YoY", font=dict(color="#FFFFFF")),
                 overlaying="y",
                 side="right",
-                title="Asset YoY",
-                tickfont=dict(color=theme.colors.text_muted, size=10),
                 tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.2)",
+                zeroline=False,
+                showline=False,
+                linecolor="rgba(255,255,255,0.4)",
+                mirror=True,
+                tickfont=dict(color="#FFFFFF"),
             ),
-            "uniformtext": dict(minsize=10, mode="show"),
-            "autosize": True,
-            "height": 500,
-            "barmode": "stack",
         }
     )
+    fig.update_layout(layout)
 
     return fig

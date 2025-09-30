@@ -48,6 +48,11 @@ def onemonthlater(asofdate: Optional[pd.Timestamp] = None) -> pd.Timestamp:
     return asofdate or today() + pd.DateOffset(months=1)
 
 
+def oneyearlater(asofdate: Optional[pd.Timestamp] = None) -> pd.Timestamp:
+    """Returns the date one month from today."""
+    return asofdate or today() + pd.DateOffset(years=1)
+
+
 def onemonthbefore() -> pd.Timestamp:
     """Returns the date one month before today."""
     return today() - pd.DateOffset(months=1)
@@ -158,4 +163,3 @@ periods = {
     "MTD": "Month-to-Date (Start of the Current Month)",
     "YTD": "Year-to-Date (Start of the Current Year)",
 }
-

@@ -1,20 +1,20 @@
 from dash import html, dcc, callback, Input, Output, State, clientside_callback
 import json
-
+from dash_iconify import DashIconify
 
 # Navigation items
 NAV_ITEMS = [
-    {"name": "Dashboard", "href": "/", "icon": "fas fa-chart-line"},
-    {"name": "Macro", "href": "/macro", "icon": "fas fa-globe"},
-    {"name": "Insights", "href": "/insights", "icon": "fas fa-lightbulb"},
-    {"name": "Views", "href": "/views", "icon": "fas fa-chart-bar"},
-    {"name": "Strategies", "href": "/strategies", "icon": "fas fa-bolt"},
-    {"name": "Data", "href": "/data", "icon": "fas fa-bolt"},
+    {"name": "Dashboard", "href": "/", "icon": "fa6-solid:chart-line"},
+    {"name": "Macro", "href": "/macro", "icon": "fa6-solid:globe"},
+    {"name": "Insights", "href": "/insights", "icon": "fa6-solid:lightbulb"},
+    {"name": "Views", "href": "/views", "icon": "fa6-solid:chart-bar"},
+    {"name": "Strategies", "href": "/strategies", "icon": "fa6-solid:bolt"},
+    {"name": "Data", "href": "/data", "icon": "fa6-solid:database"},
 ]
 
 
 def create_nav_link(item, is_mobile=False):
-    """Create navigation link"""
+    """Create navigation link using DashIconify"""
     base_style = {
         "display": "flex",
         "alignItems": "center",
@@ -32,7 +32,7 @@ def create_nav_link(item, is_mobile=False):
 
     return html.A(
         [
-            html.I(className=item["icon"], style={"fontSize": "16px"}),
+            DashIconify(icon=item["icon"], width=16, height=16, style={"color": "inherit"}),
             html.Span(item["name"], style={"marginLeft": "8px"}),
         ],
         href=item["href"],
@@ -42,10 +42,22 @@ def create_nav_link(item, is_mobile=False):
     )
 
 
-def create_action_button(icon_class, button_id, title=None, is_mobile=False):
-    """Create action button (notification, theme switch)"""
+def create_action_button(icon, button_id, title=None, is_mobile=False):
+    """Create action button (notification, theme switch) using DashIconify"""
+    # icon: either a DashIconify icon string or a tuple (icon, alt_icon) for toggle
+    iconify_props = {
+        "width": 18,
+        "height": 18,
+        "style": {"color": "inherit"},
+    }
+    if isinstance(icon, str):
+        icon_component = DashIconify(icon=icon, **iconify_props)
+    else:
+        # fallback, should not happen
+        icon_component = DashIconify(icon=icon[0], **iconify_props)
+
     return html.Button(
-        html.I(className=icon_class, style={"fontSize": "18px"}),
+        icon_component,
         id=button_id,
         className="action-button",
         title=title,
@@ -78,10 +90,10 @@ def create_mobile_menu():
             html.Div(
                 [
                     create_action_button(
-                        "fas fa-bell", "notification-bell-mobile", is_mobile=True
+                        "fa6-solid:bell", "notification-bell-mobile", is_mobile=True
                     ),
                     create_action_button(
-                        "fas fa-moon",
+                        "fa6-solid:moon",
                         "theme-switch-mobile",
                         "Toggle theme",
                         is_mobile=True,
@@ -150,10 +162,10 @@ def create_navbar():
                         html.Div(
                             [
                                 create_action_button(
-                                    "fas fa-bell", "notification-bell-desktop"
+                                    "fa6-solid:bell", "notification-bell-desktop"
                                 ),
                                 create_action_button(
-                                    "fas fa-moon",
+                                    "fa6-solid:moon",
                                     "theme-switch-desktop",
                                     "Toggle theme",
                                 ),
@@ -166,7 +178,7 @@ def create_navbar():
                             },
                         ),
                         # Mobile menu toggle
-                        create_action_button("fas fa-bars", "mobile-menu-toggle"),
+                        create_action_button("fa6-solid:bars", "mobile-menu-toggle"),
                     ],
                     id="navbar-container",
                     style={
@@ -216,7 +228,7 @@ layout = html.Div([navbar])
     prevent_initial_call=True,
 )
 def handle_notifications(desktop_clicks, mobile_clicks):
-    bell_icon = html.I(className="fas fa-bell", style={"fontSize": "18px"})
+    bell_icon = DashIconify(icon="fa6-solid:bell", width=18, height=18, style={"color": "inherit"})
     return bell_icon, bell_icon
 
 
@@ -235,17 +247,17 @@ def handle_notifications(desktop_clicks, mobile_clicks):
 )
 def handle_theme_switch(desktop_clicks, mobile_clicks, current_logo_src):
     if not (desktop_clicks or mobile_clicks):
-        moon_icon = html.I(className="fas fa-moon", style={"fontSize": "18px"})
+        moon_icon = DashIconify(icon="fa6-solid:moon", width=18, height=18, style={"color": "inherit"})
         return current_logo_src, moon_icon, moon_icon
 
     is_currently_light = "light" in current_logo_src
 
     if is_currently_light:
         new_logo_src = "/assets/images/investment-x-logo-dark.svg"
-        new_icon = html.I(className="fas fa-sun", style={"fontSize": "18px"})
+        new_icon = DashIconify(icon="fa6-solid:sun", width=18, height=18, style={"color": "inherit"})
     else:
         new_logo_src = "/assets/images/investment-x-logo-light.svg"
-        new_icon = html.I(className="fas fa-moon", style={"fontSize": "18px"})
+        new_icon = DashIconify(icon="fa6-solid:moon", width=18, height=18, style={"color": "inherit"})
 
     return new_logo_src, new_icon, new_icon
 
@@ -262,11 +274,17 @@ clientside_callback(
                     this.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
                     this.style.color = '#ffffff';
                     this.style.transform = 'translateY(-1px)';
+                    // Also color iconify icon
+                    const icon = this.querySelector('span.dash-iconify');
+                    if (icon) icon.style.color = '#ffffff';
                 });
                 link.addEventListener('mouseleave', function() {
                     this.style.backgroundColor = 'transparent';
                     this.style.color = '#b8b8b8';
                     this.style.transform = 'translateY(0)';
+                    // Also color iconify icon
+                    const icon = this.querySelector('span.dash-iconify');
+                    if (icon) icon.style.color = 'inherit';
                 });
             });
 
