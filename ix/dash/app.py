@@ -330,6 +330,11 @@ clientside_callback(
 # Initialize scheduler
 from .scheduler import start_scheduler
 
+# Register API routes
+from .api.app import register_api_routes
+
+register_api_routes(app)
+
 # Initialize and start the scheduler
 try:
     scheduler = start_scheduler(8)
@@ -350,6 +355,11 @@ if __name__ == "__main__":
     print("  - Insights: http://localhost:8050/insights")
     print("  - Views: http://localhost:8050/views")
     print("  - Strategies: http://localhost:8050/strategies")
+    print("API endpoints available:")
+    print("  - Health check: http://localhost:8050/api/health")
+    print("  - Timeseries list: http://localhost:8050/api/timeseries")
+    print("  - Timeseries by ID: http://localhost:8050/api/timeseries/{id}")
+    print("  - Timeseries by code: http://localhost:8050/api/timeseries/code/{code}")
     print("Scheduled tasks:")
     print("  - Daily data updates at 9:00 AM UTC")
     app.run_server(debug=True, host="0.0.0.0", port=8050)

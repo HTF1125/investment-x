@@ -45,20 +45,42 @@ header = dmc.Container(
                 ),
                 dbc.Col(
                     [
-                        dmc.Button(
+                        dmc.Group(
                             [
-                                dmc.ThemeIcon(
-                                    DashIconify(icon="material-symbols:add"),
-                                    size="sm",
-                                    variant="light",
+                                dmc.Button(
+                                    [
+                                        dmc.ThemeIcon(
+                                            DashIconify(
+                                                icon="material-symbols:download"
+                                            ),
+                                            size="sm",
+                                            variant="light",
+                                        ),
+                                        "Download Template",
+                                    ],
+                                    id="download-template-btn",
+                                    variant="outline",
+                                    color="gray",
+                                    size="md",
+                                    style={"height": "40px"},
                                 ),
-                                "New",
+                                dmc.Button(
+                                    [
+                                        dmc.ThemeIcon(
+                                            DashIconify(icon="material-symbols:add"),
+                                            size="sm",
+                                            variant="light",
+                                        ),
+                                        "New",
+                                    ],
+                                    id="create-btn",
+                                    variant="filled",
+                                    color="blue",
+                                    size="md",
+                                    style={"height": "40px"},
+                                ),
                             ],
-                            id="create-btn",
-                            variant="filled",
-                            color="blue",
-                            size="md",
-                            style={"height": "40px"},
+                            gap="sm",
                         ),
                     ],
                     md=4,
@@ -328,6 +350,8 @@ layout = html.Div(
         dcc.Store(id="page-data"),
         dcc.Store(id="csv-data"),
         dcc.Store(id="standalone-csv-data"),
+        # Hidden download component
+        dcc.Download(id="download-template-file"),
     ],
     style={
         "minHeight": "100vh",
@@ -341,6 +365,38 @@ layout = html.Div(
 # =============================================================================
 # CALLBACKS
 # =============================================================================
+
+
+@callback(
+    Output("download-template-file", "data"),
+    Input("download-template-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def download_template(n_clicks):
+    """Handle template download"""
+    if not n_clicks:
+        raise PreventUpdate
+
+    import base64
+    import os
+
+    # Get the file path
+    file_path = os.path.join("ix", "dash", "0.Market_V1.xlsm")
+
+    if os.path.exists(file_path):
+        # Read the file and encode it
+        with open(file_path, "rb") as file:
+            file_content = file.read()
+            encoded_content = base64.b64encode(file_content).decode()
+
+        return dict(
+            content=encoded_content,
+            filename="Market_Template_V1.xlsm",
+            type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            base64=True,
+        )
+    else:
+        raise PreventUpdate
 
 
 @callback(
@@ -589,10 +645,27 @@ def handle_standalone_csv_upload(contents, filename):
 )
 def upload_csv_to_database(n_clicks, csv_data):
     """Upload CSV data to database using upload_csv function"""
+    print(
+        f"DEBUG: upload_csv_to_database called with n_clicks={n_clicks}, csv_data={'exists' if csv_data else 'None'}"
+    )
+
+    # Always show a test notification first to see if callback is working
+    test_notification = dmc.Notification(
+        title="Test",
+        message=f"Button clicked! n_clicks={n_clicks}, csv_data={'exists' if csv_data else 'None'}",
+        color="blue",
+        icon=DashIconify(icon="material-symbols:info"),
+        id="test-notification",
+        action="show",
+        autoClose=3000,
+    )
+
     if not n_clicks or not csv_data:
-        raise PreventUpdate
+        print("DEBUG: PreventUpdate - no clicks or no csv_data")
+        return test_notification
 
     try:
+        print("DEBUG: Starting CSV upload process...")
         # Convert JSON back to DataFrame
         import json
 
@@ -601,7 +674,9 @@ def upload_csv_to_database(n_clicks, csv_data):
         df.index = pd.to_datetime(csv_data["index"])
 
         # Call the upload_csv function
+        print("DEBUG: Calling upload_csv function...")
         upload_csv(df)
+        print("DEBUG: Upload completed successfully")
 
         return dmc.Notification(
             title="Success",
@@ -613,6 +688,7 @@ def upload_csv_to_database(n_clicks, csv_data):
             autoClose=4000,
         )
     except Exception as e:
+        print(f"DEBUG: Error during upload: {e}")
         return dmc.Notification(
             title="Error",
             message=f"Error uploading CSV data: {e}",
@@ -625,6 +701,9 @@ def upload_csv_to_database(n_clicks, csv_data):
 
 
 def upload_csv(data: pd.DataFrame):
+    """
+    Upload CSV data to database with progress tracking
+    """
     assert isinstance(data, pd.DataFrame), "data must be a pandas DataFrame"
     assert isinstance(
         data.index, pd.DatetimeIndex
@@ -633,21 +712,42 @@ def upload_csv(data: pd.DataFrame):
     # Remove columns that are entirely NaN
     clean_data = data.dropna(how="all")
 
+    logger.info(f"Starting upload of {len(clean_data.columns)} columns")
+
+    processed_count = 0
+    total_columns = len(clean_data.columns)
+
     for code, col in clean_data.items():
-        db_ts = Timeseries.find_one(Timeseries.code == code).run()
-        if db_ts is None:
+        try:
+            db_ts = Timeseries.find_one(Timeseries.code == code).run()
+            if db_ts is None:
+                logger.warning(f"Timeseries '{code}' not found in database, skipping")
+                continue
+
+            # Convert to numeric and drop NaN values
+            numeric_col = pd.to_numeric(col, errors="coerce")
+            # Ensure we have a Series for dropna() method
+            if isinstance(numeric_col, pd.Series):
+                clean_col = numeric_col.dropna()
+            else:
+                # Convert to Series if it's not already
+                clean_col = pd.Series(numeric_col).dropna()
+
+            # Update the timeseries data
+            db_ts.data = clean_col
+            processed_count += 1
+
+            logger.info(
+                f"Processed {code}: {len(clean_col)} data points ({processed_count}/{total_columns})"
+            )
+
+        except Exception as e:
+            logger.error(f"Error processing column '{code}': {e}")
             continue
 
-        # Convert to numeric and drop NaN values
-        numeric_col = pd.to_numeric(col, errors="coerce")
-        # Ensure we have a Series for dropna() method
-        if isinstance(numeric_col, pd.Series):
-            clean_col = numeric_col.dropna()
-        else:
-            # Convert to Series if it's not already
-            clean_col = pd.Series(numeric_col).dropna()
-
-        db_ts.data = clean_col
+    logger.info(
+        f"Upload completed: {processed_count}/{total_columns} columns processed successfully"
+    )
 
 
 @callback(
@@ -1335,7 +1435,7 @@ def toggle_create_modal(create_clicks, cancel_clicks, save_clicks):
 
 
 @callback(
-    Output("notifications", "children"),
+    Output("notifications", "children", allow_duplicate=True),
     [Input("save-create", "n_clicks")],
     [
         State("new-code", "value"),
