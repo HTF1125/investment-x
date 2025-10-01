@@ -122,7 +122,7 @@ controls = dmc.Container(
                         dbc.Col(
                             [
                                 dmc.Text(
-                                    "Upload CSV Data",
+                                    "Upload Excel Data",
                                     size="sm",
                                     fw="bold",
                                     style={"marginBottom": "8px"},
@@ -137,7 +137,7 @@ controls = dmc.Container(
                                                         width=20,
                                                     ),
                                                     dmc.Text(
-                                                        "Upload CSV",
+                                                        "Upload Excel",
                                                         size="xs",
                                                         c="gray",
                                                     ),
@@ -278,7 +278,7 @@ create_modal = dbc.Modal(
                     style={"marginBottom": "16px"},
                 ),
                 dmc.Text(
-                    "Upload CSV", size="sm", fw="bold", style={"marginBottom": "8px"}
+                    "Upload Excel", size="sm", fw="bold", style={"marginBottom": "8px"}
                 ),
                 dcc.Upload(
                     dmc.Paper(
@@ -381,7 +381,7 @@ def download_template(n_clicks):
     import os
 
     # Get the file path
-    file_path = os.path.join("ix", "dash", "0.Market_V1.xlsm")
+    file_path = os.path.join("ix", "dash", "Data.xlsx")
 
     if os.path.exists(file_path):
         # Read the file and encode it
@@ -391,7 +391,7 @@ def download_template(n_clicks):
 
         return dict(
             content=encoded_content,
-            filename="Market_Template_V1.xlsm",
+            filename="Data.xlsx",
             type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             base64=True,
         )
@@ -405,8 +405,8 @@ def download_template(n_clicks):
     [State("upload-csv", "filename")],
     prevent_initial_call=True,
 )
-def handle_csv_upload(contents, filename):
-    """Handle CSV file upload and parse with index_col=0 and parse_dates=True"""
+def handle_excel_upload(contents, filename):
+    """Handle Excel file upload and parse with index_col=0 and parse_dates=True"""
     if contents is None:
         return "", None
 
@@ -419,25 +419,13 @@ def handle_csv_upload(contents, filename):
         content_type, content_string = contents.split(",")
         decoded = base64.b64decode(content_string)
 
-        # Try different encodings to handle various CSV file formats
-        encodings_to_try = ["utf-8", "latin-1", "cp1252", "iso-8859-1", "utf-16"]
-
-        for encoding in encodings_to_try:
-            try:
-                # Read CSV with specified parameters
-                df = pd.read_csv(
-                    io.StringIO(decoded.decode(encoding)), index_col=0, parse_dates=True
-                )
-                break  # Success, exit the loop
-            except UnicodeDecodeError:
-                continue  # Try next encoding
-        else:
-            # If all encodings fail, try with error handling
-            df = pd.read_csv(
-                io.StringIO(decoded.decode("utf-8", errors="ignore")),
-                index_col=0,
-                parse_dates=True,
-            )
+        # Read Excel file with single Data sheet
+        df = pd.read_excel(
+            io.BytesIO(decoded),
+            sheet_name="Data",
+            index_col=0,
+            parse_dates=True,
+        )
 
         # Create preview table with index
         preview_df = df.head(10)  # Show first 10 rows
@@ -494,7 +482,7 @@ def handle_csv_upload(contents, filename):
 
     except Exception as e:
         error_content = dmc.Alert(
-            f"❌ Error reading CSV file: {str(e)}",
+            f"❌ Error reading Excel file: {str(e)}",
             color="red",
             variant="light",
             style={"marginTop": "8px"},
@@ -511,8 +499,8 @@ def handle_csv_upload(contents, filename):
     [State("standalone-upload-csv", "filename")],
     prevent_initial_call=True,
 )
-def handle_standalone_csv_upload(contents, filename):
-    """Handle standalone CSV file upload and parse with index_col=0 and parse_dates=True"""
+def handle_standalone_excel_upload(contents, filename):
+    """Handle standalone Excel file upload and parse with index_col=0 and parse_dates=True"""
     if contents is None:
         return "", None
 
@@ -525,25 +513,13 @@ def handle_standalone_csv_upload(contents, filename):
         content_type, content_string = contents.split(",")
         decoded = base64.b64decode(content_string)
 
-        # Try different encodings to handle various CSV file formats
-        encodings_to_try = ["utf-8", "latin-1", "cp1252", "iso-8859-1", "utf-16"]
-
-        for encoding in encodings_to_try:
-            try:
-                # Read CSV with specified parameters
-                df = pd.read_csv(
-                    io.StringIO(decoded.decode(encoding)), index_col=0, parse_dates=True
-                )
-                break  # Success, exit the loop
-            except UnicodeDecodeError:
-                continue  # Try next encoding
-        else:
-            # If all encodings fail, try with error handling
-            df = pd.read_csv(
-                io.StringIO(decoded.decode("utf-8", errors="ignore")),
-                index_col=0,
-                parse_dates=True,
-            )
+        # Read Excel file with single Data sheet
+        df = pd.read_excel(
+            io.BytesIO(decoded),
+            sheet_name="Data",
+            index_col=0,
+            parse_dates=True,
+        )
 
         # Create preview table with index
         preview_df = df.head(10)  # Show first 10 rows
@@ -629,7 +605,7 @@ def handle_standalone_csv_upload(contents, filename):
 
     except Exception as e:
         error_content = dmc.Alert(
-            f"❌ Error reading CSV: {str(e)}",
+            f"❌ Error reading Excel: {str(e)}",
             color="red",
             variant="light",
             style={"marginTop": "8px", "fontSize": "12px"},
@@ -643,16 +619,16 @@ def handle_standalone_csv_upload(contents, filename):
     [State("standalone-csv-data", "data")],
     prevent_initial_call=True,
 )
-def upload_csv_to_database(n_clicks, csv_data):
-    """Upload CSV data to database using upload_csv function"""
+def upload_excel_to_database(n_clicks, excel_data):
+    """Upload Excel data to database using upload_excel_data function"""
     print(
-        f"DEBUG: upload_csv_to_database called with n_clicks={n_clicks}, csv_data={'exists' if csv_data else 'None'}"
+        f"DEBUG: upload_excel_to_database called with n_clicks={n_clicks}, excel_data={'exists' if excel_data else 'None'}"
     )
 
     # Always show a test notification first to see if callback is working
     test_notification = dmc.Notification(
         title="Test",
-        message=f"Button clicked! n_clicks={n_clicks}, csv_data={'exists' if csv_data else 'None'}",
+        message=f"Button clicked! n_clicks={n_clicks}, excel_data={'exists' if excel_data else 'None'}",
         color="blue",
         icon=DashIconify(icon="material-symbols:info"),
         id="test-notification",
@@ -660,27 +636,27 @@ def upload_csv_to_database(n_clicks, csv_data):
         autoClose=3000,
     )
 
-    if not n_clicks or not csv_data:
-        print("DEBUG: PreventUpdate - no clicks or no csv_data")
+    if not n_clicks or not excel_data:
+        print("DEBUG: PreventUpdate - no clicks or no excel_data")
         return test_notification
 
     try:
-        print("DEBUG: Starting CSV upload process...")
+        print("DEBUG: Starting Excel upload process...")
         # Convert JSON back to DataFrame
         import json
 
-        df = pd.read_json(csv_data["data"], orient="records")
+        df = pd.read_json(excel_data["data"], orient="records")
         # Convert index back to datetime
-        df.index = pd.to_datetime(csv_data["index"])
+        df.index = pd.to_datetime(excel_data["index"])
 
-        # Call the upload_csv function
-        print("DEBUG: Calling upload_csv function...")
-        upload_csv(df)
+        # Call the upload_excel_data function
+        print("DEBUG: Calling upload_excel_data function...")
+        upload_excel_data(df)
         print("DEBUG: Upload completed successfully")
 
         return dmc.Notification(
             title="Success",
-            message=f"Successfully uploaded CSV data to database! {len(df)} columns processed.",
+            message=f"Successfully uploaded Excel data to database! {len(df)} columns processed.",
             color="green",
             icon=DashIconify(icon="material-symbols:check-circle"),
             id="upload-success-notification",
@@ -691,7 +667,7 @@ def upload_csv_to_database(n_clicks, csv_data):
         print(f"DEBUG: Error during upload: {e}")
         return dmc.Notification(
             title="Error",
-            message=f"Error uploading CSV data: {e}",
+            message=f"Error uploading Excel data: {e}",
             color="red",
             icon=DashIconify(icon="material-symbols:error"),
             id="upload-error-notification",
@@ -700,9 +676,9 @@ def upload_csv_to_database(n_clicks, csv_data):
         )
 
 
-def upload_csv(data: pd.DataFrame):
+def upload_excel_data(data: pd.DataFrame):
     """
-    Upload CSV data to database with progress tracking
+    Upload Excel data to database with progress tracking
     """
     assert isinstance(data, pd.DataFrame), "data must be a pandas DataFrame"
     assert isinstance(
@@ -756,18 +732,18 @@ def upload_csv(data: pd.DataFrame):
     [State("standalone-csv-data", "data")],
     prevent_initial_call=True,
 )
-def view_full_upload_data(n_clicks, csv_data):
-    """Show full uploaded CSV data in a modal or notification"""
-    if not n_clicks or not csv_data:
+def view_full_upload_data(n_clicks, excel_data):
+    """Show full uploaded Excel data in a modal or notification"""
+    if not n_clicks or not excel_data:
         raise PreventUpdate
 
     try:
         # Convert JSON back to DataFrame
         import json
 
-        df = pd.read_json(csv_data["data"], orient="records")
+        df = pd.read_json(excel_data["data"], orient="records")
         # Convert index back to datetime
-        df.index = pd.to_datetime(csv_data["index"])
+        df.index = pd.to_datetime(excel_data["index"])
 
         # Create a summary of the data
         min_date = df.index.min()
@@ -788,14 +764,14 @@ def view_full_upload_data(n_clicks, csv_data):
 
         summary = f"""
         📊 Data Summary:
-        • Filename: {csv_data['filename']}
-        • Shape: {csv_data['shape'][0]} rows × {csv_data['shape'][1]} columns
+        • Filename: {excel_data['filename']}
+        • Shape: {excel_data['shape'][0]} rows × {excel_data['shape'][1]} columns
         • Date Range: {min_date_str} to {max_date_str}
-        • Columns: {', '.join(csv_data['columns'])}
+        • Columns: {', '.join(excel_data['columns'])}
         """
 
         return dmc.Notification(
-            title="CSV Data Summary",
+            title="Excel Data Summary",
             message=summary,
             color="blue",
             icon=DashIconify(icon="material-symbols:info"),
@@ -1451,7 +1427,7 @@ def create_timeseries(n_clicks, code, name, asset_class, frequency, csv_data):
         raise PreventUpdate
 
     try:
-        # If CSV data is provided, convert it back to DataFrame
+        # If Excel data is provided, convert it back to DataFrame
         df = None
         if csv_data:
             import json
@@ -1460,13 +1436,13 @@ def create_timeseries(n_clicks, code, name, asset_class, frequency, csv_data):
             # Convert index back to datetime
             df.index = pd.to_datetime(csv_data["index"])
 
-        # Create new timeseries with CSV data if available
+        # Create new timeseries with Excel data if available
         if df is not None:
-            # Call the upload_csv function to save to database
-            upload_csv(df)
-            message = f"Timeseries '{code}' created successfully! CSV data uploaded: {len(df)} rows, {len(df.columns)} columns"
+            # Call the upload_excel_data function to save to database
+            upload_excel_data(df)
+            message = f"Timeseries '{code}' created successfully! Excel data uploaded: {len(df)} rows, {len(df.columns)} columns"
         else:
-            # Create new timeseries without CSV data
+            # Create new timeseries without Excel data
             # Here you would implement the actual database save logic for empty timeseries
             message = f"Timeseries '{code}' created successfully!"
 
