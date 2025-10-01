@@ -142,7 +142,6 @@ def create_ism_section():
     try:
         from ix import Series
 
-
         pxs = pd.DataFrame(
             {
                 "S&P500": Series("SPX Index:PX_LAST"),
@@ -150,7 +149,8 @@ def create_ism_section():
                 "Crude Oil": Series("CL1 Comdty:PX_LAST"),
                 "Bitcoin": Series("XBTUSD Curncy:PX_LAST"),
                 "Dollar": Series("DXY Index:PX_LAST"),
-                "Gold/Copper": Series("HG1 Comdty:PX_LAST") / Series("GC1 Comdty:PX_LAST"),
+                "Gold/Copper": Series("HG1 Comdty:PX_LAST")
+                / Series("GC1 Comdty:PX_LAST"),
             }
         )
 
@@ -179,7 +179,6 @@ def create_ism_section():
             except Exception as e:
                 print(f"Error creating chart for {name}: {e}")
                 continue
-
 
         return html.Div(
             [

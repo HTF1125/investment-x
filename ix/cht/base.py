@@ -3,14 +3,16 @@ import pandas as pd
 from ix.db import Series
 from ix.core import Cycle
 from ix.misc import oneyearlater
-
+from ix.misc import theme
 # Dark theme timeseries layout based on p.ipynb styles
 # Move legend below the plot to avoid overlap with title
 timeseries_layout = dict(
     title=dict(
-        text="",
-        x=0.05,
-        font=dict(size=12, family="Arial Black", color="#FFFFFF"),
+        y=0.95,
+        x=0.5,
+        xanchor="center",
+        yanchor="top",
+        font=dict(size=14, family="Arial Black", color="#FFFFFF"),
     ),
     xaxis=dict(
         tickformat="%b<br>%Y",
@@ -23,22 +25,36 @@ timeseries_layout = dict(
         tickfont=dict(color="#FFFFFF"),
     ),
     yaxis=dict(
-        title=dict(text="", font=dict(color="#FFFFFF")),
+        title=dict(
+            font=dict(
+                color="#FFFFFF",
+                size=10,
+                family="Arial Black",
+            )
+        ),
         gridcolor="rgba(255,255,255,0.2)",
         zeroline=False,
         showline=True,
         linecolor="rgba(255,255,255,0.4)",
         mirror=True,
+        showgrid=False,
         tickfont=dict(color="#FFFFFF"),
     ),
     yaxis2=dict(
-        title=dict(text="", font=dict(color="#FFFFFF")),
+        title=dict(
+            font=dict(
+                color="#FFFFFF",
+                size=10,
+                family="Arial Black",
+            )
+        ),
         overlaying="y",
         side="right",
         tickformat=".0%",
         gridcolor="rgba(255,255,255,0.2)",
         zeroline=False,
         showline=False,
+        showgrid=False,
         linecolor="rgba(255,255,255,0.4)",
         mirror=True,
         tickfont=dict(color="#FFFFFF"),
@@ -62,7 +78,7 @@ timeseries_layout = dict(
         font=dict(color="#FFFFFF", size=10),
         bordercolor="rgba(255,255,255,0.2)",
     ),
-    margin=dict(t=20, b=90),  # Add more top and bottom margin for title and legend
+    margin=dict(t=60, b=60),
 )
 
 
@@ -93,7 +109,7 @@ def ISM_Cycle(px: pd.Series, start: str = "2015-1-1") -> go.Figure:
                 x=ism_data.index,
                 y=ism_data.values,
                 name=f"ISM {float(ism_data.iloc[-1]):.2f}",
-                line=dict(width=3, color="#1f77b4"),
+                line=dict(width=3, color=theme.colors.blue[400]),
                 marker=dict(size=4),
                 hovertemplate="<b>ISM</b>: %{y:.2f}<extra></extra>",
             )
@@ -106,7 +122,7 @@ def ISM_Cycle(px: pd.Series, start: str = "2015-1-1") -> go.Figure:
                 x=cycle_data.index,
                 y=cycle_data.values,
                 name=f"Cycle {float(cycle_data.iloc[-1]):.2f}",
-                line=dict(width=3, dash="dash", color="#ff7f0e"),
+                line=dict(width=3, dash="dash", color=theme.colors.red[400]),
                 marker=dict(size=4),
                 hovertemplate="<b>Cycle</b>: %{y:.2f}<extra></extra>",
             )
@@ -123,7 +139,7 @@ def ISM_Cycle(px: pd.Series, start: str = "2015-1-1") -> go.Figure:
                 x=asset_returns.index,
                 y=asset_returns.values,
                 name=f"{asset_name} YoY {float(asset_returns.iloc[-1]):.2%}",
-                line=dict(width=3, color="#2ca02c"),
+                line=dict(width=3, color=theme.colors.green[400]),
                 marker=dict(size=4),
                 hovertemplate=f"<b>{asset_name} YoY</b>: %{{y:.2%}}<extra></extra>",
                 yaxis="y2",
@@ -174,22 +190,15 @@ def ISM_Cycle(px: pd.Series, start: str = "2015-1-1") -> go.Figure:
         dict(
             title=dict(
                 text=f"ISM Business Cycle vs {asset_name}",
-                y=0.96,  # Move title slightly down to avoid overlap with top
-                x=0.5,
-                xanchor="center",
-                yanchor="top",
-                font=dict(size=18, family="Arial Black", color="#FFFFFF"),
             ),
             yaxis=dict(
                 title=dict(text="ISM Cycle"),
                 range=[30, 70],
                 tickformat=".0f",
-                domain=[0, 0.9],
             ),
             yaxis2=dict(
                 title=dict(text=f"{asset_name} YoY"),
                 tickformat=".0%",
-                domain=[0, 0.9],
             ),
         )
     )
@@ -247,7 +256,7 @@ from ix.core import Offset, Cycle
 from ix.misc import oneyearlater
 
 
-def financial_conditions_us(start: str = "2015-1-1"):
+def FinancialConditionsUS(start: str = "2015-1-1"):
 
     fig = go.Figure()
     fci = Offset(financial_conditions_index_us(), months=6).clip(-1, 1)

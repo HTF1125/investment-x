@@ -727,7 +727,7 @@ def FinancialConditionsKR():
     return dd
 
 
-def NumOfPmiPositiveMoM():
+def NumOfPmiMfgPositiveMoM():
     codes = [
         "NTCPMIMFGSA_WLD:PX_LAST",
         "NTCPMIMFGMESA_US:PX_LAST",
@@ -744,7 +744,7 @@ def NumOfPmiPositiveMoM():
         "NTCPMIMFGSA_IN:PX_LAST",
         "NTCPMIMFGNSA_CN:PX_LAST",
     ]
-    data = MultiSeries(*codes).diff()
+    data = pd.DataFrame({code: Series(code) for code in codes}).ffill().diff()
     df_numeric = data.apply(pd.to_numeric, errors="coerce")
     positive_counts = (df_numeric > 0).sum(axis=1)
     valid_counts = df_numeric.notna().sum(axis=1)
@@ -937,7 +937,8 @@ def NumOfOECDLeadingPositiveMoM():
         "JPN.LOLITOAA.STSA:PX_LAST",
         "MEX.LOLITOAA.STSA:PX_LAST",
     ]
-    data = MultiSeries(*codes).diff()
+
+    data = pd.DataFrame({code: Series(code) for code in codes}).ffill().diff()
     df_numeric = data.apply(pd.to_numeric, errors="coerce")
     positive_counts = (df_numeric > 0).sum(axis=1)
     valid_counts = df_numeric.notna().sum(axis=1)

@@ -1,11 +1,230 @@
 import pandas as pd
+from pandas.tseries.offsets import MonthEnd
 import plotly.graph_objects as go
 from ix.misc import theme
 from ix.db.query import Offset, Cycle, Series, StandardScalar
 from .base import timeseries_layout
 
 
-def FinancialConditionsUS():
+def credit_balance_deviation_from_6m_trend() -> go.Figure:
+
+    # =GetSeries({"Consumer=Series('CRED_US:PX_LAST',freq='ME')-Series('CRED_US:PX_LAST',freq='ME').rolling(6).mean()","Business=Series('BUSLOANS',freq='ME')-Series('BUSLOANS',freq='ME').rolling(6).mean()"}, EOMONTH(AsOfDate, -60))
+
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+
+    consumer = Series("CRED_US:PX_LAST", freq="ME")
+    consumer_6m_trend = consumer.rolling(6).mean()
+    consumer_deviation = consumer.div(consumer_6m_trend).dropna() - 1
+    if not consumer_deviation.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=consumer_deviation.index,
+                y=consumer_deviation.values,
+                name=(f"Consumer({consumer_deviation.iloc[-1]:.2%})"),
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>Consumer</b>: %{y:.2%}<extra></extra>",
+                yaxis="y1",
+            )
+        )
+
+    business = Series("BUSLOANS", freq="ME")
+    business_6m_trend = business.rolling(6).mean()
+    business_deviation = business.div(business_6m_trend).dropna() - 1
+    if not business_deviation.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=business_deviation.index,
+                y=business_deviation.values,
+                name=(f"Business ({business_deviation.iloc[-1]:.2%}) [R]"),
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>Business</b>: %{y:.2%}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+
+    fig.update_layout(
+        {
+            "title": dict(
+                text=f"Credit Balance Deviation from 6M Trend (US)",
+            ),
+            "yaxis": dict(
+                # title=dict(text="Consumer"),
+                tickformat=".0%",
+            ),
+            "yaxis2": dict(
+                # title=dict(text="Business"),
+                tickformat=".0%",
+            ),
+        }
+    )
+
+    return fig
+
+
+def manufacturing_orders_us():
+    # =GetSeries({"New Orders: Durable ex Aircraft=Series('CENANXANO').pct_change(12).mul(100)","US ISM Manufacturing=Series('ISMPMI_M:PX_LAST')"},EOMONTH(AsOfDate, -240))
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+
+    ism = Series("ISMPMI_M:PX_LAST", freq="ME")
+
+    if not ism.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=ism.index,
+                y=ism.values,
+                name=f"ISM Manufacturing ({ism.iloc[-1]:.2f}) [L]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>ISM Manufacturing</b>: %{y:.2f}<extra></extra>",
+            )
+        )
+    new_orders = Series("CENANXANO").pct_change(12).mul(100)
+    if not new_orders.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=new_orders.index,
+                y=new_orders.values,
+                name=f"New Orders: Durable ex Aircraft ({new_orders.iloc[-1]:.2f}) [R]",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>New Orders: Durable ex Aircraft</b>: %{y:.2f}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+    fig.update_layout(
+        {
+            "title": dict(
+                text=f"Manufacturing Orders (US)",
+            ),
+            "yaxis": dict(
+                tickformat=".0f",
+                range=[30, 70],
+            ),
+            "yaxis2": dict(
+                tickformat=".0f",
+            ),
+        }
+    )
+
+    return fig
+
+
+def manufacturing_activity_us():
+
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+    ism = Series("ISMPMI_M:PX_LAST", freq="ME")
+
+    if not ism.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=ism.index,
+                y=ism.values,
+                name=f"ISM Manufacturing ({ism.iloc[-1]:.2f}) [L]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>ISM Manufacturing</b>: %{y:.2f}<extra></extra>",
+            )
+        )
+    dallas = Series("USSU0587918:PX_LAST", freq="ME")
+    dallas = dallas.rolling(3).mean()
+    if not dallas.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=dallas.index,
+                y=dallas.values,
+                name=f"Dallas 3MMA ({dallas.iloc[-1]:.2f}) [R]",
+                line=dict(color=theme.colors.green[400], width=3),
+                hovertemplate="<b>Dallas</b>: %{y:.2f}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+    empire = Series("USSU0009518", freq="ME").rolling(3).mean()
+    if not empire.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=empire.index,
+                y=empire.values,
+                name=f"Empire 3MMA ({empire.iloc[-1]:.2f}) [R]",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>Empire</b>: %{y:.2f}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+
+    fig.update_layout(
+        {
+            "title": dict(
+                text=f"Manufacturing Activity (US)",
+            ),
+            "yaxis": dict(
+                tickformat=".0f",
+                range=[30, 70],
+            ),
+            "yaxis2": dict(
+                tickformat=".0f",
+            ),
+        }
+    )
+
+    return fig
+
+
+from ix.db.query import MonthEndOffset
+
+
+def conference_board_leading_index():
+    """
+    Returns a Plotly Figure showing the YoY % change in the US Conference Board Leading and Lagging Indexes.
+    Leading: USLEI:PX_LAST, Lagging: USLGI:PX_LAST (lagged 12 months).
+    """
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+
+    # Calculate 12-month % change for Leading Index
+    leading = Series("USLEI:PX_LAST").pct_change(12).dropna()
+    if not leading.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=leading.index,
+                y=leading.values,
+                name=f"Leading YoY ({leading.iloc[-1]:.2%}) [L]",
+                yaxis="y1",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>Leading YoY</b>: %{y:.2%}%<extra></extra>",
+            )
+        )
+
+    # Calculate 12-month % change for Lagging Index, then shift forward 12 months
+    coincident = Series("US.COI").pct_change(12)
+    if not coincident.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=coincident.index,
+                y=coincident.values,
+                name=f"Coincident YoY ({coincident.iloc[-1]:.2%}) [R]",
+                hovertemplate="<b>Coincident YoY</b>: %{y:.2%}%<extra></extra>",
+                yaxis="y2",
+                line=dict(color=theme.colors.red[400], width=3),
+            )
+        )
+
+    # Update layout: set title and y-axis formatting
+    fig.update_layout(
+        title=dict(
+            text="Conference Board Leading Index",
+        ),
+        yaxis=dict(
+            tickformat=".0%",
+        ),
+        yaxis2=dict(
+            tickformat=".0%",
+        ),
+    )
+
+    return fig
+
+
+def financial_conditions_us():
 
     fci_us = (
         pd.concat(
@@ -34,81 +253,62 @@ def FinancialConditionsUS():
     latest_ism = ism.values[-1] if len(ism.values) > 0 else None
 
     fig = go.Figure()
+    if not fci.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=fci.index,
+                y=fci.values,
+                name=f"FCI 6M Lead ({latest_fci:.2%}) [L]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>FCI</b>: %{y:.2%}<extra></extra>",
+            )
+        )
+    if not cyc.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=cyc.index,
+                y=cyc.values,
+                name=f"Cycle ({latest_cyc:.2%}) [L]",
+                line=dict(color=theme.colors.green[400], width=3, dash="dot"),
+                hovertemplate="<b>Cycle</b>: %{y:.2%}<extra></extra>",
+            )
+        )
 
-    fig.add_trace(
-        go.Scatter(
-            x=fci.index,
-            y=fci.values,
-            name=(
-                f"FCI 6M Lead ({latest_fci:.2%})"
-                if latest_fci is not None
-                else "FCI 6M Lead"
-            ),
-            line=dict(color=theme.colors.blue[400], width=1),
-            hovertemplate="<b>FCI</b>: %{y:.2%}<extra></extra>",
+    if not ism.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=ism.index,
+                y=ism.values,
+                name=f"ISM PMI ({latest_ism:.1f}) [R]",
+                yaxis="y2",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>ISM PMI</b>: %{y:.1f}<extra></extra>",
+            )
         )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=cyc.index,
-            y=cyc.values,
-            name=f"Cycle ({latest_cyc:.2%})" if latest_cyc is not None else "Cycle",
-            line=dict(color=theme.colors.green[400], width=1, dash="dot"),
-            hovertemplate="<b>Cycle</b>: %{y:.2%}<extra></extra>",
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=ism.index,
-            y=ism.values,
-            name=f"ISM PMI ({latest_ism:.1f})" if latest_ism is not None else "ISM PMI",
-            yaxis="y2",
-            line=dict(color=theme.colors.red[400], width=1),
-            hovertemplate="<b>ISM PMI</b>: %{y:.1f}<extra></extra>",
-        )
-    )
 
     # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
                 text=f"Financial Conditions (United States)",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
-            "yaxis": dict(
-                title=dict(text="Financial Conditions", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis=dict(
                 range=[-1, 1],
+                tickformat=".0%",
             ),
-            "yaxis2": dict(
-                title=dict(text="ISM", font=dict(color="#FFFFFF")),
-                overlaying="y",
-                side="right",
-                tickformat=".0f",
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=False,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis2=dict(
                 range=[30, 70],
+                tickformat=".0f",
             ),
-        }
+        )
     )
-    fig.update_layout(layout)
 
     fig.add_hline(
         y=50,
         line_dash="dash",
         line_color=theme.colors.text_muted,
-        line_width=1,
+        line_width=3,
         annotation_text="Expansion/Contraction",
         annotation_position="top right",
         annotation_font_size=10,
@@ -121,7 +321,7 @@ def FinancialConditionsUS():
 from ix.db.query import M2
 
 
-def GlobalLiquidityCycle():
+def global_liquidity_cycle():
     def _normalize_percent(s):
         s = s.astype(float)
         return s / 100.0 if s.dropna().abs().median() > 1.5 else s
@@ -136,79 +336,60 @@ def GlobalLiquidityCycle():
     latest_ism = ism.values[-1] if len(ism.values) > 0 else None
 
     fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=gl.index,
-            y=gl.values,
-            name=(
-                f"Global Liquidity 9M Lead ({latest_gl:.2%})"
-                if latest_gl is not None
-                else "Global Liquidity 9M Lead"
-            ),
-            line=dict(color=theme.colors.blue[400], width=1),
-            hovertemplate="<b>Global Liquidity YoY</b>: %{y:.2%}<extra></extra>",
+    if not gl.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=gl.index,
+                y=gl.values,
+                name=f"Global Liquidity 9M Lead ({latest_gl:.2%}) [L]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>Global Liquidity YoY</b>: %{y:.2%}<extra></extra>",
+            )
         )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=cyc.index,
-            y=cyc.values,
-            name=f"Cycle ({latest_cyc:.2%})" if latest_cyc is not None else "Cycle",
-            line=dict(color=theme.colors.green[400], width=1, dash="dot"),
-            hovertemplate="<b>Cycle</b>: %{y:.2%}<extra></extra>",
+    if not cyc.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=cyc.index,
+                y=cyc.values,
+                name=f"Cycle ({latest_cyc:.2%}) [L]",
+                line=dict(color=theme.colors.green[400], width=3, dash="dot"),
+                hovertemplate="<b>Cycle</b>: %{y:.2%}<extra></extra>",
+            )
         )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=ism.index,
-            y=ism.values,
-            name=f"ISM PMI ({latest_ism:.1f})" if latest_ism is not None else "ISM PMI",
-            yaxis="y2",
-            line=dict(color=theme.colors.red[400], width=1),
-            hovertemplate="<b>ISM PMI</b>: %{y:.1f}<extra></extra>",
+    if not ism.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=ism.index,
+                y=ism.values,
+                name=f"ISM PMI ({latest_ism:.1f}) [R]",
+                yaxis="y2",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>ISM PMI</b>: %{y:.1f}<extra></extra>",
+            )
         )
-    )
 
     # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
                 text=f"Global Liquidity Cycle (M2)",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
             ),
-            "yaxis": dict(
-                title=dict(text="Global Liquidity YoY", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis=dict(
+                range=[-0.05, 0.2],
                 tickformat=".0%",
             ),
-            "yaxis2": dict(
-                title=dict(text="ISM", font=dict(color="#FFFFFF")),
-                overlaying="y",
-                side="right",
-                tickformat=".0f",
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=False,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis2=dict(
                 range=[30, 70],
+                tickformat=".0f",
             ),
-        }
+        )
     )
-    fig.update_layout(layout)
     fig.add_hline(
         y=50,
         line_dash="dash",
         line_color=theme.colors.text_muted,
-        line_width=1,
+        line_width=3,
         annotation_text="Expansion/Contraction",
         annotation_position="top right",
         annotation_font_size=10,
@@ -218,7 +399,7 @@ def GlobalLiquidityCycle():
     return fig
 
 
-def M2GrowthContribution():
+def global_liquidity_growth_contributions():
     def _normalize_percent(s):
         s = s.astype(float)
         return s / 100.0 if s.dropna().abs().median() > 1.5 else s
@@ -235,7 +416,7 @@ def M2GrowthContribution():
             y=total.values,
             name=f"Total ({latest_total:.2%})" if latest_total is not None else "Total",
             mode="lines",
-            line=dict(color=theme.colors.blue[400], width=1),
+            line=dict(color=theme.colors.blue[400], width=3),
             hovertemplate="<b>Total</b>: %{y:.2%}<extra></extra>",
         )
     )
@@ -251,46 +432,28 @@ def M2GrowthContribution():
                 hovertemplate=f"<b>{name}</b>: %{{y:.2%}}<extra></extra>",
             )
         )
-    # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
-                text=f"Global M2 Growth Contributions",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text="Global M2 Growth Contributions",
             ),
-            "yaxis": dict(
-                title=dict(text="Global M2 YoY", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis=dict(
+                range=[-0.05, 0.2],
                 tickformat=".0%",
             ),
-            "yaxis2": dict(
-                title=dict(text="ISM", font=dict(color="#FFFFFF")),
-                overlaying="y",
-                side="right",
+            yaxis2=dict(
+                range=[30, 70],
                 tickformat=".0f",
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=False,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
             ),
-            "barmode": "stack",
-        }
+            barmode="relative",
+        )
     )
-    fig.update_layout(layout)
-    fig.update_layout(barmode="relative")
     return fig
 
 
-def M2Growth():
+def global_liquidity_growth_by_central_banks():
     def _normalize_percent(s):
         s = s.astype(float)
         return s / 100.0 if s.dropna().abs().median() > 1.5 else s
@@ -317,28 +480,18 @@ def M2Growth():
         )
 
     # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
-                text=f"Global M2 Growth",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text=f"Global Liquidity Growth by Central Banks(M2)",
             ),
-            "yaxis": dict(
-                title=dict(text="M2 YoY", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis=dict(
+                range=[-0.2, 0.4],
                 tickformat=".0%",
             ),
-        }
+        )
     )
-    fig.update_layout(layout)
-
     return fig
 
 
@@ -373,7 +526,7 @@ def credit_impulse_cn():
     return data["CN"].rolling(12).sum().diff(12) / data["GDPN"]
 
 
-def CreditImpulseUSvsCN():
+def credit_impulse_us_vs_cn():
     ci_us = credit_impulse_us().dropna()
     ci_cn = credit_impulse_cn().dropna()
 
@@ -393,7 +546,7 @@ def CreditImpulseUSvsCN():
             y=ci_us,
             mode="lines",
             name=f"US Credit Impulse ({latest_us_val:.2%})",
-            line=dict(color="royalblue"),
+            line=dict(width=3,color=theme.colors.blue[400]),
             yaxis="y1",
             hovertemplate="US Credit Impulse: %{y:.2%}<extra></extra>",
         )
@@ -405,7 +558,7 @@ def CreditImpulseUSvsCN():
             y=ci_cn,
             mode="lines",
             name=cn_legend,
-            line=dict(color="firebrick"),
+            line=dict(width=3,color=theme.colors.red[400]),
             yaxis="y2",
             hovertemplate="China Credit Impulse: %{y:.2%}<extra></extra>",
         )
@@ -425,50 +578,29 @@ def CreditImpulseUSvsCN():
         hovermode="x unified",
     )
 
-    # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
-                text=f"Credit Impulse US vs CN",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text="Credit Impulse US vs CN",
             ),
-            "yaxis": dict(
-                title=dict(text="United States", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis=dict(
                 tickformat=".0%",
             ),
-            "yaxis2": dict(
-                title=dict(text="China", font=dict(color="#FFFFFF")),
-                overlaying="y",
-                side="right",
+            yaxis2=dict(
                 tickformat=".0%",
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=False,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
             ),
-        }
+        )
     )
-    fig.update_layout(layout)
     return fig
-
 
 from ix import InvestorPositions
 import plotly.graph_objects as go
 
 
-def InvestorPositionsChart():
+def investor_positions():
 
-    investor_positions = InvestorPositions()
+    investor_positions = InvestorPositions().div(100)
 
     # Create a new plotly figure and add traces from investor_positions data
     fig = go.Figure()
@@ -478,28 +610,18 @@ def InvestorPositionsChart():
             go.Scatter(x=series.index, y=series.values, mode="lines", name=name)
         )
 
-    # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
-                text=f"Investor Positions",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text="Investor Positions",
             ),
-            "yaxis": dict(
-                title=dict(text="Open Interest", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
-                tickformat=".0f",
+            yaxis=dict(
+                tickformat=".0%",
             ),
-        }
+
+        )
     )
-    fig.update_layout(layout)
     return fig
 
 
@@ -533,7 +655,7 @@ def get_fed_net_liquidity_series() -> pd.Series:
     return weekly["Net Liquidity (T)"].dropna()
 
 
-def FedNetLiquidityVsSP500():
+def fed_net_liquidity_vs_sp500():
     """
     Plot Fed Net Liquidity YoY % vs S&P 500 YoY %.
     """
@@ -557,7 +679,7 @@ def FedNetLiquidityVsSP500():
                 if latest_liquidity is not None
                 else "Fed Net Liquidity YoY"
             ),
-            line=dict(color=theme.colors.blue[400], width=1),
+            line=dict(color=theme.colors.blue[400], width=3),
             hovertemplate="<b>Fed Net Liquidity YoY</b>: %{y:.2%}<extra></extra>",
         )
     )
@@ -572,54 +694,26 @@ def FedNetLiquidityVsSP500():
                 if latest_sp500 is not None
                 else "S&P 500 YoY"
             ),
-            yaxis="y2",
-            line=dict(color=theme.colors.green[400], width=1),
+            yaxis="y1",
+            line=dict(color=theme.colors.red[400], width=3),
             hovertemplate="<b>S&P 500 YoY</b>: %{y:.2%}<extra></extra>",
         )
     )
 
-    # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
-                text=f"Fed Net Liquidity vs S&P500",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text="Fed Net Liquidity vs S&P 500",
             ),
-            "yaxis": dict(
-                title=dict(text="Fed Net Liquidity YoY", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
-                range=[-0.2, 0.5],
+            yaxis=dict(
                 tickformat=".0%",
+                range=[-0.4, 0.4],
             ),
-            "yaxis2": dict(
-                title=dict(text="S&P500 YoY", font=dict(color="#FFFFFF")),
-                overlaying="y",
-                side="right",
-                tickformat=".0%",
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=False,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
-            ),
-        }
+
+        )
     )
-    fig.update_layout(layout)
-
-    # Optionally, add a band for recession periods or highlight recent data
-    # (Not implemented here, but could be added for further improvement)
-
-    # Show the figure with the new width prop
     return fig
-
 
 import pandas as pd
 from ix.db.query import MultiSeries
@@ -689,7 +783,7 @@ import plotly.graph_objects as go
 from ix.misc import theme
 
 
-def AiCapexQuarterlyYoY():
+def ai_capex_quarter_yoy():
 
     data = AiCapex().FE_CAPEX_QOQ().dropna(how="all")
     total = AiCapex().TOTAL_FE_CAPEX_QOQ().dropna(how="all")
@@ -716,37 +810,25 @@ def AiCapexQuarterlyYoY():
                 y=s.values,
                 name=name,
                 mode="lines",
-                line=dict(width=1),
+                line=dict(width=3),
                 hovertemplate=f"<b>{name}</b>: %{{y:.2%}}<extra></extra>",
             )
         )
-    # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
-                text=f"Quarterly Capital Expenditure (AI)",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text=f"AI Capex Quarterly YoY",
             ),
-            "yaxis": dict(
-                title=dict(text="Capex Quarterly YoY", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis=dict(
                 tickformat=".0%",
             ),
-        }
+        )
     )
-    fig.update_layout(layout)
-    fig.update_layout(barmode="relative")
     return fig
 
 
-def AiCapexYearlylyYoY():
+def ai_capex_yearly_yoy():
 
     data = AiCapex().FE_CAPEX_YOY().dropna(how="all")
     total = AiCapex().TOTAL_FE_CAPEX_YOY().dropna(how="all")
@@ -773,31 +855,309 @@ def AiCapexYearlylyYoY():
                 y=s.values,
                 name=name,
                 mode="lines",
-                line=dict(width=1),
+                line=dict(width=3),
                 hovertemplate=f"<b>{name}</b>: %{{y:.2%}}<extra></extra>",
             )
         )
-    # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text=f"AI Capex Yearly YoY",
+            ),
+            yaxis=dict(
+                tickformat=".0%",
+            ),
+
+        )
+    )
+    return fig
+
+
+def us_cesi_and_dollar():
+
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+    cesi = Series("USFXCESIUSD:PX_LAST", freq="W-Fri")
+    dxy = Series("DXY Index:PX_LAST", freq="W-Fri")
+    if not cesi.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=cesi.index,
+                y=cesi.values,
+                name=f"CESI(US) ({cesi.iloc[-1]:.2f}) [L]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>CESI(US)</b>: %{y:.2f}<extra></extra>",
+            )
+        )
+
+    dxy_deviation = Offset(dxy.rolling(52).mean() - dxy, days=70)
+    if not dxy_deviation.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=dxy_deviation.index,
+                y=dxy_deviation.values,
+                name=f"DXY deviation from Trend (70D Lead) ({dxy_deviation.iloc[-1]:.2f}) [R]",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>DXY deviation from Trend (70D Lead)</b>: %{y:.2f}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+    fig.update_layout(
         {
             "title": dict(
-                text=f"Yearly Capital Expenditure (AI)",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+                text=f"Dollar & Economic Surprises",
             ),
             "yaxis": dict(
-                title=dict(text="Capex Yearly YoY", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
-                tickformat=".0%",
+                tickformat=".0f",
+                range=[-100, 100],
+            ),
+            "yaxis2": dict(
+                tickformat=".1f",
+                range=[-10, 10],
             ),
         }
     )
-    fig.update_layout(layout)
-    fig.update_layout(barmode="relative")
+    return fig
+
+
+def us_cesi_and_ust10y():
+
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+    cesi = Series("USFXCESIUSD:PX_LAST", freq="W-Fri")
+    ust10y = Series("TRYUS10Y:PX_YTM", freq="W-Fri")
+    if not cesi.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=cesi.index,
+                y=cesi.values,
+                name=f"CESI(US) ({cesi.iloc[-1]:.2f}) [L]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>CESI(US)</b>: %{y:.2f}<extra></extra>",
+            )
+        )
+
+    ust10y_deviation = Offset(ust10y.rolling(52).mean() - ust10y, days=70)
+    if not ust10y_deviation.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=ust10y_deviation.index,
+                y=ust10y_deviation.values,
+                name=f"UST10Y deviation from Trend (70D Lead) ({ust10y_deviation.iloc[-1]:.2f}) [R]",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>UST10Y deviation from Trend (70D Lead)</b>: %{y:.2f}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+    fig.update_layout(
+        {
+            "title": dict(
+                text=f"UST10Y & Economic Surprises",
+            ),
+            "yaxis": dict(
+                tickformat=".0f",
+                range=[-100, 100],
+            ),
+            "yaxis2": dict(
+                tickformat=".2f",
+                range=[-1, 1],
+            ),
+        }
+    )
+    return fig
+
+
+def manufacturing_activity_us_and_dollar() -> go.Figure:
+
+    # =GetSeries({"Dallas Fed Business Activity=Series('USSU0587918:PX_LAST')","Dollar deviation from LT Trend (4M Lead)=MonthEndOffset(Series('DXY Index:PX_LAST', freq='ME')-MovingAverage(Series('DXY Index:PX_LAST',freq='ME'), 24), 3)"}, EOMONTH(AsOfDate,-240))
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+    dallas = Series("USSU0587918:PX_LAST", freq="ME")
+    dallas = dallas.rolling(3).mean()
+    if not dallas.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=dallas.index,
+                y=dallas.values,
+                name=f"Dallas 3MMA ({dallas.iloc[-1]:.2f}) [R]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>Dallas</b>: %{y:.2f}<extra></extra>",
+                yaxis="y1",
+            )
+        )
+    dxy_deviation = MonthEndOffset(
+        Series("DXY Index:PX_LAST", freq="ME").rolling(24).mean()
+        - Series("DXY Index:PX_LAST", freq="ME"),
+        3,
+    )
+    if not dxy_deviation.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=dxy_deviation.index,
+                y=dxy_deviation.values,
+                name=f"DXY deviation from LT Trend (4M Lead) ({dxy_deviation.iloc[-1]:.2f}) [R]",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>DXY deviation from LT Trend (4M Lead)</b>: %{y:.2f}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+    fig.update_layout(
+        {
+            "title": dict(
+                text=f"Manufacturing Activity (US)",
+            ),
+            "yaxis": dict(
+                tickformat=".0f",
+            ),
+            "yaxis2": dict(
+                tickformat=".0f",
+                range=[-10, 10],
+            ),
+        }
+    )
+    return fig
+
+
+from ix.db.query import NumOfOECDLeadingPositiveMoM
+
+
+def oecd_diffusion_index() -> go.Figure:
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+    oecd_cli_diffusion = MonthEndOffset(NumOfOECDLeadingPositiveMoM(), 1)
+    if not oecd_cli_diffusion.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=oecd_cli_diffusion.index,
+                y=oecd_cli_diffusion.values,
+                name=f"OECD CLI MoM Diffusion ({oecd_cli_diffusion.iloc[-1]:.2f}) [L]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>OECD CLI MoM Diffusion</b>: %{y:.2f}<extra></extra>",
+            )
+        )
+    msci_world = (
+        Series("990100:FG_TOTAL_RET_IDX", freq="W").ffill().pct_change(52)
+    ).dropna()
+    if not msci_world.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=msci_world.index,
+                y=msci_world.values,
+                name=f"MSCI World ({msci_world.iloc[-1]:.2%}) [R]",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>MSCI World YoY</b>: %{y:.2%}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+    fig.update_layout(
+        {
+            "title": dict(
+                text=f"OECD CLI MoM Diffusion & MSCI World",
+            ),
+            "yaxis": dict(
+                tickformat=".0f",
+            ),
+            "yaxis2": dict(
+                tickformat=".0%",
+                range=[-0.3, 0.5],
+            ),
+        }
+    )
+    return fig
+
+
+from ix.db.query import NumOfPmiMfgPositiveMoM
+
+
+def pmi_manufacturing_diffusion_index() -> go.Figure:
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+    oecd_cli_diffusion = NumOfPmiMfgPositiveMoM().rolling(3).mean()
+    if not oecd_cli_diffusion.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=oecd_cli_diffusion.index,
+                y=oecd_cli_diffusion.values,
+                name=f"OECD CLI MoM Diffusion ({oecd_cli_diffusion.iloc[-1]:.2f}) [L]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>OECD CLI MoM Diffusion</b>: %{y:.2f}<extra></extra>",
+            )
+        )
+    msci_world = (
+        Series("990100:FG_TOTAL_RET_IDX", freq="W").ffill().pct_change(52)
+    ).dropna()
+    if not msci_world.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=msci_world.index,
+                y=msci_world.values,
+                name=f"MSCI World ({msci_world.iloc[-1]:.2%}) [R]",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>MSCI World YoY</b>: %{y:.2%}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+    fig.update_layout(
+        {
+            "title": dict(
+                text=f"OECD CLI MoM Diffusion & MSCI World",
+            ),
+            "yaxis": dict(
+                tickformat=".0f",
+            ),
+            "yaxis2": dict(
+                tickformat=".0%",
+                range=[-0.3, 0.5],
+            ),
+        }
+    )
+    return fig
+
+
+from ix.db.query import NumOfPmiServicesPositiveMoM
+
+
+def pmi_services_diffusion_index() -> go.Figure:
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+    oecd_cli_diffusion = NumOfPmiServicesPositiveMoM().ffill().rolling(3).mean()
+    if not oecd_cli_diffusion.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=oecd_cli_diffusion.index,
+                y=oecd_cli_diffusion.values,
+                name=f"OECD CLI MoM Diffusion ({oecd_cli_diffusion.iloc[-1]:.2f}) [L]",
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>OECD CLI MoM Diffusion</b>: %{y:.2f}<extra></extra>",
+            )
+        )
+    msci_world = (
+        Series("990100:FG_TOTAL_RET_IDX", freq="W").ffill().pct_change(52)
+    ).dropna()
+    if not msci_world.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=msci_world.index,
+                y=msci_world.values,
+                name=f"MSCI World ({msci_world.iloc[-1]:.2%}) [R]",
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>MSCI World YoY</b>: %{y:.2%}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+    fig.update_layout(
+        {
+            "title": dict(
+                text=f"OECD CLI MoM Diffusion & MSCI World",
+            ),
+            "yaxis": dict(
+                tickformat=".0f",
+            ),
+            "yaxis2": dict(
+                tickformat=".0%",
+                range=[-0.3, 0.5],
+            ),
+        }
+    )
     return fig

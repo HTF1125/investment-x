@@ -17,10 +17,9 @@ def IsmCycleSP500() -> go.Figure:
         go.Scatter(
             x=ism.index,
             y=ism.values,
-            name="ISM",
+            name=f"ISM {ism.iloc[-1]:.2f}",
             line=dict(color=theme.colors.blue[400], width=1),
             hovertemplate="%{y:.2f}",
-            # yaxis="y2",
         )
     )
 

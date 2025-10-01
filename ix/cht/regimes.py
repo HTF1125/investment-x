@@ -18,7 +18,7 @@ REGIME_COLORS = [
 from ix.core.tech.ma import MACD
 
 
-def OecdCliRegime() -> go.Figure:
+def oecd_cli_regime() -> go.Figure:
 
     indicators = [
         "USA.LOLITOAA.STSA:PX_LAST",
@@ -78,50 +78,30 @@ def OecdCliRegime() -> go.Figure:
             y=p.values,
             name="ACWI YoY",
             yaxis="y2",
-            line=dict(color=theme.colors.indigo[900], width=2),
+            line=dict(color=theme.colors.indigo[900], width=3),
             hovertemplate="%{y:.2f}%<extra></extra>",
         )
     )
 
-    # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
-                text="OECD CLI Regime",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text=f"OECD CLI Regime",
             ),
-            "yaxis": dict(
-                title=dict(text="Regime Distribution", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis=dict(
+                tickformat=".0f",
             ),
-            "yaxis2": dict(
-                title=dict(text="ACWI 52W % Change", font=dict(color="#FFFFFF")),
-                overlaying="y",
-                side="right",
+            yaxis2=dict(
                 tickformat=".0%",
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=False,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
             ),
-            "barmode": "stack",
-        }
+            barmode="stack",
+        )
     )
-    fig.update_layout(layout)
-
     return fig
 
 
-def PmiMfgRegime() -> go.Figure:
+def pmi_manufacturing_regime() -> go.Figure:
 
     indicators = [
         "NTCPMIMFGSA_WLD:PX_LAST",
@@ -176,50 +156,30 @@ def PmiMfgRegime() -> go.Figure:
             y=p.values,
             name="ACWI YoY",
             yaxis="y2",
-            line=dict(color=theme.colors.indigo[900], width=2),
+            line=dict(color=theme.colors.indigo[900], width=3),
             hovertemplate="%{y:.2f}%<extra></extra>",
         )
     )
 
-    # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
-                text="PMI Manufacturing Regime",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text=f"PMI Manufacturing Regime",
             ),
-            "yaxis": dict(
-                title=dict(text="Regime Distribution", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis=dict(
+                tickformat=".0f",
             ),
-            "yaxis2": dict(
-                title=dict(text="ACWI 52W % Change", font=dict(color="#FFFFFF")),
-                overlaying="y",
-                side="right",
+            yaxis2=dict(
                 tickformat=".0%",
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=False,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
             ),
-            "barmode": "stack",
-        }
+            barmode="stack",
+        )
     )
-    fig.update_layout(layout)
-
     return fig
 
 
-def PmiSrvRegime() -> go.Figure:
+def pmi_services_regime() -> go.Figure:
 
     indicators = [
         "NTCPMISVCBUSACTSA_WLD:PX_LAST",
@@ -274,44 +234,24 @@ def PmiSrvRegime() -> go.Figure:
             y=p.values,
             name="ACWI YoY",
             yaxis="y2",
-            line=dict(color=theme.colors.indigo[900], width=2),
+            line=dict(color=theme.colors.indigo[900], width=3),
             hovertemplate="%{y:.2f}%<extra></extra>",
         )
     )
 
-    # Apply dark theme layout
-    layout = timeseries_layout.copy()
-    layout.update(
-        {
-            "title": dict(
-                text="PMI Services Regime",
-                x=0.05,
-                font=dict(size=14, family="Arial Black", color="#FFFFFF"),
+    fig.update_layout(timeseries_layout)
+    fig.update_layout(
+        dict(
+            title=dict(
+                text=f"PMI Services Regime",
             ),
-            "yaxis": dict(
-                title=dict(text="Regime Distribution", font=dict(color="#FFFFFF")),
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=True,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
+            yaxis=dict(
+                tickformat=".0f",
             ),
-            "yaxis2": dict(
-                title=dict(text="ACWI 52W % Change", font=dict(color="#FFFFFF")),
-                overlaying="y",
-                side="right",
+            yaxis2=dict(
                 tickformat=".0%",
-                gridcolor="rgba(255,255,255,0.2)",
-                zeroline=False,
-                showline=False,
-                linecolor="rgba(255,255,255,0.4)",
-                mirror=True,
-                tickfont=dict(color="#FFFFFF"),
             ),
-            "barmode": "stack",
-        }
+            barmode="stack",
+        )
     )
-    fig.update_layout(layout)
-
     return fig

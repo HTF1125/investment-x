@@ -97,9 +97,50 @@ controls = dmc.Container(
                             ],
                             md=6,
                         ),
+                        dbc.Col(
+                            [
+                                dmc.Text(
+                                    "Upload CSV Data",
+                                    size="sm",
+                                    fw="bold",
+                                    style={"marginBottom": "8px"},
+                                ),
+                                dcc.Upload(
+                                    dmc.Paper(
+                                        [
+                                            dmc.Center(
+                                                [
+                                                    DashIconify(
+                                                        icon="material-symbols:cloud-upload",
+                                                        width=20,
+                                                    ),
+                                                    dmc.Text(
+                                                        "Upload CSV",
+                                                        size="xs",
+                                                        c="gray",
+                                                    ),
+                                                ],
+                                                style={"padding": "10px"},
+                                            ),
+                                        ],
+                                        radius="md",
+                                        style={
+                                            "border": "2px dashed var(--mantine-color-gray-4)",
+                                            "cursor": "pointer",
+                                            "transition": "border-color 0.2s",
+                                            "minHeight": "60px",
+                                        },
+                                    ),
+                                    id="standalone-upload-csv",
+                                    multiple=False,
+                                ),
+                            ],
+                            md=6,
+                        ),
                     ],
                     style={"marginBottom": "0"},
                 ),
+                html.Div(id="standalone-csv-preview", style={"marginTop": "16px"}),
             ],
             p="md",
             radius="md",
@@ -244,6 +285,7 @@ create_modal = dbc.Modal(
                     id="upload-csv",
                     multiple=False,
                 ),
+                html.Div(id="csv-preview", style={"marginTop": "16px"}),
             ],
         ),
         dbc.ModalFooter(
@@ -284,6 +326,8 @@ layout = html.Div(
         # Data stores
         dcc.Store(id="selected-ts"),
         dcc.Store(id="page-data"),
+        dcc.Store(id="csv-data"),
+        dcc.Store(id="standalone-csv-data"),
     ],
     style={
         "minHeight": "100vh",
@@ -297,6 +341,378 @@ layout = html.Div(
 # =============================================================================
 # CALLBACKS
 # =============================================================================
+
+
+@callback(
+    [Output("csv-preview", "children"), Output("csv-data", "data")],
+    [Input("upload-csv", "contents")],
+    [State("upload-csv", "filename")],
+    prevent_initial_call=True,
+)
+def handle_csv_upload(contents, filename):
+    """Handle CSV file upload and parse with index_col=0 and parse_dates=True"""
+    if contents is None:
+        return "", None
+
+    try:
+        # Parse the uploaded file
+        import base64
+        import io
+
+        # Decode the content
+        content_type, content_string = contents.split(",")
+        decoded = base64.b64decode(content_string)
+
+        # Try different encodings to handle various CSV file formats
+        encodings_to_try = ["utf-8", "latin-1", "cp1252", "iso-8859-1", "utf-16"]
+
+        for encoding in encodings_to_try:
+            try:
+                # Read CSV with specified parameters
+                df = pd.read_csv(
+                    io.StringIO(decoded.decode(encoding)), index_col=0, parse_dates=True
+                )
+                break  # Success, exit the loop
+            except UnicodeDecodeError:
+                continue  # Try next encoding
+        else:
+            # If all encodings fail, try with error handling
+            df = pd.read_csv(
+                io.StringIO(decoded.decode("utf-8", errors="ignore")),
+                index_col=0,
+                parse_dates=True,
+            )
+
+        # Create preview table with index
+        preview_df = df.head(10)  # Show first 10 rows
+        # Reset index to include it as a column
+        preview_df_with_index = preview_df.reset_index()
+        preview_table = dash_table.DataTable(
+            data=preview_df_with_index.to_dict("records"),
+            columns=[
+                {"name": str(i), "id": str(i)} for i in preview_df_with_index.columns
+            ],
+            style_table={"height": "300px", "overflowY": "auto", "fontSize": "12px"},
+            style_cell={
+                "textAlign": "left",
+                "padding": "8px",
+                "backgroundColor": "var(--bg-secondary)",
+                "color": "var(--text-primary)",
+                "fontSize": "12px",
+            },
+            style_header={
+                "backgroundColor": "var(--bg-primary)",
+                "fontWeight": "bold",
+                "color": "var(--text-primary)",
+                "fontSize": "12px",
+            },
+            page_size=10,
+        )
+
+        # Create info section
+        info_text = dmc.Text(
+            f"✅ Successfully loaded {filename} - {len(df)} rows, {len(df.columns)} columns",
+            size="sm",
+            c="green",
+            style={"marginBottom": "8px"},
+        )
+
+        preview_content = [
+            info_text,
+            dmc.Text(
+                "Data Preview:", size="sm", fw="bold", style={"marginBottom": "8px"}
+            ),
+            preview_table,
+        ]
+
+        # Store the dataframe as JSON for later use
+        csv_data = {
+            "filename": filename,
+            "data": df.to_json(orient="records", date_format="iso"),
+            "index": df.index.to_series().dt.strftime("%Y-%m-%d").to_list(),
+            "columns": df.columns.tolist(),
+            "shape": df.shape,
+        }
+
+        return preview_content, csv_data
+
+    except Exception as e:
+        error_content = dmc.Alert(
+            f"❌ Error reading CSV file: {str(e)}",
+            color="red",
+            variant="light",
+            style={"marginTop": "8px"},
+        )
+        return error_content, None
+
+
+@callback(
+    [
+        Output("standalone-csv-preview", "children"),
+        Output("standalone-csv-data", "data"),
+    ],
+    [Input("standalone-upload-csv", "contents")],
+    [State("standalone-upload-csv", "filename")],
+    prevent_initial_call=True,
+)
+def handle_standalone_csv_upload(contents, filename):
+    """Handle standalone CSV file upload and parse with index_col=0 and parse_dates=True"""
+    if contents is None:
+        return "", None
+
+    try:
+        # Parse the uploaded file
+        import base64
+        import io
+
+        # Decode the content
+        content_type, content_string = contents.split(",")
+        decoded = base64.b64decode(content_string)
+
+        # Try different encodings to handle various CSV file formats
+        encodings_to_try = ["utf-8", "latin-1", "cp1252", "iso-8859-1", "utf-16"]
+
+        for encoding in encodings_to_try:
+            try:
+                # Read CSV with specified parameters
+                df = pd.read_csv(
+                    io.StringIO(decoded.decode(encoding)), index_col=0, parse_dates=True
+                )
+                break  # Success, exit the loop
+            except UnicodeDecodeError:
+                continue  # Try next encoding
+        else:
+            # If all encodings fail, try with error handling
+            df = pd.read_csv(
+                io.StringIO(decoded.decode("utf-8", errors="ignore")),
+                index_col=0,
+                parse_dates=True,
+            )
+
+        # Create preview table with index
+        preview_df = df.head(10)  # Show first 10 rows
+        # Reset index to include it as a column
+        preview_df_with_index = preview_df.reset_index()
+        preview_table = dash_table.DataTable(
+            data=preview_df_with_index.to_dict("records"),
+            columns=[
+                {"name": str(i), "id": str(i)} for i in preview_df_with_index.columns
+            ],
+            style_table={"height": "200px", "overflowY": "auto", "fontSize": "11px"},
+            style_cell={
+                "textAlign": "left",
+                "padding": "6px",
+                "backgroundColor": "var(--bg-secondary)",
+                "color": "var(--text-primary)",
+                "fontSize": "11px",
+            },
+            style_header={
+                "backgroundColor": "var(--bg-primary)",
+                "fontWeight": "bold",
+                "color": "var(--text-primary)",
+                "fontSize": "11px",
+            },
+            page_size=10,
+        )
+
+        # Create info section
+        info_text = dmc.Text(
+            f"✅ Loaded {filename} - {len(df)} rows, {len(df.columns)} columns",
+            size="xs",
+            c="green",
+            style={"marginBottom": "8px"},
+        )
+
+        # Create action buttons
+        action_buttons = dmc.Group(
+            [
+                dmc.Button(
+                    "Upload to Database",
+                    id="upload-to-db",
+                    variant="filled",
+                    color="blue",
+                    size="xs",
+                    leftSection=DashIconify(
+                        icon="material-symbols:cloud-upload", width=16
+                    ),
+                ),
+                dmc.Button(
+                    "View Full Data",
+                    id="view-upload-data",
+                    variant="outline",
+                    color="gray",
+                    size="xs",
+                    leftSection=DashIconify(
+                        icon="material-symbols:visibility", width=16
+                    ),
+                ),
+            ],
+            gap="xs",
+            style={"marginTop": "8px"},
+        )
+
+        preview_content = [
+            info_text,
+            dmc.Text(
+                "Data Preview:", size="xs", fw="bold", style={"marginBottom": "8px"}
+            ),
+            preview_table,
+            action_buttons,
+        ]
+
+        # Store the dataframe as JSON for later use
+        csv_data = {
+            "filename": filename,
+            "data": df.to_json(orient="records", date_format="iso"),
+            "index": df.index.to_series().dt.strftime("%Y-%m-%d").to_list(),
+            "columns": df.columns.tolist(),
+            "shape": df.shape,
+        }
+
+        return preview_content, csv_data
+
+    except Exception as e:
+        error_content = dmc.Alert(
+            f"❌ Error reading CSV: {str(e)}",
+            color="red",
+            variant="light",
+            style={"marginTop": "8px", "fontSize": "12px"},
+        )
+        return error_content, None
+
+
+@callback(
+    Output("notifications", "children", allow_duplicate=True),
+    [Input("upload-to-db", "n_clicks")],
+    [State("standalone-csv-data", "data")],
+    prevent_initial_call=True,
+)
+def upload_csv_to_database(n_clicks, csv_data):
+    """Upload CSV data to database using upload_csv function"""
+    if not n_clicks or not csv_data:
+        raise PreventUpdate
+
+    try:
+        # Convert JSON back to DataFrame
+        import json
+
+        df = pd.read_json(csv_data["data"], orient="records")
+        # Convert index back to datetime
+        df.index = pd.to_datetime(csv_data["index"])
+
+        # Call the upload_csv function
+        upload_csv(df)
+
+        return dmc.Notification(
+            title="Success",
+            message=f"Successfully uploaded CSV data to database! {len(df)} columns processed.",
+            color="green",
+            icon=DashIconify(icon="material-symbols:check-circle"),
+            id="upload-success-notification",
+            action="show",
+            autoClose=4000,
+        )
+    except Exception as e:
+        return dmc.Notification(
+            title="Error",
+            message=f"Error uploading CSV data: {e}",
+            color="red",
+            icon=DashIconify(icon="material-symbols:error"),
+            id="upload-error-notification",
+            action="show",
+            autoClose=4000,
+        )
+
+
+def upload_csv(data: pd.DataFrame):
+    assert isinstance(data, pd.DataFrame), "data must be a pandas DataFrame"
+    assert isinstance(
+        data.index, pd.DatetimeIndex
+    ), "index must be a pandas DatetimeIndex"
+
+    # Remove columns that are entirely NaN
+    clean_data = data.dropna(how="all")
+
+    for code, col in clean_data.items():
+        db_ts = Timeseries.find_one(Timeseries.code == code).run()
+        if db_ts is None:
+            continue
+
+        # Convert to numeric and drop NaN values
+        numeric_col = pd.to_numeric(col, errors="coerce")
+        # Ensure we have a Series for dropna() method
+        if isinstance(numeric_col, pd.Series):
+            clean_col = numeric_col.dropna()
+        else:
+            # Convert to Series if it's not already
+            clean_col = pd.Series(numeric_col).dropna()
+
+        db_ts.data = clean_col
+
+
+@callback(
+    Output("notifications", "children", allow_duplicate=True),
+    [Input("view-upload-data", "n_clicks")],
+    [State("standalone-csv-data", "data")],
+    prevent_initial_call=True,
+)
+def view_full_upload_data(n_clicks, csv_data):
+    """Show full uploaded CSV data in a modal or notification"""
+    if not n_clicks or not csv_data:
+        raise PreventUpdate
+
+    try:
+        # Convert JSON back to DataFrame
+        import json
+
+        df = pd.read_json(csv_data["data"], orient="records")
+        # Convert index back to datetime
+        df.index = pd.to_datetime(csv_data["index"])
+
+        # Create a summary of the data
+        min_date = df.index.min()
+        max_date = df.index.max()
+
+        # Format dates safely
+        from datetime import datetime
+
+        if isinstance(min_date, (datetime, pd.Timestamp)):
+            min_date_str = min_date.strftime("%Y-%m-%d")
+        else:
+            min_date_str = str(min_date)
+
+        if isinstance(max_date, (datetime, pd.Timestamp)):
+            max_date_str = max_date.strftime("%Y-%m-%d")
+        else:
+            max_date_str = str(max_date)
+
+        summary = f"""
+        📊 Data Summary:
+        • Filename: {csv_data['filename']}
+        • Shape: {csv_data['shape'][0]} rows × {csv_data['shape'][1]} columns
+        • Date Range: {min_date_str} to {max_date_str}
+        • Columns: {', '.join(csv_data['columns'])}
+        """
+
+        return dmc.Notification(
+            title="CSV Data Summary",
+            message=summary,
+            color="blue",
+            icon=DashIconify(icon="material-symbols:info"),
+            id="data-summary-notification",
+            action="show",
+            autoClose=8000,
+        )
+    except Exception as e:
+        return dmc.Notification(
+            title="Error",
+            message=f"Error viewing data: {e}",
+            color="red",
+            icon=DashIconify(icon="material-symbols:error"),
+            id="view-error-notification",
+            action="show",
+            autoClose=4000,
+        )
 
 
 def format_number(num):
@@ -926,21 +1342,41 @@ def toggle_create_modal(create_clicks, cancel_clicks, save_clicks):
         State("new-name", "value"),
         State("new-class", "value"),
         State("new-freq", "value"),
+        State("csv-data", "data"),
     ],
     prevent_initial_call=True,
 )
-def create_timeseries(n_clicks, code, name, asset_class, frequency):
+def create_timeseries(n_clicks, code, name, asset_class, frequency, csv_data):
     if not n_clicks or not code:
         raise PreventUpdate
 
     try:
-        # Create new timeseries (you'd implement database save here)
+        # If CSV data is provided, convert it back to DataFrame
+        df = None
+        if csv_data:
+            import json
+
+            df = pd.read_json(csv_data["data"], orient="records")
+            # Convert index back to datetime
+            df.index = pd.to_datetime(csv_data["index"])
+
+        # Create new timeseries with CSV data if available
+        if df is not None:
+            # Call the upload_csv function to save to database
+            upload_csv(df)
+            message = f"Timeseries '{code}' created successfully! CSV data uploaded: {len(df)} rows, {len(df.columns)} columns"
+        else:
+            # Create new timeseries without CSV data
+            # Here you would implement the actual database save logic for empty timeseries
+            message = f"Timeseries '{code}' created successfully!"
+
         return dmc.Notification(
             title="Success",
-            message=f"Timeseries '{code}' created successfully!",
+            message=message,
             color="green",
             icon=DashIconify(icon="material-symbols:check-circle"),
             id="success-notification",
+            action="show",
             autoClose=4000,
         )
     except Exception as e:
@@ -950,5 +1386,6 @@ def create_timeseries(n_clicks, code, name, asset_class, frequency):
             color="red",
             icon=DashIconify(icon="material-symbols:error"),
             id="error-notification",
+            action="show",
             autoClose=4000,
         )
