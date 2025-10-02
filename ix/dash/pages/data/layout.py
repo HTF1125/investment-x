@@ -163,6 +163,11 @@ controls = dmc.Container(
                     style={"marginBottom": "0"},
                 ),
                 html.Div(id="standalone-csv-preview", style={"marginTop": "16px"}),
+                # Progress bar for upload
+                html.Div(
+                    id="upload-progress-container",
+                    style={"marginTop": "16px", "display": "none"},
+                ),
             ],
             p="md",
             radius="md",
@@ -350,6 +355,8 @@ layout = html.Div(
         dcc.Store(id="page-data"),
         dcc.Store(id="csv-data"),
         dcc.Store(id="standalone-csv-data"),
+        dcc.Store(id="upload-progress", data={"status": "idle", "progress": 0}),
+        dcc.Store(id="upload-trigger", data=0),
         # Hidden download component
         dcc.Download(id="download-template-file"),
     ],
@@ -555,7 +562,7 @@ def handle_standalone_excel_upload(contents, filename):
             style={"marginBottom": "8px"},
         )
 
-        # Create action buttons
+        # Create action buttons with loading state
         action_buttons = dmc.Group(
             [
                 dmc.Button(
@@ -567,6 +574,7 @@ def handle_standalone_excel_upload(contents, filename):
                     leftSection=DashIconify(
                         icon="material-symbols:cloud-upload", width=16
                     ),
+                    loading=False,
                 ),
                 dmc.Button(
                     "View Full Data",
@@ -614,34 +622,103 @@ def handle_standalone_excel_upload(contents, filename):
 
 
 @callback(
-    Output("notifications", "children", allow_duplicate=True),
+    [
+        Output("upload-progress-container", "children"),
+        Output("upload-progress-container", "style"),
+        Output("upload-to-db", "loading"),
+    ],
+    [Input("upload-progress", "data")],
+    prevent_initial_call=True,
+)
+def update_upload_progress(progress_data):
+    """Update progress bar and button loading state"""
+    if not progress_data:
+        return "", {"marginTop": "16px", "display": "none"}, False
+
+    status = progress_data.get("status", "idle")
+    progress = progress_data.get("progress", 0)
+
+    if status == "idle":
+        return "", {"marginTop": "16px", "display": "none"}, False
+    elif status == "uploading":
+        progress_bar = dmc.Progress(
+            value=progress,
+            size="md",
+            radius="md",
+            striped=True,
+            animated=True,
+            style={"marginBottom": "8px"},
+        )
+
+        progress_text = dmc.Text(
+            f"Uploading... {progress:.1f}%", size="sm", c="blue", ta="center"
+        )
+
+        return (
+            [progress_bar, progress_text],
+            {"marginTop": "16px", "display": "block"},
+            True,
+        )
+    elif status == "completed":
+        return "", {"marginTop": "16px", "display": "none"}, False
+    elif status == "error":
+        return "", {"marginTop": "16px", "display": "none"}, False
+    else:
+        return "", {"marginTop": "16px", "display": "none"}, False
+
+
+@callback(
+    [
+        Output("upload-trigger", "data"),
+        Output("notifications", "children", allow_duplicate=True),
+    ],
     [Input("upload-to-db", "n_clicks")],
     [State("standalone-csv-data", "data")],
     prevent_initial_call=True,
 )
-def upload_excel_to_database(n_clicks, excel_data):
-    """Upload Excel data to database using upload_excel_data function"""
-    print(
-        f"DEBUG: upload_excel_to_database called with n_clicks={n_clicks}, excel_data={'exists' if excel_data else 'None'}"
-    )
+def update_upload_trigger(n_clicks, excel_data):
+    """Update upload trigger when button is clicked and show initial notification"""
+    if not n_clicks:
+        raise PreventUpdate
 
-    # Always show a test notification first to see if callback is working
-    test_notification = dmc.Notification(
-        title="Test",
-        message=f"Button clicked! n_clicks={n_clicks}, excel_data={'exists' if excel_data else 'None'}",
+    if not excel_data:
+        return n_clicks, None
+
+    # Show initial notification using simple alert
+    initial_notification = dmc.Alert(
+        f"🚀 Upload Started: Processing {len(excel_data.get('columns', []))} columns from {excel_data.get('filename', 'Excel file')}...",
         color="blue",
-        icon=DashIconify(icon="material-symbols:info"),
-        id="test-notification",
-        action="show",
-        autoClose=3000,
+        title="Upload Started",
+        style={"marginBottom": "10px"},
     )
 
-    if not n_clicks or not excel_data:
-        print("DEBUG: PreventUpdate - no clicks or no excel_data")
-        return test_notification
+    logger.info(
+        f"Showing initial notification for {excel_data.get('filename', 'Excel file')}"
+    )
+    return n_clicks, initial_notification
+
+
+@callback(
+    [
+        Output("notifications", "children", allow_duplicate=True),
+        Output("upload-progress", "data"),
+    ],
+    [Input("upload-trigger", "data")],
+    [State("standalone-csv-data", "data")],
+    prevent_initial_call=True,
+)
+def upload_excel_to_database(trigger, excel_data):
+    """Upload Excel data to database using optimized upload_excel_data function"""
+    logger.info(
+        f"Upload initiated: trigger={trigger}, excel_data={'exists' if excel_data else 'None'}"
+    )
+
+    if not trigger or not excel_data:
+        logger.warning("Upload prevented: no trigger or no excel_data")
+        raise PreventUpdate
 
     try:
-        print("DEBUG: Starting Excel upload process...")
+        logger.info("Starting Excel upload process...")
         # Convert JSON back to DataFrame
         import json
 
@@ -649,37 +726,56 @@ def upload_excel_to_database(n_clicks, excel_data):
         # Convert index back to datetime
         df.index = pd.to_datetime(excel_data["index"])
 
-        # Call the upload_excel_data function
-        print("DEBUG: Calling upload_excel_data function...")
-        upload_excel_data(df)
-        print("DEBUG: Upload completed successfully")
+        # Call the optimized upload_excel_data function
+        logger.info("Calling optimized upload_excel_data function...")
+        result = upload_excel_data_optimized(df)
+        logger.info(f"Upload completed: {result}")
 
-        return dmc.Notification(
-            title="Success",
-            message=f"Successfully uploaded Excel data to database! {len(df)} columns processed.",
+        success_message = f"Successfully uploaded {result['processed']}/{result['total']} columns to database!"
+        if result["skipped"] > 0:
+            success_message += (
+                f" ({result['skipped']} skipped - codes not found in database)"
+            )
+        success_message += f" Processing time: {result['duration']:.2f}s"
+
+        # Create success notification
+        success_notification = dmc.Alert(
+            f"✅ {success_message}",
             color="green",
-            icon=DashIconify(icon="material-symbols:check-circle"),
-            id="upload-success-notification",
-            action="show",
-            autoClose=4000,
+            title="Upload Complete",
+            style={"marginBottom": "10px"},
         )
+
+        logger.info(f"Returning success notification: {success_message}")
+        return success_notification, {"status": "completed", "progress": 100}
     except Exception as e:
-        print(f"DEBUG: Error during upload: {e}")
-        return dmc.Notification(
-            title="Error",
-            message=f"Error uploading Excel data: {e}",
+        logger.error(f"Error during upload: {e}")
+        error_notification = dmc.Alert(
+            f"❌ Error uploading Excel data: {str(e)}",
             color="red",
-            icon=DashIconify(icon="material-symbols:error"),
-            id="upload-error-notification",
-            action="show",
-            autoClose=4000,
+            title="Upload Failed",
+            style={"marginBottom": "10px"},
         )
+        logger.info(f"Returning error notification: {str(e)}")
+        return error_notification, {"status": "error", "progress": 0}
 
 
 def upload_excel_data(data: pd.DataFrame):
     """
-    Upload Excel data to database with progress tracking
+    Legacy upload function - kept for backward compatibility
     """
+    return upload_excel_data_optimized(data)
+
+
+def upload_excel_data_optimized(data: pd.DataFrame):
+    """
+    Optimized Excel data upload with batch processing and performance improvements
+    """
+    import time
+    from typing import Dict, List, Tuple
+
+    start_time = time.time()
+
     assert isinstance(data, pd.DataFrame), "data must be a pandas DataFrame"
     assert isinstance(
         data.index, pd.DatetimeIndex
@@ -687,43 +783,108 @@ def upload_excel_data(data: pd.DataFrame):
 
     # Remove columns that are entirely NaN
     clean_data = data.dropna(how="all")
-
-    logger.info(f"Starting upload of {len(clean_data.columns)} columns")
-
-    processed_count = 0
     total_columns = len(clean_data.columns)
 
-    for code, col in clean_data.items():
-        try:
-            db_ts = Timeseries.find_one(Timeseries.code == code).run()
-            if db_ts is None:
-                logger.warning(f"Timeseries '{code}' not found in database, skipping")
-                continue
+    logger.info(f"🚀 Starting optimized upload of {total_columns} columns")
 
-            # Convert to numeric and drop NaN values
+    # Step 1: Batch fetch all required timeseries in one query
+    logger.info("📊 Batch fetching timeseries from database...")
+    codes = list(clean_data.columns)
+    # Use MongoDB $in operator for batch query
+    from pymongo import MongoClient
+    import os
+
+    # Get database connection
+    from ix.db.conn import get_database
+
+    db = get_database()
+
+    # Build query for batch fetch
+    query = {"code": {"$in": codes}}
+    existing_timeseries = {ts.code: ts for ts in Timeseries.find(query).run()}
+
+    logger.info(
+        f"✅ Found {len(existing_timeseries)} existing timeseries out of {total_columns} columns"
+    )
+
+    # Step 2: Prepare data for batch processing
+    processed_data: List[Tuple[Timeseries, pd.Series]] = []
+    skipped_codes = []
+
+    for code, col in clean_data.items():
+        if code not in existing_timeseries:
+            logger.warning(f"⚠️  Timeseries '{code}' not found in database, skipping")
+            skipped_codes.append(code)
+            continue
+
+        try:
+            # Convert to numeric and drop NaN values efficiently
             numeric_col = pd.to_numeric(col, errors="coerce")
-            # Ensure we have a Series for dropna() method
             if isinstance(numeric_col, pd.Series):
                 clean_col = numeric_col.dropna()
             else:
-                # Convert to Series if it's not already
                 clean_col = pd.Series(numeric_col).dropna()
 
-            # Update the timeseries data
-            db_ts.data = clean_col
-            processed_count += 1
+            if len(clean_col) == 0:
+                logger.warning(f"⚠️  No valid data for '{code}', skipping")
+                skipped_codes.append(code)
+                continue
 
-            logger.info(
-                f"Processed {code}: {len(clean_col)} data points ({processed_count}/{total_columns})"
-            )
+            processed_data.append((existing_timeseries[str(code)], clean_col))
 
         except Exception as e:
-            logger.error(f"Error processing column '{code}': {e}")
+            logger.error(f"❌ Error processing column '{code}': {e}")
+            skipped_codes.append(code)
             continue
 
+    logger.info(f"📋 Prepared {len(processed_data)} timeseries for batch update")
+
+    # Step 3: Batch update timeseries data with progress logging
+    processed_count = 0
+    batch_size = 10  # Process in smaller batches to avoid memory issues
+
+    for i in range(0, len(processed_data), batch_size):
+        batch = processed_data[i : i + batch_size]
+
+        for ts, clean_col in batch:
+            try:
+                # Update the timeseries data
+                ts.data = clean_col
+                processed_count += 1
+
+                # Log progress with visual indicators
+                if processed_count % 5 == 0 or processed_count == len(processed_data):
+                    progress_pct = (processed_count / len(processed_data)) * 100
+                    logger.info(
+                        f"📈 Progress: {processed_count}/{len(processed_data)} timeseries "
+                        f"({progress_pct:.1f}%) - Latest: {ts.code}"
+                    )
+
+            except Exception as e:
+                logger.error(f"❌ Error updating timeseries '{ts.code}': {e}")
+                continue
+
+    duration = time.time() - start_time
+
+    result = {
+        "processed": processed_count,
+        "total": total_columns,
+        "skipped": len(skipped_codes),
+        "duration": duration,
+        "skipped_codes": skipped_codes,
+    }
+
     logger.info(
-        f"Upload completed: {processed_count}/{total_columns} columns processed successfully"
+        f"🎉 Upload completed: {processed_count}/{total_columns} columns processed successfully "
+        f"({len(skipped_codes)} skipped) in {duration:.2f}s"
     )
+
+    if skipped_codes:
+        logger.info(
+            f"📝 Skipped codes: {', '.join(skipped_codes[:10])}{'...' if len(skipped_codes) > 10 else ''}"
+        )
+
+    return result
 
 
 @callback(
@@ -1438,9 +1599,11 @@ def create_timeseries(n_clicks, code, name, asset_class, frequency, csv_data):
 
         # Create new timeseries with Excel data if available
         if df is not None:
-            # Call the upload_excel_data function to save to database
-            upload_excel_data(df)
-            message = f"Timeseries '{code}' created successfully! Excel data uploaded: {len(df)} rows, {len(df.columns)} columns"
+            # Call the optimized upload_excel_data function to save to database
+            result = upload_excel_data_optimized(df)
+            message = f"Timeseries '{code}' created successfully! Excel data uploaded: {result['processed']}/{result['total']} columns processed in {result['duration']:.2f}s"
+            if result["skipped"] > 0:
+                message += f" ({result['skipped']} skipped)"
         else:
             # Create new timeseries without Excel data
             # Here you would implement the actual database save logic for empty timeseries

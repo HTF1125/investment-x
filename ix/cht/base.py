@@ -192,12 +192,10 @@ def ISM_Cycle(px: pd.Series, start: str = "2015-1-1") -> go.Figure:
                 text=f"ISM Business Cycle vs {asset_name}",
             ),
             yaxis=dict(
-                title=dict(text="ISM Cycle"),
                 range=[30, 70],
                 tickformat=".0f",
             ),
             yaxis2=dict(
-                title=dict(text=f"{asset_name} YoY"),
                 tickformat=".0%",
             ),
         )

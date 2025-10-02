@@ -10,6 +10,7 @@ NAV_ITEMS = [
     {"name": "Views", "href": "/views", "icon": "fa6-solid:chart-bar"},
     {"name": "Strategies", "href": "/strategies", "icon": "fa6-solid:bolt"},
     {"name": "Data", "href": "/data", "icon": "fa6-solid:database"},
+    {"name": "Risk", "href": "/risk", "icon": "fa6-solid:shield-halved"},
 ]
 
 

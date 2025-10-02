@@ -563,20 +563,6 @@ def credit_impulse_us_vs_cn():
             hovertemplate="China Credit Impulse: %{y:.2%}<extra></extra>",
         )
     )
-    fig.update_layout(
-        xaxis_title="Date",
-        yaxis=dict(
-            title="US Credit Impulse (YoY, % GDP)",
-            tickformat=".0%",
-        ),
-        yaxis2=dict(
-            title="China Credit Impulse (YoY, % GDP)",
-            overlaying="y",
-            side="right",
-            tickformat=".0%",
-        ),
-        hovermode="x unified",
-    )
 
     fig.update_layout(timeseries_layout)
     fig.update_layout(
@@ -1044,7 +1030,7 @@ def oecd_diffusion_index() -> go.Figure:
             go.Scatter(
                 x=msci_world.index,
                 y=msci_world.values,
-                name=f"MSCI World ({msci_world.iloc[-1]:.2%}) [R]",
+                name=f"MSCI World YoY({msci_world.iloc[-1]:.2%}) [R]",
                 line=dict(color=theme.colors.red[400], width=3),
                 hovertemplate="<b>MSCI World YoY</b>: %{y:.2%}<extra></extra>",
                 yaxis="y2",
@@ -1057,6 +1043,7 @@ def oecd_diffusion_index() -> go.Figure:
             ),
             "yaxis": dict(
                 tickformat=".0f",
+                range=[0, 100],
             ),
             "yaxis2": dict(
                 tickformat=".0%",
@@ -1101,10 +1088,11 @@ def pmi_manufacturing_diffusion_index() -> go.Figure:
     fig.update_layout(
         {
             "title": dict(
-                text=f"OECD CLI MoM Diffusion & MSCI World",
+                text=f"PMI ManufacturingMoM Diffusion & MSCI World",
             ),
             "yaxis": dict(
                 tickformat=".0f",
+                range=[0, 100],
             ),
             "yaxis2": dict(
                 tickformat=".0%",
@@ -1140,7 +1128,7 @@ def pmi_services_diffusion_index() -> go.Figure:
             go.Scatter(
                 x=msci_world.index,
                 y=msci_world.values,
-                name=f"MSCI World ({msci_world.iloc[-1]:.2%}) [R]",
+                name=f"MSCI World YoY({msci_world.iloc[-1]:.2%}) [R]",
                 line=dict(color=theme.colors.red[400], width=3),
                 hovertemplate="<b>MSCI World YoY</b>: %{y:.2%}<extra></extra>",
                 yaxis="y2",
@@ -1149,10 +1137,10 @@ def pmi_services_diffusion_index() -> go.Figure:
     fig.update_layout(
         {
             "title": dict(
-                text=f"OECD CLI MoM Diffusion & MSCI World",
+                text=f"PMI Services MoM Diffusion & MSCI World",
             ),
             "yaxis": dict(
-                tickformat=".0f",
+                tickformat=".0f",range=[0, 100],
             ),
             "yaxis2": dict(
                 tickformat=".0%",

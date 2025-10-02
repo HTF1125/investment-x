@@ -5,30 +5,22 @@ from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 import traceback
 from datetime import datetime
-from functools import lru_cache
 
 from ix.db import Universe
 from ix.misc.date import today, oneyearbefore
 from ix.dash.components import Grid, Card
+from ix.dash.cache import (
+    get_cached_universe_data,
+    clear_cache,
+    get_cache_stats,
+    cleanup_expired_cache,
+)
 from ix.misc import get_logger
 
 logger = get_logger(__name__)
 
 # Register Page
 dash.register_page(__name__, path="/", title="Dashboard", name="Dashboard")
-
-
-# --- Cached Data Loader ---
-@lru_cache(maxsize=32)
-def get_cached_universe_data(universe_name: str, start_date: str, end_date: str):
-    """Cache universe data to improve performance"""
-    try:
-        universe_db = Universe.from_name(universe_name)
-        pxs = universe_db.get_series(field="PX_LAST")
-        return pxs.loc[start_date:end_date]
-    except Exception as e:
-        logger.error(f"Error loading {universe_name}: {e}")
-        return pd.DataFrame()
 
 
 # --- Heatmap Generator ---
@@ -38,17 +30,23 @@ def performance_heatmap(pxs: pd.DataFrame, periods: list = [1, 5, 21], title: st
         fig = go.Figure()
         fig.add_annotation(
             text="No data available",
-            xref="paper", yref="paper", x=0.5, y=0.5,
-            showarrow=False, font=dict(size=16, color="#ef4444")
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=16, color="#ef4444"),
         )
         fig.update_layout(
-            title=dict(text=title, x=0.5, xanchor="center", font=dict(size=16, color="#f1f5f9")),
+            title=dict(
+                text=title, x=0.5, xanchor="center", font=dict(size=16, color="#f1f5f9")
+            ),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             xaxis=dict(visible=False),
             yaxis=dict(visible=False),
             margin=dict(l=0, r=0, t=40, b=0),
-            height=350
+            height=350,
         )
         return fig
 
@@ -79,18 +77,24 @@ def performance_heatmap(pxs: pd.DataFrame, periods: list = [1, 5, 21], title: st
             x=perf_matrix.columns,
             y=perf_df.index,
             colorscale=[
-                [0, "#374151"], [0.4, "#dc2626"], [0.5, "#374151"],
-                [0.6, "#059669"], [1, "#059669"]
+                [0, "#374151"],
+                [0.4, "#dc2626"],
+                [0.5, "#374151"],
+                [0.6, "#059669"],
+                [1, "#059669"],
             ],
             zmid=0,
-            text=[[
-                f"{val:.2f}" if col == "Latest" else f"{val:.1f}%"
-                for col, val in zip(perf_matrix.columns, row)
-            ] for row in z_values],
+            text=[
+                [
+                    f"{val:.2f}" if col == "Latest" else f"{val:.1f}%"
+                    for col, val in zip(perf_matrix.columns, row)
+                ]
+                for row in z_values
+            ],
             texttemplate="%{text}",
             textfont=dict(size=12, color="white"),
             hovertemplate="<b>%{y}</b><br>%{x}: %{text}<extra></extra>",
-            showscale=False
+            showscale=False,
         )
     )
 
@@ -100,32 +104,28 @@ def performance_heatmap(pxs: pd.DataFrame, periods: list = [1, 5, 21], title: st
         for j in range(ncols):
             fig.add_shape(
                 type="rect",
-                x0=j-0.5, x1=j+0.5, y0=i-0.5, y1=i+0.5,
+                x0=j - 0.5,
+                x1=j + 0.5,
+                y0=i - 0.5,
+                y1=i + 0.5,
                 line=dict(color="white", width=1),
-                layer="above"
+                layer="above",
             )
 
     fig.update_layout(
         title=dict(
-            text=title,
-            x=0.5,
-            xanchor="center",
-            font=dict(size=16, color="#f1f5f9")
+            text=title, x=0.5, xanchor="center", font=dict(size=16, color="#f1f5f9")
         ),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(
-            tickfont=dict(size=12, color="#f1f5f9"),
-            side="top",
-            showgrid=False
-        ),
+        xaxis=dict(tickfont=dict(size=12, color="#f1f5f9"), side="top", showgrid=False),
         yaxis=dict(
             tickfont=dict(size=12, color="#f1f5f9"),
             autorange="reversed",
-            showgrid=False
+            showgrid=False,
         ),
         margin=dict(l=0, r=0, t=40, b=0),
-        height=350
+        height=350,
     )
     return fig
 
@@ -133,68 +133,87 @@ def performance_heatmap(pxs: pd.DataFrame, periods: list = [1, 5, 21], title: st
 # --- UI Helper Functions ---
 def create_chart_skeleton(title="Loading chart..."):
     """Create a skeleton loader that matches the actual chart layout"""
-    return html.Div([
-        # Chart title skeleton
-        html.Div(
-            title,
-            style={
-                "color": "#f1f5f9",
-                "fontSize": "16px",
-                "fontWeight": "600",
-                "textAlign": "center",
-                "marginBottom": "20px",
-                "padding": "0 10px",
-            }
-        ),
-        # Heatmap grid skeleton
-        html.Div([
-            # Header row (periods)
-            html.Div([
-                html.Div(style={
-                    "background": "linear-gradient(90deg, rgba(100, 116, 139, 0.3) 25%, rgba(148, 163, 184, 0.4) 50%, rgba(100, 116, 139, 0.3) 75%)",
-                    "backgroundSize": "200% 100%",
-                    "animation": "pulse 2s ease-in-out infinite",
-                    "height": "25px",
-                    "borderRadius": "4px",
-                    "margin": "2px",
-                    "animationDelay": f"{i * 0.1}s"
-                }) for i in range(7)
-            ], style={
-                "display": "grid",
-                "gridTemplateColumns": "repeat(7, 1fr)",
-                "gap": "4px",
-                "marginBottom": "8px",
-                "padding": "0 10px"
-            }),
-            # Data rows
-            html.Div([
-                html.Div([
-                    html.Div(style={
-                        "background": "linear-gradient(90deg, rgba(30, 41, 59, 0.4) 25%, rgba(51, 65, 85, 0.6) 50%, rgba(30, 41, 59, 0.4) 75%)",
-                        "backgroundSize": "200% 100%",
-                        "animation": "pulse 2s ease-in-out infinite",
-                        "height": "35px",
-                        "borderRadius": "4px",
-                        "margin": "2px",
-                        "animationDelay": f"{(row * 7 + col) * 0.05}s"
-                    }) for col in range(7)
-                ], style={
-                    "display": "grid",
-                    "gridTemplateColumns": "repeat(7, 1fr)",
-                    "gap": "4px",
-                    "marginBottom": "4px"
-                }) for row in range(6)
-            ], style={"padding": "0 10px"})
-        ], style={
-            "background": "rgba(30, 41, 59, 0.2)",
-            "borderRadius": "8px",
-            "padding": "20px 10px",
-            "minHeight": "280px"
-        })
-    ], style={
-        "padding": "1rem",
-        "minHeight": "350px"
-    })
+    return html.Div(
+        [
+            # Chart title skeleton
+            html.Div(
+                title,
+                style={
+                    "color": "#f1f5f9",
+                    "fontSize": "16px",
+                    "fontWeight": "600",
+                    "textAlign": "center",
+                    "marginBottom": "20px",
+                    "padding": "0 10px",
+                },
+            ),
+            # Heatmap grid skeleton
+            html.Div(
+                [
+                    # Header row (periods)
+                    html.Div(
+                        [
+                            html.Div(
+                                style={
+                                    "background": "linear-gradient(90deg, rgba(100, 116, 139, 0.3) 25%, rgba(148, 163, 184, 0.4) 50%, rgba(100, 116, 139, 0.3) 75%)",
+                                    "backgroundSize": "200% 100%",
+                                    "animation": "pulse 2s ease-in-out infinite",
+                                    "height": "25px",
+                                    "borderRadius": "4px",
+                                    "margin": "2px",
+                                    "animationDelay": f"{i * 0.1}s",
+                                }
+                            )
+                            for i in range(7)
+                        ],
+                        style={
+                            "display": "grid",
+                            "gridTemplateColumns": "repeat(7, 1fr)",
+                            "gap": "4px",
+                            "marginBottom": "8px",
+                            "padding": "0 10px",
+                        },
+                    ),
+                    # Data rows
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.Div(
+                                        style={
+                                            "background": "linear-gradient(90deg, rgba(30, 41, 59, 0.4) 25%, rgba(51, 65, 85, 0.6) 50%, rgba(30, 41, 59, 0.4) 75%)",
+                                            "backgroundSize": "200% 100%",
+                                            "animation": "pulse 2s ease-in-out infinite",
+                                            "height": "35px",
+                                            "borderRadius": "4px",
+                                            "margin": "2px",
+                                            "animationDelay": f"{(row * 7 + col) * 0.05}s",
+                                        }
+                                    )
+                                    for col in range(7)
+                                ],
+                                style={
+                                    "display": "grid",
+                                    "gridTemplateColumns": "repeat(7, 1fr)",
+                                    "gap": "4px",
+                                    "marginBottom": "4px",
+                                },
+                            )
+                            for row in range(6)
+                        ],
+                        style={"padding": "0 10px"},
+                    ),
+                ],
+                style={
+                    "background": "rgba(30, 41, 59, 0.2)",
+                    "borderRadius": "8px",
+                    "padding": "20px 10px",
+                    "minHeight": "280px",
+                },
+            ),
+        ],
+        style={"padding": "1rem", "minHeight": "350px"},
+    )
 
 
 def create_chart_error(error_message, error_id):
@@ -257,8 +276,7 @@ def create_chart_error(error_message, error_id):
             html.Button(
                 [
                     html.I(
-                        className="fas fa-sync-alt",
-                        style={"marginRight": "0.25rem"}
+                        className="fas fa-sync-alt", style={"marginRight": "0.25rem"}
                     ),
                     "Retry",
                 ],
@@ -317,14 +335,17 @@ def create_section_skeleton(title, description, num_charts=6):
                     ),
                 ]
             ),
-            html.Div([
-                create_chart_skeleton(f"Loading chart {i+1}...")
-                for i in range(num_charts)
-            ], style={
-                "display": "grid",
-                "gridTemplateColumns": "repeat(auto-fit, minmax(350px, 1fr))",
-                "gap": "1.5rem",
-            }),
+            html.Div(
+                [
+                    create_chart_skeleton(f"Loading chart {i+1}...")
+                    for i in range(num_charts)
+                ],
+                style={
+                    "display": "grid",
+                    "gridTemplateColumns": "repeat(auto-fit, minmax(350px, 1fr))",
+                    "gap": "1.5rem",
+                },
+            ),
         ],
         style={"marginBottom": "2rem"},
     )
@@ -438,7 +459,14 @@ def create_error_section(title, error_message, error_id):
 
 # --- Section Builder ---
 def PerformanceHeatmapSection(
-    universes=["Major Indices", "Global Markets", "Sectors", "Themes", "Commodities", "Currencies"]
+    universes=[
+        "Major Indices",
+        "Global Markets",
+        "Sectors",
+        "Themes",
+        "Commodities",
+        "Currencies",
+    ]
 ):
     """Build the performance heatmap section with individual chart containers using Grid and Card components"""
 
@@ -454,19 +482,21 @@ def PerformanceHeatmapSection(
             )
         )
 
-    return html.Div([
-        html.H2(
-            "Performance Heatmaps",
-            style={
-                "color": "#f1f5f9",
-                "fontSize": "1.75rem",
-                "fontWeight": "700",
-                "marginBottom": "1.5rem",
-                "letterSpacing": "0.025em",
-            },
-        ),
-        Grid(chart_cards)
-    ])
+    return html.Div(
+        [
+            html.H2(
+                "Performance Heatmaps",
+                style={
+                    "color": "#f1f5f9",
+                    "fontSize": "1.75rem",
+                    "fontWeight": "700",
+                    "marginBottom": "1.5rem",
+                    "letterSpacing": "0.025em",
+                },
+            ),
+            Grid(chart_cards),
+        ]
+    )
 
 
 # --- Layout ---
@@ -475,7 +505,7 @@ layout = html.Div(
         # Stores for state management
         dcc.Store(id="dashboard-load-state", data={"loaded": False}),
         dcc.Store(id="last-refresh-time", data=None),
-
+        dcc.Store(id="cache-stats", data=None),
         # Auto-refresh interval (10 minutes)
         dcc.Interval(
             id="dashboard-refresh-interval",
@@ -483,17 +513,26 @@ layout = html.Div(
             n_intervals=0,
             disabled=False,
         ),
-
+        # Cache cleanup interval (every 2 minutes)
+        dcc.Interval(
+            id="cache-cleanup-interval",
+            interval=2 * 60 * 1000,  # 2 minutes
+            n_intervals=0,
+            disabled=False,
+        ),
         # Individual chart loading intervals - staggered timing
-        html.Div([
-            dcc.Interval(
-                id=f"chart-load-interval-{i}",
-                interval=1000 + (i * 500),  # Staggered: 1s, 1.5s, 2s, 2.5s, 3s, 3.5s
-                n_intervals=0,
-                max_intervals=1,
-            ) for i in range(6)  # For 6 charts
-        ]),
-
+        html.Div(
+            [
+                dcc.Interval(
+                    id=f"chart-load-interval-{i}",
+                    interval=1000
+                    + (i * 500),  # Staggered: 1s, 1.5s, 2s, 2.5s, 3s, 3.5s
+                    n_intervals=0,
+                    max_intervals=1,
+                )
+                for i in range(6)  # For 6 charts
+            ]
+        ),
         # Page header with refresh controls
         html.Div(
             [
@@ -531,27 +570,55 @@ layout = html.Div(
                                 "textAlign": "right",
                             },
                         ),
-                        html.Button(
+                        html.Div(
                             [
-                                html.I(
-                                    className="fas fa-sync-alt",
-                                    style={"marginRight": "0.5rem"},
+                                html.Button(
+                                    [
+                                        html.I(
+                                            className="fas fa-sync-alt",
+                                            style={"marginRight": "0.5rem"},
+                                        ),
+                                        "Refresh Now",
+                                    ],
+                                    id="manual-refresh-btn",
+                                    n_clicks=0,
+                                    style={
+                                        "background": "linear-gradient(145deg, #059669, #047857)",
+                                        "color": "white",
+                                        "border": "none",
+                                        "borderRadius": "8px",
+                                        "padding": "0.75rem 1.25rem",
+                                        "fontSize": "0.9rem",
+                                        "fontWeight": "600",
+                                        "cursor": "pointer",
+                                        "transition": "all 0.3s ease",
+                                        "marginRight": "0.5rem",
+                                    },
                                 ),
-                                "Refresh Now",
+                                html.Button(
+                                    [
+                                        html.I(
+                                            className="fas fa-trash-alt",
+                                            style={"marginRight": "0.5rem"},
+                                        ),
+                                        "Clear Cache",
+                                    ],
+                                    id="clear-cache-btn",
+                                    n_clicks=0,
+                                    style={
+                                        "background": "linear-gradient(145deg, #dc2626, #b91c1c)",
+                                        "color": "white",
+                                        "border": "none",
+                                        "borderRadius": "8px",
+                                        "padding": "0.75rem 1.25rem",
+                                        "fontSize": "0.9rem",
+                                        "fontWeight": "600",
+                                        "cursor": "pointer",
+                                        "transition": "all 0.3s ease",
+                                    },
+                                ),
                             ],
-                            id="manual-refresh-btn",
-                            n_clicks=0,
-                            style={
-                                "background": "linear-gradient(145deg, #059669, #047857)",
-                                "color": "white",
-                                "border": "none",
-                                "borderRadius": "8px",
-                                "padding": "0.75rem 1.25rem",
-                                "fontSize": "0.9rem",
-                                "fontWeight": "600",
-                                "cursor": "pointer",
-                                "transition": "all 0.3s ease",
-                            },
+                            style={"display": "flex", "gap": "0.5rem"},
                         ),
                     ]
                 ),
@@ -564,7 +631,6 @@ layout = html.Div(
                 "padding": "0 0.5rem",
             },
         ),
-
         # Dashboard content
         html.Div(
             [
@@ -624,16 +690,27 @@ def load_heatmap_section(refresh_intervals, manual_refresh, load_state):
         error_trace = traceback.format_exc()
         logger.error(f"Error loading heatmap section: {error_trace}")
 
-        return (create_error_section(
-            "Performance Heatmaps",
-            f"Error: {str(e)}\n\nFull traceback:\n{error_trace}",
-            "heatmap",
-        ), {"loaded": False, "error": True})
+        return (
+            create_error_section(
+                "Performance Heatmaps",
+                f"Error: {str(e)}\n\nFull traceback:\n{error_trace}",
+                "heatmap",
+            ),
+            {"loaded": False, "error": True},
+        )
 
 
 # Individual chart loading callbacks
-universes = ["Major Indices", "Global Markets", "Sectors", "Themes", "Commodities", "Currencies"]
+universes = [
+    "Major Indices",
+    "Global Markets",
+    "Sectors",
+    "Themes",
+    "Commodities",
+    "Currencies",
+]
 periods = [1, 5, 21, 63, 126, 252]
+
 
 def create_individual_chart_callback(chart_index, universe_name):
     """Create a callback for loading an individual chart"""
@@ -662,23 +739,49 @@ def create_individual_chart_callback(chart_index, universe_name):
                 return dcc.Graph(
                     figure=fig,
                     config={"displayModeBar": False},
-                    style={"width": "100%", "height": "400px"}
+                    style={"width": "100%", "height": "400px"},
                 )
             else:
-                return html.Div([
-                    html.H4(universe_name, style={"color": "#f1f5f9", "marginBottom": "1rem", "textAlign": "center"}),
-                    html.Div(
-                        "No data available for this universe",
-                        style={"color": "#ef4444", "textAlign": "center", "padding": "2rem"}
-                    )
-                ])
+                return html.Div(
+                    [
+                        html.H4(
+                            universe_name,
+                            style={
+                                "color": "#f1f5f9",
+                                "marginBottom": "1rem",
+                                "textAlign": "center",
+                            },
+                        ),
+                        html.Div(
+                            "No data available for this universe",
+                            style={
+                                "color": "#ef4444",
+                                "textAlign": "center",
+                                "padding": "2rem",
+                            },
+                        ),
+                    ]
+                )
 
         except Exception as e:
             logger.error(f"Error loading chart for {universe_name}: {e}")
-            return html.Div([
-                html.H4(universe_name, style={"color": "#f1f5f9", "marginBottom": "1rem", "textAlign": "center"}),
-                create_chart_error(f"Error loading {universe_name}: {str(e)}", f"chart-{chart_index}")
-            ])
+            return html.Div(
+                [
+                    html.H4(
+                        universe_name,
+                        style={
+                            "color": "#f1f5f9",
+                            "marginBottom": "1rem",
+                            "textAlign": "center",
+                        },
+                    ),
+                    create_chart_error(
+                        f"Error loading {universe_name}: {str(e)}",
+                        f"chart-{chart_index}",
+                    ),
+                ]
+            )
+
 
 # Create callbacks for all charts
 for i, universe in enumerate(universes):
@@ -691,7 +794,9 @@ for i, universe in enumerate(universes):
     [
         Input("dashboard-refresh-interval", "n_intervals"),
         Input("manual-refresh-btn", "n_clicks"),
-    ] + [Input(f"chart-load-interval-{i}", "n_intervals") for i in range(6)],
+        Input("clear-cache-btn", "n_clicks"),
+    ]
+    + [Input(f"chart-load-interval-{i}", "n_intervals") for i in range(6)],
     prevent_initial_call=True,
 )
 def update_last_refresh_time(*args):
@@ -702,6 +807,46 @@ def update_last_refresh_time(*args):
 
     current_time = datetime.now().strftime("%H:%M:%S")
     return f"Last updated: {current_time}"
+
+
+# Callback for cache cleanup
+@callback(
+    Output("cache-stats", "data"),
+    Input("cache-cleanup-interval", "n_intervals"),
+    prevent_initial_call=True,
+)
+def cleanup_cache(n_intervals):
+    """Clean up expired cache entries periodically"""
+    try:
+        cleaned_count = cleanup_expired_cache()
+        stats = get_cache_stats()
+        logger.info(
+            f"Cache cleanup: removed {cleaned_count} expired entries. Active: {stats['active_entries']}"
+        )
+        return stats
+    except Exception as e:
+        logger.error(f"Error during cache cleanup: {e}")
+        return {"error": str(e)}
+
+
+# Callback for manual cache clearing
+@callback(
+    Output("clear-cache-btn", "n_clicks"),
+    Input("clear-cache-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def clear_cache_callback(n_clicks):
+    """Clear all cached data when button is clicked"""
+    if n_clicks > 0:
+        try:
+            clear_cache()
+            logger.info("Cache manually cleared by user")
+            # Reset the button click count
+            return 0
+        except Exception as e:
+            logger.error(f"Error clearing cache: {e}")
+            return 0
+    return 0
 
 
 # Clientside callback for button hover effects
@@ -716,6 +861,15 @@ clientside_callback(
                     button.addEventListener('mouseenter', function() {
                         this.style.transform = 'translateY(-2px) scale(1.02)';
                         this.style.boxShadow = '0 8px 25px rgba(5, 150, 105, 0.4)';
+                    });
+                    button.addEventListener('mouseleave', function() {
+                        this.style.transform = 'translateY(0) scale(1)';
+                        this.style.boxShadow = 'none';
+                    });
+                } else if (button.id === 'clear-cache-btn') {
+                    button.addEventListener('mouseenter', function() {
+                        this.style.transform = 'translateY(-2px) scale(1.02)';
+                        this.style.boxShadow = '0 8px 25px rgba(220, 38, 38, 0.4)';
                     });
                     button.addEventListener('mouseleave', function() {
                         this.style.transform = 'translateY(0) scale(1)';
@@ -736,6 +890,8 @@ clientside_callback(
         return window.dash_clientside.no_update;
     }
     """,
-    Output("last-refresh-time", "data"),  # Use a different output that's not used elsewhere
+    Output(
+        "last-refresh-time", "data"
+    ),  # Use a different output that's not used elsewhere
     Input("dashboard-load-state", "data"),
 )
