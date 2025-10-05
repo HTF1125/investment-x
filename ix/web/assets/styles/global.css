@@ -1,0 +1,268 @@
+:root {
+    /* Dark theme variables (default) */
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --text-primary: #ffffff;
+    --text-secondary: #cbd5e0;
+    --border: #475569;
+    --surface: rgba(30, 41, 59, 0.95);
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+}
+
+[data-theme="light"] {
+    /* Light theme variables */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --text-primary: #1f2937;
+    --text-secondary: #6b7280;
+    --border: #e5e7eb;
+    --surface: #ffffff;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #0c1623 0%, #1a2332 50%, #2d3748 100%);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.main-title {
+    text-align: center;
+    font-size: 3rem;
+    font-weight: bold;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    text-align: center;
+    color: #a0aec0;
+    font-size: 1.2rem;
+    margin-bottom: 40px;
+}
+
+.universe-section {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.universe-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #ffffff;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.chart-container {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 15px;
+    padding: 15px;
+    margin: 10px 0;
+}
+
+/* ===== GLOBAL STYLES ===== */
+
+/* General responsive typography */
+@media (max-width: 576px) {
+    .main-title {
+        font-size: 1.6rem !important;
+        text-align: center !important;
+    }
+
+    .section-title {
+        font-size: 1.4rem !important;
+    }
+
+    .subsection-title {
+        font-size: 1.2rem !important;
+    }
+
+    .subtitle {
+        text-align: center !important;
+        font-size: 0.9rem !important;
+    }
+}
+
+@media (min-width: 577px) and (max-width: 768px) {
+    .main-title {
+        font-size: 1.8rem !important;
+        text-align: center !important;
+    }
+
+    .subtitle {
+        text-align: center !important;
+        font-size: 0.95rem !important;
+    }
+}
+
+/* Section styling */
+.section-title,
+.subsection-title {
+    color: var(--text-primary) !important;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+}
+
+.section-description {
+    color: var(--text-secondary) !important;
+}
+
+/* Plotly chart dark mode enhancements */
+.js-plotly-plot .plotly .modebar {
+    background-color: rgba(30, 41, 59, 0.8) !important;
+    border-radius: 6px !important;
+}
+
+.js-plotly-plot .plotly .modebar-btn {
+    color: #ffffff !important;
+}
+
+.js-plotly-plot .plotly .modebar-btn:hover {
+    background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Loading spinner styling */
+._dash-loading {
+    margin: 20px auto !important;
+}
+
+/* Responsive theme toggle positioning */
+#theme-toggle-container {
+    position: fixed !important;
+    top: 17px !important;
+    right: 20px !important;
+    z-index: 1001 !important;
+}
+
+/* Extra small phones */
+@media (max-width: 360px) {
+    #theme-toggle-container {
+        top: 10px !important;
+        right: 12px !important;
+    }
+
+    .main-content {
+        margin-top: 65px !important;
+        padding: 10px !important;
+    }
+}
+
+/* Mobile positioning for theme toggle */
+@media (min-width: 361px) and (max-width: 480px) {
+    #theme-toggle-container {
+        top: 12px !important;
+        right: 15px !important;
+    }
+
+    .main-content {
+        margin-top: 65px !important;
+        padding: 12px !important;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+    #theme-toggle-container {
+        top: 15px !important;
+        right: 18px !important;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    #theme-toggle-container {
+        top: 15px !important;
+        right: 18px !important;
+    }
+}
+
+@media (min-width: 1025px) and (max-width: 1200px) {
+    #theme-toggle-container {
+        top: 16px !important;
+        right: 20px !important;
+    }
+}
+
+@media (min-width: 1201px) {
+    #theme-toggle-container {
+        top: 17px !important;
+        right: 25px !important;
+    }
+
+}
+
+/* Responsive main content margins to account for navbar height */
+.main-content {
+    margin-top: 80px !important;
+}
+
+@media (min-width: 361px) and (max-width: 480px) {
+    .main-content {
+        margin-top: 65px !important;
+        padding: 12px !important;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+    .main-content {
+        margin-top: 75px !important;
+        padding: 18px !important;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .main-content {
+        margin-top: 75px !important;
+        padding: 20px !important;
+    }
+}
+
+@media (min-width: 1025px) and (max-width: 1200px) {
+    .main-content {
+        margin-top: 78px !important;
+    }
+}
+
+@media (min-width: 1201px) {
+    .main-content {
+        margin-top: 80px !important;
+    }
+}
+
+/* Legacy chart container styles */
+.chart-container .col {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.chart-container .col:first-child {
+    padding-left: 0;
+}
+
+.chart-container .col:last-child {
+    padding-right: 0;
+}
+
+.small-chart {
+    height: 350px;
+}
+
+.large-chart {
+    height: 500px;
+}
