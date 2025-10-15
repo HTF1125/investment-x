@@ -8,7 +8,7 @@ import time
 import threading
 import concurrent.futures
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 
 from ix.db import Universe, Timeseries
 from ix.misc import get_logger
@@ -54,10 +54,12 @@ class DataManager:
             logger.info(f"Data cached for {key}")
 
     @staticmethod
-    def load_universe_data_optimized(universe_name: str) -> Dict[str, Any]:
+    def load_universe_data_optimized(
+        universe_name: str, as_of_date: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Optimized function to load data for a single universe."""
         try:
-            logger.info(f"Loading data for {universe_name}")
+            logger.info(f"Loading data for {universe_name} as of {as_of_date}")
             universe_db = Universe.from_name(universe_name)
 
             # Batch fetch all timeseries at once
@@ -95,9 +97,24 @@ class DataManager:
                                 and hasattr(ts_data, "empty")
                                 and not ts_data.empty
                             ):
-                                # Limit to last 252 days (1 year) for faster processing
-                                recent_data = ts_data.tail(252)
-                                re[asset.name] = recent_data
+                                # Resample to business days and forward fill to avoid NaN
+                                resampled_data = ts_data.resample("B").last().ffill()
+
+                                # Limit to last 400 business days for faster processing (includes buffer for 252D calc)
+                                recent_data = resampled_data.tail(400)
+
+                                # Filter by as_of_date if provided
+                                if as_of_date:
+                                    try:
+                                        as_of_dt = pd.to_datetime(as_of_date)
+                                        recent_data = recent_data.loc[:as_of_dt]
+                                    except Exception as e:
+                                        logger.warning(
+                                            f"Error parsing as_of_date {as_of_date}: {e}"
+                                        )
+
+                                if not recent_data.empty:
+                                    re[asset.name] = recent_data
                         except Exception as e:
                             logger.warning(
                                 f"Error accessing data for {asset.code}: {e}"
@@ -109,8 +126,8 @@ class DataManager:
 
             pxs = pd.DataFrame(re)
             if not pxs.empty:
-                # Optimized performance calculation - only essential periods for faster loading
-                periods = [1, 5, 21]  # Reduced periods for faster initial load
+                # Optimized performance calculation - essential periods
+                periods = [1, 5, 21, 63, 252]  # 1D, 1W, 1M, 1Q, 1Y
                 perf_matrix = {}
 
                 try:
@@ -126,13 +143,11 @@ class DataManager:
                             "last_updated": datetime.now().isoformat(),
                         }
 
-                    # Resample once and reuse
-                    resampled_data = pxs.resample("B").last().ffill()
-
+                    # Data is already resampled to "B" and ffilled, so use directly
                     # Calculate only essential performance metrics for faster loading
                     for p in periods:
                         try:
-                            pct = resampled_data.pct_change(p).ffill().iloc[-1]
+                            pct = pxs.pct_change(p).ffill().iloc[-1]
                             perf_matrix[f"{p}D"] = pct.to_dict()
                         except Exception as e:
                             logger.warning(
@@ -141,7 +156,7 @@ class DataManager:
                             continue
 
                     # Store latest values
-                    latest_values = resampled_data.iloc[-1].to_dict()
+                    latest_values = pxs.iloc[-1].to_dict()
 
                 except Exception as e:
                     logger.error(f"Error processing data for {universe_name}: {e}")
@@ -173,9 +188,20 @@ class DataManager:
                     logger.warning(f"Error generating figure for {universe_name}: {e}")
                     fig_dict = None
 
+                # Convert numpy arrays to lists for JSON serialization
+                def convert_arrays_to_lists(obj):
+                    if isinstance(obj, dict):
+                        return {k: convert_arrays_to_lists(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [convert_arrays_to_lists(item) for item in obj]
+                    elif hasattr(obj, "tolist"):  # numpy array
+                        return obj.tolist()
+                    else:
+                        return obj
+
                 return {
-                    "latest_values": latest_values,
-                    "performance_matrix": perf_matrix,
+                    "latest_values": convert_arrays_to_lists(latest_values),
+                    "performance_matrix": convert_arrays_to_lists(perf_matrix),
                     "data_available": True,
                     "figure": fig_dict,  # Pre-generated figure for instant loading
                     "last_updated": datetime.now().isoformat(),
@@ -190,7 +216,7 @@ class DataManager:
                 }
 
         except Exception as e:
-            logger.error(f"Error loading data for {universe_name}: {e}")
+            logger.error(f"Error loading data for {universe_name}: {e}", exc_info=True)
             return {
                 "latest_values": None,
                 "performance_matrix": None,

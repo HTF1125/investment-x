@@ -1,8 +1,9 @@
 """ """
 
 from . import core
-from . import bt
+from .core import bt
 from . import misc
-from . import task
+from .misc import task
+from . import fig
 from .db import get_timeseries
 from .db.query import *

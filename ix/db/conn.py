@@ -8,7 +8,7 @@ from typing import Optional
 logger = get_logger(__name__)
 
 
-class DatabaseConnection:
+class Connection:
     """Manages MongoDB connection with improved error handling and health checks."""
 
     def __init__(self):
@@ -29,25 +29,27 @@ class DatabaseConnection:
         """
         for attempt in range(max_retries):
             try:
-                logger.info(f"Attempting to connect to MongoDB (attempt {attempt + 1}/{max_retries})...")
+                logger.info(
+                    f"Attempting to connect to MongoDB (attempt {attempt + 1}/{max_retries})..."
+                )
 
                 # MongoDB client setup with improved configuration
                 self.client = MongoClient(
                     Settings.db_url,
                     serverSelectionTimeoutMS=10000,  # Increased timeout
-                    connectTimeoutMS=15000,          # Increased timeout
-                    socketTimeoutMS=20000,           # Socket timeout
-                    maxPoolSize=100,                 # Increased pool size
-                    minPoolSize=10,                  # Minimum pool size
-                    maxIdleTimeMS=30000,             # Max idle time
+                    connectTimeoutMS=15000,  # Increased timeout
+                    socketTimeoutMS=20000,  # Socket timeout
+                    maxPoolSize=100,  # Increased pool size
+                    minPoolSize=10,  # Minimum pool size
+                    maxIdleTimeMS=30000,  # Max idle time
                     retryWrites=True,
-                    retryReads=True,                 # Enable retry reads
-                    w="majority",                    # Write concern
-                    journal=True,                    # Journal write concern
+                    retryReads=True,  # Enable retry reads
+                    w="majority",  # Write concern
+                    journal=True,  # Journal write concern
                 )
 
-                # Validate connection with timeout
-                self.client.admin.command("ping", serverSelectionTimeoutMS=5000)
+                # Validate connection
+                self.client.admin.command("ping")
 
                 # Select database
                 self.database = self.client[Settings.db_name]
@@ -67,9 +69,13 @@ class DatabaseConnection:
             except errors.ConnectionFailure as e:
                 logger.error(f"MongoDB connection failed (attempt {attempt + 1}): {e}")
             except errors.OperationFailure as e:
-                logger.error(f"MongoDB authentication/operation error (attempt {attempt + 1}): {e}")
+                logger.error(
+                    f"MongoDB authentication/operation error (attempt {attempt + 1}): {e}"
+                )
             except Exception as e:
-                logger.exception(f"Unexpected error during MongoDB initialization (attempt {attempt + 1}): {e}")
+                logger.exception(
+                    f"Unexpected error during MongoDB initialization (attempt {attempt + 1}): {e}"
+                )
 
             if attempt < max_retries - 1:
                 logger.info(f"Retrying connection in {retry_delay} seconds...")
@@ -96,7 +102,7 @@ class DatabaseConnection:
 
         try:
             # Quick health check
-            self.client.admin.command("ping", serverSelectionTimeoutMS=2000)
+            self.client.admin.command("ping")
             return True
         except Exception as e:
             logger.warning(f"Database health check failed: {e}")
@@ -121,21 +127,21 @@ class DatabaseConnection:
 
 
 # Global database connection instance
-db_connection = DatabaseConnection()
+conn = Connection()
 
 
 def get_database():
     """Get the database instance, ensuring connection is established."""
-    if not db_connection.is_connected():
-        if not db_connection.connect():
+    if not conn.is_connected():
+        if not conn.connect():
             raise ConnectionError("Failed to establish database connection")
-    return db_connection.get_database()
+    return conn.get_database()
 
 
 def ensure_connection():
     """Ensure database connection is established."""
-    if not db_connection.is_connected():
-        return db_connection.connect()
+    if not conn.is_connected():
+        return conn.connect()
     return True
 
 

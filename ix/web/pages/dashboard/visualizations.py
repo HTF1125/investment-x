@@ -59,7 +59,7 @@ class HeatmapGenerator:
                 zmid=0,
                 text=text_array,
                 texttemplate="%{text}",
-                textfont=dict(size=12, color="white"),
+                textfont=dict(size=9, color="white", family="monospace"),
                 hovertemplate="<b>%{y}</b><br>%{x}: %{text}<extra></extra>",
                 showscale=False,
             )
@@ -114,7 +114,7 @@ class HeatmapGenerator:
                     for row in z_values
                 ],
                 texttemplate="%{text}",
-                textfont=dict(size=12, color="white"),
+                textfont=dict(size=9, color="white", family="monospace"),
                 hovertemplate="<b>%{y}</b><br>%{x}: %{text}<extra></extra>",
                 showscale=False,
             )
@@ -136,19 +136,19 @@ class HeatmapGenerator:
             x=0.5,
             y=0.5,
             showarrow=False,
-            font=dict(size=16, color="#ef4444"),
+            font=dict(size=12, color="#ef4444"),
         )
 
         fig.update_layout(
             title=dict(
-                text=title, x=0.5, xanchor="center", font=dict(size=16, color="#f1f5f9")
+                text=title, x=0.5, xanchor="center", font=dict(size=12, color="#f1f5f9")
             ),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             xaxis=dict(visible=False),
             yaxis=dict(visible=False),
-            margin=dict(l=0, r=0, t=40, b=0),
-            height=350,
+            margin=dict(l=0, r=0, t=25, b=0),
+            height=200,
         )
         return fig
 
@@ -180,20 +180,20 @@ class HeatmapGenerator:
         fig.update_layout(
             shapes=shapes,
             title=dict(
-                text=title, x=0.5, xanchor="center", font=dict(size=16, color="#f1f5f9")
+                text=title, x=0.5, xanchor="center", font=dict(size=12, color="#f1f5f9")
             ),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             xaxis=dict(
-                tickfont=dict(size=12, color="#f1f5f9"), side="top", showgrid=False
+                tickfont=dict(size=9, color="#f1f5f9"), side="top", showgrid=False
             ),
             yaxis=dict(
-                tickfont=dict(size=12, color="#f1f5f9"),
+                tickfont=dict(size=9, color="#f1f5f9"),
                 autorange="reversed",
                 showgrid=False,
             ),
-            margin=dict(l=0, r=0, t=40, b=0),
-            height=350,
+            margin=dict(l=0, r=0, t=25, b=0),
+            height=200,
         )
         return fig
 

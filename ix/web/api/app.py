@@ -260,8 +260,105 @@ def register_api_routes(app):
             logger.exception(f"Failed to fetch timeseries with code {code}")
             return jsonify({"error": f"Failed to fetch timeseries data: {str(e)}"}), 500
 
+    @app.server.route("/api/upload_data", methods=["POST"])
+    def upload_data():
+        """
+        POST /api/upload_data - Upload timeseries data in bulk.
+
+        Request body should be a JSON list with the following structure:
+        [
+            {"date": "2024-01-01", "code": "AAPL", "value": 150.0},
+            {"date": "2024-01-01", "code": "MSFT", "value": 380.0},
+            ...
+        ]
+
+        Required fields:
+        - date: Date string (will be parsed to datetime)
+        - code: Timeseries code (must exist in database)
+        - value: Numeric value
+        """
+        try:
+            # Get the JSON payload
+            payload = request.get_json()
+
+            if not isinstance(payload, list):
+                return (
+                    jsonify({"error": "Invalid payload: expected a list of records."}),
+                    400,
+                )
+
+            # Convert to DataFrame
+            df = pd.DataFrame(payload)
+            required_columns = {"date", "code", "value"}
+            missing = required_columns - set(df.columns)
+            if missing:
+                return (
+                    jsonify({"error": f"Missing required fields: {missing}"}),
+                    400,
+                )
+
+            # Clean the data
+            # Convert 'value' to numeric, coercing errors to NaN
+            df["value"] = pd.to_numeric(df["value"], errors="coerce")
+            # Drop rows where 'value' is NaN
+            df = df.dropna(subset=["value"])
+            # Convert 'date' to datetime, coercing errors to NaT
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            # Drop rows where 'date' or 'code' is missing
+            df = df.dropna(subset=["date", "code"])
+
+            if df.empty:
+                return (
+                    jsonify({"error": "No valid records to upload after cleaning."}),
+                    400,
+                )
+
+            # Pivot the DataFrame so each code becomes a column, indexed by date
+            pivoted = (
+                df.pivot(index="date", columns="code", values="value")
+                .sort_index()
+                .dropna(how="all", axis=1)
+                .dropna(how="all", axis=0)
+            )
+            pivoted.index = pd.to_datetime(pivoted.index)
+
+            # Update each timeseries in the database
+            updated_codes = []
+            not_found_codes = []
+            for code in pivoted.columns:
+                ts = Timeseries.find_one({"code": code}).run()
+                if ts is None:
+                    not_found_codes.append(code)
+                    continue
+                # Store as a Series with date index and float values
+                series = pivoted[code].dropna()
+                # Update the timeseries data
+                ts.data = series
+                updated_codes.append(code)
+
+            logger.info(
+                f"Successfully uploaded data for {len(updated_codes)} timeseries"
+            )
+
+            response = {
+                "message": f"Successfully received {len(payload)} records.",
+                "updated_codes": updated_codes,
+                "records_processed": len(df),
+            }
+
+            if not_found_codes:
+                response["warning"] = f"Codes not found in database: {not_found_codes}"
+                logger.warning(f"Codes not found: {not_found_codes}")
+
+            return jsonify(response)
+
+        except Exception as e:
+            logger.exception("Failed to process data upload")
+            return jsonify({"error": f"Failed to process data upload: {str(e)}"}), 500
+
     print("API routes registered:")
     print("  - GET /api/health - Health check")
     print("  - GET /api/timeseries - List all timeseries")
     print("  - GET /api/timeseries/{id} - Get timeseries by ID")
     print("  - GET /api/timeseries/code/{code} - Get timeseries by code")
+    print("  - POST /api/upload_data - Upload timeseries data")

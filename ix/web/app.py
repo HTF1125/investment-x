@@ -8,7 +8,17 @@ from dash_iconify import DashIconify
 _dash_renderer._set_react_version("18.2.0")
 
 # Initialize Dash app with pages
-app = dash.Dash(__name__, use_pages=True, suppress_callback_exceptions=True)
+# Specify absolute pages_folder to prevent duplicate page discovery
+import os
+
+pages_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pages")
+
+app = dash.Dash(
+    __name__,
+    use_pages=True,
+    pages_folder=pages_folder,
+    suppress_callback_exceptions=True,
+)
 app.title = "Global Markets Dashboard"
 
 # Include external CSS file
@@ -150,10 +160,11 @@ app.index_string = """
 app.layout = dmc.MantineProvider(
     html.Div(
         [
-            # Store for token data
-            dcc.Store(id="token-store", data=None),
-            # Navbar (fixed position)
+            # Stores for app data
+            dcc.Store(id="token-store", data=None, storage_type="session"),
             dcc.Store(id="global-data", data=None),
+            dcc.Location(id="url", refresh=False),
+            # Navbar (fixed position)
             navbar_layout,
             # Page content with proper spacing
             html.Div(
@@ -329,14 +340,14 @@ clientside_callback(
 
 
 # Initialize scheduler
-# from .scheduler import start_scheduler
+from .scheduler import start_scheduler
 
 # Register API routes
 from .api.app import register_api_routes
 
 register_api_routes(app)
 
-# # Initialize and start the scheduler
+# Initialize and start the scheduler
 # try:
 #     scheduler = start_scheduler(8)
 #     print("Task scheduler initialized and started")
@@ -354,13 +365,17 @@ if __name__ == "__main__":
     print("  - Dashboard: http://localhost:8050/")
     print("  - Macro: http://localhost:8050/macro")
     print("  - Insights: http://localhost:8050/insights")
-    print("  - Views: http://localhost:8050/views")
     print("  - Strategies: http://localhost:8050/strategies")
+    print("  - Data: http://localhost:8050/data")
+    print("  - Risk: http://localhost:8050/risk")
+    print("  - Login: http://localhost:8050/login")
+    print("  - Register: http://localhost:8050/register")
     print("API endpoints available:")
     print("  - Health check: http://localhost:8050/api/health")
     print("  - Timeseries list: http://localhost:8050/api/timeseries")
     print("  - Timeseries by ID: http://localhost:8050/api/timeseries/{id}")
     print("  - Timeseries by code: http://localhost:8050/api/timeseries/code/{code}")
+    print("  - Upload data: http://localhost:8050/api/upload_data")
     print("Scheduled tasks:")
     print("  - Daily data updates at 9:00 AM UTC")
     app.run_server(debug=True, host="0.0.0.0", port=8050)

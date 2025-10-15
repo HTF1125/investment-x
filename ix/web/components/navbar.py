@@ -1,13 +1,13 @@
-from dash import html, dcc, callback, Input, Output, State, clientside_callback
+from dash import html, dcc, callback, Input, Output, State, clientside_callback, ctx
 import json
 from dash_iconify import DashIconify
+import dash_mantine_components as dmc
 
 # Navigation items
 NAV_ITEMS = [
     {"name": "Dashboard", "href": "/", "icon": "fa6-solid:chart-line"},
     {"name": "Macro", "href": "/macro", "icon": "fa6-solid:globe"},
     {"name": "Insights", "href": "/insights", "icon": "fa6-solid:lightbulb"},
-    {"name": "Views", "href": "/views", "icon": "fa6-solid:chart-bar"},
     {"name": "Strategies", "href": "/strategies", "icon": "fa6-solid:bolt"},
     {"name": "Data", "href": "/data", "icon": "fa6-solid:database"},
     {"name": "Risk", "href": "/risk", "icon": "fa6-solid:shield-halved"},
@@ -33,7 +33,9 @@ def create_nav_link(item, is_mobile=False):
 
     return html.A(
         [
-            DashIconify(icon=item["icon"], width=16, height=16, style={"color": "inherit"}),
+            DashIconify(
+                icon=item["icon"], width=16, height=16, style={"color": "inherit"}
+            ),
             html.Span(item["name"], style={"marginLeft": "8px"}),
         ],
         href=item["href"],
@@ -170,6 +172,7 @@ def create_navbar():
                                     "theme-switch-desktop",
                                     "Toggle theme",
                                 ),
+                                html.Div(id="user-menu-container"),
                             ],
                             id="desktop-nav-actions",
                             style={
@@ -229,7 +232,9 @@ layout = html.Div([navbar])
     prevent_initial_call=True,
 )
 def handle_notifications(desktop_clicks, mobile_clicks):
-    bell_icon = DashIconify(icon="fa6-solid:bell", width=18, height=18, style={"color": "inherit"})
+    bell_icon = DashIconify(
+        icon="fa6-solid:bell", width=18, height=18, style={"color": "inherit"}
+    )
     return bell_icon, bell_icon
 
 
@@ -248,17 +253,23 @@ def handle_notifications(desktop_clicks, mobile_clicks):
 )
 def handle_theme_switch(desktop_clicks, mobile_clicks, current_logo_src):
     if not (desktop_clicks or mobile_clicks):
-        moon_icon = DashIconify(icon="fa6-solid:moon", width=18, height=18, style={"color": "inherit"})
+        moon_icon = DashIconify(
+            icon="fa6-solid:moon", width=18, height=18, style={"color": "inherit"}
+        )
         return current_logo_src, moon_icon, moon_icon
 
     is_currently_light = "light" in current_logo_src
 
     if is_currently_light:
         new_logo_src = "/assets/images/investment-x-logo-dark.svg"
-        new_icon = DashIconify(icon="fa6-solid:sun", width=18, height=18, style={"color": "inherit"})
+        new_icon = DashIconify(
+            icon="fa6-solid:sun", width=18, height=18, style={"color": "inherit"}
+        )
     else:
         new_logo_src = "/assets/images/investment-x-logo-light.svg"
-        new_icon = DashIconify(icon="fa6-solid:moon", width=18, height=18, style={"color": "inherit"})
+        new_icon = DashIconify(
+            icon="fa6-solid:moon", width=18, height=18, style={"color": "inherit"}
+        )
 
     return new_logo_src, new_icon, new_icon
 
@@ -443,3 +454,134 @@ clientside_callback(
     Output("main-navbar", "title"),
     Input("main-navbar", "id"),
 )
+
+
+# Callback to show user menu or login button
+@callback(
+    Output("user-menu-container", "children"),
+    Input("token-store", "data"),
+    prevent_initial_call=False,
+)
+def update_user_menu(token_data):
+    """Update user menu based on authentication status"""
+    if token_data and token_data.get("token"):
+        # User is logged in, show user menu
+        username = token_data.get("username", "User")
+        is_admin = token_data.get("is_admin", False)
+
+        return dmc.Menu(
+            [
+                dmc.MenuTarget(
+                    html.Button(
+                        [
+                            DashIconify(
+                                icon="material-symbols:person",
+                                width=20,
+                                height=20,
+                                style={"color": "inherit"},
+                            ),
+                        ],
+                        id="user-menu-button",
+                        style={
+                            "backgroundColor": "transparent",
+                            "border": "1px solid rgba(255, 255, 255, 0.2)",
+                            "color": "#b8b8b8",
+                            "padding": "8px",
+                            "borderRadius": "50%",
+                            "cursor": "pointer",
+                            "transition": "all 0.3s ease",
+                            "display": "flex",
+                            "alignItems": "center",
+                            "justifyContent": "center",
+                            "width": "36px",
+                            "height": "36px",
+                        },
+                    )
+                ),
+                dmc.MenuDropdown(
+                    [
+                        dmc.MenuItem(
+                            username,
+                            leftSection=DashIconify(
+                                icon="material-symbols:person", width=16
+                            ),
+                            disabled=True,
+                            style={"fontWeight": "bold"},
+                        ),
+                        dmc.MenuDivider(),
+                        dmc.MenuItem(
+                            "Profile",
+                            leftSection=DashIconify(
+                                icon="material-symbols:account-circle", width=16
+                            ),
+                            id="menu-profile",
+                        ),
+                        dmc.MenuItem(
+                            "Settings",
+                            leftSection=DashIconify(
+                                icon="material-symbols:settings", width=16
+                            ),
+                            id="menu-settings",
+                        ),
+                        dmc.MenuDivider(),
+                        dmc.MenuItem(
+                            "Logout",
+                            leftSection=DashIconify(
+                                icon="material-symbols:logout", width=16
+                            ),
+                            id="menu-logout",
+                            color="red",
+                        ),
+                    ]
+                ),
+            ],
+            position="bottom-end",
+            width=200,
+        )
+    else:
+        # User is not logged in, show login button
+        return html.A(
+            html.Button(
+                [
+                    DashIconify(
+                        icon="material-symbols:login",
+                        width=18,
+                        height=18,
+                        style={"color": "inherit", "marginRight": "6px"},
+                    ),
+                    html.Span("Login"),
+                ],
+                style={
+                    "backgroundColor": "transparent",
+                    "border": "1px solid rgba(255, 255, 255, 0.2)",
+                    "color": "#b8b8b8",
+                    "padding": "8px 16px",
+                    "borderRadius": "8px",
+                    "cursor": "pointer",
+                    "transition": "all 0.3s ease",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "fontSize": "14px",
+                    "fontWeight": "500",
+                },
+            ),
+            href="/login",
+            style={"textDecoration": "none"},
+        )
+
+
+# Logout callback
+@callback(
+    [
+        Output("token-store", "data", allow_duplicate=True),
+        Output("url", "pathname", allow_duplicate=True),
+    ],
+    Input("menu-logout", "n_clicks"),
+    prevent_initial_call=True,
+)
+def handle_logout(n_clicks):
+    """Handle user logout"""
+    if n_clicks:
+        # Clear token and redirect to login
+        return None, "/login"
+    return None, "/"

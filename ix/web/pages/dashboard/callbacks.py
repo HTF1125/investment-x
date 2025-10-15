@@ -8,6 +8,7 @@ import traceback
 import json
 import plotly.graph_objects as go
 from datetime import datetime
+import dash
 from dash import callback, Output, Input, State, clientside_callback, dcc, html
 from dash.exceptions import PreventUpdate
 from dash import callback_context
@@ -19,6 +20,7 @@ from ix.web.pages.dashboard.ui_components import (
     SkeletonLoader,
     ErrorDisplay,
     LayoutHelpers,
+    ModernComponents,
 )
 from ix.web.components import Grid, Card
 
@@ -47,6 +49,7 @@ class DashboardCallbacks:
         def refresh_global_data(n_intervals):
             """Refresh global dashboard data - now uses cached data and background refresh."""
             try:
+                logger.info(f"Global data callback fired: interval {n_intervals}")
                 logger.info(
                     f"Refreshing global dashboard data (interval: {n_intervals})"
                 )
@@ -65,7 +68,19 @@ class DashboardCallbacks:
                     dashboard_data = DataManager.refresh_global_dashboard_data()
 
                 # Ensure all data is JSON serializable
+                def convert_arrays_to_lists(obj):
+                    if isinstance(obj, dict):
+                        return {k: convert_arrays_to_lists(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [convert_arrays_to_lists(item) for item in obj]
+                    elif hasattr(obj, "tolist"):  # numpy array
+                        return obj.tolist()
+                    else:
+                        return obj
+
                 try:
+                    # Convert any numpy arrays to lists before JSON serialization
+                    dashboard_data = convert_arrays_to_lists(dashboard_data)
                     json.dumps(dashboard_data)
                 except (TypeError, ValueError) as e:
                     logger.error(f"Data not JSON serializable: {e}")
@@ -80,23 +95,68 @@ class DashboardCallbacks:
                 logger.error(f"Full traceback: {traceback.format_exc()}")
                 return {"error": str(e), "last_updated": datetime.now().isoformat()}
 
-        # Heatmap section loading callback
+        # Tab click callback
+        @callback(
+            Output("active-tab", "data"),
+            Input({"type": "tab-button", "index": dash.ALL}, "n_clicks"),
+            State({"type": "tab-button", "index": dash.ALL}, "id"),
+            prevent_initial_call=True,
+        )
+        def handle_tab_click(n_clicks, tab_ids):
+            """Handle tab button clicks."""
+            ctx = callback_context
+            if not ctx.triggered:
+                raise PreventUpdate
+
+            # Find which tab was clicked
+            button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+            if button_id:
+                import json
+
+                tab_data = json.loads(button_id)
+                return tab_data["index"]
+
+            return "all"
+
+        # Tab styling update callback
+        @callback(
+            Output("dashboard-tabs", "children"),
+            Input("active-tab", "data"),
+            prevent_initial_call=False,
+            allow_duplicate=True,
+        )
+        def update_tab_styling(active_tab):
+            """Update tab styling based on active tab."""
+            return ModernComponents.create_tabs(
+                [
+                    {"id": "all", "label": "All Markets", "icon": "mdi:view-grid"},
+                    {"id": "indices", "label": "Indices", "icon": "mdi:chart-line"},
+                    {"id": "sectors", "label": "Sectors", "icon": "mdi:domain"},
+                    {"id": "commodities", "label": "Commodities", "icon": "mdi:gold"},
+                ],
+                active_tab=active_tab,
+            )
+
+        # Heatmap section loading callback with tab filtering
         @callback(
             Output("heatmap-section", "children"),
             Output("dashboard-load-state", "data"),
             [
                 Input("global-data", "data"),
                 Input("manual-refresh-btn", "n_clicks"),
+                Input("active-tab", "data"),
             ],
             State("dashboard-load-state", "data"),
             prevent_initial_call=False,
             allow_duplicate=True,
         )
-        def load_heatmap_section(global_data, manual_refresh, load_state):
-            """Load the heatmap section with lazy loading for individual charts."""
+        def load_heatmap_section(global_data, manual_refresh, active_tab, load_state):
+            """Load the heatmap section with lazy loading for individual charts and tab filtering."""
 
             try:
-                logger.info(f"Loading heatmap section from global data")
+                logger.info(
+                    f"Loading heatmap section from global data (tab: {active_tab})"
+                )
 
                 if global_data is None or "error" in global_data:
                     # Show skeleton while waiting for data
@@ -105,9 +165,8 @@ class DashboardCallbacks:
                         "Loading market data...",
                     ), {"loaded": False}
 
-                # Create chart cards with lazy loading containers
-                chart_cards = []
-                universes = [
+                # Define all universes
+                all_universes = [
                     "Major Indices",
                     "Global Markets",
                     "Sectors",
@@ -116,9 +175,24 @@ class DashboardCallbacks:
                     "Currencies",
                 ]
 
+                # Filter based on active tab
+                if active_tab == "indices":
+                    universes = ["Major Indices", "Global Markets"]
+                elif active_tab == "sectors":
+                    universes = ["Sectors", "Themes"]
+                elif active_tab == "commodities":
+                    universes = ["Commodities", "Currencies"]
+                else:  # "all"
+                    universes = all_universes
+
+                # Create chart cards with lazy loading containers
+                chart_cards = []
                 from ix.web.components import Grid, Card
 
-                for i, universe in enumerate(universes):
+                for i, universe in enumerate(all_universes):
+                    if universe not in universes:
+                        continue
+
                     # Create individual chart containers that will load lazily
                     chart_content = html.Div(
                         id=f"chart-container-{i}",
@@ -127,6 +201,18 @@ class DashboardCallbacks:
                         ),
                     )
                     chart_cards.append(Card(chart_content))
+
+                # Display message if no data for selected tab
+                if not chart_cards:
+                    return html.Div(
+                        "No data available for this filter",
+                        style={
+                            "textAlign": "center",
+                            "padding": "3rem",
+                            "color": "#94a3b8",
+                            "fontSize": "1.1rem",
+                        },
+                    ), {"loaded": True}
 
                 heatmap_content = html.Div(
                     [
@@ -176,12 +262,146 @@ class DashboardCallbacks:
         )
         def update_last_refresh_time_dashboard(*args):
             """Update the last refresh time display."""
+            from dash_iconify import DashIconify
+
             ctx = callback_context
             if not ctx.triggered:
                 raise PreventUpdate
 
             current_time = datetime.now().strftime("%H:%M:%S")
-            return f"Last updated: {current_time}"
+            return [
+                DashIconify(
+                    icon="mdi:clock-outline",
+                    width=16,
+                    style={
+                        "marginRight": "0.5rem",
+                        "color": "#64748b",
+                    },
+                ),
+                html.Span(f"Last updated: {current_time}"),
+            ]
+
+        # Summary stats callback
+        @callback(
+            Output("summary-stats-section", "children"),
+            Input("global-data", "data"),
+            prevent_initial_call=False,
+            allow_duplicate=True,
+        )
+        def update_summary_stats(global_data):
+            """Update summary statistics cards."""
+            try:
+                if global_data is None or "error" in global_data:
+                    # Show loading skeletons
+                    return html.Div(
+                        [
+                            SkeletonLoader.create_chart_skeleton("Loading..."),
+                            SkeletonLoader.create_chart_skeleton("Loading..."),
+                            SkeletonLoader.create_chart_skeleton("Loading..."),
+                            SkeletonLoader.create_chart_skeleton("Loading..."),
+                        ],
+                        style={
+                            "display": "grid",
+                            "gridTemplateColumns": "repeat(auto-fit, minmax(250px, 1fr))",
+                            "gap": "1.5rem",
+                            "marginBottom": "2.5rem",
+                        },
+                    )
+
+                # Calculate summary statistics
+                total_markets = 0
+                gainers = 0
+                losers = 0
+                avg_change = 0
+                changes = []
+
+                universes = [
+                    "Major Indices",
+                    "Global Markets",
+                    "Sectors",
+                    "Themes",
+                    "Commodities",
+                    "Currencies",
+                ]
+
+                for universe in universes:
+                    if universe in global_data:
+                        universe_data = global_data[universe]
+                        if universe_data.get("data_available", False):
+                            perf_matrix = universe_data.get("performance_matrix", {})
+                            if "1D" in perf_matrix:
+                                day_changes = perf_matrix["1D"]
+                                total_markets += len(day_changes)
+                                for change in day_changes.values():
+                                    if change > 0:
+                                        gainers += 1
+                                    elif change < 0:
+                                        losers += 1
+                                    changes.append(change)
+
+                if changes:
+                    avg_change = sum(changes) / len(changes)
+
+                # Create stat cards
+                stat_cards = html.Div(
+                    [
+                        ModernComponents.create_stat_card(
+                            "Total Markets",
+                            str(total_markets),
+                            None,
+                            "mdi:chart-multiple",
+                            "neutral",
+                        ),
+                        ModernComponents.create_stat_card(
+                            "Gainers",
+                            str(gainers),
+                            (
+                                f"{(gainers/total_markets*100):.1f}%"
+                                if total_markets > 0
+                                else "0%"
+                            ),
+                            "mdi:trending-up",
+                            "up",
+                        ),
+                        ModernComponents.create_stat_card(
+                            "Losers",
+                            str(losers),
+                            (
+                                f"{(losers/total_markets*100):.1f}%"
+                                if total_markets > 0
+                                else "0%"
+                            ),
+                            "mdi:trending-down",
+                            "down",
+                        ),
+                        ModernComponents.create_stat_card(
+                            "Avg Change",
+                            f"{avg_change*100:+.2f}%",
+                            "1D Performance",
+                            "mdi:chart-timeline-variant",
+                            "up" if avg_change > 0 else "down",
+                        ),
+                    ],
+                    style={
+                        "display": "grid",
+                        "gridTemplateColumns": "repeat(auto-fit, minmax(250px, 1fr))",
+                        "gap": "1.5rem",
+                        "marginBottom": "2.5rem",
+                    },
+                )
+
+                return stat_cards
+
+            except Exception as e:
+                logger.error(f"Error updating summary stats: {e}")
+                return html.Div(
+                    "Error loading summary statistics",
+                    style={
+                        "color": "#ef4444",
+                        "textAlign": "center",
+                        "padding": "2rem",
+                    },
+                )
 
         # Consolidated figure cache callback with pre-loading status
         @callback(
@@ -324,97 +544,93 @@ class DashboardCallbacks:
     def _register_individual_chart_callback(chart_index: int, universe_name: str):
         """Register callback for individual chart loading with optimized performance."""
 
-        def create_chart_callback(index: int, name: str):
-            @callback(
-                Output(f"chart-container-{index}", "children"),
-                [
-                    Input("global-data", "data"),
-                    Input("figure-cache", "data"),
-                ],
-                prevent_initial_call=False,
-                allow_duplicate=True,
-            )
-            def load_individual_chart(global_data, figure_cache):
-                """Load individual chart when global data is available."""
-                try:
-                    # Priority 1: Use pre-loaded figure from consolidated cache
-                    if (
-                        figure_cache
-                        and name in figure_cache
-                        and figure_cache[name] is not None
-                    ):
-                        fig = go.Figure(figure_cache[name])
-                        return dcc.Graph(
-                            figure=fig,
-                            config={"displayModeBar": False},
-                            style={"width": "100%", "height": "400px"},
-                        )
-
-                    # Priority 2: Use figure from global data (pre-loaded)
-                    if global_data and name in global_data:
-                        universe_data = global_data[name]
-                        if (
-                            universe_data.get("data_available", False)
-                            and "figure" in universe_data
-                            and universe_data["figure"] is not None
-                        ):
-                            fig = go.Figure(universe_data["figure"])
-                            return dcc.Graph(
-                                figure=fig,
-                                config={"displayModeBar": False},
-                                style={"width": "100%", "height": "400px"},
-                            )
-
-                    # Priority 3: Show skeleton while waiting for pre-loading
-                    if global_data is None or "error" in global_data:
-                        return SkeletonLoader.create_chart_skeleton(
-                            f"Pre-loading {name}..."
-                        )
-
-                    if name not in global_data:
-                        return SkeletonLoader.create_chart_skeleton(
-                            f"Pre-loading {name}..."
-                        )
-
-                    universe_data = global_data[name]
-
-                    if not universe_data.get("data_available", False):
-                        if "error" in universe_data:
-                            return ErrorDisplay.create_chart_error(
-                                f"Error loading {name}: {universe_data['error']}",
-                                f"chart-{index}",
-                            )
-                        else:
-                            return LayoutHelpers.create_no_data_message(name)
-
-                    # Priority 4: Generate figure on-demand as fallback
-                    latest_values = universe_data["latest_values"]
-                    performance_matrix = universe_data["performance_matrix"]
-
-                    # Create performance DataFrame from pre-calculated data
-                    perf_data = {"Latest": latest_values}
-                    perf_data.update(performance_matrix)
-                    perf_df = pd.DataFrame(perf_data)
-
-                    # Generate optimized heatmap figure
-                    fig = HeatmapGenerator.performance_heatmap_from_perf_data(
-                        perf_df, title=name
-                    )
-
+        @callback(
+            Output(f"chart-container-{chart_index}", "children"),
+            [
+                Input("global-data", "data"),
+                Input("figure-cache", "data"),
+            ],
+            prevent_initial_call=False,
+        )
+        def load_individual_chart(global_data, figure_cache):
+            """Load individual chart when global data is available."""
+            name = universe_name
+            index = chart_index
+            try:
+                logger.info(f"Loading chart for {name} (index {index})")
+                # Priority 1: Use pre-loaded figure from consolidated cache
+                if (
+                    figure_cache
+                    and name in figure_cache
+                    and figure_cache[name] is not None
+                ):
+                    fig = go.Figure(figure_cache[name])
                     return dcc.Graph(
                         figure=fig,
                         config={"displayModeBar": False},
                         style={"width": "100%", "height": "400px"},
                     )
 
-                except Exception as e:
-                    logger.error(f"Error loading chart for {name}: {e}")
-                    return ErrorDisplay.create_chart_error(
-                        f"Error generating chart for {name}: {str(e)}",
-                        f"chart-{index}",
+                # Priority 2: Use figure from global data (pre-loaded)
+                if global_data and name in global_data:
+                    universe_data = global_data[name]
+                    if (
+                        universe_data.get("data_available", False)
+                        and "figure" in universe_data
+                        and universe_data["figure"] is not None
+                    ):
+                        fig = go.Figure(universe_data["figure"])
+                        return dcc.Graph(
+                            figure=fig,
+                            config={"displayModeBar": False},
+                            style={"width": "100%", "height": "400px"},
+                        )
+
+                # Priority 3: Show skeleton while waiting for pre-loading
+                if global_data is None or "error" in global_data:
+                    return SkeletonLoader.create_chart_skeleton(
+                        f"Pre-loading {name}..."
                     )
 
-            return load_individual_chart
+                if name not in global_data:
+                    return SkeletonLoader.create_chart_skeleton(
+                        f"Pre-loading {name}..."
+                    )
 
-        # Create and register the callback with proper closure
-        create_chart_callback(chart_index, universe_name)
+                universe_data = global_data[name]
+
+                if not universe_data.get("data_available", False):
+                    if "error" in universe_data:
+                        return ErrorDisplay.create_chart_error(
+                            f"Error loading {name}: {universe_data['error']}",
+                            f"chart-{index}",
+                        )
+                    else:
+                        return LayoutHelpers.create_no_data_message(name)
+
+                # Priority 4: Generate figure on-demand as fallback
+                latest_values = universe_data["latest_values"]
+                performance_matrix = universe_data["performance_matrix"]
+
+                # Create performance DataFrame from pre-calculated data
+                perf_data = {"Latest": latest_values}
+                perf_data.update(performance_matrix)
+                perf_df = pd.DataFrame(perf_data)
+
+                # Generate optimized heatmap figure
+                fig = HeatmapGenerator.performance_heatmap_from_perf_data(
+                    perf_df, title=name
+                )
+
+                return dcc.Graph(
+                    figure=fig,
+                    config={"displayModeBar": False},
+                    style={"width": "100%", "height": "400px"},
+                )
+
+            except Exception as e:
+                logger.error(f"Error loading chart for {name}: {e}")
+                return ErrorDisplay.create_chart_error(
+                    f"Error generating chart for {name}: {str(e)}",
+                    f"chart-{index}",
+                )

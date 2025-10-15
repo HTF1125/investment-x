@@ -1,10 +1,11 @@
 """
 UI components module for dashboard.
-Handles skeletons, error displays, and layout helpers.
+Handles skeletons, error displays, layout helpers, and modern UI elements.
 """
 
-from dash import html
-from typing import List, Optional
+from dash import html, dcc
+from typing import List, Optional, Dict, Any
+from dash_iconify import DashIconify
 
 
 class SkeletonLoader:
@@ -344,6 +345,214 @@ class ErrorDisplay:
         )
 
 
+class ModernComponents:
+    """Modern UI components for dashboard."""
+
+    @staticmethod
+    def create_stat_card(
+        title: str,
+        value: str,
+        change: str = None,
+        icon: str = "mdi:chart-line",
+        trend: str = "up",
+    ) -> html.Div:
+        """Create a modern statistic card with glassmorphism design."""
+
+        # Determine color based on trend
+        if change:
+            if trend == "up":
+                change_color = "#10b981"
+                icon_name = "mdi:trending-up"
+            elif trend == "down":
+                change_color = "#ef4444"
+                icon_name = "mdi:trending-down"
+            else:
+                change_color = "#94a3b8"
+                icon_name = "mdi:minus"
+
+        return html.Div(
+            [
+                # Background decoration
+                html.Div(
+                    style={
+                        "position": "absolute",
+                        "top": "-50%",
+                        "right": "-20%",
+                        "width": "150px",
+                        "height": "150px",
+                        "background": "radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%)",
+                        "borderRadius": "50%",
+                        "pointerEvents": "none",
+                        "filter": "blur(40px)",
+                    }
+                ),
+                # Card content
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.Div(
+                                    [
+                                        DashIconify(
+                                            icon=icon,
+                                            width=24,
+                                            style={
+                                                "color": "#3b82f6",
+                                                "marginRight": "0.5rem",
+                                            },
+                                        ),
+                                        html.Span(
+                                            title,
+                                            style={
+                                                "color": "#94a3b8",
+                                                "fontSize": "0.875rem",
+                                                "fontWeight": "500",
+                                                "textTransform": "uppercase",
+                                                "letterSpacing": "0.05em",
+                                            },
+                                        ),
+                                    ],
+                                    style={
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                        "marginBottom": "0.75rem",
+                                    },
+                                ),
+                                html.Div(
+                                    value,
+                                    style={
+                                        "color": "#f1f5f9",
+                                        "fontSize": "2rem",
+                                        "fontWeight": "700",
+                                        "letterSpacing": "-0.025em",
+                                        "marginBottom": "0.5rem",
+                                    },
+                                ),
+                                html.Div(
+                                    [
+                                        (
+                                            DashIconify(
+                                                icon=(
+                                                    icon_name
+                                                    if change
+                                                    else "mdi:circle"
+                                                ),
+                                                width=16,
+                                                style={
+                                                    "color": (
+                                                        change_color
+                                                        if change
+                                                        else "#94a3b8"
+                                                    ),
+                                                    "marginRight": "0.25rem",
+                                                },
+                                            )
+                                            if change
+                                            else None
+                                        ),
+                                        html.Span(
+                                            change if change else "No change",
+                                            style={
+                                                "color": (
+                                                    change_color
+                                                    if change
+                                                    else "#94a3b8"
+                                                ),
+                                                "fontSize": "0.875rem",
+                                                "fontWeight": "600",
+                                            },
+                                        ),
+                                    ],
+                                    style={
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                    },
+                                ),
+                            ],
+                            style={
+                                "position": "relative",
+                                "zIndex": 1,
+                            },
+                        ),
+                    ],
+                    style={
+                        "padding": "1.5rem",
+                    },
+                ),
+            ],
+            className="stat-card",
+            style={
+                "background": "linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.9))",
+                "borderRadius": "16px",
+                "border": "1px solid rgba(148, 163, 184, 0.2)",
+                "boxShadow": "0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 16px rgba(0, 0, 0, 0.15)",
+                "backdropFilter": "blur(20px)",
+                "position": "relative",
+                "overflow": "hidden",
+                "transition": "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+                "height": "100%",
+            },
+        )
+
+    @staticmethod
+    def create_tabs(tabs: List[Dict[str, Any]], active_tab: str = None) -> html.Div:
+        """Create modern tab navigation."""
+        if active_tab is None and tabs:
+            active_tab = tabs[0].get("id")
+
+        tab_buttons = []
+        for tab in tabs:
+            is_active = tab.get("id") == active_tab
+            tab_buttons.append(
+                html.Button(
+                    [
+                        (
+                            DashIconify(
+                                icon=tab.get("icon", "mdi:circle"),
+                                width=20,
+                                style={"marginRight": "0.5rem"},
+                            )
+                            if tab.get("icon")
+                            else None
+                        ),
+                        tab.get("label", "Tab"),
+                    ],
+                    id={"type": "tab-button", "index": tab.get("id")},
+                    className="tab-button active" if is_active else "tab-button",
+                    style={
+                        "background": (
+                            "linear-gradient(145deg, #3b82f6, #2563eb)"
+                            if is_active
+                            else "transparent"
+                        ),
+                        "color": "#ffffff" if is_active else "#94a3b8",
+                        "border": f"1px solid {'#3b82f6' if is_active else 'rgba(148, 163, 184, 0.2)'}",
+                        "borderRadius": "10px",
+                        "padding": "0.75rem 1.5rem",
+                        "fontSize": "0.875rem",
+                        "fontWeight": "600",
+                        "cursor": "pointer",
+                        "transition": "all 0.3s ease",
+                        "display": "flex",
+                        "alignItems": "center",
+                        "boxShadow": (
+                            "0 4px 12px rgba(0, 0, 0, 0.15)" if is_active else "none"
+                        ),
+                    },
+                )
+            )
+
+        return html.Div(
+            tab_buttons,
+            style={
+                "display": "flex",
+                "gap": "0.75rem",
+                "marginBottom": "2rem",
+                "flexWrap": "wrap",
+            },
+        )
+
+
 class LayoutHelpers:
     """Helper functions for dashboard layout components."""
 
@@ -351,79 +560,151 @@ class LayoutHelpers:
     def create_page_header(
         title: str, subtitle: str, refresh_button_id: str
     ) -> html.Div:
-        """Create a standardized page header with refresh controls."""
+        """Create an enhanced page header with modern design."""
         return html.Div(
             [
+                # Background decoration
                 html.Div(
-                    [
-                        html.H1(
-                            title,
-                            style={
-                                "color": "#f1f5f9",
-                                "fontSize": "2.5rem",
-                                "fontWeight": "800",
-                                "margin": "0",
-                                "letterSpacing": "-0.025em",
-                            },
-                        ),
-                        html.P(
-                            subtitle,
-                            style={
-                                "color": "#94a3b8",
-                                "fontSize": "1.1rem",
-                                "margin": "0.5rem 0 0 0",
-                            },
-                        ),
-                    ],
-                    style={"flex": "1"},
+                    style={
+                        "position": "absolute",
+                        "top": "-100%",
+                        "left": "-10%",
+                        "width": "300px",
+                        "height": "300px",
+                        "background": "radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, transparent 70%)",
+                        "borderRadius": "50%",
+                        "pointerEvents": "none",
+                        "filter": "blur(60px)",
+                    }
                 ),
+                # Content wrapper
                 html.Div(
                     [
                         html.Div(
-                            id="last-update-display",
-                            style={
-                                "color": "#64748b",
-                                "fontSize": "0.9rem",
-                                "marginBottom": "0.5rem",
-                                "textAlign": "right",
-                            },
+                            [
+                                html.Div(
+                                    [
+                                        DashIconify(
+                                            icon="mdi:view-dashboard",
+                                            width=36,
+                                            style={
+                                                "color": "#3b82f6",
+                                                "marginRight": "1rem",
+                                            },
+                                        ),
+                                        html.Div(
+                                            [
+                                                html.H1(
+                                                    title,
+                                                    style={
+                                                        "color": "#f1f5f9",
+                                                        "fontSize": "2.5rem",
+                                                        "fontWeight": "800",
+                                                        "margin": "0",
+                                                        "letterSpacing": "-0.025em",
+                                                        "background": "linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)",
+                                                        "backgroundClip": "text",
+                                                        "WebkitBackgroundClip": "text",
+                                                        "WebkitTextFillColor": "transparent",
+                                                    },
+                                                ),
+                                                html.P(
+                                                    subtitle,
+                                                    style={
+                                                        "color": "#94a3b8",
+                                                        "fontSize": "1rem",
+                                                        "margin": "0.25rem 0 0 0",
+                                                        "fontWeight": "400",
+                                                    },
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                    style={"display": "flex", "alignItems": "center"},
+                                ),
+                            ],
+                            style={"flex": "1"},
                         ),
                         html.Div(
                             [
-                                html.Button(
-                                    [
-                                        html.I(
-                                            className="fas fa-sync-alt",
-                                            style={"marginRight": "0.5rem"},
+                                html.Div(
+                                    id="last-update-display",
+                                    children=[
+                                        DashIconify(
+                                            icon="mdi:clock-outline",
+                                            width=16,
+                                            style={
+                                                "marginRight": "0.5rem",
+                                                "color": "#64748b",
+                                            },
                                         ),
-                                        "Refresh Now",
+                                        html.Span("Last updated: Just now"),
                                     ],
-                                    id=refresh_button_id,
-                                    n_clicks=0,
                                     style={
-                                        "background": "linear-gradient(145deg, #059669, #047857)",
-                                        "color": "white",
-                                        "border": "none",
-                                        "borderRadius": "8px",
-                                        "padding": "0.75rem 1.25rem",
-                                        "fontSize": "0.9rem",
-                                        "fontWeight": "600",
-                                        "cursor": "pointer",
-                                        "transition": "all 0.3s ease",
+                                        "color": "#64748b",
+                                        "fontSize": "0.875rem",
+                                        "marginBottom": "0.75rem",
+                                        "textAlign": "right",
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                        "justifyContent": "flex-end",
                                     },
                                 ),
-                            ],
-                            style={"display": "flex", "gap": "0.5rem"},
+                                html.Div(
+                                    [
+                                        html.Button(
+                                            [
+                                                DashIconify(
+                                                    icon="mdi:refresh",
+                                                    width=20,
+                                                    style={"marginRight": "0.5rem"},
+                                                    id="refresh-icon",
+                                                ),
+                                                "Refresh Data",
+                                            ],
+                                            id=refresh_button_id,
+                                            n_clicks=0,
+                                            className="refresh-button",
+                                            style={
+                                                "background": "linear-gradient(145deg, #059669, #047857)",
+                                                "color": "white",
+                                                "border": "none",
+                                                "borderRadius": "10px",
+                                                "padding": "0.75rem 1.5rem",
+                                                "fontSize": "0.875rem",
+                                                "fontWeight": "600",
+                                                "cursor": "pointer",
+                                                "transition": "all 0.3s ease",
+                                                "boxShadow": "0 4px 12px rgba(5, 150, 105, 0.3)",
+                                                "display": "flex",
+                                                "alignItems": "center",
+                                            },
+                                        ),
+                                    ],
+                                    style={"display": "flex", "gap": "0.75rem"},
+                                ),
+                            ]
                         ),
-                    ]
+                    ],
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "center",
+                        "position": "relative",
+                        "zIndex": 1,
+                    },
                 ),
             ],
             style={
-                "display": "flex",
-                "justifyContent": "space-between",
-                "alignItems": "flex-end",
-                "marginBottom": "2rem",
-                "padding": "0 0.5rem",
+                "position": "relative",
+                "marginBottom": "2.5rem",
+                "padding": "2rem",
+                "background": "linear-gradient(135deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.3))",
+                "borderRadius": "20px",
+                "border": "1px solid rgba(148, 163, 184, 0.15)",
+                "boxShadow": "0 8px 32px rgba(0, 0, 0, 0.2)",
+                "backdropFilter": "blur(20px)",
+                "overflow": "hidden",
             },
         )
 

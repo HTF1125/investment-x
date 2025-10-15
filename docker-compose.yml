@@ -1,0 +1,81 @@
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: investment-x-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme}
+      MONGO_INITDB_DATABASE: ${DB_NAME:-investmentx}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - investment-x-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # Investment-X Web Application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: investment-x-app
+    restart: unless-stopped
+    ports:
+      - "8050:8050"
+    environment:
+      # Database Configuration
+      DB_URL: mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-changeme}@mongodb:27017/
+      DB_NAME: ${DB_NAME:-investmentx}
+
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-this}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-600}
+
+      # Cloudflare R2 (optional)
+      R2_ACCESS_ID: ${R2_ACCESS_ID:-}
+      R2_ACCESS_KEY: ${R2_ACCESS_KEY:-}
+      R2_CLIENT_ID: ${R2_CLIENT_ID:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
+
+      # OpenAI/DashScope (optional)
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+
+      # Email Configuration (optional)
+      EMAIL_LOGIN: ${EMAIL_LOGIN:-}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      EMAIL_RECIPIENTS: ${EMAIL_RECIPIENTS:-[]}
+    volumes:
+      # Mount data files
+      - ./files:/app/files
+      # Optional: mount source code for development
+      # - ./ix:/app/ix
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - investment-x-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8050/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+
+networks:
+  investment-x-network:
+    driver: bridge

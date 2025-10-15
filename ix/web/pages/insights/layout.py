@@ -1,10 +1,11 @@
 """
-Enhanced Insights Page Layout
-Modern design with improved UX, incorporating features from wx implementation.
+Modern Insights Page - Redesigned with beautiful UI and enhanced UX
 """
 
 from dash import html, dcc
 import dash
+import dash_mantine_components as dmc
+from dash_iconify import DashIconify
 from ix.web.pages.insights.callbacks_minimal import *
 from ix.web.pages.insights.summary_modal import summary_modal
 from ix.web.pages.insights import sources
@@ -13,505 +14,431 @@ from ix.web.pages.insights import sources
 dash.register_page(__name__, path="/insights", title="Insights", name="Insights")
 
 
-# Simple icon function
-def Icon(icon_name, width=16):
-    """Simple icon replacement using Font Awesome"""
-    icon_map = {
-        "tabler:search": "fas fa-search",
-        "tabler:filter-off": "fas fa-times",
-        "tabler:refresh": "fas fa-sync-alt",
-        "tabler:file-text": "fas fa-file-text",
-        "tabler:clock": "fas fa-clock",
-        "tabler:check": "fas fa-check",
-        "tabler:calendar": "fas fa-calendar",
-        "tabler:upload": "fas fa-upload",
-        "tabler:cloud-upload": "fas fa-cloud-upload-alt",
-    }
-    return html.I(
-        className=icon_map.get(icon_name, "fas fa-question"),
-        style={"fontSize": f"{width}px", "marginRight": "8px"},
-    )
-
-
-# Main Layout
-layout = html.Div(
+# Main Layout with Modern Design
+layout = dmc.Container(
     [
-        # Compact File Upload Section
+        # Modern Page Header
         html.Div(
             [
-                html.Div(
+                dmc.Group(
                     [
-                        Icon("tabler:upload", width=20),
-                        html.H5(
-                            "📁 Upload Documents",
-                            style={
-                                "color": "#ffffff",
-                                "margin": "0",
-                                "fontSize": "16px",
-                            },
+                        html.Div(
+                            [
+                                dmc.Title(
+                                    "💡 Insights & Research",
+                                    order=1,
+                                    style={
+                                        "background": "linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)",
+                                        "WebkitBackgroundClip": "text",
+                                        "WebkitTextFillColor": "transparent",
+                                        "fontSize": "2.5rem",
+                                        "fontWeight": "800",
+                                        "marginBottom": "8px",
+                                    },
+                                ),
+                                dmc.Text(
+                                    "Centralized market research and institutional insights",
+                                    c="dimmed",
+                                    size="lg",
+                                ),
+                            ]
+                        ),
+                        dmc.Badge(
+                            "Beta",
+                            color="blue",
+                            variant="light",
+                            size="lg",
+                            radius="md",
                         ),
                     ],
-                    style={
-                        "display": "flex",
-                        "alignItems": "center",
-                        "marginBottom": "12px",
-                    },
+                    justify="space-between",
+                    align="flex-start",
+                    style={"marginBottom": "32px"},
                 ),
-                dcc.Upload(
-                    html.Div(
-                        [
-                            Icon("tabler:cloud-upload", width=24),
-                            html.Span(
-                                "Drop PDF files here or click to browse",
-                                style={
-                                    "color": "#ffffff",
-                                    "fontSize": "14px",
-                                    "marginLeft": "8px",
-                                },
-                            ),
-                            html.Div(
+            ]
+        ),
+        # Stats Cards Row
+        html.Div(
+            [
+                dmc.Grid(
+                    [
+                        dmc.GridCol(
+                            dmc.Paper(
                                 [
-                                    html.Span(
-                                        "PDF only",
-                                        style={
-                                            "color": "#10b981",
-                                            "fontSize": "11px",
-                                            "marginRight": "8px",
-                                        },
-                                    ),
-                                    html.Span(
-                                        "Max 10MB",
-                                        style={"color": "#3b82f6", "fontSize": "11px"},
+                                    dmc.Group(
+                                        [
+                                            dmc.ThemeIcon(
+                                                DashIconify(
+                                                    icon="material-symbols:description",
+                                                    width=28,
+                                                ),
+                                                size=60,
+                                                radius="md",
+                                                variant="light",
+                                                color="blue",
+                                            ),
+                                            html.Div(
+                                                [
+                                                    dmc.Text(
+                                                        "Total Insights",
+                                                        size="sm",
+                                                        c="dimmed",
+                                                        fw=500,
+                                                    ),
+                                                    dmc.Title(
+                                                        "0",
+                                                        order=2,
+                                                        id="total-insights-stat",
+                                                        style={
+                                                            "marginTop": "4px",
+                                                            "color": "#3b82f6",
+                                                        },
+                                                    ),
+                                                ]
+                                            ),
+                                        ],
+                                        gap="md",
                                     ),
                                 ],
-                                style={"marginLeft": "8px", "opacity": "0.8"},
+                                p="lg",
+                                radius="lg",
+                                shadow="sm",
+                                withBorder=True,
+                                style={"height": "100%"},
+                            ),
+                            span={"base": 12, "sm": 6, "md": 4},
+                        ),
+                        dmc.GridCol(
+                            dmc.Paper(
+                                [
+                                    dmc.Group(
+                                        [
+                                            dmc.ThemeIcon(
+                                                DashIconify(
+                                                    icon="material-symbols:trending-up",
+                                                    width=28,
+                                                ),
+                                                size=60,
+                                                radius="md",
+                                                variant="light",
+                                                color="green",
+                                            ),
+                                            html.Div(
+                                                [
+                                                    dmc.Text(
+                                                        "This Week",
+                                                        size="sm",
+                                                        c="dimmed",
+                                                        fw=500,
+                                                    ),
+                                                    dmc.Title(
+                                                        "0",
+                                                        order=2,
+                                                        id="weekly-insights-stat",
+                                                        style={
+                                                            "marginTop": "4px",
+                                                            "color": "#10b981",
+                                                        },
+                                                    ),
+                                                ]
+                                            ),
+                                        ],
+                                        gap="md",
+                                    ),
+                                ],
+                                p="lg",
+                                radius="lg",
+                                shadow="sm",
+                                withBorder=True,
+                                style={"height": "100%"},
+                            ),
+                            span={"base": 12, "sm": 6, "md": 4},
+                        ),
+                        dmc.GridCol(
+                            dmc.Paper(
+                                [
+                                    dmc.Group(
+                                        [
+                                            dmc.ThemeIcon(
+                                                DashIconify(
+                                                    icon="material-symbols:source",
+                                                    width=28,
+                                                ),
+                                                size=60,
+                                                radius="md",
+                                                variant="light",
+                                                color="violet",
+                                            ),
+                                            html.Div(
+                                                [
+                                                    dmc.Text(
+                                                        "Sources",
+                                                        size="sm",
+                                                        c="dimmed",
+                                                        fw=500,
+                                                    ),
+                                                    dmc.Title(
+                                                        "0",
+                                                        order=2,
+                                                        id="sources-stat",
+                                                        style={
+                                                            "marginTop": "4px",
+                                                            "color": "#8b5cf6",
+                                                        },
+                                                    ),
+                                                ]
+                                            ),
+                                        ],
+                                        gap="md",
+                                    ),
+                                ],
+                                p="lg",
+                                radius="lg",
+                                shadow="sm",
+                                withBorder=True,
+                                style={"height": "100%"},
+                            ),
+                            span={"base": 12, "sm": 6, "md": 4},
+                        ),
+                    ],
+                    gutter="lg",
+                    style={"marginBottom": "32px"},
+                )
+            ]
+        ),
+        # Upload Section - Modern Design
+        dmc.Paper(
+            [
+                dmc.Group(
+                    [
+                        DashIconify(
+                            icon="material-symbols:cloud-upload",
+                            width=24,
+                            color="#3b82f6",
+                        ),
+                        dmc.Title("Upload Research Document", order=4),
+                    ],
+                    gap="sm",
+                    style={"marginBottom": "16px"},
+                ),
+                dcc.Upload(
+                    dmc.Paper(
+                        [
+                            dmc.Center(
+                                [
+                                    DashIconify(
+                                        icon="material-symbols:upload-file",
+                                        width=48,
+                                        color="#3b82f6",
+                                    ),
+                                ],
+                                style={"marginBottom": "12px"},
+                            ),
+                            dmc.Text(
+                                "Drag and drop PDF files here",
+                                size="lg",
+                                fw=500,
+                                ta="center",
+                            ),
+                            dmc.Text(
+                                "or click to browse",
+                                size="sm",
+                                c="dimmed",
+                                ta="center",
+                                style={"marginTop": "4px"},
+                            ),
+                            dmc.Group(
+                                [
+                                    dmc.Badge(
+                                        "PDF Only", color="blue", variant="light"
+                                    ),
+                                    dmc.Badge(
+                                        "Max 10MB", color="blue", variant="light"
+                                    ),
+                                ],
+                                justify="center",
+                                style={"marginTop": "12px"},
                             ),
                         ],
+                        p="xl",
+                        radius="md",
+                        withBorder=True,
                         style={
-                            "padding": "16px 20px",
-                            "border": "2px dashed #475569",
-                            "borderRadius": "8px",
-                            "backgroundColor": "rgba(59, 130, 246, 0.05)",
+                            "border": "2px dashed var(--mantine-color-blue-6)",
                             "cursor": "pointer",
                             "transition": "all 0.3s ease",
-                            "display": "flex",
-                            "alignItems": "center",
-                            "justifyContent": "center",
-                            "flexWrap": "wrap",
+                            "backgroundColor": "rgba(59, 130, 246, 0.05)",
                         },
-                        className="upload-hover-effect",
+                        className="upload-zone-hover",
                     ),
                     id="upload-pdf",
                     multiple=False,
                     accept=".pdf",
                 ),
-                html.Div(id="output-pdf-upload", style={"marginTop": "12px"}),
+                html.Div(id="output-pdf-upload", style={"marginTop": "16px"}),
             ],
-            style={
-                "backgroundColor": "#1e293b",
-                "padding": "16px",
-                "borderRadius": "8px",
-                "border": "1px solid #475569",
-                "marginBottom": "16px",
-            },
+            p="xl",
+            radius="lg",
+            shadow="sm",
+            withBorder=True,
+            style={"marginBottom": "32px"},
         ),
-        # Search and Filters Section - Now at the top
-        html.Div(
+        # Search and Filter Section - Modern Design
+        dmc.Paper(
             [
-                html.H4(
-                    "🔍 Search & Filter Insights",
-                    style={"color": "#ffffff", "margin": "0 0 20px 0"},
+                dmc.Title(
+                    "🔍 Search & Filter", order=4, style={"marginBottom": "20px"}
                 ),
-                # Search bar
-                html.Div(
+                dmc.Grid(
                     [
-                        html.Div(
-                            Icon("tabler:search", width=16),
-                            style={
-                                "position": "absolute",
-                                "left": "12px",
-                                "top": "50%",
-                                "transform": "translateY(-50%)",
-                                "color": "#888",
-                            },
+                        # Search Input
+                        dmc.GridCol(
+                            dmc.TextInput(
+                                id="insights-search",
+                                placeholder="Search insights by title, issuer, or content...",
+                                leftSection=DashIconify(
+                                    icon="material-symbols:search", width=20
+                                ),
+                                size="md",
+                                radius="md",
+                                style={"marginBottom": "16px"},
+                            ),
+                            span=12,
                         ),
-                        dcc.Input(
-                            placeholder="Search insights...",
-                            id="insights-search",
-                            style={
-                                "backgroundColor": "#0f172a",
-                                "border": "1px solid #475569",
-                                "borderRadius": "8px",
-                                "color": "#ffffff",
-                                "fontSize": "14px",
-                                "width": "100%",
-                                "padding": "8px 12px 8px 35px",
-                                "outline": "none",
-                                "marginBottom": "15px",
-                            },
+                        # Filter Controls
+                        dmc.GridCol(
+                            dmc.Button(
+                                "Search",
+                                id="search-button",
+                                leftSection=DashIconify(
+                                    icon="material-symbols:search", width=18
+                                ),
+                                variant="filled",
+                                color="blue",
+                                size="md",
+                                fullWidth=True,
+                            ),
+                            span={"base": 12, "sm": 6, "md": 2},
+                        ),
+                        dmc.GridCol(
+                            dmc.Select(
+                                id="sort-dropdown",
+                                placeholder="Sort by",
+                                data=[
+                                    {"label": "Date (Newest)", "value": "date_desc"},
+                                    {"label": "Date (Oldest)", "value": "date_asc"},
+                                    {"label": "Name (A-Z)", "value": "name_asc"},
+                                    {"label": "Name (Z-A)", "value": "name_desc"},
+                                ],
+                                leftSection=DashIconify(
+                                    icon="material-symbols:sort", width=18
+                                ),
+                                size="md",
+                                radius="md",
+                            ),
+                            span={"base": 12, "sm": 6, "md": 3},
+                        ),
+                        dmc.GridCol(
+                            dmc.Select(
+                                id="issuer-filter",
+                                placeholder="All issuers",
+                                data=[
+                                    {"label": "All Issuers", "value": "all"},
+                                    {"label": "Goldman Sachs", "value": "gs"},
+                                    {"label": "JP Morgan", "value": "jpm"},
+                                    {"label": "Morgan Stanley", "value": "ms"},
+                                    {"label": "Federal Reserve", "value": "fed"},
+                                ],
+                                leftSection=DashIconify(
+                                    icon="material-symbols:business", width=18
+                                ),
+                                size="md",
+                                radius="md",
+                            ),
+                            span={"base": 12, "sm": 6, "md": 3},
+                        ),
+                        dmc.GridCol(
+                            html.Div(
+                                [
+                                    dmc.Text(
+                                        "Date Range",
+                                        size="sm",
+                                        fw=500,
+                                        style={"marginBottom": "8px"},
+                                    ),
+                                    dmc.DatePicker(
+                                        id="date-range-filter",
+                                        type="range",
+                                        size="md",
+                                    ),
+                                ]
+                            ),
+                            span={"base": 12, "sm": 6, "md": 4},
                         ),
                     ],
-                    style={"position": "relative"},
-                ),
-                # Filter controls in horizontal layout
-                html.Div(
-                    [
-                        html.Div(
-                            [
-                                html.Button(
-                                    [Icon("tabler:search", width=16), "Search"],
-                                    id="search-button",
-                                    style={
-                                        "backgroundColor": "#3b82f6",
-                                        "border": "none",
-                                        "borderRadius": "8px",
-                                        "color": "#ffffff",
-                                        "padding": "8px 16px",
-                                        "cursor": "pointer",
-                                        "fontSize": "14px",
-                                        "display": "inline-flex",
-                                        "alignItems": "center",
-                                        "width": "100%",
-                                    },
-                                ),
-                            ],
-                            style={"flex": "0 0 120px", "marginRight": "10px"},
-                        ),
-                        html.Div(
-                            [
-                                dcc.Dropdown(
-                                    options=[
-                                        {
-                                            "label": "Date (Newest)",
-                                            "value": "date_desc",
-                                        },
-                                        {
-                                            "label": "Date (Oldest)",
-                                            "value": "date_asc",
-                                        },
-                                        {
-                                            "label": "Name (A-Z)",
-                                            "value": "name_asc",
-                                        },
-                                        {
-                                            "label": "Name (Z-A)",
-                                            "value": "name_desc",
-                                        },
-                                    ],
-                                    placeholder="Sort by",
-                                    id="sort-dropdown",
-                                    style={
-                                        "backgroundColor": "#0f172a",
-                                        "border": "1px solid #475569",
-                                        "color": "#ffffff",
-                                    },
-                                ),
-                            ],
-                            style={"flex": "1", "marginRight": "10px"},
-                        ),
-                        html.Div(
-                            [
-                                dcc.Dropdown(
-                                    options=[
-                                        {"label": "All", "value": "all"},
-                                        {
-                                            "label": "Goldman Sachs",
-                                            "value": "gs",
-                                        },
-                                        {"label": "JP Morgan", "value": "jpm"},
-                                        {
-                                            "label": "Morgan Stanley",
-                                            "value": "ms",
-                                        },
-                                    ],
-                                    placeholder="All issuers",
-                                    id="issuer-filter",
-                                    style={
-                                        "backgroundColor": "#0f172a",
-                                        "border": "1px solid #475569",
-                                        "color": "#ffffff",
-                                    },
-                                ),
-                            ],
-                            style={"flex": "1", "marginRight": "10px"},
-                        ),
-                        html.Div(
-                            [
-                                dcc.DatePickerRange(
-                                    id="date-range-filter",
-                                    display_format="YYYY-MM-DD",
-                                    style={
-                                        "backgroundColor": "#0f172a",
-                                        "border": "1px solid #475569",
-                                        "color": "#ffffff",
-                                    },
-                                ),
-                            ],
-                            style={"flex": "1"},
-                        ),
-                    ],
-                    style={
-                        "display": "flex",
-                        "alignItems": "center",
-                        "gap": "10px",
-                        "flexWrap": "wrap",
-                    },
+                    gutter="md",
                 ),
             ],
-            style={
-                "backgroundColor": "#1e293b",
-                "padding": "20px",
-                "borderRadius": "12px",
-                "border": "1px solid #475569",
-                "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.3)",
-                "marginBottom": "20px",
-            },
+            p="xl",
+            radius="lg",
+            shadow="sm",
+            withBorder=True,
+            style={"marginBottom": "32px"},
         ),
-        # Insights Section - Now with scrollable container
-        html.Div(
+        # Insights Grid Section
+        dmc.Paper(
             [
-                html.Div(
+                dmc.Group(
                     [
-                        html.H4(
-                            "📄 Recent Insights",
-                            style={"color": "#ffffff", "margin": "0"},
-                        ),
-                        html.Button(
-                            [Icon("tabler:refresh", width=16), "Load More"],
-                            id="load-more-insights",
-                            style={
-                                "backgroundColor": "transparent",
-                                "border": "1px solid #475569",
-                                "borderRadius": "8px",
-                                "color": "#ffffff",
-                                "padding": "8px 16px",
-                                "cursor": "pointer",
-                                "fontSize": "14px",
-                                "display": "inline-flex",
-                                "alignItems": "center",
-                            },
+                        dmc.Title("📄 Recent Insights", order=4),
+                        dmc.Group(
+                            [
+                                dmc.Button(
+                                    "Refresh",
+                                    id="load-more-insights",
+                                    leftSection=DashIconify(
+                                        icon="material-symbols:refresh", width=18
+                                    ),
+                                    variant="light",
+                                    color="blue",
+                                    size="sm",
+                                ),
+                            ]
                         ),
                     ],
-                    style={
-                        "display": "flex",
-                        "justifyContent": "space-between",
-                        "alignItems": "center",
-                        "marginBottom": "20px",
-                    },
+                    justify="space-between",
+                    style={"marginBottom": "24px"},
                 ),
-                # Scrollable insights container
-                html.Div(
+                dmc.ScrollArea(
                     [
                         html.Div(id="insights-container-wrapper"),
                         html.Div(id="insights-container"),
                     ],
-                    style={
-                        "maxHeight": "600px",
-                        "overflowY": "auto",
-                        "overflowX": "hidden",
-                        "paddingRight": "10px",
-                        "scrollbarWidth": "thin",
-                        "scrollbarColor": "#475569 #1e293b",
-                    },
+                    h=600,
+                    type="auto",
                 ),
             ],
-            style={
-                "backgroundColor": "#1e293b",
-                "padding": "20px",
-                "borderRadius": "12px",
-                "border": "1px solid #475569",
-                "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.3)",
-                "marginBottom": "20px",
-            },
+            p="xl",
+            radius="lg",
+            shadow="sm",
+            withBorder=True,
+            style={"marginBottom": "32px"},
         ),
-        # Enhanced Sources Section - Now at the bottom
+        # Sources Section
         sources.layout,
-        # Enhanced modal for summary viewing
+        # Modal for Summary
         summary_modal,
-        # Hidden stores for callback state management
+        # Data Stores
         dcc.Store(id="insights-data", data=[]),
         dcc.Store(id="total-insights-loaded", data=0),
         dcc.Store(id="search-query", data=""),
         dcc.Store(id="filter-state", data={}),
-        # Enhanced Text-to-Speech functionality
-        html.Script(
-            """
-            // Enhanced Text-to-Speech functionality with improved error handling
-            document.addEventListener("DOMContentLoaded", function() {
-                let currentUtterance = null;
-                let isReading = false;
-
-                function initializeSpeechButtons() {
-                    const readBtn = document.getElementById("read-summary");
-                    const stopBtn = document.getElementById("stop-summary");
-
-                    if (readBtn && stopBtn) {
-                        readBtn.addEventListener("click", function() {
-                            const modalBody = document.getElementById("modal-body-content");
-                            const summary = modalBody ? modalBody.innerText.trim() : "";
-
-                            if (summary.length > 0 && window.speechSynthesis) {
-                                // Stop any current speech
-                                window.speechSynthesis.cancel();
-
-                                // Update button states
-                                readBtn.disabled = true;
-                                readBtn.innerHTML = '<i class="fas fa-pause" style="margin-right: 8px;"></i>Reading...';
-                                readBtn.className = readBtn.className.replace('btn-success', 'btn-warning');
-
-                                // Create and configure utterance
-                                currentUtterance = new SpeechSynthesisUtterance(summary);
-                                currentUtterance.rate = 0.9;
-                                currentUtterance.pitch = 1.0;
-                                currentUtterance.volume = 1.0;
-
-                                // Set up event handlers
-                                currentUtterance.onend = function() {
-                                    resetSpeechUI();
-                                };
-
-                                currentUtterance.onerror = function(event) {
-                                    console.error('Speech synthesis error:', event);
-                                    resetSpeechUI();
-                                    alert('Speech synthesis failed. Please try again.');
-                                };
-
-                                // Start speaking
-                                window.speechSynthesis.speak(currentUtterance);
-                                isReading = true;
-                            } else if (!window.speechSynthesis) {
-                                alert("Text-to-speech is not supported in your browser.");
-                            } else {
-                                alert("No content to read.");
-                            }
-                        });
-
-                        stopBtn.addEventListener("click", function() {
-                            if (window.speechSynthesis) {
-                                window.speechSynthesis.cancel();
-                                resetSpeechUI();
-                            }
-                        });
-                    }
-                }
-
-                function resetSpeechUI() {
-                    const readBtn = document.getElementById("read-summary");
-
-                    if (readBtn) {
-                        readBtn.disabled = false;
-                        readBtn.innerHTML = '<i class="fas fa-play" style="margin-right: 8px;"></i>Read Aloud';
-                        readBtn.className = readBtn.className.replace('btn-warning', 'btn-success');
-                    }
-
-                    isReading = false;
-                    currentUtterance = null;
-                }
-
-                // Initialize on page load
-                setTimeout(initializeSpeechButtons, 1000);
-
-                // Re-initialize when modal opens
-                const modal = document.getElementById("insight-modal");
-                if (modal) {
-                    // For Bootstrap 5 modals
-                    modal.addEventListener("shown.bs.modal", function() {
-                        setTimeout(initializeSpeechButtons, 200);
-                    });
-
-                    modal.addEventListener("hidden.bs.modal", function() {
-                        if (window.speechSynthesis && isReading) {
-                            window.speechSynthesis.cancel();
-                        }
-                        resetSpeechUI();
-                    });
-                }
-
-                // Add CSS for upload hover effects
-                const style = document.createElement('style');
-                style.textContent = `
-                    .upload-hover-effect:hover {
-                        border-color: #3b82f6 !important;
-                        background-color: rgba(59, 130, 246, 0.1) !important;
-                        transform: translateY(-2px);
-                        box-shadow: 0 8px 24px rgba(59, 130, 246, 0.2);
-                    }
-
-                    .insight-card-hover:hover {
-                        transform: translateY(-2px);
-                        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
-                        border-color: #3b82f6 !important;
-                    }
-
-                    .source-item-hover:hover {
-                        background-color: rgba(59, 130, 246, 0.08) !important;
-                        border-left: 3px solid #3b82f6 !important;
-                        padding-left: 13px !important;
-                    }
-
-                    .source-item-hover:hover button {
-                        background-color: #2563eb !important;
-                        transform: scale(1.05);
-                    }
-
-                    /* Custom scrollbar styling for webkit browsers */
-                    #insights-container::-webkit-scrollbar {
-                        width: 8px;
-                    }
-
-                    #insights-container::-webkit-scrollbar-track {
-                        background: #1e293b;
-                        border-radius: 4px;
-                    }
-
-                    #insights-container::-webkit-scrollbar-thumb {
-                        background: #475569;
-                        border-radius: 4px;
-                    }
-
-                    #insights-container::-webkit-scrollbar-thumb:hover {
-                        background: #64748b;
-                    }
-
-                    /* Modern modal styling */
-                    .modern-modal .modal-content {
-                        background: linear-gradient(135deg, #1e293b 0%, #334155 100%) !important;
-                        border: 1px solid #475569 !important;
-                        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8) !important;
-                    }
-
-                    .modern-modal .modal-backdrop {
-                        background-color: rgba(0, 0, 0, 0.8) !important;
-                        backdrop-filter: blur(4px) !important;
-                    }
-
-                    .modern-modal .modal-dialog {
-                        animation: modalSlideIn 0.3s ease-out !important;
-                    }
-
-                    @keyframes modalSlideIn {
-                        from {
-                            transform: translateY(-50px) translateX(-50%) scale(0.95);
-                            opacity: 0;
-                        }
-                        to {
-                            transform: translateY(0) translateX(-50%) scale(1);
-                            opacity: 1;
-                        }
-                    }
-                `;
-                document.head.appendChild(style);
-            });
-            """
-        ),
     ],
+    size="xl",
+    px="md",
     style={
-        "backgroundColor": "#0f172a",
-        "color": "#ffffff",
-        "minHeight": "100vh",
-        "paddingTop": "90px",  # Account for fixed navbar
+        "paddingTop": "32px",
         "paddingBottom": "40px",
-        "paddingLeft": "20px",
-        "paddingRight": "20px",
+        "minHeight": "100vh",
     },
 )

@@ -216,7 +216,7 @@ def create_footer():
     )
 
 
-from ix.cht import __chts__
+from ix.fig import __chts__
 
 # =====================================
 # Optimized Chart Component

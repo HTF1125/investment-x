@@ -1,36 +1,17 @@
 """
-Modern Insight Card Component
-Enhanced design with better visual hierarchy, improved readability, and modern UI patterns.
+Modern Insight Card Component - Redesigned with Dash Mantine Components
+Beautiful card-based design with enhanced visual hierarchy and UX
 """
 
 from typing import Dict, Any
 from dash import html
-import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
+from dash_iconify import DashIconify
 from datetime import datetime
-
-# Modern Color Scheme
-COLORS = {
-    "primary": "#3b82f6",
-    "secondary": "#64748b",
-    "success": "#10b981",
-    "warning": "#f59e0b",
-    "danger": "#ef4444",
-    "dark": "#1e293b",
-    "light": "#f8fafc",
-    "background": "#0f172a",
-    "surface": "#1e293b",
-    "surface_light": "#334155",
-    "text_primary": "#f1f5f9",
-    "text_secondary": "#94a3b8",
-    "border": "#475569",
-}
 
 
 class InsightCard:
-    """Enhanced insight card with modern design and improved UX."""
-
-    def __init__(self):
-        self.colors = COLORS
+    """Modern insight card with beautiful design and improved UX."""
 
     def _format_date(self, date_str: str) -> str:
         """Format date string for display."""
@@ -45,24 +26,27 @@ class InsightCard:
         except:
             return date_str
 
-    def _get_issuer_color(self, issuer: str) -> str:
-        """Get color based on issuer name."""
+    def _get_issuer_badge_color(self, issuer: str) -> str:
+        """Get badge color based on issuer name."""
         issuer_colors = {
-            "federal reserve": self.colors["primary"],
-            "fed": self.colors["primary"],
-            "treasury": self.colors["success"],
-            "sec": self.colors["warning"],
-            "ecb": self.colors["secondary"],
-            "boe": self.colors["danger"],
+            "federal reserve": "blue",
+            "fed": "blue",
+            "goldman": "indigo",
+            "jp morgan": "violet",
+            "morgan stanley": "grape",
+            "treasury": "green",
+            "sec": "orange",
+            "ecb": "cyan",
+            "boe": "red",
         }
 
         issuer_lower = issuer.lower()
         for key, color in issuer_colors.items():
             if key in issuer_lower:
                 return color
-        return self.colors["secondary"]
+        return "gray"
 
-    def _create_status_badge(self, insight: Dict[str, Any]) -> html.Span:
+    def _create_status_badge(self, insight: Dict[str, Any]) -> dmc.Badge:
         """Create status badge based on insight data."""
         published_date = insight.get("published_date", "")
         if published_date:
@@ -71,115 +55,111 @@ class InsightCard:
                 days_ago = (datetime.now() - date_obj).days
 
                 if days_ago <= 7:
-                    return html.Span(
-                        "🆕 New",
-                        className="badge bg-success",
-                        style={"fontSize": "0.7rem", "marginLeft": "8px"},
+                    return dmc.Badge(
+                        "New",
+                        color="green",
+                        variant="light",
+                        size="sm",
+                        leftSection=DashIconify(
+                            icon="material-symbols:fiber-new", width=14
+                        ),
                     )
                 elif days_ago <= 30:
-                    return html.Span(
-                        "📅 Recent",
-                        className="badge bg-info",
-                        style={"fontSize": "0.7rem", "marginLeft": "8px"},
+                    return dmc.Badge(
+                        "Recent",
+                        color="blue",
+                        variant="light",
+                        size="sm",
+                        leftSection=DashIconify(
+                            icon="material-symbols:schedule", width=14
+                        ),
                     )
             except:
                 pass
 
-        return html.Span(
-            "📄 Archived",
-            className="badge bg-secondary",
-            style={"fontSize": "0.7rem", "marginLeft": "8px"},
+        return dmc.Badge(
+            "Archived",
+            color="gray",
+            variant="light",
+            size="sm",
+            leftSection=DashIconify(icon="material-symbols:inventory", width=14),
         )
 
-    def _create_action_buttons(self, insight: Dict[str, Any]) -> html.Div:
+    def _create_action_buttons(self, insight: Dict[str, Any]) -> dmc.Group:
         """Create modern action buttons."""
         insight_id = insight.get("id")
 
-        # View Summary Button
-        view_button = dbc.Button(
-            [html.I(className="fas fa-eye me-1"), "View"],
-            id={"type": "insight-card-clickable", "index": insight_id},
-            n_clicks=0,
-            color="primary",
-            size="sm",
-            style={
-                "borderRadius": "6px",
-                "fontSize": "0.8rem",
-                "padding": "4px 12px",
-            },
+        return dmc.Group(
+            [
+                dmc.Button(
+                    "View",
+                    id={"type": "insight-card-clickable", "index": insight_id},
+                    n_clicks=0,
+                    leftSection=DashIconify(
+                        icon="material-symbols:visibility", width=18
+                    ),
+                    variant="filled",
+                    color="blue",
+                    size="sm",
+                    radius="md",
+                ),
+                dmc.Button(
+                    "PDF",
+                    component="a",
+                    href=f"https://files.investment-x.app/{insight_id}.pdf",
+                    target="_blank",
+                    leftSection=DashIconify(
+                        icon="material-symbols:picture-as-pdf", width=18
+                    ),
+                    variant="light",
+                    color="red",
+                    size="sm",
+                    radius="md",
+                ),
+                dmc.ActionIcon(
+                    DashIconify(icon="material-symbols:delete-outline", width=18),
+                    id={"type": "delete-insight-button", "index": insight_id},
+                    n_clicks=0,
+                    variant="subtle",
+                    color="red",
+                    size="lg",
+                    radius="md",
+                ),
+            ],
+            gap="xs",
         )
 
-        # PDF Download Button
-        pdf_button = dbc.Button(
-            [html.I(className="fas fa-file-pdf me-1"), "PDF"],
-            href=f"https://files.investment-x.app/{insight_id}.pdf",
-            target="_blank",
-            color="outline-danger",
-            size="sm",
-            style={
-                "borderRadius": "6px",
-                "fontSize": "0.8rem",
-                "padding": "4px 12px",
-                "borderColor": self.colors["danger"],
-                "color": self.colors["danger"],
-            },
-        )
-
-        # Delete Button
-        delete_button = dbc.Button(
-            [html.I(className="fas fa-trash-alt me-1"), "Delete"],
-            id={"type": "delete-insight-button", "index": insight_id},
-            color="outline-danger",
-            size="sm",
-            n_clicks=0,
-            style={
-                "borderRadius": "6px",
-                "fontSize": "0.8rem",
-                "padding": "4px 12px",
-                "borderColor": self.colors["danger"],
-                "color": self.colors["danger"],
-            },
-        )
-
-        return html.Div(
-            [view_button, pdf_button, delete_button],
-            className="d-flex gap-2",
-            style={"justifyContent": "flex-end"},
-        )
-
-    def _create_summary_preview(self, insight: Dict[str, Any]) -> html.P:
+    def _create_summary_preview(self, insight: Dict[str, Any]) -> html.Div:
         """Create a preview of the summary."""
         summary = insight.get("summary", "")
         if not summary:
-            return html.P(
+            return dmc.Text(
                 "No summary available",
-                className="text-muted mb-0",
-                style={"fontSize": "0.85rem", "fontStyle": "italic"},
+                c="dimmed",
+                size="sm",
+                fs="italic",
             )
 
         # Truncate summary for preview
-        preview_text = summary[:150] + "..." if len(summary) > 150 else summary
+        preview_text = summary[:200] + "..." if len(summary) > 200 else summary
 
-        return html.P(
+        return dmc.Text(
             preview_text,
-            className="mb-0",
-            style={
-                "fontSize": "0.85rem",
-                "lineHeight": "1.4",
-                "color": self.colors["text_secondary"],
-            },
+            size="sm",
+            c="dimmed",
+            style={"lineHeight": "1.6"},
         )
 
     def layout(self, insight: Dict[str, Any]):
-        """Create the enhanced insight card layout."""
+        """Create the modern insight card layout."""
         # Extract data
         published_date = self._format_date(insight.get("published_date", ""))
         issuer = insight.get("issuer", "Unknown Issuer")
         name = insight.get("name", "Untitled Document")
         insight_id = insight.get("id")
 
-        # Get issuer color
-        issuer_color = self._get_issuer_color(issuer)
+        # Get issuer badge color
+        issuer_color = self._get_issuer_badge_color(issuer)
 
         # Create status badge
         status_badge = self._create_status_badge(insight)
@@ -190,125 +170,124 @@ class InsightCard:
         # Create summary preview
         summary_preview = self._create_summary_preview(insight)
 
-        # Main card
-        card = dbc.Card(
+        # Main card with modern design
+        card = dmc.Card(
             [
-                dbc.CardBody(
+                dmc.CardSection(
+                    dmc.Group(
+                        [
+                            dmc.Badge(
+                                issuer,
+                                color=issuer_color,
+                                variant="light",
+                                size="lg",
+                                leftSection=DashIconify(
+                                    icon="material-symbols:business", width=16
+                                ),
+                            ),
+                            status_badge,
+                        ],
+                        gap="xs",
+                    ),
+                    inheritPadding=True,
+                    py="xs",
+                ),
+                dmc.CardSection(
                     [
-                        # Header Row
-                        dbc.Row(
-                            [
-                                dbc.Col(
-                                    [
-                                        html.Div(
-                                            [
-                                                html.H5(
-                                                    name,
-                                                    className="mb-1",
-                                                    style={
-                                                        "color": self.colors[
-                                                            "text_primary"
-                                                        ],
-                                                        "fontSize": "1.1rem",
-                                                        "fontWeight": "600",
-                                                        "lineHeight": "1.3",
-                                                    },
-                                                ),
-                                                html.Div(
-                                                    [
-                                                        html.Span(
-                                                            f"📅 {published_date}",
-                                                            style={
-                                                                "color": self.colors[
-                                                                    "text_secondary"
-                                                                ],
-                                                                "fontSize": "0.8rem",
-                                                                "marginRight": "12px",
-                                                            },
-                                                        ),
-                                                        html.Span(
-                                                            f"🏢 {issuer}",
-                                                            style={
-                                                                "color": issuer_color,
-                                                                "fontSize": "0.8rem",
-                                                                "fontWeight": "500",
-                                                            },
-                                                        ),
-                                                        status_badge,
-                                                    ],
-                                                    className="mb-2",
-                                                ),
-                                            ]
-                                        )
-                                    ],
-                                    md=8,
-                                ),
-                                dbc.Col(
-                                    action_buttons,
-                                    md=4,
-                                    className="d-flex align-items-start justify-content-end",
-                                ),
-                            ],
-                            className="mb-3",
-                        ),
-                        # Summary Preview
-                        html.Div(
-                            [
-                                html.H6(
-                                    "Summary Preview:",
-                                    style={
-                                        "color": self.colors["text_primary"],
-                                        "fontSize": "0.9rem",
-                                        "fontWeight": "600",
-                                        "marginBottom": "8px",
-                                    },
-                                ),
-                                summary_preview,
-                            ],
-                            className="mb-3",
+                        dmc.Title(
+                            name,
+                            order=5,
                             style={
-                                "padding": "12px",
-                                "backgroundColor": self.colors["background"],
-                                "borderRadius": "8px",
-                                "border": f"1px solid {self.colors['border']}",
+                                "marginBottom": "8px",
+                                "lineHeight": "1.4",
+                                "fontWeight": "600",
                             },
                         ),
-                        # Footer with metadata
-                        html.Div(
+                        dmc.Group(
                             [
-                                html.Small(
-                                    f"ID: {insight_id}",
+                                dmc.Text(
+                                    published_date,
+                                    size="xs",
+                                    c="dimmed",
                                     style={
-                                        "color": self.colors["text_secondary"],
-                                        "fontSize": "0.7rem",
-                                        "fontFamily": "monospace",
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                        "gap": "4px",
                                     },
                                 ),
+                                DashIconify(
+                                    icon="material-symbols:calendar-month",
+                                    width=14,
+                                    style={"color": "var(--mantine-color-dimmed)"},
+                                ),
                             ],
-                            className="text-end",
+                            gap=4,
                         ),
                     ],
-                    style={"padding": "20px"},
-                )
+                    inheritPadding=True,
+                    pt="xs",
+                    pb="md",
+                ),
+                dmc.CardSection(
+                    dmc.Paper(
+                        [
+                            dmc.Text(
+                                "Summary",
+                                size="xs",
+                                fw=600,
+                                c="blue",
+                                style={
+                                    "marginBottom": "8px",
+                                    "textTransform": "uppercase",
+                                    "letterSpacing": "0.5px",
+                                },
+                            ),
+                            summary_preview,
+                        ],
+                        p="md",
+                        radius="md",
+                        withBorder=True,
+                        style={"backgroundColor": "rgba(59, 130, 246, 0.05)"},
+                    ),
+                    inheritPadding=True,
+                    pb="md",
+                ),
+                dmc.CardSection(
+                    dmc.Group(
+                        [
+                            dmc.Text(
+                                f"ID: {insight_id}",
+                                size="xs",
+                                c="dimmed",
+                                style={"fontFamily": "monospace"},
+                            ),
+                            action_buttons,
+                        ],
+                        justify="space-between",
+                        align="center",
+                    ),
+                    inheritPadding=True,
+                    py="sm",
+                    style={"borderTop": "1px solid var(--mantine-color-dark-4)"},
+                ),
             ],
-            className="mb-3",
+            shadow="sm",
+            padding="lg",
+            radius="lg",
+            withBorder=True,
+            className="insight-card-hover",
             style={
-                "border": f"1px solid {self.colors['border']}",
-                "borderRadius": "12px",
-                "backgroundColor": self.colors["surface"],
+                "height": "100%",
                 "transition": "all 0.3s ease",
-                "boxShadow": "0 2px 4px rgba(0, 0, 0, 0.1)",
             },
         )
-
-        # Card is ready for hover effects via CSS
 
         return card
 
 
 def create_insight_card(insight_data):
     """
-    Factory function to create an enhanced insight card.
+    Factory function to create a modern insight card.
     Maintains backward compatibility with existing callback code.
     """
     card_instance = InsightCard()

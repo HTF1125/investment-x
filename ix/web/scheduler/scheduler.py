@@ -10,7 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.executors.pool import ThreadPoolExecutor
 
-from ix.task import daily
+from ix.misc.task import daily
 from ix.misc.terminal import get_logger
 
 logger = get_logger(__name__)

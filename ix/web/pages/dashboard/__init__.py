@@ -9,11 +9,17 @@ This module provides a modular dashboard structure with the following components
 - layout: Main dashboard layout and page registration
 """
 
+# Only import components that don't require Dash app to be initialized
+# The layout module will be imported automatically by Dash when the app runs
 from ix.web.pages.dashboard.data_manager import DataManager, BackgroundRefreshManager
 from ix.web.pages.dashboard.visualizations import HeatmapGenerator, ChartUtilities
-from ix.web.pages.dashboard.ui_components import SkeletonLoader, ErrorDisplay, LayoutHelpers
+from ix.web.pages.dashboard.ui_components import (
+    SkeletonLoader,
+    ErrorDisplay,
+    LayoutHelpers,
+    ModernComponents,
+)
 from ix.web.pages.dashboard.callbacks import DashboardCallbacks
-from ix.web.pages.dashboard.layout import layout
 
 __all__ = [
     "DataManager",
@@ -23,6 +29,6 @@ __all__ = [
     "SkeletonLoader",
     "ErrorDisplay",
     "LayoutHelpers",
+    "ModernComponents",
     "DashboardCallbacks",
-    "layout",
 ]
