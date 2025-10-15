@@ -1,28 +1,5 @@
 services:
-  # MongoDB Database
-  mongodb:
-    image: mongo:7.0
-    container_name: investment-x-mongodb
-    restart: unless-stopped
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme}
-      MONGO_INITDB_DATABASE: ${DB_NAME:-investmentx}
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-      - mongodb_config:/data/configdb
-    networks:
-      - investment-x-network
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
-
-  # Investment-X Web Application
+  # Investment-X Web Application (using MongoDB Atlas)
   web:
     build:
       context: .
@@ -59,9 +36,6 @@ services:
       - ./files:/app/files
       # Optional: mount source code for development
       # - ./ix:/app/ix
-    depends_on:
-      mongodb:
-        condition: service_healthy
     networks:
       - investment-x-network
     healthcheck:
@@ -70,12 +44,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-
-volumes:
-  mongodb_data:
-    driver: local
-  mongodb_config:
-    driver: local
 
 networks:
   investment-x-network:
