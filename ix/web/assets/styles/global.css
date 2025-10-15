@@ -456,3 +456,86 @@ html {
     backface-visibility: hidden;
     perspective: 1000px;
 }
+
+/* ===== INSIGHTS PAGE STYLES ===== */
+
+/* Stats card hover effects */
+.stats-card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(59, 130, 246, 0.2) !important;
+    border-color: rgba(59, 130, 246, 0.4) !important;
+}
+
+/* Insight card hover effects */
+.insight-card-hover {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.insight-card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(59, 130, 246, 0.15) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Upload zone hover effects */
+.upload-zone-hover:hover {
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    border-color: var(--accent) !important;
+    transform: translateY(-2px);
+}
+
+/* Source item hover effects */
+.source-item-hover:hover {
+    background-color: rgba(59, 130, 246, 0.08) !important;
+    border-left: 3px solid #3b82f6;
+    padding-left: 13px;
+}
+
+/* Button hover effects for insights */
+.source-item-hover button:hover,
+.source-item-hover a:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Smooth animations for all insights elements */
+.insight-card-hover,
+.upload-zone-hover,
+.source-item-hover,
+.stats-card-hover {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Badge pulse animation */
+@keyframes badgePulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+}
+
+.badge-pulse {
+    animation: badgePulse 2s ease-in-out infinite;
+}
+
+/* Gradient text animation */
+@keyframes gradientShift {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+.gradient-text-animated {
+    background-size: 200% 200%;
+    animation: gradientShift 3s ease infinite;
+}

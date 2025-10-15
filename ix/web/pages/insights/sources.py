@@ -8,7 +8,6 @@ from ix.db import InsightSource
 from dash import html, dcc, callback_context, Output, Input, State, ALL, callback
 from dash.exceptions import PreventUpdate
 from datetime import datetime
-import webbrowser
 import dash_bootstrap_components as dbc
 
 # Modern Color Scheme
@@ -81,100 +80,64 @@ def _get_frequency_icon(frequency: str) -> str:
 # Completely Redesigned Sources Layout - Modern & Clean
 layout = html.Div(
     [
-        # Modern Header with Gradient
+        # Compact Header
         html.Div(
             [
                 html.Div(
                     [
-                        html.I(
-                            className="fas fa-rss",
-                            style={
-                                "color": "#3b82f6",
-                                "fontSize": "20px",
-                                "marginRight": "12px",
-                            },
-                        ),
-                        html.H4(
-                            "Source Links",
-                            style={
-                                "color": "#ffffff",
-                                "margin": "0",
-                                "fontWeight": "700",
-                                "fontSize": "18px",
-                            },
-                        ),
-                        # Add Source Button
+                        html.I(className="fas fa-rss", style={"color": "#3b82f6", "fontSize": "14px", "marginRight": "8px"}),
+                        html.Span("🔗 Sources", style={"color": "#ffffff", "fontSize": "14px", "fontWeight": "600"}),
                         html.Button(
-                            [
-                                html.I(className="fas fa-plus", style={"fontSize": "12px"}),
-                            ],
+                            [html.I(className="fas fa-plus", style={"fontSize": "10px"})],
                             id="add-source-btn",
                             style={
                                 "backgroundColor": "#10b981",
                                 "border": "none",
-                                "borderRadius": "6px",
+                                "borderRadius": "4px",
                                 "color": "#ffffff",
-                                "padding": "6px 8px",
+                                "padding": "4px 6px",
                                 "cursor": "pointer",
-                                "transition": "all 0.2s ease",
                                 "display": "flex",
                                 "alignItems": "center",
-                                "justifyContent": "center",
-                                "minWidth": "24px",
-                                "height": "24px",
-                                "marginLeft": "12px",
+                                "minWidth": "20px",
+                                "height": "20px",
+                                "marginLeft": "8px",
                             },
-                            title="Add new source",
+                            title="Add source",
                             n_clicks=0,
                         ),
                     ],
-                    style={
-                        "display": "flex",
-                        "alignItems": "center",
-                        "marginBottom": "8px",
-                    },
-                ),
-                html.P(
-                    "Quick access to your financial data sources",
-                    style={
-                        "color": "#94a3b8",
-                        "margin": "0",
-                        "fontSize": "13px",
-                        "fontWeight": "400",
-                    },
+                    style={"display": "flex", "alignItems": "center"},
                 ),
             ],
             style={
                 "background": "linear-gradient(135deg, #1e293b 0%, #334155 100%)",
-                "padding": "16px 20px",
-                "borderRadius": "12px 12px 0 0",
+                "padding": "8px 12px",
+                "borderRadius": "8px 8px 0 0",
                 "border": "1px solid #475569",
                 "borderBottom": "none",
             },
         ),
-
-        # Clean Sources Container
+        # Compact Sources Container
         html.Div(
             id="sources-container",
             style={
                 "backgroundColor": "#0f172a",
                 "border": "1px solid #475569",
                 "borderTop": "none",
-                "borderRadius": "0 0 12px 12px",
-                "minHeight": "200px",
-                "maxHeight": "350px",
+                "borderRadius": "0 0 8px 8px",
+                "minHeight": "150px",
+                "maxHeight": "250px",
                 "overflowY": "auto",
                 "overflowX": "hidden",
             },
         ),
-
         # Auto-refresh (hidden)
         dcc.Interval(
             id="interval-refresh",
             interval=30 * 1000,
             n_intervals=0,
         ),
-
         # Add/Edit Source Modal
         dbc.Modal(
             [
@@ -218,7 +181,6 @@ layout = html.Div(
                             ],
                             style={"marginBottom": "16px"},
                         ),
-
                         # Source URL
                         html.Div(
                             [
@@ -245,7 +207,6 @@ layout = html.Div(
                             ],
                             style={"marginBottom": "16px"},
                         ),
-
                         # Frequency
                         html.Div(
                             [
@@ -266,7 +227,10 @@ layout = html.Div(
                                         {"label": "Monthly", "value": "Monthly"},
                                         {"label": "Quarterly", "value": "Quarterly"},
                                         {"label": "Yearly", "value": "Yearly"},
-                                        {"label": "Unclassified", "value": "Unclassified"},
+                                        {
+                                            "label": "Unclassified",
+                                            "value": "Unclassified",
+                                        },
                                     ],
                                     value="Daily",
                                     style={
@@ -279,7 +243,6 @@ layout = html.Div(
                             ],
                             style={"marginBottom": "16px"},
                         ),
-
                         # Remark
                         html.Div(
                             [
@@ -341,7 +304,6 @@ layout = html.Div(
             centered=True,
             size="md",
         ),
-
         # Hidden stores for modal state
         dcc.Store(id="source-edit-id", data=None),
     ],
@@ -377,12 +339,11 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                 button_type = triggered_id["type"]
 
                 if button_type == "visit-btn":
-                    # Update the document's last_visited field
+                    # Update last_visited when link is clicked
                     insight_source = InsightSource.find_one({"id": source_id}).run()
                     if insight_source:
                         new_time = datetime.now()
                         insight_source.set({"last_visited": new_time})
-                        webbrowser.open(insight_source.url, new=2)  # Open in new tab
 
                 elif button_type == "delete-source-btn":
                     # Delete the source
@@ -393,9 +354,8 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
             except Exception as e:
                 print(f"Error handling button click: {e}")
 
-
-    # Fetch sources
-    sources = InsightSource.find({}).sort("last_visited").run()
+    # Fetch sources sorted by last_visited in descending order (most recent first)
+    sources = InsightSource.find({}).sort("-last_visited").run()
 
     if not sources:
         return html.Div(
@@ -467,9 +427,9 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                                     source_dict.get("name", "Unnamed Source"),
                                     style={
                                         "color": "#ffffff",
-                                        "fontSize": "14px",
+                                        "fontSize": "12px",
                                         "fontWeight": "600",
-                                        "marginBottom": "4px",
+                                        "marginBottom": "2px",
                                         "lineHeight": "1.2",
                                     },
                                 ),
@@ -481,13 +441,13 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                                             style={
                                                 "backgroundColor": frequency_color,
                                                 "color": "#ffffff",
-                                                "padding": "2px 8px",
-                                                "borderRadius": "12px",
-                                                "fontSize": "10px",
+                                                "padding": "1px 6px",
+                                                "borderRadius": "8px",
+                                                "fontSize": "9px",
                                                 "fontWeight": "600",
                                                 "textTransform": "uppercase",
-                                                "letterSpacing": "0.5px",
-                                                "marginRight": "8px",
+                                                "letterSpacing": "0.3px",
+                                                "marginRight": "6px",
                                             },
                                         ),
                                         # Last visited
@@ -495,7 +455,7 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                                             last_visited_display,
                                             style={
                                                 "color": "#64748b",
-                                                "fontSize": "11px",
+                                                "fontSize": "10px",
                                                 "fontWeight": "500",
                                             },
                                         ),
@@ -504,19 +464,24 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                             ],
                             style={"flex": "1"},
                         ),
-
                         # Right: Action buttons
                         html.Div(
                             [
-                                # Visit button
-                                html.Button(
+                                # Visit button - opens in new tab and tracks visits
+                                dbc.Button(
                                     [
                                         html.I(
                                             className="fas fa-external-link-alt",
                                             style={"fontSize": "11px"},
                                         ),
                                     ],
-                                    id={"type": "visit-btn", "index": source_dict["_id"]},
+                                    href=source_dict.get("url", "#"),
+                                    external_link=True,
+                                    target="_blank",
+                                    id={
+                                        "type": "visit-btn",
+                                        "index": source_dict["_id"],
+                                    },
                                     n_clicks=0,
                                     style={
                                         "backgroundColor": "#3b82f6",
@@ -532,6 +497,7 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                                         "minWidth": "28px",
                                         "height": "28px",
                                         "marginRight": "4px",
+                                        "textDecoration": "none",
                                     },
                                     title=f"Visit {source_dict.get('name', 'source')}",
                                 ),
@@ -543,7 +509,10 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                                             style={"fontSize": "11px"},
                                         ),
                                     ],
-                                    id={"type": "edit-source-btn", "index": source_dict["_id"]},
+                                    id={
+                                        "type": "edit-source-btn",
+                                        "index": source_dict["_id"],
+                                    },
                                     n_clicks=0,
                                     style={
                                         "backgroundColor": "#f59e0b",
@@ -570,7 +539,10 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                                             style={"fontSize": "11px"},
                                         ),
                                     ],
-                                    id={"type": "delete-source-btn", "index": source_dict["_id"]},
+                                    id={
+                                        "type": "delete-source-btn",
+                                        "index": source_dict["_id"],
+                                    },
                                     n_clicks=0,
                                     style={
                                         "backgroundColor": "#ef4444",
@@ -605,7 +577,7 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                 ),
             ],
             style={
-                "padding": "12px 16px",
+                "padding": "8px 12px",
                 "borderBottom": "1px solid #1e293b",
                 "transition": "all 0.2s ease",
                 "cursor": "pointer",
@@ -735,12 +707,14 @@ def toggle_source_modal(
                 # Update existing source
                 source = InsightSource.find_one({"id": edit_id}).run()
                 if source:
-                    source.set({
-                        "name": name_value,
-                        "url": url_value,
-                        "frequency": frequency_value,
-                        "remark": remark_value,
-                    })
+                    source.set(
+                        {
+                            "name": name_value,
+                            "url": url_value,
+                            "frequency": frequency_value,
+                            "remark": remark_value,
+                        }
+                    )
             else:
                 # Create new source
                 InsightSource(
