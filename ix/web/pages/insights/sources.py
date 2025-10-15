@@ -85,10 +85,28 @@ layout = html.Div(
             [
                 html.Div(
                     [
-                        html.I(className="fas fa-rss", style={"color": "#3b82f6", "fontSize": "14px", "marginRight": "8px"}),
-                        html.Span("🔗 Sources", style={"color": "#ffffff", "fontSize": "14px", "fontWeight": "600"}),
+                        html.I(
+                            className="fas fa-rss",
+                            style={
+                                "color": "#3b82f6",
+                                "fontSize": "14px",
+                                "marginRight": "8px",
+                            },
+                        ),
+                        html.Span(
+                            "🔗 Sources",
+                            style={
+                                "color": "#ffffff",
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                            },
+                        ),
                         html.Button(
-                            [html.I(className="fas fa-plus", style={"fontSize": "10px"})],
+                            [
+                                html.I(
+                                    className="fas fa-plus", style={"fontSize": "10px"}
+                                )
+                            ],
                             id="add-source-btn",
                             style={
                                 "backgroundColor": "#10b981",

@@ -22,7 +22,11 @@ layout = dmc.Container(
             [
                 dmc.Group(
                     [
-                        DashIconify(icon="material-symbols:lightbulb", width=28, style={"color": "#60a5fa"}),
+                        DashIconify(
+                            icon="material-symbols:lightbulb",
+                            width=28,
+                            style={"color": "#60a5fa"},
+                        ),
                         dmc.Title(
                             "Insights & Research",
                             order=2,
@@ -49,7 +53,9 @@ layout = dmc.Container(
                         dmc.Group(
                             [
                                 dmc.ThemeIcon(
-                                    DashIconify(icon="material-symbols:description", width=20),
+                                    DashIconify(
+                                        icon="material-symbols:description", width=20
+                                    ),
                                     size=40,
                                     radius="md",
                                     variant="light",
@@ -57,8 +63,15 @@ layout = dmc.Container(
                                 ),
                                 html.Div(
                                     [
-                                        dmc.Text("Total", size="xs", c="dimmed", fw=500),
-                                        dmc.Title("0", order=3, id="total-insights-stat", style={"color": "#3b82f6"}),
+                                        dmc.Text(
+                                            "Total", size="xs", c="dimmed", fw=500
+                                        ),
+                                        dmc.Title(
+                                            "0",
+                                            order=3,
+                                            id="total-insights-stat",
+                                            style={"color": "#3b82f6"},
+                                        ),
                                     ]
                                 ),
                             ],
@@ -77,7 +90,9 @@ layout = dmc.Container(
                         dmc.Group(
                             [
                                 dmc.ThemeIcon(
-                                    DashIconify(icon="material-symbols:trending-up", width=20),
+                                    DashIconify(
+                                        icon="material-symbols:trending-up", width=20
+                                    ),
                                     size=40,
                                     radius="md",
                                     variant="light",
@@ -85,8 +100,15 @@ layout = dmc.Container(
                                 ),
                                 html.Div(
                                     [
-                                        dmc.Text("This Week", size="xs", c="dimmed", fw=500),
-                                        dmc.Title("0", order=3, id="weekly-insights-stat", style={"color": "#10b981"}),
+                                        dmc.Text(
+                                            "This Week", size="xs", c="dimmed", fw=500
+                                        ),
+                                        dmc.Title(
+                                            "0",
+                                            order=3,
+                                            id="weekly-insights-stat",
+                                            style={"color": "#10b981"},
+                                        ),
                                     ]
                                 ),
                             ],
@@ -105,7 +127,9 @@ layout = dmc.Container(
                         dmc.Group(
                             [
                                 dmc.ThemeIcon(
-                                    DashIconify(icon="material-symbols:source", width=20),
+                                    DashIconify(
+                                        icon="material-symbols:source", width=20
+                                    ),
                                     size=40,
                                     radius="md",
                                     variant="light",
@@ -113,8 +137,15 @@ layout = dmc.Container(
                                 ),
                                 html.Div(
                                     [
-                                        dmc.Text("Sources", size="xs", c="dimmed", fw=500),
-                                        dmc.Title("0", order=3, id="sources-stat", style={"color": "#8b5cf6"}),
+                                        dmc.Text(
+                                            "Sources", size="xs", c="dimmed", fw=500
+                                        ),
+                                        dmc.Title(
+                                            "0",
+                                            order=3,
+                                            id="sources-stat",
+                                            style={"color": "#8b5cf6"},
+                                        ),
                                     ]
                                 ),
                             ],
@@ -143,7 +174,11 @@ layout = dmc.Container(
                             [
                                 dmc.Group(
                                     [
-                                        DashIconify(icon="material-symbols:cloud-upload", width=18, color="#3b82f6"),
+                                        DashIconify(
+                                            icon="material-symbols:cloud-upload",
+                                            width=18,
+                                            color="#3b82f6",
+                                        ),
                                         dmc.Text("Upload", size="sm", fw=600),
                                     ],
                                     gap="xs",
@@ -153,14 +188,33 @@ layout = dmc.Container(
                                     dmc.Paper(
                                         [
                                             dmc.Center(
-                                                DashIconify(icon="material-symbols:upload-file", width=32, color="#3b82f6"),
+                                                DashIconify(
+                                                    icon="material-symbols:upload-file",
+                                                    width=32,
+                                                    color="#3b82f6",
+                                                ),
                                                 style={"marginBottom": "6px"},
                                             ),
-                                            dmc.Text("Drop PDF or click", size="xs", fw=500, ta="center"),
+                                            dmc.Text(
+                                                "Drop PDF or click",
+                                                size="xs",
+                                                fw=500,
+                                                ta="center",
+                                            ),
                                             dmc.Group(
                                                 [
-                                                    dmc.Badge("PDF", color="blue", variant="light", size="xs"),
-                                                    dmc.Badge("10MB", color="blue", variant="light", size="xs"),
+                                                    dmc.Badge(
+                                                        "PDF",
+                                                        color="blue",
+                                                        variant="light",
+                                                        size="xs",
+                                                    ),
+                                                    dmc.Badge(
+                                                        "10MB",
+                                                        color="blue",
+                                                        variant="light",
+                                                        size="xs",
+                                                    ),
                                                 ],
                                                 justify="center",
                                                 gap="xs",
@@ -181,7 +235,9 @@ layout = dmc.Container(
                                     multiple=False,
                                     accept=".pdf",
                                 ),
-                                html.Div(id="output-pdf-upload", style={"marginTop": "8px"}),
+                                html.Div(
+                                    id="output-pdf-upload", style={"marginTop": "8px"}
+                                ),
                             ],
                             p="sm",
                             radius="md",
@@ -194,7 +250,11 @@ layout = dmc.Container(
                             [
                                 dmc.Group(
                                     [
-                                        DashIconify(icon="material-symbols:search", width=18, color="#3b82f6"),
+                                        DashIconify(
+                                            icon="material-symbols:search",
+                                            width=18,
+                                            color="#3b82f6",
+                                        ),
                                         dmc.Text("Search & Filter", size="sm", fw=600),
                                     ],
                                     gap="xs",
@@ -203,7 +263,9 @@ layout = dmc.Container(
                                 dmc.TextInput(
                                     id="insights-search",
                                     placeholder="Search...",
-                                    leftSection=DashIconify(icon="material-symbols:search", width=16),
+                                    leftSection=DashIconify(
+                                        icon="material-symbols:search", width=16
+                                    ),
                                     size="sm",
                                     radius="md",
                                     style={"marginBottom": "8px"},
