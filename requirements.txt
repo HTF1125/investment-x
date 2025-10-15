@@ -1,8 +1,8 @@
 click==8.1.7
 yfinance
 investpy==1.0.8
-numpy==2.0.1
-pandas==2.2.2
+numpy>=1.24.0,<2.1.0
+pandas>=2.0.0,<2.3.0
 pandas-datareader==0.10.0
 bunnet==1.3.0
 python-dotenv==1.0.1
