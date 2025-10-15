@@ -31,6 +31,7 @@ services:
     restart: unless-stopped
     ports:
       - "8050:8050"
+    command: python -m ix --host 0.0.0.0 --port 8050
     environment:
       # Database Configuration
       DB_URL: mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-changeme}@mongodb:27017/

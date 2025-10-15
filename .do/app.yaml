@@ -1,0 +1,40 @@
+name: investment-x
+services:
+- name: web
+  source_dir: /
+  github:
+    repo: your-username/investment-x
+    branch: main
+  run_command: python -m ix --host 0.0.0.0 --port $PORT
+  environment_slug: docker
+  dockerfile_path: Dockerfile
+  http_port: 8050
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  envs:
+  - key: PORT
+    value: "8050"
+  - key: DB_URL
+    value: mongodb://admin:changeme@mongodb:27017/
+  - key: DB_NAME
+    value: investmentx
+  - key: SECRET_KEY
+    value: your-secret-key-change-this
+  - key: ACCESS_TOKEN_EXPIRE_MINUTES
+    value: "600"
+
+- name: mongodb
+  source_dir: /
+  github:
+    repo: your-username/investment-x
+    branch: main
+  dockerfile_path: Dockerfile.mongodb
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  envs:
+  - key: MONGO_ROOT_USERNAME
+    value: admin
+  - key: MONGO_ROOT_PASSWORD
+    value: changeme
+  - key: MONGO_INITDB_DATABASE
+    value: investmentx

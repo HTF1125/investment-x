@@ -43,5 +43,5 @@ EXPOSE 8050
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8050/ || exit 1
 
-# Use entrypoint script for better startup handling
-ENTRYPOINT ["./docker-entrypoint.sh"]
+# Start the application directly for DigitalOcean
+CMD ["python", "-m", "ix", "--host", "0.0.0.0", "--port", "8050"]
