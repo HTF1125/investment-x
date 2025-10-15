@@ -38,6 +38,7 @@ RUN chmod +x docker-entrypoint.sh 2>/dev/null || true
 
 # Expose the port the app runs on
 EXPOSE 8050
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
