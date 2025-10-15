@@ -15,8 +15,8 @@ while [ $counter -lt $timeout ]; do
     fi
     counter=$((counter+1))
     if [ $counter -eq $timeout ]; then
-        echo "Error: MongoDB is not ready after ${timeout} seconds"
-        exit 1
+        echo "Warning: MongoDB is not ready after ${timeout} seconds, starting app anyway..."
+        break
     fi
     echo "Waiting for MongoDB... ($counter/$timeout)"
     sleep 1
@@ -35,4 +35,4 @@ fi
 
 # Start the application
 echo "Starting Investment-X web application..."
-exec python -m ix.web.app
+exec python -m ix --host 0.0.0.0 --port ${PORT:-8050}
