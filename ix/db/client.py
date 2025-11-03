@@ -5,7 +5,7 @@ import io
 from datetime import datetime
 import base64
 from ix.misc import get_logger, periods
-from .models import Universe, Insight, TacticalView, Timeseries
+from .models import Universe, Insights, TacticalView, Timeseries
 from .boto import Boto
 from .query import *
 
@@ -25,12 +25,12 @@ def get_timeseries(code: str) -> Timeseries:
     return ts
 
 
-def get_insight_by_id(id: str) -> Insight:
+def get_insight_by_id(id: str) -> Insights:
     """
     Retrieves an insight by its ID from the database.
     Caching is enabled to avoid repeated database lookups for the same insight.
     """
-    insight = Insight.find_one({"id": str(id)}).run()
+    insight = Insights.find_one({"id": str(id)}).run()
     if insight is None:
         raise ValueError(f"Insight not found for id: {id}")
     return insight
@@ -42,7 +42,7 @@ def _get_insight_content_bytes(id: str) -> bytes:
     This function is cached so that the PDF content is not repeatedly
     fetched from storage.
     """
-    insight = Insight.find_one({"id": str(id)}).run()
+    insight = Insights.find_one({"id": str(id)}).run()
     if not insight:
         raise ValueError("Insight not found")
     filename = f"{insight.id}.pdf"
@@ -66,7 +66,7 @@ def get_insights(
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 20,
-) -> List[Insight]:
+) -> List[Insights]:
     """
     Retrieves insights from the database sorted by published_date descending,
     with optional search and pagination.
@@ -109,7 +109,9 @@ def get_insights(
                     )
                 query["$and"] = conditions
 
-        insights = Insight.find(query).sort("-published_date").skip(skip).limit(limit).run()
+        insights = (
+            Insights.find(query).sort("-published_date").skip(skip).limit(limit).run()
+        )
         return list(insights)
     except Exception as e:
         raise Exception(f"Error occurred while fetching insights: {str(e)}")
@@ -135,7 +137,7 @@ def add_insight(add_request):
             except Exception as e:
                 raise ValueError("Invalid Base64 content") from e
 
-        new_insight = Insight(
+        new_insight = Insights(
             issuer=add_request.issuer,
             name=add_request.name,
             published_date=add_request.published_date,
@@ -168,7 +170,7 @@ def update_insight(id: str, update_request):
     if not updated_fields and not getattr(update_request, "content", None):
         raise ValueError("No fields provided for update")
 
-    insight = Insight.find_one({"id": str(id)}).run()
+    insight = Insights.find_one({"id": str(id)}).run()
     if not insight:
         raise ValueError("Insight not found")
 
@@ -191,7 +193,7 @@ def delete_insight(id: str):
     """
     Deletes an Insight by its ID.
     """
-    Insight.find_one({"id": str(id)}).run()
+    Insights.find_one({"id": str(id)}).run()
     return {"message": "Insight deleted successfully"}
 
 
@@ -201,7 +203,7 @@ def update_insight_summary(id: str):
     """
     from ix.misc import PDFSummarizer, Settings
 
-    insight = Insight.find_one({"id": str(id)}).run()
+    insight = Insights.find_one({"id": str(id)}).run()
     if not insight:
         raise ValueError("Insight not found")
 
@@ -218,7 +220,7 @@ def create_insight_with_pdf(base64_content: str, filename: str):
     """
     try:
         pdf_data = base64.b64decode(base64_content)
-        insight = Insight(
+        insight = Insights(
             name=filename,
             issuer="Uploaded PDF",
             published_date=datetime.now(),

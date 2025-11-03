@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from ix.web.pages.dashboard.data_manager import DataManager
 from ix.web.pages.dashboard.visualizations import HeatmapGenerator
 from ix.misc import get_logger
+from ix.misc.date import last_business_day
 
 logger = get_logger(__name__)
 
@@ -447,7 +448,7 @@ def create_summary_cards():
 
 
 # Create the layout - Finviz-inspired ultra-compact design with date selector
-last_business_day = get_last_business_day()
+last_business_day = last_business_day()
 
 layout = html.Div(
     [
@@ -525,7 +526,18 @@ layout = html.Div(
             },
         ),
         # Summary Statistics
-        html.Div(id="summary-stats-container", children=create_summary_cards()),
+        html.Div(
+            id="summary-stats-container",
+            children=html.Div(
+                "Click the date picker or refresh button to load data",
+                style={
+                    "textAlign": "center",
+                    "color": "#94a3b8",
+                    "padding": "2rem",
+                    "fontSize": "0.9rem",
+                },
+            ),
+        ),
         # Performance Charts Grid - 2 columns for better readability
         html.Div(
             id="charts-container",
@@ -534,8 +546,14 @@ layout = html.Div(
                 html.Div(
                     children=html.Div(
                         id="chart-major-indices",
-                        children=create_performance_chart(
-                            "Major Indices", last_business_day.strftime("%Y-%m-%d")
+                        children=html.Div(
+                            "Select a date to load data",
+                            style={
+                                "textAlign": "center",
+                                "color": "#94a3b8",
+                                "padding": "2rem",
+                                "fontSize": "0.85rem",
+                            },
                         ),
                     ),
                     style={
@@ -549,8 +567,14 @@ layout = html.Div(
                 html.Div(
                     children=html.Div(
                         id="chart-global-markets",
-                        children=create_performance_chart(
-                            "Global Markets", last_business_day.strftime("%Y-%m-%d")
+                        children=html.Div(
+                            "Select a date to load data",
+                            style={
+                                "textAlign": "center",
+                                "color": "#94a3b8",
+                                "padding": "2rem",
+                                "fontSize": "0.85rem",
+                            },
                         ),
                     ),
                     style={
@@ -564,8 +588,14 @@ layout = html.Div(
                 html.Div(
                     children=html.Div(
                         id="chart-sectors",
-                        children=create_performance_chart(
-                            "Sectors", last_business_day.strftime("%Y-%m-%d")
+                        children=html.Div(
+                            "Select a date to load data",
+                            style={
+                                "textAlign": "center",
+                                "color": "#94a3b8",
+                                "padding": "2rem",
+                                "fontSize": "0.85rem",
+                            },
                         ),
                     ),
                     style={
@@ -579,8 +609,14 @@ layout = html.Div(
                 html.Div(
                     children=html.Div(
                         id="chart-themes",
-                        children=create_performance_chart(
-                            "Themes", last_business_day.strftime("%Y-%m-%d")
+                        children=html.Div(
+                            "Select a date to load data",
+                            style={
+                                "textAlign": "center",
+                                "color": "#94a3b8",
+                                "padding": "2rem",
+                                "fontSize": "0.85rem",
+                            },
                         ),
                     ),
                     style={
@@ -594,8 +630,14 @@ layout = html.Div(
                 html.Div(
                     children=html.Div(
                         id="chart-commodities",
-                        children=create_performance_chart(
-                            "Commodities", last_business_day.strftime("%Y-%m-%d")
+                        children=html.Div(
+                            "Select a date to load data",
+                            style={
+                                "textAlign": "center",
+                                "color": "#94a3b8",
+                                "padding": "2rem",
+                                "fontSize": "0.85rem",
+                            },
                         ),
                     ),
                     style={
@@ -609,8 +651,14 @@ layout = html.Div(
                 html.Div(
                     children=html.Div(
                         id="chart-currencies",
-                        children=create_performance_chart(
-                            "Currencies", last_business_day.strftime("%Y-%m-%d")
+                        children=html.Div(
+                            "Select a date to load data",
+                            style={
+                                "textAlign": "center",
+                                "color": "#94a3b8",
+                                "padding": "2rem",
+                                "fontSize": "0.85rem",
+                            },
                         ),
                     ),
                     style={
@@ -651,8 +699,10 @@ from dash import callback, Output, Input
         Output("chart-themes", "children"),
         Output("chart-commodities", "children"),
         Output("chart-currencies", "children"),
+        Output("summary-stats-container", "children"),
     ],
     Input("dashboard-date-picker", "date"),
+    prevent_initial_call=True,
 )
 def update_charts_by_date(selected_date):
     """Update all charts when date changes."""
@@ -669,4 +719,5 @@ def update_charts_by_date(selected_date):
         create_performance_chart("Themes", date_str),
         create_performance_chart("Commodities", date_str),
         create_performance_chart("Currencies", date_str),
+        create_summary_cards(),
     )

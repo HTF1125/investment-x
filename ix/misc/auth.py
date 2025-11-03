@@ -73,7 +73,8 @@ def authenticate_user(username: str, password: str):
     Returns:
         User object if authentication successful, None otherwise
     """
-    from ix.db.models import User
+    # from ix.db.models import User  # Commented out - MongoDB not in use
+    return None  # Authentication disabled - MongoDB not in use
 
     user = User.get_user(username)
 
@@ -102,7 +103,8 @@ def get_current_user(token: str):
     Returns:
         User object if token is valid and user exists, None otherwise
     """
-    from ix.db.models import User
+    # from ix.db.models import User  # Commented out - MongoDB not in use
+    return None  # Authentication disabled - MongoDB not in use
 
     payload = verify_token(token)
 

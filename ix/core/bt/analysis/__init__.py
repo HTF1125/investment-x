@@ -1,9 +1,7 @@
-
-
 from typing import Optional
 import pandas as pd
 import plotly.graph_objects as go
-from ix.db import get_timeseries
+from ix.db.client import get_timeseries
 
 
 class UsDollarAndFed:
@@ -17,7 +15,9 @@ class UsDollarAndFed:
     ) -> pd.DataFrame:
         """Converts the time series data into a DataFrame with a calculated rate spread."""
         df = pd.DataFrame({"Dollar": self.dollar, "FF1": self.ff1, "FF12": self.ff12})
-        df["FF12_FF1"] = df["FF1"] - df["FF12"]  # Calculate rate spread (tightening/easing)
+        df["FF12_FF1"] = (
+            df["FF1"] - df["FF12"]
+        )  # Calculate rate spread (tightening/easing)
         df.dropna(inplace=True)  # Drop NaN values for clean data
 
         # Ensure the index is datetime for proper filtering
@@ -121,11 +121,10 @@ class UsDollarAndFed:
         return fig
 
 
-
 from typing import Optional
 import pandas as pd
 import plotly.graph_objects as go
-from ix.db import get_timeseries
+from ix.db.client import get_timeseries
 
 
 class PMIs_US:

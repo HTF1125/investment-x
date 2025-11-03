@@ -1,9 +1,11 @@
 import plotly.graph_objects as go
 import pandas as pd
-from ix.db import Series
+
+from ix.db.query import Series
 from ix.core import Cycle
 from ix.misc import oneyearlater
 from ix.misc import theme
+
 # Dark theme timeseries layout based on p.ipynb styles
 # Move legend below the plot to avoid overlap with title
 timeseries_layout = dict(
@@ -247,80 +249,35 @@ def ism_cycle_copper_to_gold_ratio(start: str = "2015-1-1") -> go.Figure:
 
 
 import pandas as pd
-from ix.db import Series
-from ix.db.custom import financial_conditions_index_us
+
+from ix.db.query import Series
+
+# from ix.db.custom import financial_conditions_index_us
 import plotly.graph_objects as go
 from ix.core import Offset, Cycle
 from ix.misc import oneyearlater
 
 
 def FinancialConditionsUS(start: str = "2015-1-1"):
-
+    # TODO: Implement financial conditions index
     fig = go.Figure()
-    fci = Offset(financial_conditions_index_us(), months=6).clip(-1, 1)
-    if not fci.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=fci.index,
-                y=fci.values,
-                name=f"FCI Lead 6M {float(fci.iloc[-1]):.2%}",
-                line=dict(width=3, color="#1f77b4"),
-                marker=dict(size=4),
-                hovertemplate="<b>FCI</b>: %{y:.2f}<extra></extra>",
-            )
-        )
 
-    cycle_data = Cycle(fci, 52 * 6)
-    if not cycle_data.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=cycle_data.index,
-                y=cycle_data.values,
-                name=f"Cycle {float(cycle_data.iloc[-1]):.2%}",
-                line=dict(width=3, dash="dash", color="#ff7f0e"),
-                marker=dict(size=4),
-                hovertemplate="<b>Cycle</b>: %{y:.2f}<extra></extra>",
-            )
-        )
-
-    ism_data = Series("ISMPMI_M:PX_LAST").dropna()
-    if not ism_data.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=ism_data.index,
-                y=ism_data.values,
-                name=f"ISM {float(ism_data.iloc[-1]):.2f}",
-                line=dict(width=3, color="#2ca02c"),
-                marker=dict(size=4),
-                hovertemplate="<b>ISM</b>: %{y:.2f}<extra></extra>",
-                yaxis="y2",
-            )
-        )
-
-    fig.update_layout(timeseries_layout)
-    fig.update_layout(
-        dict(
-            title=dict(
-                text=f"Financial Conditions Index (US)",
-                y=0.96,  # Move title slightly down to avoid overlap with top
-                x=0.5,
-                xanchor="center",
-                yanchor="top",
-                font=dict(size=18, family="Arial Black", color="#FFFFFF"),
-            ),
-            yaxis=dict(
-                title=dict(text="FCI Cycle"),
-                range=[-1, 1],
-                tickformat=".0%",
-                domain=[0, 0.9],
-            ),
-            yaxis2=dict(
-                title=dict(text=f"ISM"),
-                range=[30, 70],
-                tickformat=".0f",
-                domain=[0, 0.9],
-            ),
-        )
+    # Temporary placeholder - return empty figure
+    fig.add_annotation(
+        text="Financial Conditions Index not available",
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        font=dict(size=16),
     )
-    fig.update_xaxes(range=[pd.Timestamp(start), oneyearlater()])
+
+    fig.update_layout(
+        title="US Financial Conditions Index",
+        xaxis_title="Date",
+        yaxis_title="Index Value",
+        height=400,
+    )
+
     return fig

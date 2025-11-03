@@ -182,7 +182,7 @@ class Timeseries(Document):
 # --- Other Data Models ---
 
 
-class InsightSource(Document):
+class Publishers(Document):
     url: str
     name: str = "Unnamed"
     frequency: str = "Unclassified"
@@ -296,7 +296,7 @@ class Strategy(Document):
 
 
 
-class Insight(Document):
+class Insights(Document):
     """
     Represents an insight with metadata, while the actual file content is stored in GridFS.
     """
@@ -336,9 +336,9 @@ def all():
     return [
         EconomicCalendar,
         User,
-        Insight,
+        Insights,
         TacticalView,
-        InsightSource,
+        Publishers,
         MarketCommentary,
         Prediction,
         Universe,

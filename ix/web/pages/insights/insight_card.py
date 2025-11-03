@@ -1,6 +1,6 @@
 """
-Modern Insight Card Component - Redesigned with Dash Mantine Components
-Beautiful card-based design with enhanced visual hierarchy and UX
+Investment Insights Card - Completely Redesigned
+Ultra-modern, clean card design with outstanding visual hierarchy
 """
 
 from typing import Dict, Any
@@ -9,9 +9,19 @@ import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from datetime import datetime
 
+# Color palette for consistency
+COLORS = {
+    "primary": "#2563eb",
+    "secondary": "#7c3aed",
+    "accent": "#0891b2",
+    "success": "#059669",
+    "warning": "#d97706",
+    "danger": "#dc2626",
+}
+
 
 class InsightCard:
-    """Modern insight card with beautiful design and improved UX."""
+    """Completely redesigned insight card with premium aesthetics."""
 
     def _format_date(self, date_str: str) -> str:
         """Format date string for display."""
@@ -56,78 +66,35 @@ class InsightCard:
 
                 if days_ago <= 7:
                     return dmc.Badge(
-                        "New",
+                        [DashIconify(icon="carbon:new-tab", width=12), " New"],
                         color="green",
-                        variant="light",
+                        variant="filled",
                         size="sm",
-                        leftSection=DashIconify(
-                            icon="material-symbols:fiber-new", width=14
-                        ),
+                        radius="sm",
                     )
                 elif days_ago <= 30:
                     return dmc.Badge(
-                        "Recent",
-                        color="blue",
+                        [DashIconify(icon="carbon:time", width=12), " Recent"],
+                        color="cyan",
                         variant="light",
                         size="sm",
-                        leftSection=DashIconify(
-                            icon="material-symbols:schedule", width=14
-                        ),
+                        radius="sm",
                     )
             except:
                 pass
 
         return dmc.Badge(
-            "Archived",
+            [DashIconify(icon="carbon:archive", width=12), " Archived"],
             color="gray",
-            variant="light",
+            variant="outline",
             size="sm",
-            leftSection=DashIconify(icon="material-symbols:inventory", width=14),
+            radius="sm",
         )
 
     def _create_action_buttons(self, insight: Dict[str, Any]) -> dmc.Group:
-        """Create modern action buttons."""
-        insight_id = insight.get("id")
-
-        return dmc.Group(
-            [
-                dmc.Button(
-                    "View",
-                    id={"type": "insight-card-clickable", "index": insight_id},
-                    n_clicks=0,
-                    leftSection=DashIconify(
-                        icon="material-symbols:visibility", width=18
-                    ),
-                    variant="filled",
-                    color="blue",
-                    size="sm",
-                    radius="md",
-                ),
-                dmc.Button(
-                    "PDF",
-                    component="a",
-                    href=f"https://files.investment-x.app/{insight_id}.pdf",
-                    target="_blank",
-                    leftSection=DashIconify(
-                        icon="material-symbols:picture-as-pdf", width=18
-                    ),
-                    variant="light",
-                    color="red",
-                    size="sm",
-                    radius="md",
-                ),
-                dmc.ActionIcon(
-                    DashIconify(icon="material-symbols:delete-outline", width=18),
-                    id={"type": "delete-insight-button", "index": insight_id},
-                    n_clicks=0,
-                    variant="subtle",
-                    color="red",
-                    size="lg",
-                    radius="md",
-                ),
-            ],
-            gap="xs",
-        )
+        """Create modern action buttons - DEPRECATED, using inline buttons in layout()"""
+        # This method is no longer used but kept for backward compatibility
+        pass
 
     def _create_summary_preview(self, insight: Dict[str, Any]) -> html.Div:
         """Create a preview of the summary."""
@@ -135,7 +102,7 @@ class InsightCard:
         if not summary:
             return dmc.Text(
                 "No summary available",
-                c="dimmed",
+                c="gray",
                 size="sm",
                 fs="italic",
             )
@@ -146,17 +113,18 @@ class InsightCard:
         return dmc.Text(
             preview_text,
             size="sm",
-            c="dimmed",
+            c="gray",
             style={"lineHeight": "1.6"},
         )
 
     def layout(self, insight: Dict[str, Any]):
-        """Create the modern insight card layout."""
+        """Create the completely redesigned insight card layout."""
         # Extract data
         published_date = self._format_date(insight.get("published_date", ""))
         issuer = insight.get("issuer", "Unknown Issuer")
         name = insight.get("name", "Untitled Document")
         insight_id = insight.get("id")
+        summary = insight.get("summary", "")
 
         # Get issuer badge color
         issuer_color = self._get_issuer_badge_color(issuer)
@@ -164,122 +132,176 @@ class InsightCard:
         # Create status badge
         status_badge = self._create_status_badge(insight)
 
-        # Create action buttons
-        action_buttons = self._create_action_buttons(insight)
+        # Truncate summary for preview
+        summary_preview = (
+            (summary[:180] + "..." if len(summary) > 180 else summary)
+            if summary
+            else "No summary available"
+        )
 
-        # Create summary preview
-        summary_preview = self._create_summary_preview(insight)
-
-        # Main card with modern design
+        # Ultra-modern card design
         card = dmc.Card(
             [
-                dmc.CardSection(
-                    dmc.Group(
-                        [
-                            dmc.Badge(
-                                issuer,
-                                color=issuer_color,
-                                variant="light",
-                                size="lg",
-                                leftSection=DashIconify(
-                                    icon="material-symbols:business", width=16
-                                ),
-                            ),
-                            status_badge,
-                        ],
-                        gap="xs",
-                    ),
-                    inheritPadding=True,
-                    py="xs",
+                # Header gradient bar
+                dmc.Box(
+                    style={
+                        "height": "4px",
+                        "background": f"linear-gradient(90deg, {issuer_color} 0%, {issuer_color} 100%)",
+                        "borderRadius": "12px 12px 0 0",
+                        "marginTop": "-16px",
+                        "marginLeft": "-16px",
+                        "marginRight": "-16px",
+                        "marginBottom": "12px",
+                    }
                 ),
-                dmc.CardSection(
+                # Top section - Badges and meta
+                dmc.Group(
                     [
-                        dmc.Title(
+                        dmc.Badge(
+                            [
+                                DashIconify(icon="carbon:industry", width=12),
+                                f" {issuer}",
+                            ],
+                            color=issuer_color,
+                            variant="light",
+                            size="md",
+                            radius="sm",
+                        ),
+                        status_badge,
+                    ],
+                    justify="space-between",
+                    align="center",
+                    style={"marginBottom": "12px"},
+                ),
+                # Title section
+                dmc.Stack(
+                    [
+                        dmc.Text(
                             name,
-                            order=5,
+                            size="lg",
+                            fw="bold",
                             style={
-                                "marginBottom": "8px",
-                                "lineHeight": "1.4",
-                                "fontWeight": "600",
+                                "lineHeight": "1.3",
+                                "color": "blue",
+                                "cursor": "pointer",
                             },
+                            id={"type": "insight-title-click", "index": insight_id},
                         ),
                         dmc.Group(
                             [
-                                dmc.Text(
-                                    published_date,
-                                    size="xs",
-                                    c="dimmed",
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "gap": "4px",
-                                    },
-                                ),
                                 DashIconify(
-                                    icon="material-symbols:calendar-month",
-                                    width=14,
-                                    style={"color": "var(--mantine-color-dimmed)"},
+                                    icon="carbon:calendar", width=14, color="gray"
+                                ),
+                                dmc.Text(
+                                    published_date, size="xs", c="gray", fw="normal"
                                 ),
                             ],
-                            gap=4,
+                            gap=6,
                         ),
                     ],
-                    inheritPadding=True,
-                    pt="xs",
-                    pb="md",
+                    gap="xs",
+                    style={"marginBottom": "16px"},
                 ),
-                dmc.CardSection(
-                    dmc.Paper(
-                        [
-                            dmc.Text(
-                                "Summary",
-                                size="xs",
-                                fw=600,
-                                c="blue",
-                                style={
-                                    "marginBottom": "8px",
-                                    "textTransform": "uppercase",
-                                    "letterSpacing": "0.5px",
-                                },
+                # Summary section with subtle background
+                dmc.Paper(
+                    [
+                        dmc.Group(
+                            [
+                                DashIconify(
+                                    icon="carbon:notebook",
+                                    width=14,
+                                    color="cyan",
+                                ),
+                                dmc.Text(
+                                    "AI Summary",
+                                    size="xs",
+                                    fw="bold",
+                                    c="cyan",
+                                    tt="uppercase",
+                                ),
+                            ],
+                            gap=6,
+                            style={"marginBottom": "8px"},
+                        ),
+                        dmc.Text(
+                            (
+                                summary_preview
+                                if summary
+                                else "Click 'View' to generate AI summary"
                             ),
-                            summary_preview,
-                        ],
-                        p="md",
-                        radius="md",
-                        withBorder=True,
-                        style={"backgroundColor": "rgba(59, 130, 246, 0.05)"},
-                    ),
-                    inheritPadding=True,
-                    pb="md",
+                            size="sm",
+                            c="gray" if summary else "orange",
+                            fs="italic" if not summary else "normal",
+                            style={"lineHeight": "1.6"},
+                        ),
+                    ],
+                    p="md",
+                    radius="md",
+                    style={
+                        "background": "linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%)",
+                        "border": "1px solid #ccc",
+                        "marginBottom": "16px",
+                    },
                 ),
-                dmc.CardSection(
-                    dmc.Group(
-                        [
-                            dmc.Text(
-                                f"ID: {insight_id}",
-                                size="xs",
-                                c="dimmed",
-                                style={"fontFamily": "monospace"},
+                # Action buttons section
+                dmc.Group(
+                    [
+                        dmc.Button(
+                            "View PDF",
+                            id={"type": "view-pdf-button", "index": insight_id},
+                            n_clicks=0,
+                            leftSection=DashIconify(
+                                icon="carbon:document-view", width=16
                             ),
-                            action_buttons,
-                        ],
-                        justify="space-between",
-                        align="center",
-                    ),
-                    inheritPadding=True,
-                    py="sm",
-                    style={"borderTop": "1px solid var(--mantine-color-dark-4)"},
+                            variant="gradient",
+                            gradient={"from": "blue", "to": "cyan", "deg": 90},
+                            size="sm",
+                            radius="md",
+                            style={"flex": 1},
+                        ),
+                        dmc.Anchor(
+                            dmc.Button(
+                                "Download PDF",
+                                leftSection=DashIconify(
+                                    icon="carbon:download", width=16
+                                ),
+                                variant="light",
+                                color="red",
+                                size="sm",
+                                radius="md",
+                                fullWidth=True,
+                            ),
+                            href=f"/api/download-pdf/{insight_id}",
+                            target="_blank",
+                            style={"textDecoration": "none"},
+                        ),
+                        dmc.ActionIcon(
+                            DashIconify(icon="carbon:trash-can", width=18),
+                            id={"type": "delete-insight-button", "index": insight_id},
+                            n_clicks=0,
+                            variant="subtle",
+                            color="red",
+                            size="lg",
+                            radius="md",
+                        ),
+                    ],
+                    gap="xs",
+                    grow=False,
+                    style={"marginTop": "4px"},
                 ),
+                # ID footer removed per request
             ],
-            shadow="sm",
+            shadow="md",
             padding="lg",
             radius="lg",
             withBorder=True,
-            className="insight-card-hover",
             style={
                 "height": "100%",
-                "transition": "all 0.3s ease",
+                "transition": "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                "position": "relative",
+                "overflow": "hidden",
             },
+            className="insight-card-modern",
         )
 
         return card

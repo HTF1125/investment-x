@@ -3,8 +3,7 @@ from dash import html, dcc, Input, Output, State, callback, ALL, dash_table
 from dash.exceptions import PreventUpdate
 import json
 import pandas as pd
-from bson import ObjectId
-from ix.db.models import Timeseries
+from ix.db import models
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -407,7 +406,7 @@ def create_timeseries_card(ts):
             "cursor": "pointer",
             "transition": "transform 0.2s, box-shadow 0.2s",
         },
-        id={"type": "ts-card", "index": str(ts.id)},
+        id={"type": "ts-card", "index": ts.code},
     )
 
 
@@ -426,82 +425,73 @@ def update_timeseries_list(search, current_page):
     if current_page is None:
         current_page = 1
 
-    try:
-        # Query database
-        ts_query = Timeseries.find({}).sort("code").run()
+    # Query database using Bunnet ODM
+    query = models.Timeseries.find()
 
-        # Filter results
-        filtered = []
-        for ts in ts_query:
-            # Search filter
-            if search and search.lower() not in (
-                ts.code.lower() + (ts.name or "").lower()
-            ):
-                continue
-            # Asset class filter
-            filtered.append(ts)
+    # Apply search filter if provided
+    if search:
+        search_pattern = search.lower()
+        filtered = [
+            ts
+            for ts in query.run()
+            if search_pattern in (ts.code or "").lower()
+            or search_pattern in (ts.name or "").lower()
+        ]
+    else:
+        filtered = list(query.run())
 
-        total_count = len(filtered)
-        total_pages = max(1, (total_count + 50 - 1) // 50)
+    # Sort by code
+    filtered.sort(key=lambda x: x.code or "")
 
-        # Paginate
-        start_idx = (current_page - 1) * 50
-        page_items = filtered[start_idx : start_idx + 50]
+    total_count = len(filtered)
+    total_pages = max(1, (total_count + 50 - 1) // 50)
 
-        # Create grid
-        if page_items:
-            grid = dbc.Row(
-                [
-                    dbc.Col(
-                        create_timeseries_card(ts),
-                        lg=4,
-                        md=6,
-                        style={"marginBottom": "16px"},
-                    )
-                    for ts in page_items
-                ],
-                className="g-3",
-            )
-        else:
-            grid = dmc.Center(
-                [
-                    dmc.Stack(
-                        [
-                            DashIconify(
-                                icon="material-symbols:chart-line",
-                                width=60,
-                                color="var(--mantine-color-gray-5)",
-                            ),
-                            dmc.Title("No timeseries found", order=3, c="gray"),
-                            dmc.Text(
-                                "Try adjusting your search or filters",
-                                c="gray",
-                                size="sm",
-                            ),
-                        ],
-                        align="center",
-                        gap="md",
-                    ),
-                ],
-                style={"height": "300px"},
-            )
+    # Paginate
+    start_idx = (current_page - 1) * 50
+    page_items = filtered[start_idx : start_idx + 50]
 
-        # Stats bar
-        stats_label = f"Showing {len(page_items)} of {total_count:,} timeseries"
-
-        return grid, stats_label, total_pages
-
-    except Exception as e:
-        logger.error(f"Error loading timeseries: {e}")
-        return (
-            dmc.Alert(
-                f"Error: {e}",
-                color="red",
-                variant="light",
-            ),
-            "Error",
-            1,
+    # Create grid
+    if page_items:
+        grid = dbc.Row(
+            [
+                dbc.Col(
+                    create_timeseries_card(ts),
+                    lg=4,
+                    md=6,
+                    style={"marginBottom": "16px"},
+                )
+                for ts in page_items
+            ],
+            className="g-3",
         )
+    else:
+        grid = dmc.Center(
+            [
+                dmc.Stack(
+                    [
+                        DashIconify(
+                            icon="material-symbols:chart-line",
+                            width=60,
+                            color="var(--mantine-color-gray-5)",
+                        ),
+                        dmc.Title("No timeseries found", order=3, c="gray"),
+                        dmc.Text(
+                            "Try adjusting your search or filters",
+                            c="gray",
+                            size="sm",
+                        ),
+                    ],
+                    align="center",
+                    gap="md",
+                ),
+            ],
+            style={"height": "300px"},
+        )
+
+    # Stats bar
+    stats_label = f"Showing {len(page_items)} of {total_count:,} timeseries"
+
+    return grid, stats_label, total_pages
 
 
 @callback(
@@ -535,386 +525,355 @@ def open_detail_modal(clicks):
     [Input("selected-ts", "data")],
     prevent_initial_call=True,
 )
-def load_modal_content(ts_id):
-    if not ts_id:
+def load_modal_content(ts_code):
+    if not ts_code:
         raise PreventUpdate
 
-    try:
-        ts = Timeseries.find_one(Timeseries.id == ObjectId(ts_id)).run()
-        if not ts:
-            return "Not found", "Error", "Error", {}, "Error"
+    # Get timeseries by code using Bunnet ODM
+    ts = models.Timeseries.find_one(models.Timeseries.code == ts_code).run()
+    if not ts:
+        return "Not found", "Error", "Error", {}, "Error"
 
-        # Header
-        header = [
-            dmc.Title(ts.code, order=2, style={"margin": 0}),
-            dmc.Text(ts.name or "Unnamed", c="gray", size="sm"),
-        ]
+    # Header
+    header = [
+        dmc.Title(ts.code, order=2, style={"margin": 0}),
+        dmc.Text(ts.name or "Unnamed", c="gray", size="sm"),
+    ]
 
-        # Overview tab - Basic info
-        overview = dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        dmc.Title(
-                            "Basic Information", order=4, style={"marginBottom": "12px"}
-                        ),
-                        dmc.Stack(
-                            [
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Code: ", fw="bold"),
-                                        ts.code or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Name: ", fw="bold"),
-                                        ts.name or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Provider: ", fw="bold"),
-                                        ts.provider or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Asset Class: ", fw="bold"),
-                                        ts.asset_class or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Category: ", fw="bold"),
-                                        ts.category or "N/A",
-                                    ]
-                                ),
-                            ],
-                            gap="xs",
-                        ),
-                    ],
-                    md=4,
-                ),
-                dbc.Col(
-                    [
-                        dmc.Title(
-                            "Data Statistics", order=4, style={"marginBottom": "12px"}
-                        ),
-                        dmc.Stack(
-                            [
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Data Points: ", fw="bold"),
-                                        f"{ts.num_data or 0:,}",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Start Date: ", fw="bold"),
-                                        (
-                                            ts.start.strftime("%Y-%m-%d")
-                                            if ts.start
-                                            else "N/A"
-                                        ),
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("End Date: ", fw="bold"),
-                                        (
-                                            ts.end.strftime("%Y-%m-%d")
-                                            if ts.end
-                                            else "N/A"
-                                        ),
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Frequency: ", fw="bold"),
-                                        ts.frequency or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Unit: ", fw="bold"),
-                                        ts.unit or "N/A",
-                                    ]
-                                ),
-                            ],
-                            gap="xs",
-                        ),
-                    ],
-                    md=4,
-                ),
-                dbc.Col(
-                    [
-                        dmc.Title(
-                            "Location & Scale", order=4, style={"marginBottom": "12px"}
-                        ),
-                        dmc.Stack(
-                            [
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Currency: ", fw="bold"),
-                                        ts.currency or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Country: ", fw="bold"),
-                                        ts.country or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Scale: ", fw="bold"),
-                                        (
-                                            str(ts.scale)
-                                            if ts.scale is not None
-                                            else "N/A"
-                                        ),
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Timeseries ID: ", fw="bold"),
-                                        str(ts.id),
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Parent ID: ", fw="bold"),
-                                        ts.parent_id or "N/A",
-                                    ]
-                                ),
-                            ],
-                            gap="xs",
-                        ),
-                    ],
-                    md=4,
-                ),
-            ],
+    # Overview tab - Basic info
+    overview = dbc.Row(
+        [
+            dbc.Col(
+                [
+                    dmc.Title(
+                        "Basic Information", order=4, style={"marginBottom": "12px"}
+                    ),
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                [
+                                    dmc.Text("Code: ", fw="bold"),
+                                    ts.code or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Name: ", fw="bold"),
+                                    ts.name or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Provider: ", fw="bold"),
+                                    ts.provider or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Asset Class: ", fw="bold"),
+                                    ts.asset_class or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Category: ", fw="bold"),
+                                    ts.category or "N/A",
+                                ]
+                            ),
+                        ],
+                        gap="xs",
+                    ),
+                ],
+                md=4,
+            ),
+            dbc.Col(
+                [
+                    dmc.Title(
+                        "Data Statistics", order=4, style={"marginBottom": "12px"}
+                    ),
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                [
+                                    dmc.Text("Data Points: ", fw="bold"),
+                                    f"{ts.num_data or 0:,}",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Start Date: ", fw="bold"),
+                                    (
+                                        ts.start.strftime("%Y-%m-%d")
+                                        if ts.start
+                                        else "N/A"
+                                    ),
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("End Date: ", fw="bold"),
+                                    (ts.end.strftime("%Y-%m-%d") if ts.end else "N/A"),
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Frequency: ", fw="bold"),
+                                    ts.frequency or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Unit: ", fw="bold"),
+                                    ts.unit or "N/A",
+                                ]
+                            ),
+                        ],
+                        gap="xs",
+                    ),
+                ],
+                md=4,
+            ),
+            dbc.Col(
+                [
+                    dmc.Title(
+                        "Location & Scale", order=4, style={"marginBottom": "12px"}
+                    ),
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                [
+                                    dmc.Text("Currency: ", fw="bold"),
+                                    ts.currency or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Country: ", fw="bold"),
+                                    ts.country or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Scale: ", fw="bold"),
+                                    (str(ts.scale) if ts.scale is not None else "N/A"),
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Timeseries Code: ", fw="bold"),
+                                    str(ts.code),
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Source Code: ", fw="bold"),
+                                    ts.source_code or "N/A",
+                                ]
+                            ),
+                        ],
+                        gap="xs",
+                    ),
+                ],
+                md=4,
+            ),
+        ],
+    )
+
+    # Details tab - All attributes
+    details = dbc.Row(
+        [
+            dbc.Col(
+                [
+                    dmc.Title(
+                        "Source & Metadata", order=4, style={"marginBottom": "12px"}
+                    ),
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                [
+                                    dmc.Text("Source: ", fw="bold"),
+                                    ts.source or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Source Code: ", fw="bold"),
+                                    ts.source_code or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Provider: ", fw="bold"),
+                                    ts.provider or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Asset Class: ", fw="bold"),
+                                    ts.asset_class or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Category: ", fw="bold"),
+                                    ts.category or "N/A",
+                                ]
+                            ),
+                        ],
+                        gap="xs",
+                    ),
+                ],
+                md=4,
+            ),
+            dbc.Col(
+                [
+                    dmc.Title(
+                        "Data & Technical",
+                        order=4,
+                        style={"marginBottom": "12px"},
+                    ),
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                [
+                                    dmc.Text("Data Points: ", fw="bold"),
+                                    f"{ts.num_data or 0:,}",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Start Date: ", fw="bold"),
+                                    (
+                                        ts.start.strftime("%Y-%m-%d")
+                                        if ts.start
+                                        else "N/A"
+                                    ),
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("End Date: ", fw="bold"),
+                                    (ts.end.strftime("%Y-%m-%d") if ts.end else "N/A"),
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Frequency: ", fw="bold"),
+                                    ts.frequency or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Unit: ", fw="bold"),
+                                    ts.unit or "N/A",
+                                ]
+                            ),
+                        ],
+                        gap="xs",
+                    ),
+                ],
+                md=4,
+            ),
+            dbc.Col(
+                [
+                    dmc.Title(
+                        "Location & Relationships",
+                        order=4,
+                        style={"marginBottom": "12px"},
+                    ),
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                [
+                                    dmc.Text("Currency: ", fw="bold"),
+                                    ts.currency or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Country: ", fw="bold"),
+                                    ts.country or "N/A",
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Scale: ", fw="bold"),
+                                    (str(ts.scale) if ts.scale is not None else "N/A"),
+                                ]
+                            ),
+                            dmc.Text(
+                                [
+                                    dmc.Text("Remark: ", fw="bold"),
+                                    ts.remark or "N/A",
+                                ]
+                            ),
+                        ],
+                        gap="xs",
+                    ),
+                ],
+                md=4,
+            ),
+        ],
+    )
+
+    # Chart
+    data = ts.data
+    df = data.dropna().reset_index()
+    # Ensure we have proper column names
+    if len(df.columns) == 2:
+        df.columns = ["date", "value"]
+    else:
+        # If more columns, use the first as date and second as value
+        df.columns = ["date", "value"] + list(df.columns[2:])
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=df["date"],
+            y=df["value"],
+            mode="lines",
+            name=ts.code,
+            line=dict(color="#3b82f6", width=2),
         )
+    )
+    fig.update_layout(
+        title=f"{ts.code} Time Series",
+        xaxis_title="Date",
+        yaxis_title="Value",
+        height=400,
+        margin=dict(l=0, r=0, t=30, b=0),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="var(--text-primary)"),
+        xaxis=dict(color="var(--text-primary)"),
+        yaxis=dict(color="var(--text-primary)"),
+    )
 
-        # Details tab - All attributes
-        details = dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        dmc.Title(
-                            "Source & Metadata", order=4, style={"marginBottom": "12px"}
-                        ),
-                        dmc.Stack(
-                            [
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Source: ", fw="bold"),
-                                        ts.source or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Source Code: ", fw="bold"),
-                                        ts.source_code or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Provider: ", fw="bold"),
-                                        ts.provider or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Asset Class: ", fw="bold"),
-                                        ts.asset_class or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Category: ", fw="bold"),
-                                        ts.category or "N/A",
-                                    ]
-                                ),
-                            ],
-                            gap="xs",
-                        ),
-                    ],
-                    md=4,
-                ),
-                dbc.Col(
-                    [
-                        dmc.Title(
-                            "Data & Technical",
-                            order=4,
-                            style={"marginBottom": "12px"},
-                        ),
-                        dmc.Stack(
-                            [
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Data Points: ", fw="bold"),
-                                        f"{ts.num_data or 0:,}",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Start Date: ", fw="bold"),
-                                        (
-                                            ts.start.strftime("%Y-%m-%d")
-                                            if ts.start
-                                            else "N/A"
-                                        ),
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("End Date: ", fw="bold"),
-                                        (
-                                            ts.end.strftime("%Y-%m-%d")
-                                            if ts.end
-                                            else "N/A"
-                                        ),
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Frequency: ", fw="bold"),
-                                        ts.frequency or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Unit: ", fw="bold"),
-                                        ts.unit or "N/A",
-                                    ]
-                                ),
-                            ],
-                            gap="xs",
-                        ),
-                    ],
-                    md=4,
-                ),
-                dbc.Col(
-                    [
-                        dmc.Title(
-                            "Location & Relationships",
-                            order=4,
-                            style={"marginBottom": "12px"},
-                        ),
-                        dmc.Stack(
-                            [
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Currency: ", fw="bold"),
-                                        ts.currency or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Country: ", fw="bold"),
-                                        ts.country or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Scale: ", fw="bold"),
-                                        (
-                                            str(ts.scale)
-                                            if ts.scale is not None
-                                            else "N/A"
-                                        ),
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Timeseries ID: ", fw="bold"),
-                                        str(ts.id),
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Parent ID: ", fw="bold"),
-                                        ts.parent_id or "N/A",
-                                    ]
-                                ),
-                                dmc.Text(
-                                    [
-                                        dmc.Text("Remark: ", fw="bold"),
-                                        ts.remark or "N/A",
-                                    ]
-                                ),
-                            ],
-                            gap="xs",
-                        ),
-                    ],
-                    md=4,
-                ),
-            ],
-        )
+    # Data table
+    df_display = df.head(100).copy()
+    # Use the actual column names from the dataframe
+    df_display.columns = ["Date", "Value"] + (
+        list(df_display.columns[2:]) if len(df_display.columns) > 2 else []
+    )
+    table = dash_table.DataTable(
+        data=df_display.to_dict("records"),
+        columns=[{"name": i, "id": i} for i in df_display.columns],
+        style_table={"height": "400px", "overflowY": "auto"},
+        style_cell={
+            "textAlign": "left",
+            "padding": "10px",
+            "backgroundColor": "var(--bg-secondary)",
+            "color": "var(--text-primary)",
+        },
+        style_header={
+            "backgroundColor": "var(--bg-primary)",
+            "fontWeight": "bold",
+            "color": "var(--text-primary)",
+        },
+        page_size=50,
+    )
 
-        # Chart
-        df = ts.data.dropna().reset_index()
-        # Ensure we have proper column names
-        if len(df.columns) == 2:
-            df.columns = ["date", "value"]
-        else:
-            # If more columns, use the first as date and second as value
-            df.columns = ["date", "value"] + list(df.columns[2:])
-
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=df["date"],
-                y=df["value"],
-                mode="lines",
-                name=ts.code,
-                line=dict(color="#3b82f6", width=2),
-            )
-        )
-        fig.update_layout(
-            title=f"{ts.code} Time Series",
-            xaxis_title="Date",
-            yaxis_title="Value",
-            height=400,
-            margin=dict(l=0, r=0, t=30, b=0),
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="var(--text-primary)"),
-            xaxis=dict(color="var(--text-primary)"),
-            yaxis=dict(color="var(--text-primary)"),
-        )
-
-        # Data table
-        df_display = df.head(100).copy()
-        # Use the actual column names from the dataframe
-        df_display.columns = ["Date", "Value"] + (
-            list(df_display.columns[2:]) if len(df_display.columns) > 2 else []
-        )
-        table = dash_table.DataTable(
-            data=df_display.to_dict("records"),
-            columns=[{"name": i, "id": i} for i in df_display.columns],
-            style_table={"height": "400px", "overflowY": "auto"},
-            style_cell={
-                "textAlign": "left",
-                "padding": "10px",
-                "backgroundColor": "var(--bg-secondary)",
-                "color": "var(--text-primary)",
-            },
-            style_header={
-                "backgroundColor": "var(--bg-primary)",
-                "fontWeight": "bold",
-                "color": "var(--text-primary)",
-            },
-            page_size=50,
-        )
-
-        return header, overview, details, fig, table
-
-    except Exception as e:
-        logger.error(f"Error loading modal content: {e}")
-        return "Error", f"Error: {e}", f"Error: {e}", {}, f"Error: {e}"
+    return header, overview, details, fig, table
 
 
 @callback(

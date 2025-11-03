@@ -1,5 +1,6 @@
 """
-Modern Insights Page - Redesigned with beautiful UI and enhanced UX
+Investment Insights Hub - Completely Redesigned
+Modern, clean interface for browsing research and market insights
 """
 
 from dash import html, dcc
@@ -7,432 +8,790 @@ import dash
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from ix.web.pages.insights.callbacks_minimal import *
+from ix.web.pages.insights.pdf_viewer_callbacks import *
 from ix.web.pages.insights.summary_modal import summary_modal
+from ix.web.pages.insights.add_publisher_modal import add_publisher_modal
+from ix.web.pages.insights.pdf_viewer import create_pdf_viewer
 from ix.web.pages.insights import sources
 
 # Register Page
 dash.register_page(__name__, path="/insights", title="Insights", name="Insights")
 
+# Modern color palette
+COLORS = {
+    "primary": "#2563eb",
+    "secondary": "#7c3aed",
+    "accent": "#0891b2",
+    "success": "#059669",
+    "warning": "#d97706",
+    "danger": "#dc2626",
+}
 
-# Main Layout with Modern Design
+
+# Main Layout - Completely Redesigned
 layout = dmc.Container(
     [
-        # Modern Page Header
+        # Hero Header with Gradient
         html.Div(
             [
-                dmc.Group(
+                dmc.Stack(
                     [
-                        html.Div(
+                        # Title with icon
+                        dmc.Group(
                             [
-                                dmc.Title(
-                                    "💡 Insights & Research",
-                                    order=1,
-                                    style={
-                                        "background": "linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)",
-                                        "WebkitBackgroundClip": "text",
-                                        "WebkitTextFillColor": "transparent",
-                                        "fontSize": "2.5rem",
-                                        "fontWeight": "800",
-                                        "marginBottom": "8px",
-                                    },
+                                dmc.ThemeIcon(
+                                    DashIconify(icon="ph:books-fill", width=40),
+                                    size=70,
+                                    radius="xl",
+                                    variant="gradient",
+                                    gradient={"from": "blue", "to": "cyan", "deg": 45},
                                 ),
-                                dmc.Text(
-                                    "Centralized market research and institutional insights",
-                                    c="dimmed",
-                                    size="lg",
+                                html.Div(
+                                    [
+                                        dmc.Title(
+                                            "Investment Insights Hub",
+                                            order=1,
+                                            style={
+                                                "fontSize": "2.8rem",
+                                                "fontWeight": "800",
+                                                "marginBottom": "8px",
+                                                "letterSpacing": "-0.02em",
+                                            },
+                                        ),
+                                        dmc.Text(
+                                            "AI-powered research aggregation from top institutional sources",
+                                            size="lg",
+                                            c="gray",
+                                            fw="normal",
+                                        ),
+                                    ]
                                 ),
-                            ]
-                        ),
-                        dmc.Badge(
-                            "Beta",
-                            color="blue",
-                            variant="light",
-                            size="lg",
-                            radius="md",
+                            ],
+                            gap="xl",
+                            align="center",
                         ),
                     ],
-                    justify="space-between",
-                    align="flex-start",
-                    style={"marginBottom": "32px"},
+                    gap="md",
                 ),
-            ]
+            ],
+            style={
+                "marginBottom": "40px",
+                "paddingBottom": "24px",
+                "borderBottom": "1px solid #ccc",
+            },
         ),
-        # Stats Cards Row
-        html.Div(
+        # Quick Stats - Redesigned with gradients
+        dmc.Grid(
             [
-                dmc.Grid(
-                    [
-                        dmc.GridCol(
-                            dmc.Paper(
+                # Total Insights Card
+                dmc.GridCol(
+                    dmc.Card(
+                        [
+                            dmc.Stack(
                                 [
                                     dmc.Group(
                                         [
                                             dmc.ThemeIcon(
                                                 DashIconify(
-                                                    icon="material-symbols:description",
-                                                    width=28,
+                                                    icon="carbon:document-tasks",
+                                                    width=24,
                                                 ),
-                                                size=60,
+                                                size=50,
                                                 radius="md",
-                                                variant="light",
-                                                color="blue",
+                                                variant="gradient",
+                                                gradient={
+                                                    "from": "blue.6",
+                                                    "to": "cyan.6",
+                                                    "deg": 135,
+                                                },
                                             ),
                                             html.Div(
                                                 [
                                                     dmc.Text(
-                                                        "Total Insights",
-                                                        size="sm",
-                                                        c="dimmed",
-                                                        fw=500,
+                                                        "Total Documents",
+                                                        size="xs",
+                                                        c="gray",
+                                                        fw="bold",
+                                                        tt="uppercase",
                                                     ),
                                                     dmc.Title(
                                                         "0",
                                                         order=2,
                                                         id="total-insights-stat",
-                                                        style={
-                                                            "marginTop": "4px",
-                                                            "color": "#3b82f6",
-                                                        },
+                                                        c="blue.6",
                                                     ),
-                                                ]
+                                                ],
+                                                style={"flex": 1},
                                             ),
                                         ],
-                                        gap="md",
+                                        justify="flex-start",
+                                        align="center",
                                     ),
                                 ],
-                                p="lg",
-                                radius="lg",
-                                shadow="sm",
-                                withBorder=True,
-                                style={"height": "100%"},
+                                gap="xs",
                             ),
-                            span={"base": 12, "sm": 6, "md": 4},
-                        ),
-                        dmc.GridCol(
-                            dmc.Paper(
+                        ],
+                        padding="lg",
+                        radius="md",
+                        withBorder=True,
+                        style={
+                            "height": "100%",
+                            "background": "linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(6, 182, 212, 0.05) 100%)",
+                        },
+                    ),
+                    span={"base": 12, "xs": 6, "sm": 4, "md": 3},
+                ),
+                # This Week Card
+                dmc.GridCol(
+                    dmc.Card(
+                        [
+                            dmc.Stack(
                                 [
                                     dmc.Group(
                                         [
                                             dmc.ThemeIcon(
                                                 DashIconify(
-                                                    icon="material-symbols:trending-up",
-                                                    width=28,
+                                                    icon="carbon:calendar", width=24
                                                 ),
-                                                size=60,
+                                                size=50,
                                                 radius="md",
-                                                variant="light",
-                                                color="green",
+                                                variant="gradient",
+                                                gradient={
+                                                    "from": "teal.6",
+                                                    "to": "green.6",
+                                                    "deg": 135,
+                                                },
                                             ),
                                             html.Div(
                                                 [
                                                     dmc.Text(
                                                         "This Week",
-                                                        size="sm",
-                                                        c="dimmed",
-                                                        fw=500,
+                                                        size="xs",
+                                                        c="gray",
+                                                        fw="bold",
+                                                        tt="uppercase",
                                                     ),
                                                     dmc.Title(
                                                         "0",
                                                         order=2,
                                                         id="weekly-insights-stat",
-                                                        style={
-                                                            "marginTop": "4px",
-                                                            "color": "#10b981",
-                                                        },
+                                                        c="teal.6",
                                                     ),
-                                                ]
+                                                ],
+                                                style={"flex": 1},
                                             ),
                                         ],
-                                        gap="md",
+                                        justify="flex-start",
+                                        align="center",
                                     ),
                                 ],
-                                p="lg",
-                                radius="lg",
-                                shadow="sm",
-                                withBorder=True,
-                                style={"height": "100%"},
+                                gap="xs",
                             ),
-                            span={"base": 12, "sm": 6, "md": 4},
-                        ),
-                        dmc.GridCol(
-                            dmc.Paper(
+                        ],
+                        padding="lg",
+                        radius="md",
+                        withBorder=True,
+                        style={
+                            "height": "100%",
+                            "background": "linear-gradient(135deg, rgba(20, 184, 166, 0.05) 0%, rgba(5, 150, 105, 0.05) 100%)",
+                        },
+                    ),
+                    span={"base": 12, "xs": 6, "sm": 4, "md": 3},
+                ),
+                # Publishers Card
+                dmc.GridCol(
+                    dmc.Card(
+                        [
+                            dmc.Stack(
                                 [
                                     dmc.Group(
                                         [
                                             dmc.ThemeIcon(
                                                 DashIconify(
-                                                    icon="material-symbols:source",
-                                                    width=28,
+                                                    icon="carbon:partnership", width=24
                                                 ),
-                                                size=60,
+                                                size=50,
                                                 radius="md",
-                                                variant="light",
-                                                color="violet",
+                                                variant="gradient",
+                                                gradient={
+                                                    "from": "violet.6",
+                                                    "to": "purple.6",
+                                                    "deg": 135,
+                                                },
                                             ),
                                             html.Div(
                                                 [
                                                     dmc.Text(
-                                                        "Sources",
-                                                        size="sm",
-                                                        c="dimmed",
-                                                        fw=500,
+                                                        "Publishers",
+                                                        size="xs",
+                                                        c="gray",
+                                                        fw="bold",
+                                                        tt="uppercase",
                                                     ),
                                                     dmc.Title(
                                                         "0",
                                                         order=2,
                                                         id="sources-stat",
-                                                        style={
-                                                            "marginTop": "4px",
-                                                            "color": "#8b5cf6",
-                                                        },
+                                                        c="violet.6",
                                                     ),
-                                                ]
+                                                ],
+                                                style={"flex": 1},
                                             ),
                                         ],
-                                        gap="md",
+                                        justify="flex-start",
+                                        align="center",
                                     ),
                                 ],
-                                p="lg",
-                                radius="lg",
-                                shadow="sm",
-                                withBorder=True,
-                                style={"height": "100%"},
-                            ),
-                            span={"base": 12, "sm": 6, "md": 4},
-                        ),
-                    ],
-                    gutter="lg",
-                    style={"marginBottom": "32px"},
-                )
-            ]
-        ),
-        # Upload Section - Modern Design
-        dmc.Paper(
-            [
-                dmc.Group(
-                    [
-                        DashIconify(
-                            icon="material-symbols:cloud-upload",
-                            width=24,
-                            color="#3b82f6",
-                        ),
-                        dmc.Title("Upload Research Document", order=4),
-                    ],
-                    gap="sm",
-                    style={"marginBottom": "16px"},
-                ),
-                dcc.Upload(
-                    dmc.Paper(
-                        [
-                            dmc.Center(
-                                [
-                                    DashIconify(
-                                        icon="material-symbols:upload-file",
-                                        width=48,
-                                        color="#3b82f6",
-                                    ),
-                                ],
-                                style={"marginBottom": "12px"},
-                            ),
-                            dmc.Text(
-                                "Drag and drop PDF files here",
-                                size="lg",
-                                fw=500,
-                                ta="center",
-                            ),
-                            dmc.Text(
-                                "or click to browse",
-                                size="sm",
-                                c="dimmed",
-                                ta="center",
-                                style={"marginTop": "4px"},
-                            ),
-                            dmc.Group(
-                                [
-                                    dmc.Badge(
-                                        "PDF Only", color="blue", variant="light"
-                                    ),
-                                    dmc.Badge(
-                                        "Max 10MB", color="blue", variant="light"
-                                    ),
-                                ],
-                                justify="center",
-                                style={"marginTop": "12px"},
+                                gap="xs",
                             ),
                         ],
-                        p="xl",
+                        padding="lg",
                         radius="md",
                         withBorder=True,
                         style={
-                            "border": "2px dashed var(--mantine-color-blue-6)",
-                            "cursor": "pointer",
-                            "transition": "all 0.3s ease",
-                            "backgroundColor": "rgba(59, 130, 246, 0.05)",
+                            "height": "100%",
+                            "background": "linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(124, 58, 237, 0.05) 100%)",
                         },
-                        className="upload-zone-hover",
                     ),
-                    id="upload-pdf",
-                    multiple=False,
-                    accept=".pdf",
+                    span={"base": 12, "xs": 6, "sm": 4, "md": 3},
                 ),
-                html.Div(id="output-pdf-upload", style={"marginTop": "16px"}),
-            ],
-            p="xl",
-            radius="lg",
-            shadow="sm",
-            withBorder=True,
-            style={"marginBottom": "32px"},
-        ),
-        # Search and Filter Section - Modern Design
-        dmc.Paper(
-            [
-                dmc.Title(
-                    "🔍 Search & Filter", order=4, style={"marginBottom": "20px"}
-                ),
-                dmc.Grid(
-                    [
-                        # Search Input
-                        dmc.GridCol(
-                            dmc.TextInput(
-                                id="insights-search",
-                                placeholder="Search insights by title, issuer, or content...",
-                                leftSection=DashIconify(
-                                    icon="material-symbols:search", width=20
-                                ),
-                                size="md",
-                                radius="md",
-                                style={"marginBottom": "16px"},
-                            ),
-                            span=12,
-                        ),
-                        # Filter Controls
-                        dmc.GridCol(
-                            dmc.Button(
-                                "Search",
-                                id="search-button",
-                                leftSection=DashIconify(
-                                    icon="material-symbols:search", width=18
-                                ),
-                                variant="filled",
-                                color="blue",
-                                size="md",
-                                fullWidth=True,
-                            ),
-                            span={"base": 12, "sm": 6, "md": 2},
-                        ),
-                        dmc.GridCol(
-                            dmc.Select(
-                                id="sort-dropdown",
-                                placeholder="Sort by",
-                                data=[
-                                    {"label": "Date (Newest)", "value": "date_desc"},
-                                    {"label": "Date (Oldest)", "value": "date_asc"},
-                                    {"label": "Name (A-Z)", "value": "name_asc"},
-                                    {"label": "Name (Z-A)", "value": "name_desc"},
-                                ],
-                                leftSection=DashIconify(
-                                    icon="material-symbols:sort", width=18
-                                ),
-                                size="md",
-                                radius="md",
-                            ),
-                            span={"base": 12, "sm": 6, "md": 3},
-                        ),
-                        dmc.GridCol(
-                            dmc.Select(
-                                id="issuer-filter",
-                                placeholder="All issuers",
-                                data=[
-                                    {"label": "All Issuers", "value": "all"},
-                                    {"label": "Goldman Sachs", "value": "gs"},
-                                    {"label": "JP Morgan", "value": "jpm"},
-                                    {"label": "Morgan Stanley", "value": "ms"},
-                                    {"label": "Federal Reserve", "value": "fed"},
-                                ],
-                                leftSection=DashIconify(
-                                    icon="material-symbols:business", width=18
-                                ),
-                                size="md",
-                                radius="md",
-                            ),
-                            span={"base": 12, "sm": 6, "md": 3},
-                        ),
-                        dmc.GridCol(
-                            html.Div(
+                # AI Processed Card
+                dmc.GridCol(
+                    dmc.Card(
+                        [
+                            dmc.Stack(
                                 [
-                                    dmc.Text(
-                                        "Date Range",
-                                        size="sm",
-                                        fw=500,
-                                        style={"marginBottom": "8px"},
+                                    dmc.Group(
+                                        [
+                                            dmc.ThemeIcon(
+                                                DashIconify(
+                                                    icon="carbon:ai-status", width=24
+                                                ),
+                                                size=50,
+                                                radius="md",
+                                                variant="gradient",
+                                                gradient={
+                                                    "from": "pink.6",
+                                                    "to": "grape.6",
+                                                    "deg": 135,
+                                                },
+                                            ),
+                                            html.Div(
+                                                [
+                                                    dmc.Text(
+                                                        "AI Processed",
+                                                        size="xs",
+                                                        c="gray",
+                                                        fw="bold",
+                                                        tt="uppercase",
+                                                    ),
+                                                    dmc.Title(
+                                                        "0",
+                                                        order=2,
+                                                        id="ai-processed-stat",
+                                                        c="pink.6",
+                                                    ),
+                                                ],
+                                                style={"flex": 1},
+                                            ),
+                                        ],
+                                        justify="flex-start",
+                                        align="center",
                                     ),
-                                    dmc.DatePicker(
-                                        id="date-range-filter",
-                                        type="range",
-                                        size="md",
-                                    ),
-                                ]
+                                ],
+                                gap="xs",
                             ),
-                            span={"base": 12, "sm": 6, "md": 4},
-                        ),
-                    ],
-                    gutter="md",
+                        ],
+                        padding="lg",
+                        radius="md",
+                        withBorder=True,
+                        style={
+                            "height": "100%",
+                            "background": "linear-gradient(135deg, rgba(236, 72, 153, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%)",
+                        },
+                    ),
+                    span={"base": 12, "xs": 6, "sm": 4, "md": 3},
                 ),
             ],
-            p="xl",
-            radius="lg",
-            shadow="sm",
-            withBorder=True,
+            gutter="lg",
             style={"marginBottom": "32px"},
         ),
-        # Insights Grid Section
-        dmc.Paper(
+        # Upload & Quick Actions Section
+        dmc.Grid(
             [
-                dmc.Group(
+                # Upload Zone
+                dmc.GridCol(
+                    dmc.Card(
+                        [
+                            dmc.Stack(
+                                [
+                                    dmc.Group(
+                                        [
+                                            DashIconify(
+                                                icon="carbon:cloud-upload",
+                                                width=28,
+                                                color="blue",
+                                            ),
+                                            dmc.Title(
+                                                "Upload Research", order=4, c="blue.6"
+                                            ),
+                                        ],
+                                        gap="sm",
+                                    ),
+                                    dcc.Upload(
+                                        dmc.Center(
+                                            [
+                                                dmc.Stack(
+                                                    [
+                                                        dmc.ThemeIcon(
+                                                            DashIconify(
+                                                                icon="carbon:document-add",
+                                                                width=36,
+                                                            ),
+                                                            size=80,
+                                                            radius="xl",
+                                                            variant="light",
+                                                            color="blue",
+                                                        ),
+                                                        dmc.Text(
+                                                            "Drop PDF file here or click to upload",
+                                                            size="md",
+                                                            fw="normal",
+                                                            ta="center",
+                                                        ),
+                                                        dmc.Text(
+                                                            "Format: YYYYMMDD_issuer_title.pdf",
+                                                            size="sm",
+                                                            c="gray",
+                                                            ta="center",
+                                                        ),
+                                                        dmc.Group(
+                                                            [
+                                                                dmc.Badge(
+                                                                    "PDF",
+                                                                    color="blue",
+                                                                    variant="dot",
+                                                                ),
+                                                                dmc.Badge(
+                                                                    "Max 10MB",
+                                                                    color="cyan",
+                                                                    variant="dot",
+                                                                ),
+                                                                dmc.Badge(
+                                                                    "Auto AI Summary",
+                                                                    color="grape",
+                                                                    variant="dot",
+                                                                ),
+                                                            ],
+                                                            justify="center",
+                                                            gap="xs",
+                                                        ),
+                                                    ],
+                                                    align="center",
+                                                    gap="md",
+                                                ),
+                                            ],
+                                            style={
+                                                "border": "2px dashed #3b82f6",
+                                                "borderRadius": "12px",
+                                                "padding": "32px",
+                                                "cursor": "pointer",
+                                                "transition": "all 0.3s ease",
+                                                "background": "rgba(59, 130, 246, 0.03)",
+                                                "minHeight": "200px",
+                                            },
+                                        ),
+                                        id="upload-pdf",
+                                        multiple=True,
+                                        accept=".pdf",
+                                    ),
+                                    html.Div(id="output-pdf-upload"),
+                                ],
+                                gap="md",
+                            ),
+                        ],
+                        padding="xl",
+                        radius="lg",
+                        withBorder=True,
+                        shadow="sm",
+                    ),
+                    span={"base": 12, "md": 6},
+                ),
+                # Insight Sources
+                dmc.GridCol(
+                    dmc.Stack(
+                        [
+                            dmc.Card(
+                                [
+                                    dmc.Stack(
+                                        [
+                                            # Header with title and add button
+                                            html.Div(
+                                                [
+                                                    dmc.Group(
+                                                        [
+                                                            DashIconify(
+                                                                icon="carbon:rss",
+                                                                width=20,
+                                                            ),
+                                                            dmc.Text(
+                                                                "Publishers",
+                                                                size="sm",
+                                                                fw="bold",
+                                                            ),
+                                                        ],
+                                                        gap="xs",
+                                                        style={"flex": 1},
+                                                    ),
+                                                    dmc.ActionIcon(
+                                                        DashIconify(
+                                                            icon="carbon:add",
+                                                            width=18,
+                                                        ),
+                                                        id="add-publisher-button",
+                                                        variant="light",
+                                                        color="blue",
+                                                        size="md",
+                                                        radius="md",
+                                                    ),
+                                                ],
+                                                style={
+                                                    "display": "flex",
+                                                    "justifyContent": "space-between",
+                                                    "alignItems": "center",
+                                                    "marginBottom": "12px",
+                                                },
+                                            ),
+                                            # Publishers list
+                                            html.Div(
+                                                id="insight-sources-list",
+                                                children=[
+                                                    dmc.Text(
+                                                        "Loading sources...",
+                                                        size="sm",
+                                                        c="gray",
+                                                        ta="center",
+                                                    ),
+                                                ],
+                                                style={
+                                                    "maxHeight": "300px",
+                                                    "overflowY": "auto",
+                                                    "overflowX": "hidden",
+                                                },
+                                            ),
+                                        ],
+                                        gap="sm",
+                                    ),
+                                ],
+                                padding="md",
+                                radius="lg",
+                                withBorder=True,
+                                shadow="sm",
+                            ),
+                        ],
+                        gap="md",
+                    ),
+                    span={"base": 12, "md": 6},
+                ),
+            ],
+            gutter="lg",
+            style={"marginBottom": "32px"},
+        ),
+        # Advanced Search & Filter Bar
+        dmc.Card(
+            [
+                dmc.Stack(
                     [
-                        dmc.Title("📄 Recent Insights", order=4),
+                        # Search bar
+                        dmc.TextInput(
+                            id="insights-search",
+                            placeholder="Search by title, issuer, date (YYYY-MM-DD), or keywords...",
+                            leftSection=DashIconify(icon="carbon:search", width=20),
+                            rightSection=dmc.ActionIcon(
+                                DashIconify(icon="carbon:close", width=16),
+                                variant="subtle",
+                                color="gray",
+                                id="clear-search",
+                            ),
+                            size="lg",
+                            radius="md",
+                        ),
+                        # Filter chips row
                         dmc.Group(
                             [
+                                dmc.ChipGroup(
+                                    [
+                                        dmc.Chip(
+                                            "All",
+                                            value="all",
+                                            variant="filled",
+                                            size="sm",
+                                        ),
+                                        dmc.Chip(
+                                            "Last 7 Days",
+                                            value="7d",
+                                            variant="filled",
+                                            size="sm",
+                                        ),
+                                        dmc.Chip(
+                                            "Last 30 Days",
+                                            value="30d",
+                                            variant="filled",
+                                            size="sm",
+                                        ),
+                                        dmc.Chip(
+                                            "Last 3 Months",
+                                            value="3m",
+                                            variant="filled",
+                                            size="sm",
+                                        ),
+                                    ],
+                                    id="time-filter-chips",
+                                    value="all",
+                                ),
                                 dmc.Button(
-                                    "Refresh",
-                                    id="load-more-insights",
+                                    "Search",
+                                    id="search-button",
                                     leftSection=DashIconify(
-                                        icon="material-symbols:refresh", width=18
+                                        icon="carbon:search", width=16
                                     ),
-                                    variant="light",
-                                    color="blue",
+                                    variant="gradient",
+                                    gradient={"from": "blue", "to": "cyan", "deg": 90},
                                     size="sm",
                                 ),
-                            ]
+                            ],
+                            justify="space-between",
+                            align="center",
+                        ),
+                        # Advanced filters (collapsible)
+                        dmc.Accordion(
+                            [
+                                dmc.AccordionItem(
+                                    [
+                                        dmc.AccordionControl(
+                                            "Advanced Filters",
+                                            icon=DashIconify(
+                                                icon="carbon:filter", width=20
+                                            ),
+                                        ),
+                                        dmc.AccordionPanel(
+                                            dmc.Grid(
+                                                [
+                                                    dmc.GridCol(
+                                                        html.Div(
+                                                            [
+                                                                dmc.Text(
+                                                                    "Sort By",
+                                                                    size="sm",
+                                                                    fw="normal",
+                                                                    style={
+                                                                        "marginBottom": "4px"
+                                                                    },
+                                                                ),
+                                                                dmc.Select(
+                                                                    id="sort-dropdown",
+                                                                    placeholder="Select sort order",
+                                                                    data=[
+                                                                        {
+                                                                            "label": "📅 Newest First",
+                                                                            "value": "date_desc",
+                                                                        },
+                                                                        {
+                                                                            "label": "📅 Oldest First",
+                                                                            "value": "date_asc",
+                                                                        },
+                                                                        {
+                                                                            "label": "🔤 Name (A-Z)",
+                                                                            "value": "name_asc",
+                                                                        },
+                                                                        {
+                                                                            "label": "🔤 Name (Z-A)",
+                                                                            "value": "name_desc",
+                                                                        },
+                                                                    ],
+                                                                    size="sm",
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        span={
+                                                            "base": 12,
+                                                            "sm": 6,
+                                                            "md": 4,
+                                                        },
+                                                    ),
+                                                    dmc.GridCol(
+                                                        html.Div(
+                                                            [
+                                                                dmc.Text(
+                                                                    "Issuer",
+                                                                    size="sm",
+                                                                    fw="normal",
+                                                                    style={
+                                                                        "marginBottom": "4px"
+                                                                    },
+                                                                ),
+                                                                dmc.Select(
+                                                                    id="issuer-filter",
+                                                                    placeholder="All publishers",
+                                                                    data=[
+                                                                        {
+                                                                            "label": "All Issuers",
+                                                                            "value": "all",
+                                                                        },
+                                                                    ],
+                                                                    size="sm",
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        span={
+                                                            "base": 12,
+                                                            "sm": 6,
+                                                            "md": 4,
+                                                        },
+                                                    ),
+                                                    dmc.GridCol(
+                                                        html.Div(
+                                                            [
+                                                                dmc.Text(
+                                                                    "Date Range",
+                                                                    size="sm",
+                                                                    fw="normal",
+                                                                    style={
+                                                                        "marginBottom": "4px"
+                                                                    },
+                                                                ),
+                                                                dmc.DatePicker(
+                                                                    id="date-range-filter",
+                                                                    type="range",
+                                                                    size="sm",
+                                                                ),
+                                                            ]
+                                                        ),
+                                                        span={
+                                                            "base": 12,
+                                                            "sm": 6,
+                                                            "md": 4,
+                                                        },
+                                                    ),
+                                                ],
+                                                gutter="md",
+                                            ),
+                                        ),
+                                    ],
+                                    value="filters",
+                                ),
+                            ],
+                            variant="separated",
                         ),
                     ],
-                    justify="space-between",
-                    style={"marginBottom": "24px"},
-                ),
-                dmc.ScrollArea(
-                    [
-                        html.Div(id="insights-container-wrapper"),
-                        html.Div(id="insights-container"),
-                    ],
-                    h=600,
-                    type="auto",
+                    gap="md",
                 ),
             ],
-            p="xl",
+            padding="xl",
             radius="lg",
-            shadow="sm",
             withBorder=True,
+            shadow="sm",
             style={"marginBottom": "32px"},
         ),
-        # Sources Section
-        sources.layout,
+        # Main content area - either insights list or PDF viewer
+        html.Div(
+            [
+                # Insights Feed - Completely Redesigned (default view)
+                dmc.Card(
+                    [
+                        # Header with load more
+                        dmc.Group(
+                            [
+                                dmc.Group(
+                                    [
+                                        DashIconify(
+                                            icon="carbon:document-multiple-02",
+                                            width=24,
+                                            color="blue",
+                                        ),
+                                        dmc.Title(
+                                            "Research Library", order=3, c="blue.7"
+                                        ),
+                                    ],
+                                    gap="sm",
+                                ),
+                                dmc.Group(
+                                    [
+                                        dmc.Badge(
+                                            id="insights-count-badge",
+                                            children="0 documents",
+                                            size="lg",
+                                            variant="light",
+                                            color="blue",
+                                            leftSection=DashIconify(
+                                                icon="carbon:document", width=14
+                                            ),
+                                        ),
+                                        dmc.Button(
+                                            "Load More",
+                                            id="load-more-insights",
+                                            leftSection=DashIconify(
+                                                icon="carbon:add", width=16
+                                            ),
+                                            variant="light",
+                                            color="blue",
+                                            size="sm",
+                                            radius="md",
+                                        ),
+                                    ],
+                                    gap="sm",
+                                ),
+                            ],
+                            justify="space-between",
+                            align="center",
+                            style={"marginBottom": "24px"},
+                        ),
+                        # Insights container with modern scroll
+                        dmc.Stack(
+                            [
+                                html.Div(id="insights-container-wrapper"),
+                                html.Div(
+                                    id="insights-container",
+                                    style={
+                                        "minHeight": "400px",
+                                    },
+                                ),
+                            ],
+                            gap="md",
+                        ),
+                    ],
+                    padding="xl",
+                    radius="lg",
+                    withBorder=True,
+                    shadow="md",
+                    style={
+                        "marginBottom": "32px",
+                        "background": "linear-gradient(to bottom, #1e293b 0%, #0f172a 100%)",
+                    },
+                ),
+                # PDF Viewer Container (hidden by default)
+                html.Div(
+                    id="pdf-viewer-container",
+                    style={"display": "none"},
+                ),
+            ],
+            id="main-content-area",
+        ),
         # Modal for Summary
         summary_modal,
+        # Add Publisher Modal
+        add_publisher_modal,
         # Data Stores
         dcc.Store(id="insights-data", data=[]),
         dcc.Store(id="total-insights-loaded", data=0),
         dcc.Store(id="search-query", data=""),
         dcc.Store(id="filter-state", data={}),
+        dcc.Store(
+            id="current-view", data="insights-list"
+        ),  # "insights-list" or "pdf-viewer"
+        dcc.Store(
+            id="current-insight", data=None
+        ),  # Store current insight data for PDF viewer
     ],
     size="xl",
     px="md",

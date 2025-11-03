@@ -33,87 +33,91 @@ summary_modal = dbc.Modal(
                     [
                         dbc.Col(
                             [
-                                html.H4(
-                                    "📄 Insight Summary",
-                                    className="mb-0",
-                                    style={
-                                        "color": COLORS["text_primary"],
-                                        "fontWeight": "600",
-                                    },
-                                ),
-                                html.Small(
-                                    "AI-generated insights from your document",
-                                    style={
-                                        "color": COLORS["text_secondary"],
-                                        "fontSize": "0.9rem",
-                                    },
+                                html.Div(
+                                    [
+                                        html.I(
+                                            className="fas fa-file-invoice me-2",
+                                            style={
+                                                "color": COLORS["primary"],
+                                                "fontSize": "1.2rem",
+                                            },
+                                        ),
+                                        html.Span(
+                                            "Insight Summary",
+                                            style={
+                                                "color": COLORS["text_primary"],
+                                                "fontWeight": "600",
+                                                "fontSize": "1.3rem",
+                                                "letterSpacing": "-0.01em",
+                                            },
+                                        ),
+                                    ],
+                                    style={"display": "flex", "alignItems": "center"},
                                 ),
                             ],
-                            md=8,
+                            md=9,
                         ),
                         dbc.Col(
                             [
                                 dbc.ButtonGroup(
                                     [
                                         dbc.Button(
-                                            [
-                                                html.I(
-                                                    className="fas fa-volume-up me-1"
-                                                ),
-                                                "Read",
-                                            ],
+                                            html.I(className="fas fa-volume-up"),
                                             id="read-summary",
                                             color="success",
                                             size="sm",
                                             n_clicks=0,
+                                            title="Read aloud",
                                             style={
-                                                "borderRadius": "6px",
-                                                "fontSize": "0.8rem",
+                                                "borderRadius": "6px 0 0 6px",
+                                                "padding": "6px 12px",
                                             },
                                         ),
                                         dbc.Button(
-                                            [
-                                                html.I(className="fas fa-stop me-1"),
-                                                "Stop",
-                                            ],
+                                            html.I(className="fas fa-stop"),
                                             id="stop-summary",
                                             color="warning",
                                             size="sm",
                                             n_clicks=0,
+                                            title="Stop reading",
                                             style={
-                                                "borderRadius": "6px",
-                                                "fontSize": "0.8rem",
-                                            },
-                                        ),
-                                        dbc.Button(
-                                            [
-                                                html.I(className="fas fa-times me-1"),
-                                                "Close",
-                                            ],
-                                            id="close-modal",
-                                            color="secondary",
-                                            size="sm",
-                                            n_clicks=0,
-                                            style={
-                                                "borderRadius": "6px",
-                                                "fontSize": "0.8rem",
+                                                "borderRadius": "0",
+                                                "padding": "6px 12px",
                                             },
                                         ),
                                     ],
-                                    className="float-end",
+                                    size="sm",
+                                ),
+                                dbc.Button(
+                                    html.I(
+                                        className="fas fa-times",
+                                        style={"fontSize": "1.2rem"},
+                                    ),
+                                    id="close-modal",
+                                    color="link",
+                                    size="sm",
+                                    n_clicks=0,
+                                    className="ms-2 text-secondary",
+                                    title="Close",
+                                    style={
+                                        "padding": "6px 10px",
+                                        "borderRadius": "6px",
+                                    },
                                 ),
                             ],
-                            md=4,
-                            className="d-flex justify-content-end",
+                            md=3,
+                            className="d-flex justify-content-end align-items-center",
                         ),
                     ],
                     align="center",
                 ),
             ],
+            close_button=False,
             style={
                 "background": f"linear-gradient(135deg, {COLORS['surface']} 0%, {COLORS['surface_light']} 100%)",
-                "borderBottom": f"2px solid {COLORS['border']}",
-                "padding": "20px",
+                "borderBottom": f"2px solid {COLORS['primary']}",
+                "padding": "16px 24px",
+                "boxShadow": "0 2px 8px rgba(0, 0, 0, 0.15)",
             },
         ),
         # Enhanced Modal Body
@@ -129,14 +133,15 @@ summary_modal = dbc.Modal(
                                 "color": COLORS["text_primary"],
                                 "whiteSpace": "pre-wrap",
                                 "overflowY": "auto",
-                                "fontSize": "1rem",
-                                "lineHeight": "1.6",
-                                "padding": "24px",
-                                "borderRadius": "8px",
+                                "fontSize": "1.05rem",
+                                "lineHeight": "1.75",
+                                "padding": "28px",
+                                "borderRadius": "12px",
                                 "border": f"1px solid {COLORS['border']}",
                                 "minHeight": "400px",
-                                "maxHeight": "70vh",
+                                "maxHeight": "calc(80vh - 240px)",
                                 "fontFamily": "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                                "boxShadow": "inset 0 2px 8px rgba(0, 0, 0, 0.3)",
                             },
                         ),
                         # Reading Progress Indicator
@@ -147,9 +152,10 @@ summary_modal = dbc.Modal(
                                     style={
                                         "width": "0%",
                                         "height": "3px",
-                                        "backgroundColor": COLORS["primary"],
+                                        "background": f"linear-gradient(90deg, {COLORS['primary']}, {COLORS['success']})",
                                         "borderRadius": "2px",
                                         "transition": "width 0.3s ease",
+                                        "boxShadow": f"0 0 8px {COLORS['primary']}",
                                     },
                                 ),
                             ],
@@ -163,144 +169,96 @@ summary_modal = dbc.Modal(
                         ),
                     ]
                 ),
-                # Action Buttons Row
+                # Publishers Section
                 html.Div(
                     [
-                        dbc.Row(
+                        html.Div(
                             [
-                                dbc.Col(
-                                    [
-                                        dbc.Button(
-                                            [
-                                                html.I(className="fas fa-copy me-2"),
-                                                "Copy Summary",
-                                            ],
-                                            id="copy-summary-btn",
-                                            color="outline-primary",
-                                            size="sm",
-                                            style={
-                                                "borderRadius": "6px",
-                                                "fontSize": "0.85rem",
-                                            },
-                                        ),
-                                    ],
-                                    md=3,
+                                html.I(
+                                    className="fas fa-building me-2",
+                                    style={"color": COLORS["primary"]},
                                 ),
-                                dbc.Col(
-                                    [
-                                        dbc.Button(
-                                            [
-                                                html.I(
-                                                    className="fas fa-download me-2"
-                                                ),
-                                                "Export as Text",
-                                            ],
-                                            id="export-summary-btn",
-                                            color="outline-success",
-                                            size="sm",
-                                            style={
-                                                "borderRadius": "6px",
-                                                "fontSize": "0.85rem",
-                                            },
-                                        ),
-                                    ],
-                                    md=3,
-                                ),
-                                dbc.Col(
-                                    [
-                                        dbc.Button(
-                                            [
-                                                html.I(className="fas fa-share me-2"),
-                                                "Share Summary",
-                                            ],
-                                            id="share-summary-btn",
-                                            color="outline-info",
-                                            size="sm",
-                                            style={
-                                                "borderRadius": "6px",
-                                                "fontSize": "0.85rem",
-                                            },
-                                        ),
-                                    ],
-                                    md=3,
-                                ),
-                                dbc.Col(
-                                    [
-                                        dbc.Button(
-                                            [
-                                                html.I(className="fas fa-star me-2"),
-                                                "Bookmark",
-                                            ],
-                                            id="bookmark-summary-btn",
-                                            color="outline-warning",
-                                            size="sm",
-                                            style={
-                                                "borderRadius": "6px",
-                                                "fontSize": "0.85rem",
-                                            },
-                                        ),
-                                    ],
-                                    md=3,
+                                html.Span(
+                                    "Publishers",
+                                    style={
+                                        "color": COLORS["text_primary"],
+                                        "fontWeight": "600",
+                                        "fontSize": "1rem",
+                                    },
                                 ),
                             ],
-                            className="mt-4",
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                                "marginBottom": "12px",
+                                "paddingBottom": "8px",
+                                "borderBottom": f"1px solid {COLORS['border']}",
+                            },
+                        ),
+                        html.Div(
+                            id="modal-publishers-content",
+                            style={
+                                "display": "flex",
+                                "flexWrap": "wrap",
+                                "gap": "12px",
+                            },
                         ),
                     ],
                     className="mt-3",
+                    style={
+                        "padding": "16px",
+                        "backgroundColor": COLORS["background"],
+                        "borderRadius": "8px",
+                        "border": f"1px solid {COLORS['border']}",
+                    },
                 ),
             ],
             style={
                 "backgroundColor": COLORS["surface"],
-                "padding": "20px",
+                "padding": "20px 24px",
+                "height": "calc(80vh - 140px)",
+                "overflowY": "auto",
             },
         ),
-        # Enhanced Footer
+        # Enhanced Footer - Compact
         dbc.ModalFooter(
             [
-                dbc.Row(
+                html.Div(
                     [
-                        dbc.Col(
+                        html.Small(
                             [
-                                html.Small(
-                                    [
-                                        html.I(className="fas fa-info-circle me-1"),
-                                        "Powered by AI • Generated insights may vary in accuracy",
-                                    ],
-                                    style={
-                                        "color": COLORS["text_secondary"],
-                                        "fontSize": "0.8rem",
-                                    },
-                                ),
+                                html.I(className="fas fa-info-circle me-1"),
+                                "Powered by AI",
                             ],
-                            md=8,
+                            style={
+                                "color": COLORS["text_secondary"],
+                                "fontSize": "0.75rem",
+                            },
                         ),
-                        dbc.Col(
+                        html.Small(
                             [
-                                html.Small(
-                                    [
-                                        html.I(className="fas fa-clock me-1"),
-                                        "Last updated: ",
-                                        html.Span(
-                                            id="modal-last-updated", children="Just now"
-                                        ),
-                                    ],
-                                    style={
-                                        "color": COLORS["text_secondary"],
-                                        "fontSize": "0.8rem",
-                                    },
-                                ),
+                                html.I(className="fas fa-clock me-1 ms-3"),
+                                html.Span(id="modal-last-updated", children="Just now"),
                             ],
-                            md=4,
-                            className="text-end",
+                            style={
+                                "color": COLORS["text_secondary"],
+                                "fontSize": "0.75rem",
+                            },
                         ),
                     ],
-                    align="center",
+                    style={
+                        "display": "flex",
+                        "justifyContent": "center",
+                        "alignItems": "center",
+                        "width": "100%",
+                    },
                 ),
             ],
             style={
                 "background": f"linear-gradient(135deg, {COLORS['surface']} 0%, {COLORS['surface_light']} 100%)",
                 "borderTop": f"1px solid {COLORS['border']}",
-                "padding": "16px 20px",
+                "padding": "12px 24px",
+                "boxShadow": "0 -2px 8px rgba(0, 0, 0, 0.1)",
             },
         ),
     ],
@@ -312,17 +270,20 @@ summary_modal = dbc.Modal(
     scrollable=True,
     size="xl",
     style={
-        "maxWidth": "95vw",
-        "maxHeight": "95vh",
+        "width": "80vw",
+        "height": "80vh",
+        "maxWidth": "80vw",
+        "maxHeight": "80vh",
         "margin": "auto",
         "position": "fixed",
-        "top": "2.5vh",
+        "top": "50%",
         "left": "50%",
-        "transform": "translateX(-50%)",
+        "transform": "translate(-50%, -50%)",
         "zIndex": "9999",
-        "boxShadow": "0 25px 50px -12px rgba(0, 0, 0, 0.8)",
-        "borderRadius": "16px",
+        "boxShadow": "0 25px 50px -12px rgba(0, 0, 0, 0.9), 0 0 100px rgba(59, 130, 246, 0.2)",
+        "borderRadius": "20px",
         "overflow": "hidden",
+        "border": f"1px solid {COLORS['border']}",
     },
     className="modern-modal",
 )

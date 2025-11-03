@@ -1,8 +1,22 @@
 import pandas as pd
+import numpy as np
 from pandas.tseries.offsets import MonthEnd
 import plotly.graph_objects as go
 from ix.misc import theme
-from ix.db.query import Offset, Cycle, Series, StandardScalar
+
+from ix.db.query import (
+    Series,
+    StandardScalar,
+    Offset,
+    Cycle,
+    MultiSeries,
+    MonthEndOffset,
+    M2,
+    InvestorPositions,
+    NumOfOECDLeadingPositiveMoM,
+    NumOfPmiMfgPositiveMoM,
+    NumOfPmiServicesPositiveMoM,
+)
 from .base import timeseries_layout
 
 
@@ -28,7 +42,7 @@ def credit_balance_deviation_from_6m_trend() -> go.Figure:
             )
         )
 
-    business = Series("BUSLOANS", freq="ME")
+    business = Series("BUSLOANS:PX_LAST", freq="ME")
     business_6m_trend = business.rolling(6).mean()
     business_deviation = business.div(business_6m_trend).dropna() - 1
     if not business_deviation.empty:
@@ -79,7 +93,7 @@ def manufacturing_orders_us():
                 hovertemplate="<b>ISM Manufacturing</b>: %{y:.2f}<extra></extra>",
             )
         )
-    new_orders = Series("CENANXANO").pct_change(12).mul(100)
+    new_orders = Series("CENANXANO:PX_LAST").pct_change(12).mul(100)
     if not new_orders.empty:
         fig.add_trace(
             go.Scatter(
@@ -169,7 +183,7 @@ def manufacturing_activity_us():
     return fig
 
 
-from ix.db.query import MonthEndOffset
+# from ix.db.query import MonthEndOffset  # Commented out - MongoDB not in use
 
 
 def conference_board_leading_index():
@@ -233,17 +247,18 @@ def financial_conditions_us():
                 StandardScalar(-Series("TRYUS10Y:PX_YTM", freq="W").ffill(), 52 * 3),
                 StandardScalar(-Series("TRYUS30Y:PX_YTM", freq="W").ffill(), 52 * 3),
                 StandardScalar(Series("SPX Index:PX_LAST", freq="W").ffill(), 52 * 3),
-                StandardScalar(-Series("MORTGAGE30US", freq="W").ffill(), 52 * 3),
+                StandardScalar(
+                    -Series("MORTGAGE30US:PX_LAST", freq="W").ffill(), 52 * 3
+                ),
                 StandardScalar(-Series("CL1 Comdty:PX_LAST", freq="W").ffill(), 52 * 3),
-                StandardScalar(-Series("BAMLC0A0CM", freq="W").ffill(), 52 * 3),
+                StandardScalar(-Series("BAMLC0A0CM:PX_LAST", freq="W").ffill(), 52 * 3),
             ],
             axis=1,
         )
-        .mean(axis=1)
-        .ewm(span=4 * 12)
-        .mean()
     )
-
+    fci_us.index = pd.to_datetime(fci_us.index)
+    fci_us = fci_us.sort_index()
+    fci_us = fci_us.mean(axis=1).ewm(span=4 * 12).mean()
     fci = Offset(fci_us.resample("W").last().ffill().loc["2000":], months=6)
     cyc = Cycle(fci)
     ism = Series("ISMPMI_M:PX_LAST", freq="ME")
@@ -318,7 +333,7 @@ def financial_conditions_us():
     return fig
 
 
-from ix.db.query import M2
+# from ix.db.query import M2  # Commented out - MongoDB not in use
 
 
 def global_liquidity_cycle():
@@ -328,6 +343,8 @@ def global_liquidity_cycle():
 
     gl = Offset(M2("ME").WorldTotal.pct_change(12), months=9)
     gl = _normalize_percent(gl)
+    # Remove infinities and NaNs before cycle fitting
+    gl = gl.replace([np.inf, -np.inf], np.nan).dropna()
     cyc = Cycle(gl, 60)
     ism = Series("ISMPMI_M:PX_LAST", freq="ME")
 
@@ -495,7 +512,7 @@ def global_liquidity_growth_by_central_banks():
     return fig
 
 
-from ix.db.query import Series
+# from ix.db.query import Series  # Commented out - MongoDB not in use
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -503,10 +520,10 @@ import plotly.graph_objects as go
 def credit_impulse_us():
     data = pd.DataFrame(
         {
-            "BACROUTP": Series("US.BACROUTP", freq="ME"),
-            "FRBBCABLCCBA@US": Series("FRBBCABLCCBA@US", freq="ME"),
-            "FRBBCABLCRCBA@US": Series("FRBBCABLCRCBA@US", freq="ME"),
-            "GDPN": Series("US.GDPN"),
+            "BACROUTP": Series("US.BACROUTP:PX_LAST", freq="ME"),
+            "FRBBCABLCCBA@US": Series("FRBBCABLCCBA@US:PX_LAST", freq="ME"),
+            "FRBBCABLCRCBA@US": Series("FRBBCABLCRCBA@US:PX_LAST", freq="ME"),
+            "GDPN": Series("US.GDPN:PX_LAST"),
         }
     )
     data.ffill(inplace=True)
@@ -518,8 +535,8 @@ def credit_impulse_us():
 def credit_impulse_cn():
     data = pd.DataFrame(
         {
-            "CN": Series("CNBC2252509", freq="ME"),
-            "GDPN": Series("CN.GDPNNSA", freq="ME"),
+            "CN": Series("CNBC2252509:PX_LAST", freq="ME"),
+            "GDPN": Series("CN.GDPNNSA:PX_LAST", freq="ME"),
         }
     )
     data.ffill(inplace=True)
@@ -581,7 +598,7 @@ def credit_impulse_us_vs_cn():
     return fig
 
 
-from ix.db.query import InvestorPositions
+# from ix.db.query import InvestorPositions  # Commented out - MongoDB not in use
 import plotly.graph_objects as go
 
 
@@ -611,7 +628,7 @@ def investor_positions():
     return fig
 
 
-from ix.db import Series
+# from ix.db import Series  # Commented out - MongoDB not in use
 import plotly.graph_objects as go
 import pandas as pd
 
@@ -702,7 +719,8 @@ def fed_net_liquidity_vs_sp500():
 
 
 import pandas as pd
-from ix.db.query import MultiSeries
+
+# from ix.db.query import MultiSeries  # Commented out - MongoDB not in use
 
 
 class AiCapex:
@@ -1004,13 +1022,17 @@ def manufacturing_activity_us_and_dollar() -> go.Figure:
     return fig
 
 
-from ix.db.query import NumOfOECDLeadingPositiveMoM
+# from ix.db.query import NumOfOECDLeadingPositiveMoM  # Commented out - MongoDB not in use
 
 
 def oecd_diffusion_index() -> go.Figure:
     fig = go.Figure()
     fig.update_layout(timeseries_layout)
-    oecd_cli_diffusion = MonthEndOffset(NumOfOECDLeadingPositiveMoM(), 1)
+    # Ensure pandas Series and clean values to avoid NumPy concat issues
+    _raw_cli = NumOfOECDLeadingPositiveMoM()
+    _cli = _raw_cli if isinstance(_raw_cli, pd.Series) else pd.Series(_raw_cli)
+    _cli = pd.to_numeric(_cli, errors="coerce").dropna()
+    oecd_cli_diffusion = MonthEndOffset(_cli, 1)
     if not oecd_cli_diffusion.empty:
         fig.add_trace(
             go.Scatter(
@@ -1053,7 +1075,7 @@ def oecd_diffusion_index() -> go.Figure:
     return fig
 
 
-from ix.db.query import NumOfPmiMfgPositiveMoM
+# from ix.db.query import NumOfPmiMfgPositiveMoM  # Commented out - MongoDB not in use
 
 
 def pmi_manufacturing_diffusion_index() -> go.Figure:
@@ -1102,7 +1124,7 @@ def pmi_manufacturing_diffusion_index() -> go.Figure:
     return fig
 
 
-from ix.db.query import NumOfPmiServicesPositiveMoM
+# from ix.db.query import NumOfPmiServicesPositiveMoM  # Commented out - MongoDB not in use
 
 
 def pmi_services_diffusion_index() -> go.Figure:
@@ -1155,7 +1177,8 @@ import pandas as pd
 from pandas.tseries.offsets import MonthEnd
 import plotly.graph_objects as go
 from ix.misc import theme
-from ix.db.query import Offset, Cycle, Series, StandardScalar
+
+# from ix.db.query import Offset, Cycle, Series, StandardScalar  # Commented out - MongoDB not in use
 from ix.fig.base import timeseries_layout
 
 
@@ -1242,6 +1265,59 @@ def eps_yoy_growth() -> go.Figure:
             "yaxis2": dict(
                 tickformat=".0%",
                 range=[-0.2, 0.6],
+            ),
+        }
+    )
+
+    return fig
+
+
+def large_bank_credit_lending_conditions() -> go.Figure:
+
+    # =GetSeries({"Loans & Leases in Bank Credit YoY=Series('FRBBCABLBA@US',freq='W-Fri').ffill().pct_change(52).mul(100).dropna()","SLOOS, C&I Standards Large & Medium Firms (12M Lead)=MonthEndOffset(Series('USSU0486263',freq='ME').ffill(),12)"},EOMONTH(AsOfDate,-240))
+
+    fig = go.Figure()
+    fig.update_layout(timeseries_layout)
+
+    consumer = Series("FRBBCABLBA@US:PX_LAST", freq="W-Fri").ffill().pct_change(52).mul(100).dropna()
+    if not consumer.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=consumer.index,
+                y=consumer.values,
+                name=(f"Loans & Leases in Bank Credit YoY({consumer.iloc[-1]:.2f})"),
+                line=dict(color=theme.colors.blue[400], width=3),
+                hovertemplate="<b>Loans & Leases in Bank Credit YoY</b>: %{y:.2f}<extra></extra>",
+                yaxis="y1",
+            )
+        )
+
+    business = MonthEndOffset(Series("USSU0486263:PX_LAST", freq="ME").ffill(), 12)
+    if not business.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=business.index,
+                y=business.values,
+                name=(f"Loans Standards ({business.iloc[-1]:.2f}) [R]"),
+                line=dict(color=theme.colors.red[400], width=3),
+                hovertemplate="<b>Loans Standards</b>: %{y:.2f}<extra></extra>",
+                yaxis="y2",
+            )
+        )
+
+    fig.update_layout(
+        {
+            "title": dict(
+                text=f"Credit Lending Conditions (US)",
+            ),
+            "yaxis": dict(
+                # title=dict(text="Consumer"),
+                tickformat=".0f",
+            ),
+            "yaxis2": dict(
+                # title=dict(text="Business"),
+                tickformat=".0f",
+                autorange="reversed",
             ),
         }
     )

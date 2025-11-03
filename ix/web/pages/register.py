@@ -8,7 +8,8 @@ import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from dash.exceptions import PreventUpdate
 from ix.misc import get_logger
-from ix.db.models import User
+
+# from ix.db.models import User  # Commented out - MongoDB not in use
 
 # Register page
 dash.register_page(__name__, path="/register", title="Register", name="Register")

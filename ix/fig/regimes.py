@@ -1,5 +1,6 @@
 from typing import Optional
 import pandas as pd
+
 from ix.db.query import Series
 import plotly.graph_objects as go
 from ix.core.tech.regime import Regime1

@@ -2,7 +2,8 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from ix.db import get_timeseries
+
+# from ix.db import get_timeseries  # Commented out - MongoDB not in use
 from ix.misc import get_logger
 
 logger = get_logger(__name__)

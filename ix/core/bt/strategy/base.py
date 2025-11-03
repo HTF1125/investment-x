@@ -1,5 +1,6 @@
 import pandas as pd
-from ix import db
+
+# from ix import db  # Commented out - MongoDB not in use
 from ix.misc import get_logger, as_date
 from ix.core.perf import to_ann_return, to_ann_volatility
 
@@ -8,7 +9,11 @@ logger = get_logger(__name__)
 
 class Strategy:
     principal: int = 10_000
-    assets: list[str] = ["SPY US Equity", "AGG US Equity", "TLT US Equity",]
+    assets: list[str] = [
+        "SPY US Equity",
+        "AGG US Equity",
+        "TLT US Equity",
+    ]
     bm_assets: dict[str, float] = {"SPY US Equity": 1.00}
     start: pd.Timestamp = pd.Timestamp("2020-1-3")
     frequency: str = "ME"
@@ -24,10 +29,9 @@ class Strategy:
         self.c = pd.Series(dtype=float)
         self.a = pd.Series(dtype=float)
         self.pxs = pd.DataFrame(dtype=float)
-        self.db = (
-            db.Strategy.find_one({"code": self.__class__.__name__}).run()
-            or db.Strategy(code=self.__class__.__name__)
-        )
+        self.db = db.Strategy.find_one(
+            {"code": self.__class__.__name__}
+        ).run() or db.Strategy(code=self.__class__.__name__)
         if self.db.book.d:
             self.d = pd.Timestamp(self.db.book.d[-1])
             self.v = self.db.book.v[-1]

@@ -39,7 +39,7 @@ use not bullet points, just use normal text foramt.
 Content :
     """
 
-    def __init__(self, api_key: str, model: str = "qwen-plus"):
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
         """
         Initializes the PDFSummarizer class.
 
@@ -49,7 +49,6 @@ Content :
         """
         self.client = OpenAI(
             api_key=api_key,
-            base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
         )
         self.model = model
 

@@ -16,8 +16,9 @@ from dash import html, callback, Input, Output, State, no_update, ALL
 from dash.exceptions import PreventUpdate
 
 from ix.db.client import get_insights
-from ix.db.models import Insight
-from ix.db.boto import Boto
+from ix.db.models import Insights
+
+# from ix.db.boto import Boto  # Removed - old db module
 from ix.misc.terminal import get_logger
 from ix.misc import PDFSummarizer, Settings
 from .insight_card import create_insight_card
@@ -666,41 +667,41 @@ def handle_enhanced_upload(
             )
 
         # Create insight record
-        insight = Insight(
+        insight = Insights(
             published_date=published_date, issuer=issuer, name=name, status="processing"
-        ).create()
+        )
 
-        # Save PDF to storage
-        filename_pdf = f"{insight.id}.pdf"
-        boto_instance = Boto()
+        # Save PDF to storage - commented out (Boto removed)
+        # filename_pdf = f"{insight.id}.pdf"
+        # boto_instance = Boto()
+        # try:
+        #     boto_instance.save_pdf(pdf_content=decoded, filename=filename_pdf)
+        # except Exception as e:
+        #     logger.error(f"Error saving PDF to storage: {e}")
+        # insight.delete()  # Clean up if storage fails - commented out
 
-        try:
-            boto_instance.save_pdf(pdf_content=decoded, filename=filename_pdf)
-        except Exception as e:
-            logger.error(f"Error saving PDF to storage: {e}")
-            insight.delete()  # Clean up if storage fails
-            return (
-                html.Div(
-                    [
-                        html.I(
-                            className="fas fa-exclamation-triangle",
-                            style={"color": "#ef4444", "marginRight": "8px"},
-                        ),
-                        f"Failed to save PDF to storage: {str(e)}",
-                    ],
-                    style={
-                        "backgroundColor": "rgba(239, 68, 68, 0.1)",
-                        "border": "1px solid rgba(239, 68, 68, 0.3)",
-                        "borderRadius": "8px",
-                        "padding": "15px",
-                        "color": "#fca5a5",
-                        "display": "flex",
-                        "alignItems": "center",
-                        "justifyContent": "center",
-                    },
-                ),
-                None,
-            )
+        return (
+            html.Div(
+                [
+                    html.I(
+                        className="fas fa-exclamation-triangle",
+                        style={"color": "#ef4444", "marginRight": "8px"},
+                    ),
+                    "PDF storage temporarily disabled",
+                ],
+                style={
+                    "backgroundColor": "rgba(239, 68, 68, 0.1)",
+                    "border": "1px solid rgba(239, 68, 68, 0.3)",
+                    "borderRadius": "8px",
+                    "padding": "15px",
+                    "color": "#fca5a5",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                },
+            ),
+            None,
+        )
 
         # Generate AI summary
         try:

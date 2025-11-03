@@ -34,8 +34,9 @@ class Connection:
                 )
 
                 # MongoDB client setup with improved configuration
+                settings = Settings()
                 self.client = MongoClient(
-                    Settings.db_url,
+                    settings.db_url,
                     serverSelectionTimeoutMS=10000,  # Increased timeout
                     connectTimeoutMS=15000,  # Increased timeout
                     socketTimeoutMS=20000,  # Socket timeout
@@ -52,7 +53,7 @@ class Connection:
                 self.client.admin.command("ping")
 
                 # Select database
-                self.database = self.client[Settings.db_name]
+                self.database = self.client[settings.db_name]
 
                 # Initialize Bunnet ODM
                 init_bunnet(
@@ -61,7 +62,7 @@ class Connection:
                 )
 
                 self._is_connected = True
-                logger.info(f"Successfully connected to MongoDB: {Settings.db_name}")
+                logger.info(f"Successfully connected to MongoDB: {settings.db_name}")
                 return True
 
             except errors.ServerSelectionTimeoutError as e:

@@ -3,6 +3,26 @@ from ix.core import StandardScaler
 import pandas as pd
 
 
+def FinancialConditionsIndexUS() -> pd.Series:
+    fci_us = pd.concat(
+        [
+            StandardScaler(-Series("DXY Index:PX_LAST", freq="W").ffill(), 52 * 3),
+            StandardScaler(-Series("TRYUS10Y:PX_YTM", freq="W").ffill(), 52 * 3),
+            StandardScaler(-Series("TRYUS30Y:PX_YTM", freq="W").ffill(), 52 * 3),
+            StandardScaler(Series("SPX Index:PX_LAST", freq="W").ffill(), 52 * 3),
+            StandardScaler(-Series("MORTGAGE30US:PX_LAST", freq="W").ffill(), 52 * 3),
+            StandardScaler(-Series("CL1 Comdty:PX_LAST", freq="W").ffill(), 52 * 3),
+            StandardScaler(-Series("BAMLC0A0CM:PX_LAST", freq="W").ffill(), 52 * 3),
+        ],
+        axis=1,
+    )
+    fci_us.index = pd.to_datetime(fci_us.index)
+    fci_us = fci_us.sort_index()
+    fci_us = fci_us.mean(axis=1).ewm(span=4 * 12).mean()
+    fci_us.name = "Financial Conditions US"
+    return fci_us
+
+
 def financial_conditions_index_us() -> pd.Series:
     raw = pd.concat(
         [

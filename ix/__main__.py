@@ -132,6 +132,10 @@ def cli(
     Examples:
 
     \b
+    # Run with default configuration
+    python -m ix
+
+    \b
     # Run with local MongoDB (using .env.local)
     python -m ix --env local
 
@@ -168,15 +172,6 @@ def cli(
     if db_url:
         os.environ["DB_URL"] = db_url
         logger.info("Using database URL from command line argument")
-
-    # Validate database connection unless skipped
-    if not skip_db_check:
-        if not validate_database_connection():
-            logger.error("Database validation failed. Exiting...")
-            logger.info("Use --skip-db-check to bypass this check (not recommended)")
-            sys.exit(1)
-    else:
-        logger.warning("Skipping database connection validation")
 
     # Determine port
     if port is None:

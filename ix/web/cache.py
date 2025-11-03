@@ -190,12 +190,44 @@ def get_cached_universe_data(
     Cache universe data with 5-minute expiration.
     This replaces the lru_cache version with time-based caching.
     """
-    try:
-        from ix.db import Universe
+    from ix.db import models
 
-        universe_db = Universe.from_name(universe_name)
-        pxs = universe_db.get_series(field="PX_LAST")
-        result = pxs.loc[start_date:end_date]
+    try:
+        # Get universe from MongoDB using Bunnet ODM
+        universe_db = models.Universe.find_one(
+            models.Universe.name == universe_name
+        ).run()
+        if not universe_db:
+            logger.warning(f"Universe '{universe_name}' not found")
+            return pd.DataFrame()
+
+        # Get assets and build timeseries DataFrame
+        assets = universe_db.assets
+        asset_codes = [asset.code + ":PX_LAST" for asset in assets if asset.code]
+
+        if not asset_codes:
+            return pd.DataFrame()
+
+        # Fetch all timeseries using Bunnet ODM
+        ts_list = []
+        for code in asset_codes:
+            ts = models.Timeseries.find_one(models.Timeseries.code == code).run()
+            if ts:
+                ts_list.append(ts)
+
+        # Build DataFrame with asset names as columns
+        series_dict = {}
+        for ts in ts_list:
+            for asset in assets:
+                if asset.code and asset.code + ":PX_LAST" == ts.code:
+                    series_dict[asset.name or asset.code] = ts.data
+                    break
+
+        pxs = pd.DataFrame(series_dict)
+
+        # Apply date range filter
+        result = pxs.loc[start_date:end_date] if not pxs.empty else pd.DataFrame()
+
         logger.info(
             f"Loaded and cached data for {universe_name} ({start_date} to {end_date})"
         )

@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from ix.core.perf import to_log_return
-from ix import db, misc
+
+# from ix import db  # Commented out - MongoDB not in use
+from ix import misc
 
 logger = misc.get_logger(__name__)
 
@@ -136,7 +138,9 @@ class OecdCliUsChg1(Signal):
         DATE_SHIFT_DAYS: int = 20  # Days to shift the signal forward
         CLIP_RANGE_INITIAL: tuple = (-2, 2)  # Initial clipping range before scaling
         SCALE_FACTOR: float = 0.5  # Factor to scale the clipped signal
-        raw_data = get_px_last(codes=["USA.LOLITOAA.STSA"]).squeeze().ewm(span=EWM_SPAN).mean()
+        raw_data = (
+            get_px_last(codes=["USA.LOLITOAA.STSA"]).squeeze().ewm(span=EWM_SPAN).mean()
+        )
         raw_data.name = "OecdCliUs"
         roc_data = raw_data.diff().dropna()
         roroc_data = roc_data.diff().dropna()
@@ -156,17 +160,11 @@ class OecdCliUsChg1(Signal):
         return shifted_signal
 
 
-
-
-
 class UsLei(Signal):
 
     def fit(self) -> pd.Series:
 
         lei = get_px_last(codes=["USLEI"])
-
-
-
 
 
 class UsIsmPmiManu(Signal):

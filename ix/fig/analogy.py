@@ -1,6 +1,6 @@
 import plotly.graph_objects as go
-from ix.db import Series
-from ix.db.query import Offset
+
+from ix.db.query import Offset, Series
 from ix.misc import theme
 from .base import timeseries_layout
 

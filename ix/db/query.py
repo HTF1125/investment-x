@@ -7,8 +7,11 @@ from cachetools import TTLCache, cached
 from ix import core
 from ix.misc.date import oneyearbefore, today
 
-# 최대 32개 엔트리, TTL 600초
-cacher = TTLCache(maxsize=32, ttl=600)
+import pandas as pd
+from ix.misc.date import today
+from cachetools import cached, TTLCache
+
+cache = TTLCache(maxsize=128, ttl=600)
 
 
 def Regime1(series) -> pd.Series:
@@ -38,13 +41,6 @@ def MultiSeries(
     return pd.concat(series_list, axis=1)
 
 
-import pandas as pd
-from ix.misc.date import today
-from cachetools import cached, TTLCache
-
-cache = TTLCache(maxsize=128, ttl=600)
-
-
 @cached(cache)
 def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Series:
     """
@@ -56,12 +52,18 @@ def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Se
     """
     try:
         # Alias handling first, only if there isn't a direct match
+
+        if ":" not in code:
+            code = f"{code}:PX_LAST"
+        code = code.upper()
+
         ts = Timeseries.find_one({"code": code}).run()
         if ts is None and "=" in code:
             name, new_code = code.split("=", maxsplit=1)
-            s = Series(code=new_code, freq=freq)
+            s = Series(code=new_code, freq=freq).sort_index()
             s.name = name
             return s
+
 
         if ts is None:
             # No series found and not an alias pattern
@@ -86,9 +88,7 @@ def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Se
         if target_freq:
             try:
                 # Resample to last observation in each bin; drop empty bins
-                s = s.resample(str(target_freq)).last().dropna()
-                # Enforce bounds again post-resample
-                s = s.loc[(s.index >= start_dt) & (s.index <= end_dt)]
+                s = s.dropna().resample(str(target_freq)).last().dropna()
             except Exception:
                 # If target_freq is invalid, fall back to unsampled series
                 pass
@@ -745,6 +745,7 @@ def NumOfPmiMfgPositiveMoM():
         "NTCPMIMFGNSA_CN:PX_LAST",
     ]
     data = pd.DataFrame({code: Series(code) for code in codes}).ffill().diff()
+    data = data.dropna(thresh=10)
     df_numeric = data.apply(pd.to_numeric, errors="coerce")
     positive_counts = (df_numeric > 0).sum(axis=1)
     valid_counts = df_numeric.notna().sum(axis=1)

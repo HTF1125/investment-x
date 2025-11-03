@@ -1,6 +1,4 @@
-"""
-
-"""
+""" """
 
 from .conn import *
 from .boto import Boto

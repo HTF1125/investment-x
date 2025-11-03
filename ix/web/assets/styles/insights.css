@@ -1,0 +1,499 @@
+/*
+   Investment Insights Hub - Custom Styles
+   Modern animations and hover effects for the redesigned insights page
+*/
+
+/* Card hover effects */
+.insight-card-modern {
+    position: relative;
+    overflow: hidden;
+}
+
+.insight-card-modern:hover {
+    transform: translateY(-4px);
+    box-shadow:
+        0 20px 25px -5px rgba(0, 0, 0, 0.1),
+        0 10px 10px -5px rgba(0, 0, 0, 0.04),
+        0 0 0 1px rgba(59, 130, 246, 0.3);
+}
+
+.insight-card-modern::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(59, 130, 246, 0.05),
+            transparent);
+    transition: left 0.5s ease;
+}
+
+.insight-card-modern:hover::before {
+    left: 100%;
+}
+
+/* Upload zone hover */
+.insight-card-modern .upload-zone:hover {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: var(--mantine-color-blue-5);
+    transform: scale(1.01);
+}
+
+/* Smooth transitions for all interactive elements */
+.insight-card-modern button,
+.insight-card-modern .mantine-ActionIcon-root {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Badge animations */
+.insight-card-modern .mantine-Badge-root {
+    transition: all 0.2s ease;
+}
+
+.insight-card-modern .mantine-Badge-root:hover {
+    transform: scale(1.05);
+}
+
+/* Title click effect */
+.insight-card-modern [id*="insight-title-click"] {
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.insight-card-modern [id*="insight-title-click"]:hover {
+    color: var(--mantine-color-cyan-5) !important;
+    text-decoration: underline;
+    text-decoration-color: var(--mantine-color-cyan-4);
+    text-underline-offset: 4px;
+}
+
+/* Search bar focus effect */
+.mantine-TextInput-root:focus-within {
+    transform: translateY(-2px);
+    transition: transform 0.2s ease;
+}
+
+/* Accordion animation */
+.mantine-Accordion-content {
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Chip group transitions */
+.mantine-Chip-root {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mantine-Chip-root:hover {
+    transform: translateY(-2px);
+}
+
+/* Stats card hover */
+.mantine-Card-root:hover .mantine-ThemeIcon-root {
+    transform: scale(1.1) rotate(5deg);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Button gradient animations */
+.mantine-Button-root[class*="gradient"] {
+    position: relative;
+    overflow: hidden;
+}
+
+.mantine-Button-root[class*="gradient"]::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.mantine-Button-root[class*="gradient"]:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+/* Loading skeleton */
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+.loading-skeleton {
+    animation: shimmer 2s infinite linear;
+    background: linear-gradient(to right,
+            var(--mantine-color-dark-6) 4%,
+            var(--mantine-color-dark-5) 25%,
+            var(--mantine-color-dark-6) 36%);
+    background-size: 1000px 100%;
+}
+
+/* Fade in animation for insights cards */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.insight-card-modern {
+    animation: fadeInUp 0.4s ease-out;
+    animation-fill-mode: both;
+}
+
+/* Stagger animation for multiple cards */
+.insight-card-modern:nth-child(1) {
+    animation-delay: 0.05s;
+}
+
+.insight-card-modern:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+.insight-card-modern:nth-child(3) {
+    animation-delay: 0.15s;
+}
+
+.insight-card-modern:nth-child(4) {
+    animation-delay: 0.2s;
+}
+
+.insight-card-modern:nth-child(5) {
+    animation-delay: 0.25s;
+}
+
+.insight-card-modern:nth-child(6) {
+    animation-delay: 0.3s;
+}
+
+/* Delete button danger hover */
+[id*="delete-insight-button"]:hover {
+    background: var(--mantine-color-red-6) !important;
+    color: white !important;
+    transform: scale(1.1);
+}
+
+/* PDF button hover */
+.mantine-Button-root[href*=".pdf"]:hover {
+    background: var(--mantine-color-red-6) !important;
+    color: white !important;
+}
+
+/* Responsive grid adjustments */
+@media (max-width: 768px) {
+    .insight-card-modern:hover {
+        transform: translateY(-2px);
+    }
+}
+
+/* Dark mode optimizations */
+@media (prefers-color-scheme: dark) {
+    .insight-card-modern {
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
+    .insight-card-modern:hover {
+        box-shadow:
+            0 20px 25px -5px rgba(0, 0, 0, 0.4),
+            0 10px 10px -5px rgba(0, 0, 0, 0.2),
+            0 0 0 1px rgba(59, 130, 246, 0.5);
+    }
+}
+
+/* Scrollbar styling for insights container */
+#insights-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+#insights-container::-webkit-scrollbar-track {
+    background: var(--mantine-color-dark-7);
+    border-radius: 4px;
+}
+
+#insights-container::-webkit-scrollbar-thumb {
+    background: var(--mantine-color-blue-6);
+    border-radius: 4px;
+}
+
+#insights-container::-webkit-scrollbar-thumb:hover {
+    background: var(--mantine-color-blue-5);
+}
+
+/* Pulse animation for badges */
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.mantine-Badge-root[class*="New"] {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Investment Summary Modal Enhancements */
+.modern-modal {
+    animation: modalSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -48%) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* Modal backdrop animation */
+.modal-backdrop.show {
+    animation: backdropFadeIn 0.3s ease-out;
+}
+
+@keyframes backdropFadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 0.5;
+    }
+}
+
+/* Modal body content scrollbar */
+#modal-body-content::-webkit-scrollbar {
+    width: 10px;
+}
+
+#modal-body-content::-webkit-scrollbar-track {
+    background: #1e293b;
+    border-radius: 5px;
+    margin: 8px 0;
+}
+
+#modal-body-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #3b82f6, #2563eb);
+    border-radius: 5px;
+    border: 2px solid #1e293b;
+}
+
+#modal-body-content::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #2563eb, #1d4ed8);
+}
+
+/* Action button hover effects */
+.action-button-modal {
+    border-radius: 8px !important;
+}
+
+.action-button-modal:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(59, 130, 246, 0.25);
+}
+
+.action-button-modal:active {
+    transform: translateY(0);
+}
+
+/* Button group gap fix */
+.btn-group>.action-button-modal {
+    margin-right: 8px;
+}
+
+.btn-group>.action-button-modal:last-child {
+    margin-right: 0;
+}
+
+/* Reading progress animation */
+#reading-progress {
+    position: relative;
+    overflow: hidden;
+}
+
+#reading-progress::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(255, 255, 255, 0.3),
+            transparent);
+    transform: translateX(-100%);
+    animation: progressShimmer 2s infinite;
+}
+
+@keyframes progressShimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* Modal header button group enhancement */
+.modern-modal .btn-group>.btn:hover {
+    transform: scale(1.05);
+    z-index: 1;
+}
+
+/* Smooth content reveal */
+#modal-body-content>* {
+    animation: contentFadeIn 0.6s ease-out;
+}
+
+@keyframes contentFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Enhanced focus states for accessibility */
+.modern-modal button:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+
+/* Modal close button enhanced styling */
+#close-modal {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #94a3b8 !important;
+}
+
+#close-modal:hover {
+    background-color: rgba(239, 68, 68, 0.15) !important;
+    color: #ef4444 !important;
+    transform: rotate(90deg) scale(1.1);
+}
+
+#close-modal:active {
+    transform: rotate(90deg) scale(0.95);
+}
+
+/* Publisher links styling */
+.publisher-link:hover {
+    background-color: #334155 !important;
+    border-color: #3b82f6 !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    color: #60a5fa !important;
+}
+
+.publisher-link:active {
+    transform: translateY(0);
+}
+
+/* Publishers section animations */
+#modal-publishers-content .publisher-link {
+    animation: fadeInLeft 0.4s ease-out;
+}
+
+#modal-publishers-content .publisher-link:nth-child(1) {
+    animation-delay: 0.05s;
+}
+
+#modal-publishers-content .publisher-link:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+#modal-publishers-content .publisher-link:nth-child(3) {
+    animation-delay: 0.15s;
+}
+
+#modal-publishers-content .publisher-link:nth-child(4) {
+    animation-delay: 0.2s;
+}
+
+#modal-publishers-content .publisher-link:nth-child(5) {
+    animation-delay: 0.25s;
+}
+
+@keyframes fadeInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Responsive adjustments for modal */
+@media (max-width: 1200px) {
+    .modern-modal {
+        width: 90vw !important;
+        height: 85vh !important;
+        max-width: 90vw !important;
+        max-height: 85vh !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .modern-modal {
+        width: 95vw !important;
+        height: 90vh !important;
+        max-width: 95vw !important;
+        max-height: 90vh !important;
+        border-radius: 12px !important;
+    }
+
+    #modal-body-content {
+        font-size: 0.95rem !important;
+        padding: 20px !important;
+    }
+
+    .action-button-modal {
+        font-size: 0.8rem !important;
+        padding: 6px 12px !important;
+    }
+}

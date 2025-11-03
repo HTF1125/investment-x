@@ -6,7 +6,6 @@ Updated callbacks to support the new modern design and additional features.
 import json
 import base64
 from datetime import datetime
-from bson import ObjectId
 from typing import Any, List, Tuple, Optional
 
 import dash
@@ -14,9 +13,13 @@ import dash_mantine_components as dmc
 from dash import html, callback, Input, Output, State, ALL, no_update, dcc
 from dash.exceptions import PreventUpdate
 
-from ix.db.client import get_insights
-from ix.db.models import Insight
-from ix.db.boto import Boto
+from ix.db.client import (
+    get_insights,
+    get_insight_by_id,
+    delete_insight,
+    update_insight_summary,
+)
+from ix import dbb
 from ix.misc.terminal import get_logger
 from ix.misc import PDFSummarizer, Settings
 from .insight_card import InsightCard

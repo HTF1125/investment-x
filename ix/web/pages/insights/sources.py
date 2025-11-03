@@ -4,7 +4,7 @@ Modern design with improved layout, better organization, and enhanced functional
 """
 
 import json
-from ix.db import InsightSource
+from ix.db import Publishers
 from dash import html, dcc, callback_context, Output, Input, State, ALL, callback
 from dash.exceptions import PreventUpdate
 from datetime import datetime
@@ -106,7 +106,9 @@ layout = html.Div(
                         # Add Source Button
                         html.Button(
                             [
-                                html.I(className="fas fa-plus", style={"fontSize": "12px"}),
+                                html.I(
+                                    className="fas fa-plus", style={"fontSize": "12px"}
+                                ),
                             ],
                             id="add-source-btn",
                             style={
@@ -152,7 +154,6 @@ layout = html.Div(
                 "borderBottom": "none",
             },
         ),
-
         # Clean Sources Container
         html.Div(
             id="sources-container",
@@ -167,14 +168,12 @@ layout = html.Div(
                 "overflowX": "hidden",
             },
         ),
-
         # Auto-refresh (hidden)
         dcc.Interval(
             id="interval-refresh",
             interval=30 * 1000,
             n_intervals=0,
         ),
-
         # Add/Edit Source Modal
         dbc.Modal(
             [
@@ -218,7 +217,6 @@ layout = html.Div(
                             ],
                             style={"marginBottom": "16px"},
                         ),
-
                         # Source URL
                         html.Div(
                             [
@@ -245,7 +243,6 @@ layout = html.Div(
                             ],
                             style={"marginBottom": "16px"},
                         ),
-
                         # Frequency
                         html.Div(
                             [
@@ -266,7 +263,10 @@ layout = html.Div(
                                         {"label": "Monthly", "value": "Monthly"},
                                         {"label": "Quarterly", "value": "Quarterly"},
                                         {"label": "Yearly", "value": "Yearly"},
-                                        {"label": "Unclassified", "value": "Unclassified"},
+                                        {
+                                            "label": "Unclassified",
+                                            "value": "Unclassified",
+                                        },
                                     ],
                                     value="Daily",
                                     style={
@@ -279,7 +279,6 @@ layout = html.Div(
                             ],
                             style={"marginBottom": "16px"},
                         ),
-
                         # Remark
                         html.Div(
                             [
@@ -341,7 +340,6 @@ layout = html.Div(
             centered=True,
             size="md",
         ),
-
         # Hidden stores for modal state
         dcc.Store(id="source-edit-id", data=None),
     ],
@@ -378,7 +376,7 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
 
                 if button_type == "visit-btn":
                     # Update the document's last_visited field
-                    insight_source = InsightSource.find_one({"id": source_id}).run()
+                    # insight_source = Publisher.find_one({"id": source_id}).run()  # TODO: Convert to SQLAlchemy
                     if insight_source:
                         new_time = datetime.now()
                         insight_source.set({"last_visited": new_time})
@@ -386,16 +384,15 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
 
                 elif button_type == "delete-source-btn":
                     # Delete the source
-                    insight_source = InsightSource.find_one({"id": source_id}).run()
+                    # insight_source = Publisher.find_one({"id": source_id}).run()  # TODO: Convert to SQLAlchemy
                     if insight_source:
                         insight_source.delete()
 
             except Exception as e:
                 print(f"Error handling button click: {e}")
 
-
     # Fetch sources
-    sources = InsightSource.find({}).sort("last_visited").run()
+    # sources = Publisher.find({}).sort("last_visited").run()  # TODO: Convert to SQLAlchemy
 
     if not sources:
         return html.Div(
@@ -504,7 +501,6 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                             ],
                             style={"flex": "1"},
                         ),
-
                         # Right: Action buttons
                         html.Div(
                             [
@@ -516,7 +512,10 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                                             style={"fontSize": "11px"},
                                         ),
                                     ],
-                                    id={"type": "visit-btn", "index": source_dict["_id"]},
+                                    id={
+                                        "type": "visit-btn",
+                                        "index": source_dict["_id"],
+                                    },
                                     n_clicks=0,
                                     style={
                                         "backgroundColor": "#3b82f6",
@@ -543,7 +542,10 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                                             style={"fontSize": "11px"},
                                         ),
                                     ],
-                                    id={"type": "edit-source-btn", "index": source_dict["_id"]},
+                                    id={
+                                        "type": "edit-source-btn",
+                                        "index": source_dict["_id"],
+                                    },
                                     n_clicks=0,
                                     style={
                                         "backgroundColor": "#f59e0b",
@@ -570,7 +572,10 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                                             style={"fontSize": "11px"},
                                         ),
                                     ],
-                                    id={"type": "delete-source-btn", "index": source_dict["_id"]},
+                                    id={
+                                        "type": "delete-source-btn",
+                                        "index": source_dict["_id"],
+                                    },
                                     n_clicks=0,
                                     style={
                                         "backgroundColor": "#ef4444",
@@ -691,7 +696,7 @@ def toggle_source_modal(
             source_id = triggered_id["index"]
 
             # Get source data
-            source = InsightSource.find_one({"id": source_id}).run()
+            # source = Publisher.find_one({"id": source_id}).run()  # TODO: Convert to SQLAlchemy
             if source:
                 return (
                     True,
@@ -733,23 +738,26 @@ def toggle_source_modal(
 
             if edit_id:
                 # Update existing source
-                source = InsightSource.find_one({"id": edit_id}).run()
+                # source = Publisher.find_one({"id": edit_id}).run()  # TODO: Convert to SQLAlchemy
                 if source:
-                    source.set({
-                        "name": name_value,
-                        "url": url_value,
-                        "frequency": frequency_value,
-                        "remark": remark_value,
-                    })
+                    source.set(
+                        {
+                            "name": name_value,
+                            "url": url_value,
+                            "frequency": frequency_value,
+                            "remark": remark_value,
+                        }
+                    )
             else:
                 # Create new source
-                InsightSource(
-                    name=name_value,
-                    url=url_value,
-                    frequency=frequency_value,
-                    remark=remark_value,
-                    last_visited=datetime.now(),
-                ).create()
+                # InsightSource(  # TODO: Convert to SQLAlchemy
+                #     name=name_value,
+                #     url=url_value,
+                #     frequency=frequency_value,
+                #     remark=remark_value,
+                #     last_visited=datetime.now(),
+                # ).create()
+                pass  # Placeholder for now
 
             # Close modal and clear form
             return (
