@@ -1,8 +1,8 @@
 click==8.1.7
 yfinance
 investpy==1.0.8
-numpy==2.0.1
-pandas==2.2.2
+numpy>=1.24.0,<2.1.0
+pandas>=2.0.0,<2.3.0
 pandas-datareader==0.10.0
 bunnet==1.3.0
 python-dotenv==1.0.1
@@ -20,8 +20,9 @@ diskcache==5.6.3
 nbformat == 5.10.4
 gunicorn
 cachetools
-motor==2.5.1
-pymongo==3.12.3
+motor==3.6.0
+pymongo==4.9.0
+dnspython==2.7.0
 apscheduler==3.11.0
 reflex
 httpx
