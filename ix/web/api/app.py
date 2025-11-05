@@ -6,7 +6,7 @@ These are Flask routes that extend the Dash app server.
 from flask import jsonify, request, Response
 from typing import Dict, Any, List, Optional
 import pandas as pd
-from ix.db.models import Timeseries, Insights, Publishers, TimeseriesData
+from ix.db.models import Timeseries, Insights, Publishers
 from ix.db.conn import ensure_connection
 from ix.misc import get_logger
 from datetime import datetime

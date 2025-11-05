@@ -43,30 +43,53 @@ def update_yahoo_data():
     count_skipped_empty_data = 0
     count_updated = 0
 
-    for ts in Timeseries.find({"source": "Yahoo"}).run():
-        count_total += 1
-        if ts.source_code is None:
-            logger.debug(f"Skipping timeseries {ts.code} (no source_ticker).")
-            count_skipped_no_ticker += 1
-            continue
+    from ix.db.conn import Session
 
-        ticker, field = str(ts.source_code).split(":", maxsplit=1)
+    with Session() as session:
+        timeseries_list = (
+            session.query(Timeseries).filter(Timeseries.source == "Yahoo").all()
+        )
 
-        logger.debug(f"Fetching data for {ticker} (field: {field}).")
-        try:
-            _data = get_yahoo_data(code=ticker)[field]
-        except Exception as e:
-            logger.warning(f"Error fetching data for {ts.source_code}: {e}")
-            continue
+        # Extract all attributes immediately to avoid detached instance errors
+        ts_data_list = []
+        for ts in timeseries_list:
+            ts_data_list.append(
+                {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
+            )
 
-        if _data.empty:
-            logger.debug(f"No data returned for {ts.source_code}. Skipping.")
-            count_skipped_empty_data += 1
-            continue
+        for ts_data in ts_data_list:
+            ts_id = ts_data["id"]
+            ts_code = ts_data["code"]
+            ts_source_code = ts_data["source_code"]
 
-        ts.data = _data
-        logger.info(f"Updated data for {ts.code} from {ts.source_code}.")
-        count_updated += 1
+            count_total += 1
+            if ts_source_code is None:
+                logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
+                count_skipped_no_ticker += 1
+                continue
+
+            ticker, field = str(ts_source_code).split(":", maxsplit=1)
+
+            logger.debug(f"Fetching data for {ticker} (field: {field}).")
+            try:
+                _data = get_yahoo_data(code=ticker)[field]
+            except Exception as e:
+                logger.warning(f"Error fetching data for {ts_source_code}: {e}")
+                continue
+
+            if _data.empty:
+                logger.debug(f"No data returned for {ts_source_code}. Skipping.")
+                count_skipped_empty_data += 1
+                continue
+
+            # Reload the object and set data within session
+            ts_reloaded = (
+                session.query(Timeseries).filter(Timeseries.id == ts_id).first()
+            )
+            if ts_reloaded is not None:
+                ts_reloaded.data = _data
+                logger.info(f"Updated data for {ts_code} from {ts_source_code}.")
+                count_updated += 1
 
     logger.info(
         f"Yahoo data update complete: "
@@ -86,28 +109,51 @@ def update_fred_data():
     count_skipped_empty_data = 0
     count_updated = 0
 
-    for ts in Timeseries.find({"source": "Fred"}).run():
-        count_total += 1
-        if ts.source_code is None:
-            logger.debug(f"Skipping timeseries {ts.code} (no source_ticker).")
-            count_skipped_no_ticker += 1
-            continue
-        ticker, field = str(ts.source_code).split(":")
-        logger.debug(f"Fetching data for {ticker} (field: {field}).")
-        try:
-            _data = get_fred_data(ticker)[field]
-        except Exception as e:
-            logger.warning(f"Error fetching data for {ts.source_code}: {e}")
-            continue
+    from ix.db.conn import Session
 
-        if _data.empty:
-            logger.debug(f"No data returned for {ts.source_code}. Skipping.")
-            count_skipped_empty_data += 1
-            continue
+    with Session() as session:
+        timeseries_list = (
+            session.query(Timeseries).filter(Timeseries.source == "Fred").all()
+        )
 
-        ts.data = _data
-        logger.info(f"Updated data for {ts.code} from {ts.source_code}.")
-        count_updated += 1
+        # Extract all attributes immediately to avoid detached instance errors
+        ts_data_list = []
+        for ts in timeseries_list:
+            ts_data_list.append(
+                {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
+            )
+
+        for ts_data in ts_data_list:
+            ts_id = ts_data["id"]
+            ts_code = ts_data["code"]
+            ts_source_code = ts_data["source_code"]
+
+            count_total += 1
+            if ts_source_code is None:
+                logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
+                count_skipped_no_ticker += 1
+                continue
+            ticker, field = str(ts_source_code).split(":")
+            logger.debug(f"Fetching data for {ticker} (field: {field}).")
+            try:
+                _data = get_fred_data(ticker)[field]
+            except Exception as e:
+                logger.warning(f"Error fetching data for {ts_source_code}: {e}")
+                continue
+
+            if _data.empty:
+                logger.debug(f"No data returned for {ts_source_code}. Skipping.")
+                count_skipped_empty_data += 1
+                continue
+
+            # Reload the object and set data within session
+            ts_reloaded = (
+                session.query(Timeseries).filter(Timeseries.id == ts_id).first()
+            )
+            if ts_reloaded is not None:
+                ts_reloaded.data = _data
+                logger.info(f"Updated data for {ts_code} from {ts_source_code}.")
+                count_updated += 1
 
     logger.info(
         f"Fred data update complete: "
@@ -127,28 +173,51 @@ def update_naver_data():
     count_skipped_empty_data = 0
     count_updated = 0
 
-    for ts in Timeseries.find({"source": "Naver"}).run():
-        count_total += 1
-        if ts.source_code is None:
-            logger.debug(f"Skipping timeseries {ts.code} (no source_ticker).")
-            count_skipped_no_ticker += 1
-            continue
-        ticker, field = str(ts.source_code).split(":")
-        logger.debug(f"Fetching data for {ticker} (field: {field}).")
-        try:
-            _data = get_naver_data(ticker)[field]
-        except Exception as e:
-            logger.warning(f"Error fetching data for {ts.source_code}: {e}")
-            continue
+    from ix.db.conn import Session
 
-        if _data.empty:
-            logger.debug(f"No data returned for {ts.source_code}. Skipping.")
-            count_skipped_empty_data += 1
-            continue
+    with Session() as session:
+        timeseries_list = (
+            session.query(Timeseries).filter(Timeseries.source == "Naver").all()
+        )
 
-        ts.data = _data
-        logger.info(f"Updated data for {ts.code} from {ts.source_code}.")
-        count_updated += 1
+        # Extract all attributes immediately to avoid detached instance errors
+        ts_data_list = []
+        for ts in timeseries_list:
+            ts_data_list.append(
+                {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
+            )
+
+        for ts_data in ts_data_list:
+            ts_id = ts_data["id"]
+            ts_code = ts_data["code"]
+            ts_source_code = ts_data["source_code"]
+
+            count_total += 1
+            if ts_source_code is None:
+                logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
+                count_skipped_no_ticker += 1
+                continue
+            ticker, field = str(ts_source_code).split(":")
+            logger.debug(f"Fetching data for {ticker} (field: {field}).")
+            try:
+                _data = get_naver_data(ticker)[field]
+            except Exception as e:
+                logger.warning(f"Error fetching data for {ts_source_code}: {e}")
+                continue
+
+            if _data.empty:
+                logger.debug(f"No data returned for {ts_source_code}. Skipping.")
+                count_skipped_empty_data += 1
+                continue
+
+            # Reload the object and set data within session
+            ts_reloaded = (
+                session.query(Timeseries).filter(Timeseries.id == ts_id).first()
+            )
+            if ts_reloaded is not None:
+                ts_reloaded.data = _data
+                logger.info(f"Updated data for {ts_code} from {ts_source_code}.")
+                count_updated += 1
 
     logger.info(
         f"Fred data update complete: "
@@ -166,26 +235,30 @@ def send_data_reports():
     import io
     import pandas as pd
 
-    # from ix.db.models import Timeseries  # Commented out - MongoDB not in use
     from ix.misc.email import EmailSender
+    from ix.db.conn import Session
+    from ix.db.models import Timeseries
 
     # Prepare both price data and timeseries data in a single loop
     datas = {}
     ts_list = []
 
-    for ts in Timeseries.find().run():
-        # Prepare price data for Equity:PX_LAST codes
-        if str(ts.code).endswith("EQUITY:PX_LAST"):
+    with Session() as session:
+        timeseries_list = session.query(Timeseries).all()
+
+        for ts in timeseries_list:
+            # Prepare price data for Equity:PX_LAST codes
+            if str(ts.code).endswith("EQUITY:PX_LAST"):
+                data = ts.data.dropna()
+                if not data.empty:
+                    datas[ts.code] = data.iloc[-1]
+
+            # Prepare timeseries data for all
             data = ts.data.dropna()
             if not data.empty:
-                datas[ts.code] = data.iloc[-1]
-
-        # Prepare timeseries data for all
-        data = ts.data.dropna()
-        if not data.empty:
-            data.index = pd.to_datetime(data.index)
-            data = data.sort_index()
-            ts_list.append(data)
+                data.index = pd.to_datetime(data.index)
+                data = data.sort_index()
+                ts_list.append(data)
 
     datas = pd.Series(datas)
     datas.index.name = "Code"

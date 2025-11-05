@@ -57,20 +57,35 @@ def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Se
             code = f"{code}:PX_LAST"
         code = code.upper()
 
-        ts = Timeseries.find_one({"code": code}).run()
+        # Query using SQLAlchemy
+        from ix.db.conn import Session
+
+        with Session() as session:
+            ts = session.query(Timeseries).filter(Timeseries.code == code).first()
+
+            if ts is None:
+                # Extract code and check for alias pattern after session closes
+                ts_code = None
+                ts_start = None
+                ts_frequency = None
+            else:
+                # Extract all needed attributes while still in session
+                ts_code = ts.code
+                ts_start = ts.start
+                ts_frequency = ts.frequency
+                # Get data while still in session
+                s = ts.data.copy()
+        # Session is now closed, ts is detached
+
         if ts is None and "=" in code:
             name, new_code = code.split("=", maxsplit=1)
             s = Series(code=new_code, freq=freq).sort_index()
             s.name = name
             return s
 
-
         if ts is None:
             # No series found and not an alias pattern
             return pd.Series(name=code)
-
-        # Base data (already numeric/cleaned by Timeseries.data)
-        s = ts.data.copy()
 
         # Ensure DateTimeIndex just in case
         if not isinstance(s.index, pd.DatetimeIndex):
@@ -78,13 +93,13 @@ def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Se
             s = s.dropna()
 
         # Compute slice window: [start, today]
-        start_dt = pd.to_datetime(ts.start) if ts.start else s.index.min()
+        start_dt = pd.to_datetime(ts_start) if ts_start else s.index.min()
         end_dt = pd.to_datetime(today())
 
         # Slice first (in case resample is heavy)
         s = s.reindex(pd.date_range(start_dt, end_dt, freq="D"))
         # Choose target frequency: override > DB value
-        target_freq = freq or ts.frequency
+        target_freq = freq or ts_frequency
         if target_freq:
             try:
                 # Resample to last observation in each bin; drop empty bins
@@ -94,7 +109,7 @@ def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Se
                 pass
 
         # Stable name
-        s.name = getattr(ts, "code", code)
+        s.name = ts_code if ts_code else code
         if name:
             s.name = name
         return s
@@ -587,7 +602,7 @@ def CustomSeries(code: str) -> pd.Series:
         return data
 
     if code == "LocalIndices2":
-        from ix import get_timeseries
+        from ix.db import get_timeseries
 
         # 1) 벤치마크 티커 정의
         codes = {
@@ -1045,7 +1060,7 @@ class M2:
 
 
 def LocalIndices():
-    from ix import get_timeseries
+    from ix.db import get_timeseries
 
     # 1) 벤치마크 티커 정의
     codes = {
