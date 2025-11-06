@@ -4,6 +4,7 @@ import sys
 from typing import Optional
 from dotenv import load_dotenv, find_dotenv
 from ix.misc import logger
+from ix.misc.task import daily as run_daily_task
 from ix.web.app import app
 
 
@@ -118,6 +119,11 @@ def validate_database_connection():
     type=str,
     help="Override database URL (takes precedence over env files)",
 )
+@click.option(
+    "--run-daily",
+    is_flag=True,
+    help="Execute daily maintenance tasks and exit.",
+)
 def cli(
     env: Optional[str] = None,
     port: Optional[int] = None,
@@ -125,6 +131,7 @@ def cli(
     debug: bool = False,
     skip_db_check: bool = False,
     db_url: Optional[str] = None,
+    run_daily: bool = False,
 ) -> None:
     """
     Run the Investment-X Dash application.
@@ -172,6 +179,12 @@ def cli(
     if db_url:
         os.environ["DB_URL"] = db_url
         logger.info("Using database URL from command line argument")
+
+    if run_daily:
+        logger.info("Running daily maintenance tasks...")
+        run_daily_task()
+        logger.info("Daily maintenance tasks completed.")
+        return
 
     # Determine port
     if port is None:

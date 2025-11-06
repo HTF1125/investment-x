@@ -11,6 +11,7 @@ from ix.misc import get_logger
 from dash_iconify import DashIconify
 import dash
 from ix.web.pages.data import modal
+import math
 
 # Register Page
 dash.register_page(__name__, path="/data", title="Data", name="Data")
@@ -446,44 +447,75 @@ def update_timeseries_list(search, current_page):
     # Query database using SQLAlchemy
     from ix.db.conn import Session
     from ix.db.models import Timeseries
+    from sqlalchemy import func, or_
+    from sqlalchemy.orm import load_only, defer
+
+    page_size = 50
+    search_term = (search or "").strip()
 
     with Session() as session:
-        if search:
-            search_pattern = f"%{search.lower()}%"
-            query = session.query(Timeseries).filter(
-                (Timeseries.code.ilike(search_pattern)) |
-                (Timeseries.name.ilike(search_pattern))
+        filters = []
+        if search_term:
+            like_pattern = f"%{search_term.lower()}%"
+            filters.append(
+                or_(
+                    func.lower(Timeseries.code).like(like_pattern),
+                    func.lower(Timeseries.name).like(like_pattern),
+                )
             )
-        else:
-            query = session.query(Timeseries)
 
-        # Get all results and extract attributes while in session
-        timeseries_list = query.all()
-        filtered = []
-        for ts in timeseries_list:
-            filtered.append({
-                'id': ts.id,
-                'code': ts.code,
-                'name': ts.name,
-                'provider': ts.provider,
-                'asset_class': ts.asset_class,
-                'category': ts.category,
-                'source': ts.source,
-                'frequency': ts.frequency,
-                'start': ts.start,
-                'end': ts.end,
-                'num_data': ts.num_data,
-            })
+        total_count_query = session.query(func.count(Timeseries.id))
+        if filters:
+            total_count_query = total_count_query.filter(*filters)
+        total_count = total_count_query.scalar() or 0
 
-    # Sort by code
-    filtered.sort(key=lambda x: x.get('code', '') or "")
+        total_pages = max(1, math.ceil(total_count / page_size))
+        current_page = max(1, min(current_page, total_pages))
 
-    total_count = len(filtered)
-    total_pages = max(1, (total_count + 50 - 1) // 50)
+        query = (
+            session.query(Timeseries)
+            .options(
+                load_only(
+                    Timeseries.id,
+                    Timeseries.code,
+                    Timeseries.name,
+                    Timeseries.provider,
+                    Timeseries.asset_class,
+                    Timeseries.category,
+                    Timeseries.source,
+                    Timeseries.frequency,
+                    Timeseries.start,
+                    Timeseries.end,
+                    Timeseries.num_data,
+                ),
+                defer(Timeseries.timeseries_data),
+            )
+            .order_by(Timeseries.code.asc())
+        )
 
-    # Paginate
-    start_idx = (current_page - 1) * 50
-    page_items = filtered[start_idx : start_idx + 50]
+        if filters:
+            query = query.filter(*filters)
+
+        page_items_raw = (
+            query.offset((current_page - 1) * page_size).limit(page_size).all()
+        )
+
+        page_items = [
+            {
+                "id": ts.id,
+                "code": ts.code,
+                "name": ts.name,
+                "provider": ts.provider,
+                "asset_class": ts.asset_class,
+                "category": ts.category,
+                "source": ts.source,
+                "frequency": ts.frequency,
+                "start": ts.start,
+                "end": ts.end,
+                "num_data": ts.num_data,
+            }
+            for ts in page_items_raw
+        ]
 
     # Create grid
     if page_items:

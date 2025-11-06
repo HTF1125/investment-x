@@ -8,14 +8,23 @@ import json
 import base64
 from datetime import datetime
 # from bson import ObjectId  # Removed - MongoDB-specific
-from typing import Any, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 
 import dash
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 from dash import html, callback, Input, Output, State, no_update, ALL
 from dash.exceptions import PreventUpdate
 
-from ix.db.client import get_insights
+from uuid import uuid4
+
+from ix.db.client import (
+    get_insights,
+    get_publishers,
+    create_publisher,
+    touch_publisher,
+)
+from ix.db.conn import Session
 from ix.db.models import Insights
 
 # from ix.db.boto import Boto  # Removed - old db module
@@ -25,6 +34,259 @@ from .insight_card import create_insight_card
 
 # Configure logging
 logger = get_logger(__name__)
+
+
+def _format_last_visited(last_visited: Optional[str]) -> str:
+    """Format last visited timestamps into human readable text."""
+
+    if not last_visited:
+        return "Never"
+
+    try:
+        normalized = last_visited.replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(normalized)
+    except ValueError:
+        return last_visited
+
+    if timestamp.tzinfo is not None:
+        now = datetime.now(tz=timestamp.tzinfo)
+    else:
+        now = datetime.now()
+
+    delta = now - timestamp
+
+    if delta.days > 0:
+        return f"{delta.days}d ago"
+    hours = delta.seconds // 3600
+    if hours > 0:
+        return f"{hours}h ago"
+    minutes = delta.seconds // 60
+    if minutes > 0:
+        return f"{minutes}m ago"
+    return "Just now"
+
+
+def _build_publishers_list(publishers: List[dict]) -> List[html.Div]:
+    """Render the publisher list for the sidebar."""
+
+    rows = []
+    for publisher in publishers:
+        name = publisher.get("name") or "Unnamed"
+        url = publisher.get("url") or "#"
+        frequency = publisher.get("frequency") or "Unclassified"
+        last_seen = _format_last_visited(publisher.get("last_visited"))
+        publisher_id = publisher.get("id") or str(uuid4())
+
+        badge = dmc.Badge(
+            frequency,
+            color="violet",
+            variant="light",
+            radius="sm",
+            size="xs",
+        )
+
+        timestamp = dmc.Text(
+            f"Last visited {last_seen}",
+            size="xs",
+            c="gray.5",
+        )
+
+        button_kwargs: Dict[str, Any] = {
+            "id": {"type": "publisher-visit", "index": publisher_id},
+            "n_clicks": 0,
+            "variant": "light",
+            "color": "blue",
+            "size": "xs",
+            "radius": "sm",
+        }
+
+        if not url or url == "#":
+            button_kwargs["disabled"] = True
+
+        visit_button = dmc.Button("Visit", **button_kwargs)
+
+        if url and url != "#":
+            visit_control: Any = html.A(
+                visit_button,
+                href=url,
+                target="_blank",
+                rel="noopener noreferrer",
+                style={"textDecoration": "none"},
+            )
+        else:
+            visit_control = visit_button
+
+        rows.append(
+            dmc.Card(
+                [
+                    dmc.Stack(
+                        [
+                            dmc.Group(
+                                [
+                                    dmc.Text(name, fw=600, size="sm", c="gray.0"),
+                                    badge,
+                                ],
+                                gap="xs",
+                            ),
+                            dmc.Group(
+                                [timestamp, visit_control],
+                                justify="space-between",
+                            ),
+                        ],
+                        gap="xs",
+                    )
+                ],
+                withBorder=True,
+                radius="md",
+                shadow="sm",
+                padding="md",
+                style={"backgroundColor": "#0f172a"},
+            )
+        )
+
+    return rows
+
+
+@callback(
+    Output("insight-sources-list", "children"),
+    Output("sources-stat", "children"),
+    Output("issuer-filter", "data"),
+    Input("publishers-refresh-interval", "n_intervals"),
+    Input("publishers-refresh-token", "data"),
+)
+def refresh_publishers_list(_: int, __: Optional[str]):
+    """Refresh publishers sidebar, stats card, and issuer filter options."""
+
+    default_options = [{"label": "All Issuers", "value": "all"}]
+
+    try:
+        publishers = get_publishers()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Failed to load publishers")
+        alert = dmc.Alert(
+            [
+                dmc.Text("Unable to load publishers", fw=600),
+                dmc.Text(str(exc), size="sm", c="gray.5"),
+            ],
+            color="red",
+            variant="filled",
+        )
+        return alert, "0", default_options
+
+    if not publishers:
+        empty_state = dmc.Text(
+            "No publishers configured yet.",
+            size="sm",
+            c="gray.5",
+            ta="center",
+        )
+        return empty_state, "0", default_options
+
+    rows = _build_publishers_list(publishers)
+    options = default_options + [
+        {"label": publisher.get("name") or "Unnamed", "value": publisher.get("name") or "Unnamed"}
+        for publisher in publishers
+        if publisher.get("name")
+    ]
+
+    return rows, str(len(publishers)), options
+
+
+@callback(
+    Output("add-publisher-modal", "is_open"),
+    Input("add-publisher-button", "n_clicks"),
+    Input("close-add-publisher-modal", "n_clicks"),
+    Input("cancel-add-publisher", "n_clicks"),
+    State("add-publisher-modal", "is_open"),
+    prevent_initial_call=True,
+)
+def toggle_add_publisher_modal(add_clicks, close_clicks, cancel_clicks, is_open):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    if trigger == "add-publisher-button":
+        return True
+
+    return False
+
+
+@callback(
+    Output("publisher-name-input", "value"),
+    Output("publisher-url-input", "value"),
+    Output("publisher-frequency-input", "value"),
+    Output("add-publisher-feedback", "children"),
+    Output("publishers-refresh-token", "data"),
+    Output("add-publisher-modal", "is_open", allow_duplicate=True),
+    Input("submit-add-publisher", "n_clicks"),
+    State("publisher-name-input", "value"),
+    State("publisher-url-input", "value"),
+    State("publisher-frequency-input", "value"),
+    prevent_initial_call=True,
+)
+def handle_add_publisher_submission(n_clicks, name, url, frequency):
+    if not n_clicks:
+        raise PreventUpdate
+
+    try:
+        created = create_publisher(
+            name=name or "",
+            url=url or "",
+            frequency=frequency,
+        )
+    except ValueError as exc:
+        alert = dbc.Alert(str(exc), color="danger")
+        return no_update, no_update, no_update, alert, no_update, True
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Unexpected error while creating publisher")
+        alert = dbc.Alert("Failed to add publisher. Please try again.", color="danger")
+        return no_update, no_update, no_update, alert, no_update, True
+
+    success_alert = dbc.Alert(
+        [
+            html.Div("Publisher added successfully.", style={"fontWeight": "600"}),
+            html.Small(f"Name: {created.get('name')}", className="d-block mt-1"),
+        ],
+        color="success",
+        className="mt-2",
+    )
+
+    refresh_token = str(uuid4())
+
+    return "", "", frequency or "Unclassified", success_alert, refresh_token, False
+
+
+@callback(
+    Output("publishers-refresh-token", "data", allow_duplicate=True),
+    Input({"type": "publisher-visit", "index": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def handle_publisher_visit(n_clicks_list):
+    if not any(n_clicks_list or []):
+        raise PreventUpdate
+
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    try:
+        triggered_id = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])
+        publisher_id = triggered_id.get("index")
+    except Exception:
+        raise PreventUpdate
+
+    if not publisher_id:
+        raise PreventUpdate
+
+    try:
+        touch_publisher(publisher_id)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Failed to update publisher last visited")
+        raise PreventUpdate from exc
+
+    return str(uuid4())
 
 
 def create_insight_card(insight_data):
@@ -144,7 +406,7 @@ def create_insight_card(insight_data):
                             ),
                             "Download",
                         ],
-                        href=f"https://files.investment-x.app/{insight_data.get('id')}.pdf",
+                        href=f"/api/download-pdf/{insight_data.get('id')}",
                         target="_blank",
                         style={
                             "backgroundColor": "transparent",
@@ -727,62 +989,33 @@ def handle_enhanced_upload(
                 None,
             )
 
-        # Create insight record
-        insight = Insights(
-            published_date=published_date, issuer=issuer, name=name, status="processing"
-        )
-
-        # Save PDF to storage - commented out (Boto removed)
-        # filename_pdf = f"{insight.id}.pdf"
-        # boto_instance = Boto()
-        # try:
-        #     boto_instance.save_pdf(pdf_content=decoded, filename=filename_pdf)
-        # except Exception as e:
-        #     logger.error(f"Error saving PDF to storage: {e}")
-        # insight.delete()  # Clean up if storage fails - commented out
-
-        return (
-            html.Div(
-                [
-                    html.I(
-                        className="fas fa-exclamation-triangle",
-                        style={"color": "#ef4444", "marginRight": "8px"},
-                    ),
-                    "PDF storage temporarily disabled",
-                ],
-                style={
-                    "backgroundColor": "rgba(239, 68, 68, 0.1)",
-                    "border": "1px solid rgba(239, 68, 68, 0.3)",
-                    "borderRadius": "8px",
-                    "padding": "15px",
-                    "color": "#fca5a5",
-                    "display": "flex",
-                    "alignItems": "center",
-                    "justifyContent": "center",
-                },
-            ),
-            None,
-        )
-
-        # Generate AI summary
-        try:
-            if hasattr(Settings, "openai_secret_key") and Settings.openai_secret_key:
-                summarizer = PDFSummarizer(Settings.openai_secret_key)
-                pdf_content = boto_instance.get_pdf(filename=filename_pdf)
-                summary_text = summarizer.process_insights(pdf_content)
-                insight.set({"summary": summary_text, "status": "completed"})
-            else:
-                insight.set(
-                    {
-                        "summary": "AI summarization not available - API key not configured",
-                        "status": "completed",
-                    }
-                )
-        except Exception as e:
-            logger.error(f"Error generating summary: {e}")
-            insight.set(
-                {"summary": f"Summary generation failed: {str(e)}", "status": "failed"}
+        with Session() as session:
+            insight = Insights(
+                published_date=published_date,
+                issuer=issuer,
+                name=name,
+                status="processing",
+                pdf_content=decoded,
             )
+            session.add(insight)
+            session.flush()
+
+            summary_text = None
+            try:
+                if hasattr(Settings, "openai_secret_key") and Settings.openai_secret_key:
+                    summarizer = PDFSummarizer(Settings.openai_secret_key)
+                    summary_text = summarizer.process_insights(decoded)
+                    insight.summary = summary_text
+                    insight.status = "completed"
+                else:
+                    insight.summary = "AI summarization not available - API key not configured"
+                    insight.status = "completed"
+            except Exception as e:
+                logger.error(f"Error generating summary: {e}")
+                insight.summary = f"Summary generation failed: {str(e)}"
+                insight.status = "failed"
+
+            insight_id = str(insight.id)
 
         # Return success message with details
         return (
@@ -833,7 +1066,7 @@ def handle_enhanced_upload(
                                 [
                                     html.Strong("🆔 Insight ID: "),
                                     html.Code(
-                                        str(insight.id),
+                                        insight_id,
                                         style={
                                             "backgroundColor": "#374151",
                                             "padding": "2px 6px",

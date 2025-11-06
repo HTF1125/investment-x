@@ -6,6 +6,7 @@ from sqlalchemy import (
     DateTime,
     Text,
     ForeignKey,
+    LargeBinary,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -507,18 +508,21 @@ class Insights(Base):
     published_date = Column(Date, default=date.today)
     summary = Column(Text, nullable=True)
     status = Column(String, default="new")  # new, processing, completed, failed
+    pdf_content = Column(LargeBinary, nullable=True)
 
     def save_content(self, content: bytes) -> bool:
-        """Save PDF content to storage."""
-        from ix.db.boto import Boto
+        """Persist PDF content directly in the database."""
 
-        return Boto().save_pdf(pdf_content=content, filename=f"{self.id}.pdf")
+        if content is None:
+            self.pdf_content = None
+        else:
+            self.pdf_content = bytes(content)
+        return True
 
     def get_content(self) -> bytes:
-        """Get PDF content from storage."""
-        from ix.db.boto import Boto
+        """Retrieve PDF content from the database."""
 
-        return Boto().get_pdf(filename=f"{self.id}.pdf")
+        return self.pdf_content or b""
 
 
 class TacticalView(Base):

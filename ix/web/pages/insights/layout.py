@@ -792,6 +792,12 @@ layout = dmc.Container(
         dcc.Store(
             id="current-insight", data=None
         ),  # Store current insight data for PDF viewer
+        dcc.Store(id="publishers-refresh-token"),
+        dcc.Interval(
+            id="publishers-refresh-interval",
+            interval=60 * 1000,
+            n_intervals=0,
+        ),
     ],
     size="xl",
     px="md",

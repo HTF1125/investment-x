@@ -19,6 +19,8 @@ from ix.db.client import (
     delete_insight,
     update_insight_summary,
 )
+from ix.db.conn import Session
+from ix.db.models import Insights
 from ix import dbb
 from ix.misc.terminal import get_logger
 from ix.misc import PDFSummarizer, Settings
@@ -58,7 +60,7 @@ def remove_deleted_insight(current_data: List[str], insight_id: str) -> List[str
 def delete_insight_backend(insight: dict) -> None:
     """Attempts deletion in the backend for a given insight."""
     try:
-        Insight.find_one(Insight.id == ObjectId(insight.get("id"))).delete().run()
+        delete_insight(str(insight.get("id")))
     except Exception as e:
         logger.error(f"Error deleting insight with id {insight.get('id')}: {e}")
 
@@ -431,22 +433,28 @@ def enhanced_process_pdf_upload(
                 None,
             )
 
-        # Create insight record
-        insight = Insight(
-            published_date=published_date, issuer=issuer, name=name
-        ).create()
+        with Session() as session:
+            insight = Insights(
+                published_date=published_date,
+                issuer=issuer,
+                name=name,
+                status="processing",
+                pdf_content=decoded,
+            )
+            session.add(insight)
+            session.flush()
 
-        filename_pdf = f"{insight.id}.pdf"
-        boto_instance = Boto()
+            summary_text = None
+            if getattr(Settings, "openai_secret_key", None):
+                summarizer = PDFSummarizer(Settings.openai_secret_key)
+                summary_text = summarizer.process_insights(decoded)
+                insight.summary = summary_text
+                insight.status = "completed"
+            else:
+                insight.summary = "AI summarization not configured."
+                insight.status = "completed"
 
-        # Upload PDF
-        boto_instance.save_pdf(pdf_content=decoded, filename=filename_pdf)
-
-        # Generate summary
-        summarizer = PDFSummarizer(Settings.openai_secret_key)
-        pdf_content = boto_instance.get_pdf(filename=filename_pdf)
-        summary_text = summarizer.process_insights(pdf_content)
-        insight.set({"summary": summary_text})
+            insight_id = str(insight.id)
 
         # Success message
         success_alert = dbc.Alert(
@@ -505,7 +513,7 @@ def enhanced_process_pdf_upload(
                                 html.Small(
                                     [
                                         html.Strong("Insight ID: "),
-                                        str(insight.id),
+                                        insight_id,
                                     ],
                                     className="d-block mb-1",
                                 ),

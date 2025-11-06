@@ -92,6 +92,14 @@ class Connection:
                 # Create all tables
                 Base.metadata.create_all(bind=self.engine)
 
+                # Ensure new columns introduced outside migrations exist
+                with self.engine.connect() as conn_check:
+                    conn_check.execute(
+                        text(
+                            "ALTER TABLE IF EXISTS insights ADD COLUMN IF NOT EXISTS pdf_content BYTEA"
+                        )
+                    )
+
                 self._is_connected = True
                 logger.info(f"Successfully connected to PostgreSQL: {settings.db_name}")
                 return True

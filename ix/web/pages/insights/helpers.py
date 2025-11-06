@@ -66,7 +66,7 @@ def create_insight_card(insight: Dict[str, Any]) -> dbc.Card:
     # Right side: Icon buttons
     pdf_button = dbc.Button(
         html.I(className="fa-regular fa-file-pdf", style={"fontSize": "1rem"}),
-        href=f"https://files.investment-x.app/{insight.get('id')}.pdf",
+        href=f"/api/download-pdf/{insight.get('id')}",
         target="_blank",
         color="light",
         size="sm",

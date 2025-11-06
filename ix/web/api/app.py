@@ -676,7 +676,7 @@ def register_api_routes(app):
                 ),
                 "summary": insight.summary,
                 "status": insight.status,
-                "has_content": True,  # MongoDB stores content separately via Boto
+                "has_content": True,  # Content stored in PostgreSQL
                 "created_at": (
                     insight.created_at.isoformat()
                     if hasattr(insight, "created_at") and insight.created_at
@@ -735,7 +735,7 @@ def register_api_routes(app):
             "published_date": published_date_str,
             "summary": insight_summary,
             "status": insight_status,
-            "has_content": True,  # Content stored separately via Boto
+            "has_content": True,  # Content stored in PostgreSQL
             "content_size": 0,  # Size not directly available
         }
 
@@ -961,7 +961,7 @@ def register_api_routes(app):
             if not insight:
                 return jsonify({"error": "Insight not found"}), 404
 
-            # Get PDF content from Boto storage
+            # Get PDF content from database storage
             try:
                 content = insight.get_content()
             except Exception as e:

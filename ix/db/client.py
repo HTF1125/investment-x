@@ -5,8 +5,7 @@ import io
 from datetime import datetime
 import base64
 from ix.misc import get_logger, periods
-from .models import Universe, Insights, TacticalView, Timeseries
-from .boto import Boto
+from .models import Universe, Insights, TacticalView, Timeseries, Publishers
 from .query import *
 
 # Configure logging
@@ -54,12 +53,9 @@ def _get_insight_content_bytes(id: str) -> bytes:
         insight = session.query(Insights).filter(Insights.id == id).first()
         if not insight:
             raise ValueError("Insight not found")
-        filename = f"{insight.id}.pdf"
-        boto = Boto()
-        content = boto.get_pdf(filename)
-        if content is None:
+        if not insight.pdf_content:
             raise ValueError("PDF content not found")
-        return content
+        return bytes(insight.pdf_content)
 
 
 def get_insight_content(id: str) -> io.BytesIO:
@@ -149,6 +145,96 @@ def get_insights(
         raise Exception(f"Error occurred while fetching insights: {str(e)}")
 
 
+def _serialize_publisher(publisher: Publishers) -> Dict[str, Optional[str]]:
+    """Convert a Publishers ORM instance into a plain dict."""
+
+    last_visited = None
+    if getattr(publisher, "last_visited", None) is not None:
+        try:
+            last_visited = publisher.last_visited.isoformat()
+        except AttributeError:
+            last_visited = str(publisher.last_visited)
+
+    return {
+        "id": str(publisher.id),
+        "name": publisher.name,
+        "url": publisher.url,
+        "frequency": publisher.frequency,
+        "remark": publisher.remark,
+        "last_visited": last_visited,
+    }
+
+
+def get_publishers(limit: Optional[int] = None) -> List[Dict[str, Optional[str]]]:
+    """Fetch publishers ordered by most recently visited."""
+
+    from ix.db.conn import Session
+    from sqlalchemy import asc, nullsfirst
+
+    with Session() as session:
+        query = session.query(Publishers)
+        query = query.order_by(nullsfirst(asc(Publishers.last_visited)))
+        if limit is not None:
+            query = query.limit(limit)
+        publishers = query.all()
+
+        return [_serialize_publisher(publisher) for publisher in publishers]
+
+
+def create_publisher(
+    name: str,
+    url: str,
+    frequency: Optional[str] = None,
+    remark: Optional[str] = None,
+) -> Dict[str, Optional[str]]:
+    """Create a new publisher entry."""
+
+    if not name or not url:
+        raise ValueError("Both name and url are required to create a publisher")
+
+    from ix.db.conn import Session
+
+    normalized_frequency = frequency or "Unclassified"
+
+    with Session() as session:
+        existing = session.query(Publishers).filter(Publishers.url == url).first()
+        if existing:
+            raise ValueError("A publisher with this URL already exists")
+
+        publisher = Publishers(
+            name=name.strip(),
+            url=url.strip(),
+            frequency=normalized_frequency.strip() if normalized_frequency else "Unclassified",
+            remark=remark.strip() if remark else None,
+        )
+
+        session.add(publisher)
+        session.flush()
+        session.refresh(publisher)
+
+        return _serialize_publisher(publisher)
+
+
+def touch_publisher(publisher_id: str) -> Dict[str, Optional[str]]:
+    """Update a publisher's last_visited timestamp and return the updated record."""
+
+    if not publisher_id:
+        raise ValueError("publisher_id is required")
+
+    from ix.db.conn import Session
+
+    with Session() as session:
+        publisher = session.query(Publishers).filter(Publishers.id == publisher_id).first()
+        if not publisher:
+            raise ValueError("Publisher not found")
+
+        publisher.last_visited = datetime.utcnow()
+        session.flush()
+        session.refresh(publisher)
+
+        return _serialize_publisher(publisher)
+
+
 def get_insight_content_by_id(id: str) -> io.BytesIO:
     """
     Retrieves the PDF content for an insight by its ID.
@@ -176,17 +262,12 @@ def add_insight(add_request):
             name=add_request.name,
             published_date=add_request.published_date,
             summary=add_request.summary,
+            pdf_content=content_bytes,
         )
 
         with Session() as session:
             session.add(new_insight)
             session.refresh(new_insight)
-
-            if content_bytes:
-                Boto().save_pdf(
-                    pdf_content=content_bytes,
-                    filename=f"{new_insight.id}.pdf",
-                )
 
             return new_insight
     except Exception as e:
@@ -220,10 +301,7 @@ def update_insight(id: str, update_request):
         if getattr(update_request, "content", None):
             try:
                 pdf_content = base64.b64decode(update_request.content)
-                Boto().save_pdf(
-                    pdf_content=pdf_content,
-                    filename=f"{insight.id}.pdf",
-                )
+                insight.pdf_content = pdf_content
             except Exception as e:
                 raise ValueError("Invalid Base64 content") from e
 
@@ -276,6 +354,7 @@ def create_insight_with_pdf(base64_content: str, filename: str):
             issuer="Uploaded PDF",
             published_date=datetime.now().date(),
             summary="Processing...",
+            pdf_content=pdf_data,
         )
         return insight
     except Exception as e:
