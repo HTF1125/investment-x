@@ -123,7 +123,28 @@ def get_insights(
                 .limit(limit)
                 .all()
             )
-            return list(insights)
+            # Extract all attributes while session is active to avoid detached instance errors
+            insights_data = []
+            for insight in insights:
+                # Convert date to ISO format string for JSON serialization
+                published_date_str = None
+                if insight.published_date:
+                    if isinstance(insight.published_date, str):
+                        published_date_str = insight.published_date
+                    elif hasattr(insight.published_date, 'isoformat'):
+                        published_date_str = insight.published_date.isoformat()
+                    else:
+                        published_date_str = str(insight.published_date)
+
+                insights_data.append({
+                    'id': insight.id,
+                    'name': insight.name,
+                    'issuer': insight.issuer,
+                    'published_date': published_date_str,
+                    'status': insight.status,
+                    'summary': insight.summary,
+                })
+            return insights_data
     except Exception as e:
         raise Exception(f"Error occurred while fetching insights: {str(e)}")
 

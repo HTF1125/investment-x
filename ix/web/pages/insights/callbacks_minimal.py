@@ -7,7 +7,7 @@ Incorporates features from wx implementation with improved design.
 import json
 import base64
 from datetime import datetime
-from bson import ObjectId
+# from bson import ObjectId  # Removed - MongoDB-specific
 from typing import Any, List, Tuple, Optional
 
 import dash
@@ -247,17 +247,30 @@ def load_initial_insights(container_id):
         insight_cards = []
 
         for insight in insights:
-            # Convert insight to dict format
-            insight_data = {
-                "id": str(insight.id),
-                "name": insight.name or "Untitled",
-                "issuer": insight.issuer or "Unknown",
-                "published_date": (
-                    str(insight.published_date) if insight.published_date else ""
-                ),
-                "status": insight.status or "new",
-                "summary": insight.summary or "",
-            }
+            # Handle both dict and object format
+            if isinstance(insight, dict):
+                insight_data = {
+                    "id": str(insight.get('id', '')),
+                    "name": insight.get('name') or "Untitled",
+                    "issuer": insight.get('issuer') or "Unknown",
+                    "published_date": (
+                        str(insight.get('published_date')) if insight.get('published_date') else ""
+                    ),
+                    "status": insight.get('status') or "new",
+                    "summary": insight.get('summary') or "",
+                }
+            else:
+                # Legacy object format - extract attributes immediately
+                insight_data = {
+                    "id": str(insight.id),
+                    "name": insight.name or "Untitled",
+                    "issuer": insight.issuer or "Unknown",
+                    "published_date": (
+                        str(insight.published_date) if insight.published_date else ""
+                    ),
+                    "status": insight.status or "new",
+                    "summary": insight.summary or "",
+                }
 
             # Create card
             card = create_insight_card(insight_data)
@@ -265,9 +278,21 @@ def load_initial_insights(container_id):
 
         # Serialize insights data for the store (limit to first 10)
         insights_to_serialize = insights[:10]
-        serialized_insights = [
-            insight.model_dump_json() for insight in insights_to_serialize
-        ]
+        serialized_insights = []
+        for insight in insights_to_serialize:
+            if isinstance(insight, dict):
+                import json
+                from datetime import date, datetime
+
+                # Create a copy and convert date/datetime objects to strings
+                insight_copy = insight.copy()
+                for key, value in insight_copy.items():
+                    if isinstance(value, (date, datetime)):
+                        insight_copy[key] = value.isoformat() if hasattr(value, 'isoformat') else str(value)
+
+                serialized_insights.append(json.dumps(insight_copy))
+            else:
+                serialized_insights.append(insight.model_dump_json())
 
         # Limit to first 10 insights for initial load
         if len(insight_cards) > 10:
@@ -373,16 +398,28 @@ def load_more_insights(n_clicks, current_children):
         # Create cards for new insights
         new_cards = []
         for insight in more_insights:
-            insight_data = {
-                "id": str(insight.id),
-                "name": insight.name or "Untitled",
-                "issuer": insight.issuer or "Unknown",
-                "published_date": (
-                    str(insight.published_date) if insight.published_date else ""
-                ),
-                "status": insight.status or "new",
-                "summary": insight.summary or "",
-            }
+            if isinstance(insight, dict):
+                insight_data = {
+                    "id": str(insight.get("id", "")),
+                    "name": insight.get("name") or "Untitled",
+                    "issuer": insight.get("issuer") or "Unknown",
+                    "published_date": (
+                        str(insight.get("published_date")) if insight.get("published_date") else ""
+                    ),
+                    "status": insight.get("status") or "new",
+                    "summary": insight.get("summary") or "",
+                }
+            else:
+                insight_data = {
+                    "id": str(insight.id),
+                    "name": insight.name or "Untitled",
+                    "issuer": insight.issuer or "Unknown",
+                    "published_date": (
+                        str(insight.published_date) if insight.published_date else ""
+                    ),
+                    "status": insight.status or "new",
+                    "summary": insight.summary or "",
+                }
 
             card = create_insight_card(insight_data)
             new_cards.append(card)
@@ -445,7 +482,8 @@ def search_insights(
             insights = [
                 insight
                 for insight in insights
-                if issuer_value.lower() in insight.issuer.lower()
+                if isinstance(insight, dict) and issuer_value.lower() in (insight.get('issuer', '') or '').lower()
+                or not isinstance(insight, dict) and issuer_value.lower() in (insight.issuer or '').lower()
             ]
 
         if start_date:
@@ -454,8 +492,8 @@ def search_insights(
                 insights = [
                     insight
                     for insight in insights
-                    if insight.published_date
-                    and insight.published_date >= start_date_obj
+                    if (isinstance(insight, dict) and insight.get('published_date') and insight.get('published_date') >= start_date_obj)
+                    or (not isinstance(insight, dict) and insight.published_date and insight.published_date >= start_date_obj)
                 ]
             except (ValueError, TypeError):
                 pass
@@ -466,7 +504,8 @@ def search_insights(
                 insights = [
                     insight
                     for insight in insights
-                    if insight.published_date and insight.published_date <= end_date_obj
+                    if (isinstance(insight, dict) and insight.get('published_date') and insight.get('published_date') <= end_date_obj)
+                    or (not isinstance(insight, dict) and insight.published_date and insight.published_date <= end_date_obj)
                 ]
             except (ValueError, TypeError):
                 pass
@@ -498,32 +537,54 @@ def search_insights(
 
         # Sort insights if sort value is provided
         if sort_value:
+            def get_published_date(x):
+                if isinstance(x, dict):
+                    return x.get("published_date", "")
+                return getattr(x, "published_date", "")
+
+            def get_name(x):
+                if isinstance(x, dict):
+                    return x.get("name", "").lower()
+                return getattr(x, "name", "").lower()
+
             if sort_value == "date_desc":
                 insights = sorted(
-                    insights, key=lambda x: x.get("published_date", ""), reverse=True
+                    insights, key=get_published_date, reverse=True
                 )
             elif sort_value == "date_asc":
-                insights = sorted(insights, key=lambda x: x.get("published_date", ""))
+                insights = sorted(insights, key=get_published_date)
             elif sort_value == "name_asc":
-                insights = sorted(insights, key=lambda x: x.get("name", "").lower())
+                insights = sorted(insights, key=get_name)
             elif sort_value == "name_desc":
                 insights = sorted(
-                    insights, key=lambda x: x.get("name", "").lower(), reverse=True
+                    insights, key=get_name, reverse=True
                 )
 
         # Create cards
         insight_cards = []
         for insight in insights:
-            insight_data = {
-                "id": str(insight.id),
-                "name": insight.name or "Untitled",
-                "issuer": insight.issuer or "Unknown",
-                "published_date": (
-                    str(insight.published_date) if insight.published_date else ""
-                ),
-                "status": insight.status or "new",
-                "summary": insight.summary or "",
-            }
+            if isinstance(insight, dict):
+                insight_data = {
+                    "id": str(insight.get("id", "")),
+                    "name": insight.get("name") or "Untitled",
+                    "issuer": insight.get("issuer") or "Unknown",
+                    "published_date": (
+                        str(insight.get("published_date")) if insight.get("published_date") else ""
+                    ),
+                    "status": insight.get("status") or "new",
+                    "summary": insight.get("summary") or "",
+                }
+            else:
+                insight_data = {
+                    "id": str(insight.id),
+                    "name": insight.name or "Untitled",
+                    "issuer": insight.issuer or "Unknown",
+                    "published_date": (
+                        str(insight.published_date) if insight.published_date else ""
+                    ),
+                    "status": insight.status or "new",
+                    "summary": insight.summary or "",
+                }
 
             card = create_insight_card(insight_data)
             insight_cards.append(card)
@@ -862,10 +923,15 @@ def delete_insight(n_clicks_list, current_children):
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         insight_id = json.loads(button_id)["index"]
 
-        # Delete from database
-        insight_to_delete = Insight.find_one(Insight.id == ObjectId(insight_id)).run()
-        if insight_to_delete:
-            insight_to_delete.delete()
+        # Delete from database using SQLAlchemy
+        from ix.db.conn import Session
+        from ix.db.models import Insights
+
+        with Session() as session:
+            insight_to_delete = session.query(Insights).filter(Insights.id == insight_id).first()
+            if insight_to_delete:
+                session.delete(insight_to_delete)
+                session.commit()
 
         # Show success message
         success_message = html.Div(
@@ -984,27 +1050,31 @@ def display_enhanced_modal(
     # Fallback to database query if not found in store
     if not insight_data:
         try:
-            insight = Insight.find_one(Insight.id == ObjectId(insight_id)).run()
-            if not insight:
-                return False, html.Div(
-                    "Insight not found.",
-                    style={
-                        "color": "#ef4444",
-                        "textAlign": "center",
-                        "padding": "20px",
-                    },
-                )
-            # Convert to dict format
-            insight_data = {
-                "id": str(insight.id),
-                "name": insight.name or "Untitled",
-                "issuer": insight.issuer or "Unknown",
-                "published_date": (
-                    str(insight.published_date) if insight.published_date else ""
-                ),
-                "summary": insight.summary or "No summary available.",
-                "status": insight.status or "new",
-            }
+            from ix.db.conn import Session
+            from ix.db.models import Insights
+
+            with Session() as session:
+                insight = session.query(Insights).filter(Insights.id == insight_id).first()
+                if not insight:
+                    return False, html.Div(
+                        "Insight not found.",
+                        style={
+                            "color": "#ef4444",
+                            "textAlign": "center",
+                            "padding": "20px",
+                        },
+                    )
+                # Extract attributes while in session
+                insight_data = {
+                    "id": str(insight.id),
+                    "name": insight.name or "Untitled",
+                    "issuer": insight.issuer or "Unknown",
+                    "published_date": (
+                        str(insight.published_date) if insight.published_date else ""
+                    ),
+                    "summary": insight.summary or "No summary available.",
+                    "status": insight.status or "new",
+                }
         except Exception as e:
             logger.error(f"Error fetching insight {insight_id}: {e}")
             return False, html.Div(

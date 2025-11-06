@@ -334,7 +334,25 @@ def format_number(num):
 
 
 def create_timeseries_card(ts):
-    """Create a simple card for timeseries"""
+    """Create a simple card for timeseries - accepts dict or Timeseries object"""
+    # Handle both dict and object
+    if isinstance(ts, dict):
+        code = ts.get('code', '')
+        name = ts.get('name', 'Unnamed')
+        asset_class = ts.get('asset_class', 'Unknown')
+        num_data = ts.get('num_data', 0)
+        start = ts.get('start')
+        frequency = ts.get('frequency', 'Unknown')
+    else:
+        code = ts.code
+        name = ts.name or "Unnamed"
+        asset_class = ts.asset_class or "Unknown"
+        num_data = ts.num_data or 0
+        start = ts.start
+        frequency = ts.frequency or "Unknown"
+
+    start_str = start.strftime('%Y-%m-%d') if start and hasattr(start, 'strftime') else (str(start) if start else 'N/A')
+
     return html.Div(
         dmc.Card(
             [
@@ -345,10 +363,10 @@ def create_timeseries_card(ts):
                                 dmc.Group(
                                     [
                                         dmc.Title(
-                                            ts.code, order=4, style={"margin": 0}
+                                            code, order=4, style={"margin": 0}
                                         ),
                                         dmc.Text(
-                                            ts.name or "Unnamed",
+                                            name,
                                             size="sm",
                                             c="gray",
                                             style={"margin": 0},
@@ -359,12 +377,12 @@ def create_timeseries_card(ts):
                                 dmc.Group(
                                     [
                                         dmc.Badge(
-                                            ts.asset_class or "Unknown",
+                                            asset_class,
                                             color="blue",
                                             variant="light",
                                         ),
                                         dmc.Badge(
-                                            f"{format_number(ts.num_data or 0)} pts",
+                                            f"{format_number(num_data)} pts",
                                             color="gray",
                                             variant="outline",
                                         ),
@@ -380,12 +398,12 @@ def create_timeseries_card(ts):
                         dmc.Group(
                             [
                                 dmc.Text(
-                                    f"📅 {ts.start.strftime('%Y-%m-%d') if ts.start else 'N/A'}",
+                                    f"📅 {start_str}",
                                     size="xs",
                                     c="gray",
                                 ),
                                 dmc.Text(
-                                    f"🔄 {ts.frequency or 'Unknown'}",
+                                    f"🔄 {frequency}",
                                     size="xs",
                                     c="gray",
                                 ),
@@ -406,7 +424,7 @@ def create_timeseries_card(ts):
             "cursor": "pointer",
             "transition": "transform 0.2s, box-shadow 0.2s",
         },
-        id={"type": "ts-card", "index": ts.code},
+        id={"type": "ts-card", "index": code},
     )
 
 
@@ -425,23 +443,40 @@ def update_timeseries_list(search, current_page):
     if current_page is None:
         current_page = 1
 
-    # Query database using Bunnet ODM
-    query = models.Timeseries.find()
+    # Query database using SQLAlchemy
+    from ix.db.conn import Session
+    from ix.db.models import Timeseries
 
-    # Apply search filter if provided
-    if search:
-        search_pattern = search.lower()
-        filtered = [
-            ts
-            for ts in query.run()
-            if search_pattern in (ts.code or "").lower()
-            or search_pattern in (ts.name or "").lower()
-        ]
-    else:
-        filtered = list(query.run())
+    with Session() as session:
+        if search:
+            search_pattern = f"%{search.lower()}%"
+            query = session.query(Timeseries).filter(
+                (Timeseries.code.ilike(search_pattern)) |
+                (Timeseries.name.ilike(search_pattern))
+            )
+        else:
+            query = session.query(Timeseries)
+
+        # Get all results and extract attributes while in session
+        timeseries_list = query.all()
+        filtered = []
+        for ts in timeseries_list:
+            filtered.append({
+                'id': ts.id,
+                'code': ts.code,
+                'name': ts.name,
+                'provider': ts.provider,
+                'asset_class': ts.asset_class,
+                'category': ts.category,
+                'source': ts.source,
+                'frequency': ts.frequency,
+                'start': ts.start,
+                'end': ts.end,
+                'num_data': ts.num_data,
+            })
 
     # Sort by code
-    filtered.sort(key=lambda x: x.code or "")
+    filtered.sort(key=lambda x: x.get('code', '') or "")
 
     total_count = len(filtered)
     total_pages = max(1, (total_count + 50 - 1) // 50)
@@ -529,15 +564,39 @@ def load_modal_content(ts_code):
     if not ts_code:
         raise PreventUpdate
 
-    # Get timeseries by code using Bunnet ODM
-    ts = models.Timeseries.find_one(models.Timeseries.code == ts_code).run()
-    if not ts:
-        return "Not found", "Error", "Error", {}, "Error"
+    # Get timeseries by code using SQLAlchemy
+    from ix.db.conn import Session
+    from ix.db.models import Timeseries
+
+    with Session() as session:
+        ts = session.query(Timeseries).filter(Timeseries.code == ts_code).first()
+        if not ts:
+            return "Not found", "Error", "Error", {}, "Error"
+
+        # Extract all needed attributes while in session
+        ts_code = ts.code
+        ts_name = ts.name
+        ts_provider = ts.provider
+        ts_asset_class = ts.asset_class
+        ts_category = ts.category
+        ts_source = ts.source
+        ts_source_code = ts.source_code
+        ts_frequency = ts.frequency
+        ts_unit = ts.unit
+        ts_scale = ts.scale
+        ts_currency = ts.currency
+        ts_country = ts.country
+        ts_start = ts.start
+        ts_end = ts.end
+        ts_num_data = ts.num_data
+        ts_remark = ts.remark
+        # Get data within session
+        ts_data = ts.data.copy() if hasattr(ts, 'data') else pd.Series()
 
     # Header
     header = [
-        dmc.Title(ts.code, order=2, style={"margin": 0}),
-        dmc.Text(ts.name or "Unnamed", c="gray", size="sm"),
+        dmc.Title(ts_code, order=2, style={"margin": 0}),
+        dmc.Text(ts_name or "Unnamed", c="gray", size="sm"),
     ]
 
     # Overview tab - Basic info
@@ -553,31 +612,31 @@ def load_modal_content(ts_code):
                             dmc.Text(
                                 [
                                     dmc.Text("Code: ", fw="bold"),
-                                    ts.code or "N/A",
+                                    ts_code or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Name: ", fw="bold"),
-                                    ts.name or "N/A",
+                                    ts_name or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Provider: ", fw="bold"),
-                                    ts.provider or "N/A",
+                                    ts_provider or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Asset Class: ", fw="bold"),
-                                    ts.asset_class or "N/A",
+                                    ts_asset_class or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Category: ", fw="bold"),
-                                    ts.category or "N/A",
+                                    ts_category or "N/A",
                                 ]
                             ),
                         ],
@@ -596,15 +655,15 @@ def load_modal_content(ts_code):
                             dmc.Text(
                                 [
                                     dmc.Text("Data Points: ", fw="bold"),
-                                    f"{ts.num_data or 0:,}",
+                                    f"{ts_num_data or 0:,}",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Start Date: ", fw="bold"),
                                     (
-                                        ts.start.strftime("%Y-%m-%d")
-                                        if ts.start
+                                        ts_start.strftime("%Y-%m-%d")
+                                        if ts_start
                                         else "N/A"
                                     ),
                                 ]
@@ -612,19 +671,19 @@ def load_modal_content(ts_code):
                             dmc.Text(
                                 [
                                     dmc.Text("End Date: ", fw="bold"),
-                                    (ts.end.strftime("%Y-%m-%d") if ts.end else "N/A"),
+                                    (ts_end.strftime("%Y-%m-%d") if ts_end else "N/A"),
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Frequency: ", fw="bold"),
-                                    ts.frequency or "N/A",
+                                    ts_frequency or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Unit: ", fw="bold"),
-                                    ts.unit or "N/A",
+                                    ts_unit or "N/A",
                                 ]
                             ),
                         ],
@@ -643,31 +702,31 @@ def load_modal_content(ts_code):
                             dmc.Text(
                                 [
                                     dmc.Text("Currency: ", fw="bold"),
-                                    ts.currency or "N/A",
+                                    ts_currency or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Country: ", fw="bold"),
-                                    ts.country or "N/A",
+                                    ts_country or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Scale: ", fw="bold"),
-                                    (str(ts.scale) if ts.scale is not None else "N/A"),
+                                    (str(ts_scale) if ts_scale is not None else "N/A"),
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Timeseries Code: ", fw="bold"),
-                                    str(ts.code),
+                                    str(ts_code),
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Source Code: ", fw="bold"),
-                                    ts.source_code or "N/A",
+                                    ts_source_code or "N/A",
                                 ]
                             ),
                         ],
@@ -692,31 +751,31 @@ def load_modal_content(ts_code):
                             dmc.Text(
                                 [
                                     dmc.Text("Source: ", fw="bold"),
-                                    ts.source or "N/A",
+                                    ts_source or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Source Code: ", fw="bold"),
-                                    ts.source_code or "N/A",
+                                    ts_source_code or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Provider: ", fw="bold"),
-                                    ts.provider or "N/A",
+                                    ts_provider or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Asset Class: ", fw="bold"),
-                                    ts.asset_class or "N/A",
+                                    ts_asset_class or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Category: ", fw="bold"),
-                                    ts.category or "N/A",
+                                    ts_category or "N/A",
                                 ]
                             ),
                         ],
@@ -737,15 +796,15 @@ def load_modal_content(ts_code):
                             dmc.Text(
                                 [
                                     dmc.Text("Data Points: ", fw="bold"),
-                                    f"{ts.num_data or 0:,}",
+                                    f"{ts_num_data or 0:,}",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Start Date: ", fw="bold"),
                                     (
-                                        ts.start.strftime("%Y-%m-%d")
-                                        if ts.start
+                                        ts_start.strftime("%Y-%m-%d")
+                                        if ts_start
                                         else "N/A"
                                     ),
                                 ]
@@ -753,19 +812,19 @@ def load_modal_content(ts_code):
                             dmc.Text(
                                 [
                                     dmc.Text("End Date: ", fw="bold"),
-                                    (ts.end.strftime("%Y-%m-%d") if ts.end else "N/A"),
+                                    (ts_end.strftime("%Y-%m-%d") if ts_end else "N/A"),
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Frequency: ", fw="bold"),
-                                    ts.frequency or "N/A",
+                                    ts_frequency or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Unit: ", fw="bold"),
-                                    ts.unit or "N/A",
+                                    ts_unit or "N/A",
                                 ]
                             ),
                         ],
@@ -786,25 +845,25 @@ def load_modal_content(ts_code):
                             dmc.Text(
                                 [
                                     dmc.Text("Currency: ", fw="bold"),
-                                    ts.currency or "N/A",
+                                    ts_currency or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Country: ", fw="bold"),
-                                    ts.country or "N/A",
+                                    ts_country or "N/A",
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Scale: ", fw="bold"),
-                                    (str(ts.scale) if ts.scale is not None else "N/A"),
+                                    (str(ts_scale) if ts_scale is not None else "N/A"),
                                 ]
                             ),
                             dmc.Text(
                                 [
                                     dmc.Text("Remark: ", fw="bold"),
-                                    ts.remark or "N/A",
+                                    ts_remark or "N/A",
                                 ]
                             ),
                         ],
@@ -817,7 +876,7 @@ def load_modal_content(ts_code):
     )
 
     # Chart
-    data = ts.data
+    data = ts_data
     df = data.dropna().reset_index()
     # Ensure we have proper column names
     if len(df.columns) == 2:
@@ -832,12 +891,12 @@ def load_modal_content(ts_code):
             x=df["date"],
             y=df["value"],
             mode="lines",
-            name=ts.code,
+            name=ts_code,
             line=dict(color="#3b82f6", width=2),
         )
     )
     fig.update_layout(
-        title=f"{ts.code} Time Series",
+        title=f"{ts_code} Time Series",
         xaxis_title="Date",
         yaxis_title="Value",
         height=400,

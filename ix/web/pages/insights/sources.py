@@ -4,7 +4,8 @@ Modern design with improved layout, better organization, and enhanced functional
 """
 
 import json
-from ix.db import Publishers
+from ix.db.models import Publishers
+from ix.db.conn import Session
 from dash import html, dcc, callback_context, Output, Input, State, ALL, callback
 from dash.exceptions import PreventUpdate
 from datetime import datetime
@@ -375,24 +376,40 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
                 button_type = triggered_id["type"]
 
                 if button_type == "visit-btn":
-                    # Update the document's last_visited field
-                    # insight_source = Publisher.find_one({"id": source_id}).run()  # TODO: Convert to SQLAlchemy
-                    if insight_source:
-                        new_time = datetime.now()
-                        insight_source.set({"last_visited": new_time})
-                        webbrowser.open(insight_source.url, new=2)  # Open in new tab
+                    # Update the document's last_visited field using SQLAlchemy
+                    with Session() as session:
+                        insight_source = session.query(Publishers).filter(Publishers.id == source_id).first()
+                        if insight_source:
+                            insight_source.last_visited = datetime.now()
+                            session.commit()
+                            webbrowser.open(insight_source.url, new=2)  # Open in new tab
 
                 elif button_type == "delete-source-btn":
-                    # Delete the source
-                    # insight_source = Publisher.find_one({"id": source_id}).run()  # TODO: Convert to SQLAlchemy
-                    if insight_source:
-                        insight_source.delete()
+                    # Delete the source using SQLAlchemy
+                    with Session() as session:
+                        insight_source = session.query(Publishers).filter(Publishers.id == source_id).first()
+                        if insight_source:
+                            session.delete(insight_source)
+                            session.commit()
 
             except Exception as e:
                 print(f"Error handling button click: {e}")
 
-    # Fetch sources
-    # sources = Publisher.find({}).sort("last_visited").run()  # TODO: Convert to SQLAlchemy
+    # Fetch sources using SQLAlchemy
+    with Session() as session:
+        # Order by last_visited descending, with NULL values last
+        from sqlalchemy import desc, nullslast
+        publishers_list = session.query(Publishers).order_by(nullslast(desc(Publishers.last_visited))).all()
+        # Extract all attributes while in session to avoid detached instance errors
+        sources = []
+        for publisher in publishers_list:
+            sources.append({
+                'id': publisher.id,
+                'name': publisher.name,
+                'url': publisher.url,
+                'frequency': publisher.frequency,
+                'last_visited': publisher.last_visited,
+            })
 
     if not sources:
         return html.Div(
@@ -439,8 +456,13 @@ def update_sources(visit_clicks, delete_clicks, n_intervals, save_clicks):
 
     children = []
     for source in sources:
-        source_dict = source.model_dump()
-        source_dict["_id"] = str(source.id)
+        # Handle both dict and object format
+        if isinstance(source, dict):
+            source_dict = source.copy()
+            source_dict["_id"] = str(source.get('id', ''))
+        else:
+            source_dict = source.model_dump() if hasattr(source, 'model_dump') else {}
+            source_dict["_id"] = str(source.id)
 
         # Format last visited
         last_visited = source_dict.get("last_visited", "")
@@ -695,18 +717,19 @@ def toggle_source_modal(
             triggered_id = json.loads(json_str)
             source_id = triggered_id["index"]
 
-            # Get source data
-            # source = Publisher.find_one({"id": source_id}).run()  # TODO: Convert to SQLAlchemy
-            if source:
-                return (
-                    True,
-                    "Edit Source",
-                    source.name,
-                    source.url,
-                    source.frequency,
-                    source.remark or "",
-                    str(source.id),
-                )
+            # Get source data using SQLAlchemy
+            with Session() as session:
+                source = session.query(Publishers).filter(Publishers.id == source_id).first()
+                if source:
+                    return (
+                        True,
+                        "Edit Source",
+                        source.name,
+                        source.url,
+                        source.frequency,
+                        source.remark or "",
+                        str(source.id),
+                    )
         except Exception as e:
             print(f"Error loading source for edit: {e}")
 
@@ -736,28 +759,27 @@ def toggle_source_modal(
                     edit_id,
                 )
 
-            if edit_id:
-                # Update existing source
-                # source = Publisher.find_one({"id": edit_id}).run()  # TODO: Convert to SQLAlchemy
-                if source:
-                    source.set(
-                        {
-                            "name": name_value,
-                            "url": url_value,
-                            "frequency": frequency_value,
-                            "remark": remark_value,
-                        }
+            with Session() as session:
+                if edit_id:
+                    # Update existing source
+                    source = session.query(Publishers).filter(Publishers.id == edit_id).first()
+                    if source:
+                        source.name = name_value
+                        source.url = url_value
+                        source.frequency = frequency_value
+                        source.remark = remark_value
+                        session.commit()
+                else:
+                    # Create new source
+                    new_publisher = Publishers(
+                        name=name_value,
+                        url=url_value,
+                        frequency=frequency_value,
+                        remark=remark_value,
+                        last_visited=datetime.now(),
                     )
-            else:
-                # Create new source
-                # InsightSource(  # TODO: Convert to SQLAlchemy
-                #     name=name_value,
-                #     url=url_value,
-                #     frequency=frequency_value,
-                #     remark=remark_value,
-                #     last_visited=datetime.now(),
-                # ).create()
-                pass  # Placeholder for now
+                    session.add(new_publisher)
+                    session.commit()
 
             # Close modal and clear form
             return (

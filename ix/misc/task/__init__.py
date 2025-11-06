@@ -246,19 +246,47 @@ def send_data_reports():
     with Session() as session:
         timeseries_list = session.query(Timeseries).all()
 
+        # Extract all necessary attributes while in session
+        ts_data_list = []
         for ts in timeseries_list:
-            # Prepare price data for Equity:PX_LAST codes
-            if str(ts.code).endswith("EQUITY:PX_LAST"):
-                data = ts.data.dropna()
+            # Extract code and data while in session
+            ts_code = ts.code
+            # Access timeseries_data directly to avoid detached instance error
+            column_data = ts.timeseries_data if hasattr(ts, 'timeseries_data') else {}
+
+            # Convert JSONB dict to pandas Series
+            if column_data and len(column_data) > 0:
+                data_dict = column_data if isinstance(column_data, dict) else {}
+                data = pd.Series(data_dict)
                 if not data.empty:
-                    datas[ts.code] = data.iloc[-1]
+                    # Convert string dates to datetime index
+                    data.index = pd.to_datetime(data.index, errors='coerce')
+                    data = data.dropna()
+            else:
+                data = pd.Series(dtype=float)
+
+            ts_data_list.append({
+                'code': ts_code,
+                'data': data
+            })
+
+        # Process the extracted data outside the session
+        for ts_data in ts_data_list:
+            ts_code = ts_data['code']
+            data = ts_data['data']
+
+            # Prepare price data for Equity:PX_LAST codes
+            if str(ts_code).endswith("EQUITY:PX_LAST"):
+                data_clean = data.dropna()
+                if not data_clean.empty:
+                    datas[ts_code] = data_clean.iloc[-1]
 
             # Prepare timeseries data for all
-            data = ts.data.dropna()
-            if not data.empty:
-                data.index = pd.to_datetime(data.index)
-                data = data.sort_index()
-                ts_list.append(data)
+            data_clean = data.dropna()
+            if not data_clean.empty:
+                data_clean.index = pd.to_datetime(data_clean.index)
+                data_clean = data_clean.sort_index()
+                ts_list.append(data_clean)
 
     datas = pd.Series(datas)
     datas.index.name = "Code"

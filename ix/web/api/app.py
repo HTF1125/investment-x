@@ -7,7 +7,7 @@ from flask import jsonify, request, Response
 from typing import Dict, Any, List, Optional
 import pandas as pd
 from ix.db.models import Timeseries, Insights, Publishers
-from ix.db.conn import ensure_connection
+from ix.db.conn import ensure_connection, Session
 from ix.misc import get_logger
 from datetime import datetime
 from bson import ObjectId
@@ -68,35 +68,88 @@ def register_api_routes(app):
         if provider:
             query["provider"] = provider
 
-        # Execute query with pagination
-        timeseries_query = Timeseries.find(query)
+        # Execute query with pagination using SQLAlchemy
+        with Session() as session:
+            timeseries_query = session.query(Timeseries)
 
-        if offset:
-            timeseries_query = timeseries_query.skip(offset)
-        if limit:
-            timeseries_query = timeseries_query.limit(limit)
+            # Apply filters
+            if query:
+                if "category" in query:
+                    timeseries_query = timeseries_query.filter(Timeseries.category == query["category"])
+                if "asset_class" in query:
+                    timeseries_query = timeseries_query.filter(Timeseries.asset_class == query["asset_class"])
+                if "provider" in query:
+                    timeseries_query = timeseries_query.filter(Timeseries.provider == query["provider"])
 
-        timeseries_list = list(timeseries_query.run())
+            # Apply pagination
+            if offset:
+                timeseries_query = timeseries_query.offset(offset)
+            if limit:
+                timeseries_query = timeseries_query.limit(limit)
+
+            timeseries_list = timeseries_query.all()
+
+            # Extract all attributes while in session
+            ts_data_list = []
+            for ts in timeseries_list:
+                ts_data_list.append({
+                    'id': ts.id,
+                    'code': ts.code,
+                    'name': ts.name,
+                    'provider': ts.provider,
+                    'asset_class': ts.asset_class,
+                    'category': ts.category,
+                    'source': ts.source,
+                    'frequency': ts.frequency,
+                    'start': ts.start,
+                    'end': ts.end,
+                    'num_data': ts.num_data,
+                })
+            timeseries_list = ts_data_list
 
         formatted_timeseries = []
 
         for ts in timeseries_list:
+            # Handle both dict and object format
+            if isinstance(ts, dict):
+                ts_id = ts.get('id')
+                ts_code = ts.get('code')
+                ts_name = ts.get('name')
+                ts_provider = ts.get('provider')
+                ts_asset_class = ts.get('asset_class')
+                ts_category = ts.get('category')
+                ts_source = ts.get('source')
+                ts_frequency = ts.get('frequency')
+                ts_start = ts.get('start')
+                ts_end = ts.get('end')
+            else:
+                ts_id = ts.id
+                ts_code = ts.code
+                ts_name = ts.name
+                ts_provider = ts.provider
+                ts_asset_class = ts.asset_class
+                ts_category = ts.category
+                ts_source = ts.source
+                ts_frequency = ts.frequency
+                ts_start = ts.start
+                ts_end = ts.end
+
             formatted_ts = {
-                "id": str(ts.id),  # Use MongoDB ObjectId as string
-                "code": ts.code,
-                "name": ts.name,
-                "provider": ts.provider,
-                "asset_class": ts.asset_class,
-                "category": ts.category,
-                "start": ts.start.isoformat() if ts.start else None,
-                "end": ts.end.isoformat() if ts.end else None,
-                "source": ts.source,
-                "source_code": ts.source_code,
-                "frequency": ts.frequency,
-                "unit": ts.unit,
-                "scale": ts.scale,
-                "currency": ts.currency,
-                "country": ts.country,
+                "id": str(ts_id),
+                "code": ts_code,
+                "name": ts_name,
+                "provider": ts_provider,
+                "asset_class": ts_asset_class,
+                "category": ts_category,
+                "start": ts_start.isoformat() if ts_start and hasattr(ts_start, 'isoformat') else (str(ts_start) if ts_start else None),
+                "end": ts_end.isoformat() if ts_end and hasattr(ts_end, 'isoformat') else (str(ts_end) if ts_end else None),
+                "source": ts_source,
+                "source_code": ts.get('source_code') if isinstance(ts, dict) else getattr(ts, 'source_code', None),
+                "frequency": ts_frequency,
+                "unit": ts.get('unit') if isinstance(ts, dict) else getattr(ts, 'unit', None),
+                "scale": ts.get('scale') if isinstance(ts, dict) else getattr(ts, 'scale', None),
+                "currency": ts.get('currency') if isinstance(ts, dict) else getattr(ts, 'currency', None),
+                "country": ts.get('country') if isinstance(ts, dict) else getattr(ts, 'country', None),
                 "num_data": ts.num_data,
                 "remark": ts.remark,
             }
@@ -163,116 +216,118 @@ def register_api_routes(app):
                 continue
 
             try:
-                # Find existing timeseries by code
-                ts = Timeseries.find_one({"code": code}).run()
+                # Find existing timeseries by code using SQLAlchemy
+                with Session() as session:
+                    ts = session.query(Timeseries).filter(Timeseries.code == code).first()
 
-                if ts is None:
-                    # Create new timeseries
-                    ts = Timeseries(code=code)
-                    ts.create()
-                    created_codes.append(code)
-                else:
-                    updated_codes.append(code)
+                    if ts is None:
+                        # Create new timeseries
+                        ts = Timeseries(code=code)
+                        session.add(ts)
+                        session.flush()  # Flush to get the ID
+                        created_codes.append(code)
+                    else:
+                        updated_codes.append(code)
 
-                # Update fields with type validation
-                # String fields
-                string_fields = [
-                    ("name", 200),
-                    ("provider", 100),
-                    ("asset_class", 50),
-                    ("category", 100),
-                    ("source", 100),
-                    ("source_code", 100),
-                    ("frequency", 20),
-                    ("unit", 50),
-                    ("currency", 10),
-                    ("country", 100),
-                ]
+                    # Update fields with type validation
+                    # String fields
+                    string_fields = [
+                        ("name", 200),
+                        ("provider", 100),
+                        ("asset_class", 50),
+                        ("category", 100),
+                        ("source", 100),
+                        ("source_code", 100),
+                        ("frequency", 20),
+                        ("unit", 50),
+                        ("currency", 10),
+                        ("country", 100),
+                    ]
 
-                update_data = {}
-                for field, max_length in string_fields:
-                    if field in ts_data:
-                        value = ts_data[field]
+                    for field, max_length in string_fields:
+                        if field in ts_data:
+                            value = ts_data[field]
+                            if value is not None:
+                                value = str(value)[:max_length]
+                                setattr(ts, field, value)
+
+                    # Text field (no length limit)
+                    if "remark" in ts_data:
+                        value = ts_data["remark"]
                         if value is not None:
-                            value = str(value)[:max_length]
-                        update_data[field] = value
+                            value = str(value)
+                        setattr(ts, "remark", value)
 
-                # Text field (no length limit)
-                if "remark" in ts_data:
-                    value = ts_data["remark"]
-                    if value is not None:
-                        value = str(value)
-                    update_data["remark"] = value
-
-                # Integer field with overflow protection
-                if "scale" in ts_data:
-                    value = ts_data["scale"]
-                    if value is not None:
-                        try:
-                            # Ensure scale is within reasonable range
-                            scale_value = int(value)
-                            if scale_value > 2147483647 or scale_value < -2147483648:
+                    # Integer field with overflow protection
+                    if "scale" in ts_data:
+                        value = ts_data["scale"]
+                        if value is not None:
+                            try:
+                                # Ensure scale is within reasonable range
+                                scale_value = int(value)
+                                if scale_value > 2147483647 or scale_value < -2147483648:
+                                    logger.warning(
+                                        f"Scale value {scale_value} out of range for {code}, setting to 1"
+                                    )
+                                    scale_value = 1
+                                setattr(ts, "scale", scale_value)
+                            except (ValueError, TypeError):
                                 logger.warning(
-                                    f"Scale value {scale_value} out of range for {code}, setting to 1"
+                                    f"Invalid scale value '{value}' for {code}, setting to 1"
                                 )
-                                scale_value = 1
-                            update_data["scale"] = scale_value
+                                setattr(ts, "scale", 1)
+
+                    # Integer field with overflow protection for num_data
+                    if "num_data" in ts_data:
+                        value = ts_data["num_data"]
+                        if value is not None:
+                            try:
+                                # Large integer can handle much larger values
+                                num_data_value = int(value)
+                                if (
+                                    num_data_value > 9223372036854775807
+                                    or num_data_value < -9223372036854775808
+                                ):
+                                    logger.warning(
+                                        f"num_data value {num_data_value} out of range for {code}, setting to None"
+                                    )
+                                    num_data_value = None
+                                setattr(ts, "num_data", num_data_value)
+                            except (ValueError, TypeError):
+                                logger.warning(
+                                    f"Invalid num_data value '{value}' for {code}, setting to None"
+                                )
+                                setattr(ts, "num_data", None)
+
+                    # Date fields
+                    if "start" in ts_data and ts_data["start"]:
+                        try:
+                            from datetime import datetime
+
+                            start_date = datetime.fromisoformat(
+                                ts_data["start"].replace("Z", "+00:00")
+                            ).date()
+                            setattr(ts, "start", start_date)
                         except (ValueError, TypeError):
                             logger.warning(
-                                f"Invalid scale value '{value}' for {code}, setting to 1"
+                                f"Invalid start date '{ts_data['start']}' for {code}"
                             )
-                            update_data["scale"] = 1
 
-                # Integer field with overflow protection for num_data
-                if "num_data" in ts_data:
-                    value = ts_data["num_data"]
-                    if value is not None:
+                    if "end" in ts_data and ts_data["end"]:
                         try:
-                            # Large integer can handle much larger values
-                            num_data_value = int(value)
-                            if (
-                                num_data_value > 9223372036854775807
-                                or num_data_value < -9223372036854775808
-                            ):
-                                logger.warning(
-                                    f"num_data value {num_data_value} out of range for {code}, setting to None"
-                                )
-                                num_data_value = None
-                            update_data["num_data"] = num_data_value
+                            from datetime import datetime
+
+                            end_date = datetime.fromisoformat(
+                                ts_data["end"].replace("Z", "+00:00")
+                            ).date()
+                            setattr(ts, "end", end_date)
                         except (ValueError, TypeError):
                             logger.warning(
-                                f"Invalid num_data value '{value}' for {code}, setting to None"
+                                f"Invalid end date '{ts_data['end']}' for {code}"
                             )
-                            update_data["num_data"] = None
 
-                # Date fields
-                if "start" in ts_data and ts_data["start"]:
-                    try:
-                        from datetime import datetime
-
-                        update_data["start"] = datetime.fromisoformat(
-                            ts_data["start"].replace("Z", "+00:00")
-                        ).date()
-                    except (ValueError, TypeError):
-                        logger.warning(
-                            f"Invalid start date '{ts_data['start']}' for {code}"
-                        )
-
-                if "end" in ts_data and ts_data["end"]:
-                    try:
-                        from datetime import datetime
-
-                        update_data["end"] = datetime.fromisoformat(
-                            ts_data["end"].replace("Z", "+00:00")
-                        ).date()
-                    except (ValueError, TypeError):
-                        logger.warning(
-                            f"Invalid end date '{ts_data['end']}' for {code}"
-                        )
-
-                # Update the document
-                if update_data:
-                    ts.set(update_data)
+                    # Commit changes
+                    session.commit()
 
             except Exception as e:
                 logger.error(f"Error updating timeseries {code}: {e}")
@@ -313,36 +368,58 @@ def register_api_routes(app):
         # Ensure MongoDB connection
         ensure_connection()
 
-        # Get timeseries by code (primary key in MongoDB)
-        ts = Timeseries.find_one({"code": timeseries_id}).run()
+        # Get timeseries by code using SQLAlchemy
+        with Session() as session:
+            ts = session.query(Timeseries).filter(Timeseries.code == timeseries_id).first()
 
-        if not ts:
-            return jsonify({"error": "Timeseries not found"}), 404
+            if not ts:
+                return jsonify({"error": "Timeseries not found"}), 404
+
+            # Extract all attributes while in session
+            ts_id = ts.id
+            ts_code = ts.code
+            ts_name = ts.name
+            ts_provider = ts.provider
+            ts_asset_class = ts.asset_class
+            ts_category = ts.category
+            ts_source = ts.source
+            ts_source_code = ts.source_code
+            ts_frequency = ts.frequency
+            ts_unit = ts.unit
+            ts_scale = ts.scale
+            ts_currency = ts.currency
+            ts_country = ts.country
+            ts_start = ts.start
+            ts_end = ts.end
+            ts_num_data = ts.num_data
+            ts_remark = ts.remark
+            # Get data within session
+            ts_data = ts.data.copy() if hasattr(ts, 'data') else pd.Series()
 
         # Format the timeseries object
         formatted_ts = {
-            "id": str(ts.id),  # Use MongoDB ObjectId as string
-            "code": ts.code,
-            "name": ts.name,
-            "provider": ts.provider,
-            "asset_class": ts.asset_class,
-            "category": ts.category,
-            "start_date": ts.start.isoformat() if ts.start else None,
-            "end_date": ts.end.isoformat() if ts.end else None,
-            "num_data_points": ts.num_data,
-            "source": ts.source,
-            "source_code": ts.source_code,
-            "frequency": ts.frequency,
-            "unit": ts.unit,
-            "scale": ts.scale,
-            "currency": ts.currency,
-            "country": ts.country,
-            "remark": ts.remark,
+            "id": str(ts_id),
+            "code": ts_code,
+            "name": ts_name,
+            "provider": ts_provider,
+            "asset_class": ts_asset_class,
+            "category": ts_category,
+            "start_date": ts_start.isoformat() if ts_start and hasattr(ts_start, 'isoformat') else (str(ts_start) if ts_start else None),
+            "end_date": ts_end.isoformat() if ts_end and hasattr(ts_end, 'isoformat') else (str(ts_end) if ts_end else None),
+            "num_data_points": ts_num_data,
+            "source": ts_source,
+            "source_code": ts_source_code,
+            "frequency": ts_frequency,
+            "unit": ts_unit,
+            "scale": ts_scale,
+            "currency": ts_currency,
+            "country": ts_country,
+            "remark": ts_remark,
         }
 
         # Add full data
         try:
-            data = ts.data
+            data = ts_data
             if not data.empty:
                 # Convert data to list of {date, value} objects
                 data_points = []
@@ -398,20 +475,27 @@ def register_api_routes(app):
         # Ensure MongoDB connection
         ensure_connection()
 
-        # Get timeseries by code
-        ts = Timeseries.find_one({"code": code}).run()
+        # Get timeseries by code using SQLAlchemy
+        with Session() as session:
+            ts = session.query(Timeseries).filter(Timeseries.code == code).first()
 
-        if not ts:
-            return (
-                jsonify({"error": f"Timeseries with code '{code}' not found"}),
-                404,
-            )
+            if not ts:
+                return (
+                    jsonify({"error": f"Timeseries with code '{code}' not found"}),
+                    404,
+                )
+
+            # Extract all attributes while in session
+            ts_id = ts.id
+            ts_code = ts.code
+            ts_name = ts.name
+            ts_data = ts.data.copy() if hasattr(ts, 'data') else pd.Series()
 
         # Format the timeseries object
         formatted_ts = {
-            "id": str(ts.id),
-            "code": ts.code,
-            "name": ts.name,
+            "id": str(ts_id),
+            "code": ts_code,
+            "name": ts_name,
             "provider": ts.provider,
             "asset_class": ts.asset_class,
             "category": ts.category,
@@ -516,15 +600,67 @@ def register_api_routes(app):
             except ValueError:
                 return jsonify({"error": f"Invalid to_date format: {to_date}"}), 400
 
-        # Execute query with pagination and sorting
-        insights_query = Insights.find(query).sort("-published_date")
+        # Execute query with pagination and sorting using SQLAlchemy
+        from sqlalchemy import or_, and_, desc
+        from datetime import date as date_type
 
-        if offset:
-            insights_query = insights_query.skip(offset)
-        if limit:
-            insights_query = insights_query.limit(limit)
+        with Session() as session:
+            insights_query = session.query(Insights)
 
-        insights_list = list(insights_query.run())
+            # Apply filters
+            filters = []
+            if issuer:
+                filters.append(Insights.issuer.ilike(f"%{issuer}%"))
+            if status:
+                filters.append(Insights.status == status)
+            if from_date:
+                try:
+                    from_dt = datetime.strptime(from_date, "%Y-%m-%d").date()
+                    filters.append(Insights.published_date >= from_dt)
+                except ValueError:
+                    return jsonify({"error": f"Invalid from_date format: {from_date}"}), 400
+            if to_date:
+                try:
+                    to_dt = datetime.strptime(to_date, "%Y-%m-%d").date()
+                    filters.append(Insights.published_date <= to_dt)
+                except ValueError:
+                    return jsonify({"error": f"Invalid to_date format: {to_date}"}), 400
+
+            if filters:
+                insights_query = insights_query.filter(and_(*filters))
+
+            # Apply sorting and pagination
+            insights_query = insights_query.order_by(desc(Insights.published_date))
+
+            if offset:
+                insights_query = insights_query.offset(offset)
+            if limit:
+                insights_query = insights_query.limit(limit)
+
+            insights_list = insights_query.all()
+
+            # Extract all attributes while in session
+            insights_data = []
+            for insight in insights_list:
+                # Convert date to ISO format string for JSON serialization
+                published_date_str = None
+                if insight.published_date:
+                    if isinstance(insight.published_date, str):
+                        published_date_str = insight.published_date
+                    elif hasattr(insight.published_date, 'isoformat'):
+                        published_date_str = insight.published_date.isoformat()
+                    else:
+                        published_date_str = str(insight.published_date)
+
+                insights_data.append({
+                    'id': insight.id,
+                    'issuer': insight.issuer,
+                    'name': insight.name,
+                    'published_date': published_date_str,
+                    'summary': insight.summary,
+                    'status': insight.status,
+                })
+            insights_list = insights_data
 
         formatted_insights = []
 
@@ -567,34 +703,40 @@ def register_api_routes(app):
         # Ensure MongoDB connection
         ensure_connection()
 
-        # Get insight by id
-        insight = Insights.find_one({"id": str(insight_id)}).run()
+        # Get insight by id using SQLAlchemy
+        with Session() as session:
+            insight = session.query(Insights).filter(Insights.id == str(insight_id)).first()
 
-        if not insight:
-            return jsonify({"error": "Insight not found"}), 404
+            if not insight:
+                return jsonify({"error": "Insight not found"}), 404
+
+            # Extract all attributes while in session
+            insight_id = insight.id
+            insight_issuer = insight.issuer
+            insight_name = insight.name
+            insight_published_date = insight.published_date
+            insight_summary = insight.summary
+            insight_status = insight.status
 
         # Format the insight object
+        published_date_str = None
+        if insight_published_date:
+            if isinstance(insight_published_date, str):
+                published_date_str = insight_published_date
+            elif hasattr(insight_published_date, 'isoformat'):
+                published_date_str = insight_published_date.isoformat()
+            else:
+                published_date_str = str(insight_published_date)
+
         formatted_insight = {
-            "id": str(insight.id),
-            "issuer": insight.issuer,
-            "name": insight.name,
-            "published_date": (
-                insight.published_date.isoformat() if insight.published_date else None
-            ),
-            "summary": insight.summary,
-            "status": insight.status,
-            "has_content": True,  # MongoDB stores content separately via Boto
-            "content_size": 0,  # Size not directly available in MongoDB model
-            "created_at": (
-                insight.created_at.isoformat()
-                if hasattr(insight, "created_at") and insight.created_at
-                else None
-            ),
-            "updated_at": (
-                insight.updated_at.isoformat()
-                if hasattr(insight, "updated_at") and insight.updated_at
-                else None
-            ),
+            "id": str(insight_id),
+            "issuer": insight_issuer,
+            "name": insight_name,
+            "published_date": published_date_str,
+            "summary": insight_summary,
+            "status": insight_status,
+            "has_content": True,  # Content stored separately via Boto
+            "content_size": 0,  # Size not directly available
         }
 
         return jsonify(formatted_insight)
@@ -673,38 +815,67 @@ def register_api_routes(app):
             updated_codes = []
             not_found_codes = []
             for code in pivoted.columns:
-                ts = Timeseries.find_one({"code": code}).run()
-                if ts is None:
-                    not_found_codes.append(code)
-                    continue
+                with Session() as session:
+                    ts = session.query(Timeseries).filter(Timeseries.code == code).first()
+                    if ts is None:
+                        not_found_codes.append(code)
+                        continue
 
-                # Get existing data to merge with new data
-                existing_data = ts.data
+                    # Get existing data to merge with new data (within session)
+                    # Access timeseries_data directly to avoid detached instance error
+                    column_data = ts.timeseries_data if hasattr(ts, 'timeseries_data') else {}
+                    if column_data and len(column_data) > 0:
+                        # Convert JSONB dict to pandas Series
+                        # JSONB stores dates as strings, convert them back to datetime
+                        data_dict = column_data if isinstance(column_data, dict) else {}
+                        # Convert string keys to datetime index
+                        existing_data = pd.Series(data_dict)
+                        if not existing_data.empty:
+                            # Convert string dates to datetime index
+                            existing_data.index = pd.to_datetime(existing_data.index, errors='coerce')
+                            existing_data = existing_data.dropna()  # Remove any invalid dates
+                    else:
+                        existing_data = pd.Series(dtype=float)
 
-                # Store new data as a Series with date index and float values
-                new_series = pivoted[code].dropna()
+                    # Store new data as a Series with date index and float values
+                    new_series = pivoted[code].dropna()
 
-                if not existing_data.empty:
-                    # Merge existing data with new data (new data takes precedence for overlapping dates)
-                    combined_data = pd.concat([existing_data, new_series], axis=0)
-                    # Remove duplicates, keeping the last occurrence (new data)
-                    combined_data = combined_data[
-                        ~combined_data.index.duplicated(keep="last")
-                    ]
-                    combined_data = combined_data.sort_index()  # type: ignore
-                    # Ensure it's a Series before assignment
-                    ts.data = combined_data  # type: ignore
+                    if not existing_data.empty:
+                        # Merge existing data with new data (new data takes precedence for overlapping dates)
+                        combined_data = pd.concat([existing_data, new_series], axis=0)
+                        # Remove duplicates, keeping the last occurrence (new data)
+                        combined_data = combined_data[
+                            ~combined_data.index.duplicated(keep="last")
+                        ]
+                        combined_data = combined_data.sort_index()  # type: ignore
+                    else:
+                        # No existing data, just use the new data
+                        combined_data = new_series
+
+                    # Convert combined_data to dict format with date strings for JSONB storage
+                    # Convert dates to strings for JSONB storage
+                    data_dict = {}
+                    for k, v in combined_data.to_dict().items():
+                        if hasattr(k, "date"):
+                            date_str = str(k.date())
+                        elif isinstance(k, str):
+                            date_str = k
+                        else:
+                            date_str = str(pd.to_datetime(k).date())
+                        data_dict[date_str] = float(v)
+
+                    # Update the timeseries data directly (within session)
+                    ts.timeseries_data = data_dict
+                    ts.start = combined_data.index.min().date() if len(combined_data.index) > 0 else None
+                    ts.end = combined_data.index.max().date() if len(combined_data.index) > 0 else None
+                    ts.num_data = len(combined_data)
+                    ts.updated = datetime.now()
+
+                    session.commit()
                     logger.info(
-                        f"Updated {code}: merged {len(new_series)} new points with {len(existing_data)} existing points"
+                        f"Updated {code}: merged {len(new_series)} new points with {len(existing_data) if not existing_data.empty else 0} existing points"
                     )
-                else:
-                    # No existing data, just set the new data
-                    ts.data = new_series  # type: ignore
-                    logger.info(
-                        f"Created {code}: set {len(new_series)} new data points"
-                    )
-
-                updated_codes.append(code)
+                    updated_codes.append(code)
 
             logger.info(
                 f"Successfully uploaded data for {len(updated_codes)} timeseries"
@@ -747,21 +918,25 @@ def register_api_routes(app):
             if not publisher_url:
                 return jsonify({"error": "URL is required"}), 400
 
-            # Find and update the publisher
-            publisher = Publishers.find_one({"url": publisher_url}).run()
+            # Find and update the publisher using SQLAlchemy
+            from ix.db.conn import Session
 
-            if publisher:
-                publisher.set({"last_visited": datetime.now()})
-                logger.info(f"Updated last_visited for publisher: {publisher.name}")
-                return jsonify(
-                    {
-                        "success": True,
-                        "message": f"Updated last visited for {publisher.name}",
-                        "timestamp": publisher.last_visited.isoformat(),
-                    }
-                )
-            else:
-                return jsonify({"error": "Publisher not found"}), 404
+            with Session() as session:
+                publisher = session.query(Publishers).filter(Publishers.url == publisher_url).first()
+
+                if publisher:
+                    publisher.last_visited = datetime.now()
+                    session.commit()
+                    logger.info(f"Updated last_visited for publisher: {publisher.name}")
+                    return jsonify(
+                        {
+                            "success": True,
+                            "message": f"Updated last visited for {publisher.name}",
+                            "timestamp": publisher.last_visited.isoformat(),
+                        }
+                    )
+                else:
+                    return jsonify({"error": "Publisher not found"}), 404
 
         except Exception as e:
             logger.exception("Failed to track publisher visit")
