@@ -84,7 +84,7 @@ class PDFViewer:
                                                 color="red",
                                                 size="sm",
                                             ),
-                                            href=f"/api/download-pdf/{insight_id}",
+                                            href=f"/api/download-pdf/{insight_id}?download=1",
                                             target="_blank",
                                             style={"textDecoration": "none"},
                                         ),
@@ -138,7 +138,10 @@ class PDFViewer:
                                                 html.Div(
                                                     [
                                                         html.Iframe(
-                                                            src=f"/api/download-pdf/{insight_id}#toolbar=1&navpanes=1&scrollbar=1",
+                                                            src=(
+                                                                f"/api/download-pdf/{insight_id}"
+                                                                f"?download=0#toolbar=1&navpanes=1&scrollbar=1"
+                                                            ),
                                                             style={
                                                                 "width": "100%",
                                                                 "height": "800px",

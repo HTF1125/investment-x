@@ -896,130 +896,100 @@ def clear_search_on_search(n_clicks):
     prevent_initial_call=True,
 )
 def handle_enhanced_upload(
-    contents: Optional[str], filename: Optional[str], last_modified: Optional[float]
+    contents: Optional[Any], filename: Optional[Any], last_modified: Optional[Any]
 ) -> Tuple[Any, Optional[str]]:
     """
     Enhanced PDF upload processing with validation, content extraction, and AI summarization.
-    Based on the wx implementation with improved error handling and user feedback.
+    Supports single or multiple file uploads.
     """
-    if contents is None or filename is None or last_modified is None:
+    if contents is None or filename is None:
         raise PreventUpdate
 
-    try:
-        # Parse uploaded content
-        content_type, content_string = contents.split(",")
-        decoded = base64.b64decode(content_string)
+    contents_list = contents if isinstance(contents, list) else [contents]
+    filenames_list = filename if isinstance(filename, list) else [filename]
+    modified_list = (
+        last_modified if isinstance(last_modified, list) else [last_modified] * len(contents_list)
+    )
 
-        # Validate file type
-        if not filename.lower().endswith(".pdf"):
-            return (
-                html.Div(
-                    [
-                        html.I(
-                            className="fas fa-exclamation-triangle",
-                            style={"color": "#ef4444", "marginRight": "8px"},
-                        ),
-                        "Only PDF files are allowed.",
-                    ],
-                    style={
-                        "backgroundColor": "rgba(239, 68, 68, 0.1)",
-                        "border": "1px solid rgba(239, 68, 68, 0.3)",
-                        "borderRadius": "8px",
-                        "padding": "15px",
-                        "color": "#fca5a5",
-                        "display": "flex",
-                        "alignItems": "center",
-                        "justifyContent": "center",
-                    },
-                ),
-                None,
-            )
-
-        # Validate PDF content
-        if not decoded.startswith(b"%PDF-"):
-            return (
-                html.Div(
-                    [
-                        html.I(
-                            className="fas fa-exclamation-triangle",
-                            style={"color": "#ef4444", "marginRight": "8px"},
-                        ),
-                        "Invalid PDF file format.",
-                    ],
-                    style={
-                        "backgroundColor": "rgba(239, 68, 68, 0.1)",
-                        "border": "1px solid rgba(239, 68, 68, 0.3)",
-                        "borderRadius": "8px",
-                        "padding": "15px",
-                        "color": "#fca5a5",
-                        "display": "flex",
-                        "alignItems": "center",
-                        "justifyContent": "center",
-                    },
-                ),
-                None,
-            )
-
-        # Parse filename for metadata (format: YYYYMMDD_issuer_name.pdf)
-        try:
-            published_date_str, issuer, name = filename.rsplit("_", 2)
-            name = name.rsplit(".", 1)[0]  # Remove .pdf extension
-            published_date = datetime.strptime(published_date_str, "%Y%m%d").date()
-        except ValueError:
-            return (
-                html.Div(
-                    [
-                        html.I(
-                            className="fas fa-exclamation-triangle",
-                            style={"color": "#ef4444", "marginRight": "8px"},
-                        ),
-                        "Filename must be in the format 'YYYYMMDD_issuer_name.pdf'",
-                    ],
-                    style={
-                        "backgroundColor": "rgba(239, 68, 68, 0.1)",
-                        "border": "1px solid rgba(239, 68, 68, 0.3)",
-                        "borderRadius": "8px",
-                        "padding": "15px",
-                        "color": "#fca5a5",
-                        "display": "flex",
-                        "alignItems": "center",
-                        "textAlign": "center",
-                    },
-                ),
-                None,
-            )
-
-        with Session() as session:
-            insight = Insights(
-                published_date=published_date,
-                issuer=issuer,
-                name=name,
-                status="processing",
-                pdf_content=decoded,
-            )
-            session.add(insight)
-            session.flush()
-
-            summary_text = None
-            try:
-                if hasattr(Settings, "openai_secret_key") and Settings.openai_secret_key:
-                    summarizer = PDFSummarizer(Settings.openai_secret_key)
-                    summary_text = summarizer.process_insights(decoded)
-                    insight.summary = summary_text
-                    insight.status = "completed"
-                else:
-                    insight.summary = "AI summarization not available - API key not configured"
-                    insight.status = "completed"
-            except Exception as e:
-                logger.error(f"Error generating summary: {e}")
-                insight.summary = f"Summary generation failed: {str(e)}"
-                insight.status = "failed"
-
-            insight_id = str(insight.id)
-
-        # Return success message with details
+    def _error_message(message: str) -> Tuple[html.Div, bool]:
         return (
             html.Div(
+                [
+                    html.I(
+                        className="fas fa-exclamation-triangle",
+                        style={"color": "#ef4444", "marginRight": "8px"},
+                    ),
+                    message,
+                ],
+                style={
+                    "backgroundColor": "rgba(239, 68, 68, 0.1)",
+                    "border": "1px solid rgba(239, 68, 68, 0.3)",
+                    "borderRadius": "8px",
+                    "padding": "15px",
+                    "color": "#fca5a5",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                },
+            ),
+            False,
+        )
+
+    def _process_single_file(
+        content_item: str, file_name: str, modified_item: Optional[float]
+    ) -> Tuple[html.Div, bool]:
+        try:
+            if modified_item is None:
+                raise ValueError("Missing last modified timestamp for upload.")
+
+            content_type, content_string = content_item.split(",", 1)
+            decoded = base64.b64decode(content_string)
+
+            if not isinstance(file_name, str) or not file_name.lower().endswith(".pdf"):
+                return _error_message(f"{file_name}: Only PDF files are allowed.")
+
+            if not decoded.startswith(b"%PDF-"):
+                return _error_message(f"{file_name}: Invalid PDF file format.")
+
+            try:
+                published_date_str, issuer, name = file_name.rsplit("_", 2)
+                name = name.rsplit(".", 1)[0]
+                published_date = datetime.strptime(published_date_str, "%Y%m%d").date()
+            except ValueError:
+                return _error_message(
+                    f"{file_name}: Filename must follow 'YYYYMMDD_issuer_title.pdf'."
+                )
+
+            with Session() as session:
+                insight = Insights(
+                    published_date=published_date,
+                    issuer=issuer,
+                    name=name,
+                    status="processing",
+                    pdf_content=decoded,
+                )
+                session.add(insight)
+                session.flush()
+
+                try:
+                    if hasattr(Settings, "openai_secret_key") and Settings.openai_secret_key:
+                        summarizer = PDFSummarizer(Settings.openai_secret_key)
+                        summary_text = summarizer.process_insights(decoded)
+                        insight.summary = summary_text
+                        insight.status = "completed"
+                    else:
+                        insight.summary = (
+                            "AI summarization not available - API key not configured"
+                        )
+                        insight.status = "completed"
+                except Exception as summary_exc:
+                    logger.error(f"Error generating summary: {summary_exc}")
+                    insight.summary = f"Summary generation failed: {str(summary_exc)}"
+                    insight.status = "failed"
+
+                insight_id = str(insight.id)
+
+            success_card = html.Div(
                 [
                     html.Div(
                         [
@@ -1032,7 +1002,7 @@ def handle_enhanced_upload(
                                 },
                             ),
                             html.H5(
-                                "✅ File uploaded successfully!",
+                                f"✅ {file_name} uploaded successfully!",
                                 style={"color": "#10b981", "margin": "0 0 12px 0"},
                             ),
                         ],
@@ -1040,14 +1010,8 @@ def handle_enhanced_upload(
                     ),
                     html.Div(
                         [
-                            html.P(
-                                [html.Strong("📄 Name: "), name],
-                                style={"margin": "4px 0"},
-                            ),
-                            html.P(
-                                [html.Strong("🏢 Issuer: "), issuer],
-                                style={"margin": "4px 0"},
-                            ),
+                            html.P([html.Strong("📄 Name: "), name], style={"margin": "4px 0"}),
+                            html.P([html.Strong("🏢 Issuer: "), issuer], style={"margin": "4px 0"}),
                             html.P(
                                 [
                                     html.Strong("📅 Published: "),
@@ -1056,10 +1020,7 @@ def handle_enhanced_upload(
                                 style={"margin": "4px 0"},
                             ),
                             html.P(
-                                [
-                                    html.Strong("📁 File size: "),
-                                    f"{len(decoded) / 1024:.2f} KB",
-                                ],
+                                [html.Strong("📁 File size: "), f"{len(decoded) / 1024:.2f} KB"],
                                 style={"margin": "4px 0"},
                             ),
                             html.P(
@@ -1092,14 +1053,13 @@ def handle_enhanced_upload(
                     "padding": "20px",
                     "color": "#6ee7b7",
                 },
-            ),
-            None,  # Clear the upload component
-        )
+            )
 
-    except Exception as e:
-        logger.exception("Error processing PDF upload")
-        return (
-            html.Div(
+            return success_card, True
+
+        except Exception as exc:
+            logger.exception("Error processing PDF upload")
+            error_card = html.Div(
                 [
                     html.I(
                         className="fas fa-exclamation-triangle",
@@ -1110,11 +1070,11 @@ def handle_enhanced_upload(
                         },
                     ),
                     html.H5(
-                        "❌ Error processing file",
+                        f"❌ Error processing {file_name}",
                         style={"color": "#ef4444", "margin": "0 0 12px 0"},
                     ),
                     html.P(
-                        str(e),
+                        str(exc),
                         style={
                             "margin": "0",
                             "fontFamily": "monospace",
@@ -1130,9 +1090,71 @@ def handle_enhanced_upload(
                     "color": "#fca5a5",
                     "textAlign": "center",
                 },
-            ),
-            None,
+            )
+
+            return error_card, False
+
+    results = [
+        _process_single_file(content_item, file_name, modified_item)
+        for content_item, file_name, modified_item in zip(
+            contents_list, filenames_list, modified_list
         )
+    ]
+
+    message_cards = [card for card, _ in results]
+    total_files = len(results)
+    success_count = sum(1 for _, is_successful in results if is_successful)
+    failure_count = total_files - success_count
+
+    progress_value = int((success_count / total_files) * 100) if total_files > 0 else 0
+    if failure_count == 0:
+        progress_color = "teal"
+        status_text = "All uploads completed successfully."
+    elif success_count == 0:
+        progress_color = "red"
+        status_text = "Uploads failed. Please review the errors below."
+    else:
+        progress_color = "yellow"
+        status_text = "Uploads partially completed. See details below."
+
+    summary_panel = dmc.Paper(
+        [
+            dmc.Group(
+                [
+                    DashIconify(icon="carbon:time", width=24, color="#38bdf8"),
+                    dmc.Stack(
+                        [
+                            dmc.Text("Processing complete", fw=600, size="sm", c="gray.1"),
+                            dmc.Text(
+                                f"{status_text} ({success_count}/{total_files} successful)",
+                                size="xs",
+                                c="gray.5",
+                            ),
+                        ],
+                        gap=0,
+                    ),
+                ],
+                gap="md",
+            ),
+            dmc.Progress(value=progress_value, color=progress_color, size="sm", mt="sm"),
+        ],
+        radius="md",
+        withBorder=True,
+        shadow="sm",
+        padding="md",
+        style={"backgroundColor": "#0f172a"},
+    )
+
+    return (
+        html.Div(
+            [
+                summary_panel,
+                html.Div(message_cards, style={"display": "grid", "gap": "16px"}),
+            ],
+            style={"display": "grid", "gap": "20px"},
+        ),
+        None,
+    )
 
 
 # Delete insight callback

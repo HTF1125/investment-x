@@ -942,7 +942,7 @@ def register_api_routes(app):
             logger.exception("Failed to track publisher visit")
             return jsonify({"error": str(e)}), 500
 
-    def _download_pdf_impl(insight_id: int):
+    def _download_pdf_impl(insight_id: str):
         """
         Common implementation for PDF download by insight id.
 
@@ -955,21 +955,24 @@ def register_api_routes(app):
             # Ensure MongoDB connection
             ensure_connection()
 
-            # Get the insight with PDF content
-            insight = Insights.find_one({"id": str(insight_id)}).run()
+            normalized_id = str(insight_id).strip()
 
-            if not insight:
-                return jsonify({"error": "Insight not found"}), 404
-
-            # Get PDF content from database storage
-            try:
-                content = insight.get_content()
-            except Exception as e:
-                logger.error(f"Failed to get PDF content for insight {insight_id}: {e}")
-                return (
-                    jsonify({"error": "No PDF content available for this insight"}),
-                    404,
+            # Fetch insight using SQLAlchemy session
+            with Session() as session:
+                insight = (
+                    session.query(Insights)
+                    .filter(Insights.id == normalized_id)
+                    .first()
                 )
+
+                if not insight:
+                    return jsonify({"error": "Insight not found"}), 404
+
+                # Access PDF content while session is active
+                content = insight.get_content()
+                published_date = insight.published_date
+                issuer_value = insight.issuer
+                name_value = insight.name
 
             if not content or len(content) == 0:
                 return (
@@ -979,16 +982,20 @@ def register_api_routes(app):
 
             # Create filename from insight metadata
             # Format: YYYYMMDD_issuer_title.pdf
-            if insight.published_date:
-                date_str = insight.published_date.strftime("%Y%m%d")
+            if published_date:
+                try:
+                    date_str = published_date.strftime("%Y%m%d")
+                except AttributeError:
+                    # handle string or datetime-like already
+                    date_str = str(published_date)[:10].replace("-", "")
             else:
                 date_str = "unknown"
 
             issuer_clean = (
-                (insight.issuer or "unknown").replace(" ", "_").replace("/", "_")
+                (issuer_value or "unknown").replace(" ", "_").replace("/", "_")
             )
             title_clean = (
-                (insight.name or "document").replace(" ", "_").replace("/", "_")
+                (name_value or "document").replace(" ", "_").replace("/", "_")
             )
             # Truncate title if too long
             if len(title_clean) > 50:
@@ -1002,23 +1009,28 @@ def register_api_routes(app):
 
             logger.info(f"Serving PDF download for insight ID {insight_id}: {filename}")
 
-            # Send file with proper headers for download (Flask compatibility)
+            # Determine if the response should be downloaded or displayed inline
+            download_param = request.args.get("download", "0")
+            as_attachment = str(download_param).lower() in ("1", "true", "yes")
+
+            # Send file with proper headers
             try:
                 # Flask >= 2.0
                 return send_file(
                     pdf_io,
                     mimetype="application/pdf",
-                    as_attachment=True,
+                    as_attachment=as_attachment,
                     download_name=filename,
                 )
             except TypeError:
                 # Flask < 2.0 fallback (download_name not supported)
-                return send_file(
-                    pdf_io,
-                    mimetype="application/pdf",
-                    as_attachment=True,
-                    attachment_filename=filename,  # type: ignore[arg-type]
-                )
+                send_file_kwargs = {
+                    "mimetype": "application/pdf",
+                    "as_attachment": as_attachment,
+                }
+                if as_attachment:
+                    send_file_kwargs["attachment_filename"] = filename  # type: ignore[arg-type]
+                return send_file(pdf_io, **send_file_kwargs)
 
         except Exception as e:
             logger.exception(f"Failed to download PDF for insight {insight_id}")
@@ -1027,15 +1039,14 @@ def register_api_routes(app):
     @app.server.route("/api/download-pdf/<int:insight_id>", methods=["GET"])
     def download_pdf(insight_id):
         # Strict int route
-        return _download_pdf_impl(insight_id)
+        return _download_pdf_impl(str(insight_id))
 
-    # Lenient route that accepts string ids and coerces to int
-    @app.server.route("/api/download-pdf/<insight_id>", methods=["GET"])
+    # Lenient route that accepts string ids (UUID, etc.)
+    @app.server.route("/api/download-pdf/<path:insight_id>", methods=["GET"])
     def download_pdf_str(insight_id):
-        try:
-            return _download_pdf_impl(int(str(insight_id).strip()))
-        except ValueError:
+        if not str(insight_id).strip():
             return jsonify({"error": "Invalid insight id"}), 400
+        return _download_pdf_impl(str(insight_id))
 
     # Register series routes
     series.register_series_routes(app)

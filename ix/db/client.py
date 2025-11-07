@@ -79,9 +79,19 @@ def get_insights(
     try:
         from ix.db.conn import Session
         from sqlalchemy import or_, and_
+        from sqlalchemy.orm import load_only
 
         with Session() as session:
-            query = session.query(Insights)
+            query = session.query(Insights).options(
+                load_only(
+                    Insights.id,
+                    Insights.name,
+                    Insights.issuer,
+                    Insights.published_date,
+                    Insights.status,
+                    Insights.summary,
+                )
+            )
 
             if search:
                 # Attempt to extract a date in YYYY-MM-DD format
@@ -127,19 +137,21 @@ def get_insights(
                 if insight.published_date:
                     if isinstance(insight.published_date, str):
                         published_date_str = insight.published_date
-                    elif hasattr(insight.published_date, 'isoformat'):
+                    elif hasattr(insight.published_date, "isoformat"):
                         published_date_str = insight.published_date.isoformat()
                     else:
                         published_date_str = str(insight.published_date)
 
-                insights_data.append({
-                    'id': insight.id,
-                    'name': insight.name,
-                    'issuer': insight.issuer,
-                    'published_date': published_date_str,
-                    'status': insight.status,
-                    'summary': insight.summary,
-                })
+                insights_data.append(
+                    {
+                        "id": insight.id,
+                        "name": insight.name,
+                        "issuer": insight.issuer,
+                        "published_date": published_date_str,
+                        "status": insight.status,
+                        "summary": insight.summary,
+                    }
+                )
             return insights_data
     except Exception as e:
         raise Exception(f"Error occurred while fetching insights: {str(e)}")

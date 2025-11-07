@@ -405,7 +405,12 @@ layout = dmc.Container(
                                         multiple=True,
                                         accept=".pdf",
                                     ),
-                                    html.Div(id="output-pdf-upload"),
+                                    dcc.Loading(
+                                        id="upload-processing-loader",
+                                        type="circle",
+                                        overlay_style={"backgroundColor": "rgba(15, 23, 42, 0.65)"},
+                                        children=html.Div(id="output-pdf-upload"),
+                                    ),
                                 ],
                                 gap="md",
                             ),

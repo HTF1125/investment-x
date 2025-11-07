@@ -271,7 +271,7 @@ class InsightCard:
                                 radius="md",
                                 fullWidth=True,
                             ),
-                            href=f"/api/download-pdf/{insight_id}",
+                            href=f"/api/download-pdf/{insight_id}?download=1",
                             target="_blank",
                             style={"textDecoration": "none"},
                         ),
