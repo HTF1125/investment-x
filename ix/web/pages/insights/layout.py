@@ -10,6 +10,7 @@ from dash_iconify import DashIconify
 from ix.web.pages.insights.callbacks_minimal import *
 from ix.web.pages.insights.pdf_viewer_callbacks import *
 from ix.web.pages.insights.summary_modal import summary_modal
+from ix.web.pages.insights.edit_summary_modal import edit_summary_modal
 from ix.web.pages.insights.add_publisher_modal import add_publisher_modal
 from ix.web.pages.insights.pdf_viewer import create_pdf_viewer
 from ix.web.pages.insights import sources
@@ -784,6 +785,8 @@ layout = dmc.Container(
         ),
         # Modal for Summary
         summary_modal,
+        # Edit Summary Modal
+        edit_summary_modal,
         # Add Publisher Modal
         add_publisher_modal,
         # Data Stores
@@ -797,6 +800,7 @@ layout = dmc.Container(
         dcc.Store(
             id="current-insight", data=None
         ),  # Store current insight data for PDF viewer
+        dcc.Store(id="summary-edit-context", data=None),
         dcc.Store(id="publishers-refresh-token"),
         dcc.Interval(
             id="publishers-refresh-interval",

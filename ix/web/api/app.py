@@ -150,8 +150,8 @@ def register_api_routes(app):
                 "scale": ts.get('scale') if isinstance(ts, dict) else getattr(ts, 'scale', None),
                 "currency": ts.get('currency') if isinstance(ts, dict) else getattr(ts, 'currency', None),
                 "country": ts.get('country') if isinstance(ts, dict) else getattr(ts, 'country', None),
-                "num_data": ts.num_data,
-                "remark": ts.remark,
+                "num_data": ts.get('num_data') if isinstance(ts, dict) else getattr(ts, 'num_data', None),
+                "remark": ts.get('remark') if isinstance(ts, dict) else getattr(ts, 'remark', None),
             }
             formatted_timeseries.append(formatted_ts)
 

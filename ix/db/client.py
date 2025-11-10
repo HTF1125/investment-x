@@ -27,18 +27,30 @@ def get_timeseries(code: str) -> Timeseries:
         return ts
 
 
-def get_insight_by_id(id: str) -> Insights:
-    """
-    Retrieves an insight by its ID from the database.
-    Caching is enabled to avoid repeated database lookups for the same insight.
-    """
+def get_insight_by_id(id: str) -> Dict[str, Optional[str]]:
+    """Fetch an insight by ID and return a plain dictionary of its fields."""
+
     from ix.db.conn import Session
 
     with Session() as session:
         insight = session.query(Insights).filter(Insights.id == id).first()
         if insight is None:
             raise ValueError(f"Insight not found for id: {id}")
-        return insight
+
+        published_date = insight.published_date
+        if hasattr(published_date, "isoformat"):
+            published_date = published_date.isoformat()
+        elif published_date is not None:
+            published_date = str(published_date)
+
+        return {
+            "id": str(insight.id),
+            "name": insight.name or "Untitled",
+            "issuer": insight.issuer or "Unknown",
+            "published_date": published_date or "",
+            "status": insight.status or "new",
+            "summary": insight.summary or "",
+        }
 
 
 def _get_insight_content_bytes(id: str) -> bytes:
@@ -335,6 +347,7 @@ def delete_insight(id: str):
         return {"message": "Insight deleted successfully"}
 
 
+# TODO: consider deprecating update_insight_summary in favor of a more general update method
 def update_insight_summary(id: str):
     """
     Updates the summary of an Insight by processing its PDF content.
@@ -353,6 +366,46 @@ def update_insight_summary(id: str):
         insight.summary = report
         session.refresh(insight)
         return report
+
+
+def set_insight_summary(id: str, summary: Optional[str]) -> Dict[str, Optional[str]]:
+    """Manually update the summary text for an insight and return the updated record."""
+
+    normalized_summary = (summary or "").strip()
+
+    from ix.db.conn import Session
+
+    with Session() as session:
+        insight = session.query(Insights).filter(Insights.id == id).first()
+        if not insight:
+            raise ValueError("Insight not found")
+
+        insight.summary = normalized_summary
+
+        if normalized_summary:
+            # Treat manual edits as completed summaries
+            if not insight.status or insight.status in {"new", "processing", "failed"}:
+                insight.status = "completed"
+        else:
+            # Empty summary reverts status back to pending state if previously completed
+            if insight.status == "completed":
+                insight.status = "new"
+
+        session.flush()
+        session.refresh(insight)
+
+        published_date = insight.published_date
+        if hasattr(published_date, "isoformat"):
+            published_date = published_date.isoformat()
+
+        return {
+            "id": str(insight.id),
+            "name": insight.name,
+            "issuer": insight.issuer,
+            "published_date": published_date,
+            "status": insight.status,
+            "summary": insight.summary,
+        }
 
 
 def create_insight_with_pdf(base64_content: str, filename: str):

@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Tuple, Optional
 import dash
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from dash import html, callback, Input, Output, State, no_update, ALL
+from dash import html, dcc, callback, Input, Output, State, no_update, ALL
 from dash.exceptions import PreventUpdate
 
 from uuid import uuid4
@@ -23,6 +23,7 @@ from ix.db.client import (
     get_publishers,
     create_publisher,
     touch_publisher,
+    set_insight_summary,
 )
 from ix.db.conn import Session
 from ix.db.models import Insights
@@ -301,6 +302,124 @@ def create_insight_card(insight_data):
 
     status = insight_data.get("status", "new").lower()
 
+    insight_id = str(insight_data.get("id", ""))
+    summary_text = insight_data.get("summary", "") or ""
+    is_editing = bool(insight_data.get("editing"))
+    draft_summary = insight_data.get("draft_summary", summary_text)
+
+    summary_preview = (
+        summary_text[:200] + "..." if len(summary_text) > 200 else summary_text
+    )
+    if not summary_preview:
+        summary_preview = "No summary available."
+
+    edit_button_style = {
+        "backgroundColor": "transparent",
+        "border": "1px solid #3b82f6",
+        "borderRadius": "6px",
+        "color": "#3b82f6",
+        "padding": "6px 12px",
+        "fontSize": "12px",
+        "cursor": "pointer",
+        "marginRight": "8px",
+        "display": "flex",
+        "alignItems": "center",
+    }
+    if is_editing:
+        edit_button_style["display"] = "none"
+
+    summary_view = html.Div(
+        summary_preview,
+        style={
+            "color": "#e2e8f0",
+            "fontSize": "14px",
+            "lineHeight": "1.5",
+            "margin": "0 0 15px 0",
+            "display": "none" if is_editing else "block",
+        },
+    )
+
+    summary_editor = html.Div(
+        [
+            dcc.Textarea(
+                value=draft_summary,
+                id={"type": "inline-summary-editor", "index": insight_id},
+                style={
+                    "width": "100%",
+                    "minHeight": "140px",
+                    "backgroundColor": "#0f172a",
+                    "color": "#e2e8f0",
+                    "border": "1px solid #3b82f6",
+                    "borderRadius": "6px",
+                    "padding": "10px",
+                    "fontSize": "14px",
+                    "lineHeight": "1.6",
+                    "fontFamily": "inherit",
+                },
+                placeholder="Write or paste the insight summary here...",
+                spellCheck=True,
+            ),
+            html.Div(
+                [
+                    html.Button(
+                        [
+                            html.I(
+                                className="fas fa-save",
+                                style={"marginRight": "6px"},
+                            ),
+                            "Save Summary",
+                        ],
+                        id={"type": "inline-summary-save", "index": insight_id},
+                        n_clicks=0,
+                        style={
+                            "backgroundColor": "#3b82f6",
+                            "border": "none",
+                            "borderRadius": "6px",
+                            "color": "#ffffff",
+                            "padding": "6px 14px",
+                            "fontSize": "12px",
+                            "cursor": "pointer",
+                            "marginRight": "8px",
+                            "display": "flex",
+                            "alignItems": "center",
+                        },
+                    ),
+                    html.Button(
+                        [
+                            html.I(
+                                className="fas fa-times",
+                                style={"marginRight": "6px"},
+                            ),
+                            "Cancel",
+                        ],
+                        id={"type": "inline-summary-cancel", "index": insight_id},
+                        n_clicks=0,
+                        style={
+                            "backgroundColor": "transparent",
+                            "border": "1px solid #475569",
+                            "borderRadius": "6px",
+                            "color": "#94a3b8",
+                            "padding": "6px 14px",
+                            "fontSize": "12px",
+                            "cursor": "pointer",
+                            "display": "flex",
+                            "alignItems": "center",
+                        },
+                    ),
+                ],
+                style={
+                    "marginTop": "10px",
+                    "display": "flex",
+                    "justifyContent": "flex-end",
+                },
+            ),
+        ],
+        style={
+            "display": "block" if is_editing else "none",
+            "marginBottom": "15px",
+        },
+    )
+
     return html.Div(
         [
             html.Div(
@@ -358,19 +477,8 @@ def create_insight_card(insight_data):
                     "marginBottom": "12px",
                 },
             ),
-            html.P(
-                (
-                    insight_data.get("summary", "No summary available.")[:200] + "..."
-                    if len(insight_data.get("summary", "")) > 200
-                    else insight_data.get("summary", "No summary available.")
-                ),
-                style={
-                    "color": "#e2e8f0",
-                    "fontSize": "14px",
-                    "lineHeight": "1.5",
-                    "margin": "0 0 15px 0",
-                },
-            ),
+            summary_view,
+            summary_editor,
             html.Div(
                 [
                     html.Button(
@@ -397,6 +505,21 @@ def create_insight_card(insight_data):
                             "display": "flex",
                             "alignItems": "center",
                         },
+                    ),
+                    html.Button(
+                        [
+                            html.I(
+                                className="fas fa-edit",
+                                style={"marginRight": "6px"},
+                            ),
+                            "Edit Summary",
+                        ],
+                        id={
+                            "type": "edit-summary-button",
+                            "index": str(insight_data.get("id", "")),
+                        },
+                        n_clicks=0,
+                        style=edit_button_style,
                     ),
                     html.A(
                         [
@@ -520,6 +643,7 @@ def load_initial_insights(container_id):
                     ),
                     "status": insight.get('status') or "new",
                     "summary": insight.get('summary') or "",
+                    "editing": False,
                 }
             else:
                 # Legacy object format - extract attributes immediately
@@ -532,6 +656,7 @@ def load_initial_insights(container_id):
                     ),
                     "status": insight.status or "new",
                     "summary": insight.summary or "",
+                    "editing": False,
                 }
 
             # Create card
@@ -543,18 +668,34 @@ def load_initial_insights(container_id):
         serialized_insights = []
         for insight in insights_to_serialize:
             if isinstance(insight, dict):
-                import json
                 from datetime import date, datetime
 
                 # Create a copy and convert date/datetime objects to strings
                 insight_copy = insight.copy()
                 for key, value in insight_copy.items():
                     if isinstance(value, (date, datetime)):
-                        insight_copy[key] = value.isoformat() if hasattr(value, 'isoformat') else str(value)
+                        insight_copy[key] = (
+                            value.isoformat() if hasattr(value, "isoformat") else str(value)
+                        )
+                insight_copy["editing"] = False
 
                 serialized_insights.append(json.dumps(insight_copy))
             else:
-                serialized_insights.append(insight.model_dump_json())
+                serialized_insights.append(
+                    json.dumps(
+                        {
+                            "id": str(insight.id),
+                            "name": insight.name or "Untitled",
+                            "issuer": insight.issuer or "Unknown",
+                            "published_date": (
+                                str(insight.published_date) if insight.published_date else ""
+                            ),
+                            "status": insight.status or "new",
+                            "summary": insight.summary or "",
+                            "editing": False,
+                        }
+                    )
+                )
 
         # Limit to first 10 insights for initial load
         if len(insight_cards) > 10:
@@ -612,11 +753,13 @@ def load_initial_insights(container_id):
 # Load more insights callback
 @callback(
     Output("insights-container", "children", allow_duplicate=True),
+    Output("insights-data", "data", allow_duplicate=True),
     Input("load-more-insights", "n_clicks"),
     State("insights-container", "children"),
+    State("insights-data", "data"),
     prevent_initial_call=True,
 )
-def load_more_insights(n_clicks, current_children):
+def load_more_insights(n_clicks, current_children, insights_store):
     """Load more insights when button is clicked"""
     if not n_clicks:
         raise PreventUpdate
@@ -655,7 +798,7 @@ def load_more_insights(n_clicks, current_children):
                     "justifyContent": "center",
                 },
             )
-            return current_children + [no_more_message]
+            return current_children + [no_more_message], no_update
 
         # Create cards for new insights
         new_cards = []
@@ -670,6 +813,7 @@ def load_more_insights(n_clicks, current_children):
                     ),
                     "status": insight.get("status") or "new",
                     "summary": insight.get("summary") or "",
+                    "editing": False,
                 }
             else:
                 insight_data = {
@@ -681,12 +825,53 @@ def load_more_insights(n_clicks, current_children):
                     ),
                     "status": insight.status or "new",
                     "summary": insight.summary or "",
+                    "editing": False,
                 }
 
             card = create_insight_card(insight_data)
             new_cards.append(card)
 
-        return current_children + new_cards
+        serialized_store = list(insights_store) if insights_store else []
+
+        for insight in more_insights:
+            if isinstance(insight, dict):
+                serialized_store.append(
+                    json.dumps(
+                        {
+                            "id": str(insight.get("id", "")),
+                            "name": insight.get("name") or "Untitled",
+                            "issuer": insight.get("issuer") or "Unknown",
+                            "published_date": (
+                                str(insight.get("published_date"))
+                                if insight.get("published_date")
+                                else ""
+                            ),
+                            "status": insight.get("status") or "new",
+                            "summary": insight.get("summary") or "",
+                            "editing": False,
+                        }
+                    )
+                )
+            else:
+                serialized_store.append(
+                    json.dumps(
+                        {
+                            "id": str(insight.id),
+                            "name": insight.name or "Untitled",
+                            "issuer": insight.issuer or "Unknown",
+                            "published_date": (
+                                str(insight.published_date)
+                                if insight.published_date
+                                else ""
+                            ),
+                            "status": insight.status or "new",
+                            "summary": insight.summary or "",
+                            "editing": False,
+                        }
+                    )
+                )
+
+        return current_children + new_cards, serialized_store
 
     except Exception as e:
         logger.error(f"Error loading more insights: {e}")
@@ -703,7 +888,7 @@ def load_more_insights(n_clicks, current_children):
                 "marginTop": "15px",
             },
         )
-        return current_children + [error_message]
+        return current_children + [error_message], no_update
 
 
 # Search functionality
@@ -835,6 +1020,7 @@ def search_insights(
                     ),
                     "status": insight.get("status") or "new",
                     "summary": insight.get("summary") or "",
+                    "editing": False,
                 }
             else:
                 insight_data = {
@@ -846,6 +1032,7 @@ def search_insights(
                     ),
                     "status": insight.status or "new",
                     "summary": insight.summary or "",
+                    "editing": False,
                 }
 
             card = create_insight_card(insight_data)
@@ -1225,6 +1412,7 @@ def delete_insight(n_clicks_list, current_children):
                 ),
                 "status": insight.status or "new",
                 "summary": insight.summary or "",
+                "editing": False,
             }
 
             card = create_insight_card(insight_data)
@@ -1329,6 +1517,7 @@ def display_enhanced_modal(
                     ),
                     "summary": insight.summary or "No summary available.",
                     "status": insight.status or "new",
+                    "editing": False,
                 }
         except Exception as e:
             logger.error(f"Error fetching insight {insight_id}: {e}")
@@ -1468,3 +1657,169 @@ def display_enhanced_modal(
     )
 
     return True, summary_content
+
+
+@callback(
+    Output("insights-data", "data", allow_duplicate=True),
+    Output("insights-container", "children", allow_duplicate=True),
+    Output("summary-edit-context", "data"),
+    Input({"type": "edit-summary-button", "index": ALL}, "n_clicks"),
+    Input({"type": "inline-summary-save", "index": ALL}, "n_clicks"),
+    Input({"type": "inline-summary-cancel", "index": ALL}, "n_clicks"),
+    State("insights-data", "data"),
+    State({"type": "inline-summary-editor", "index": ALL}, "value"),
+    prevent_initial_call=True,
+)
+def handle_inline_summary_actions(
+    _edit_clicks: List[Optional[int]],
+    _save_clicks: List[Optional[int]],
+    _cancel_clicks: List[Optional[int]],
+    insights_data: Optional[List[str]],
+    _editor_values: List[Optional[str]],
+):
+    """Handle inline summary editing actions (edit, save, cancel)."""
+
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    triggered = ctx.triggered[0]
+    triggered_prop = triggered["prop_id"]
+    triggered_raw_id = triggered_prop.split(".")[0]
+
+    if not triggered_raw_id:
+        raise PreventUpdate
+
+    try:
+        triggered_id = json.loads(triggered_raw_id)
+    except Exception:
+        raise PreventUpdate
+
+    action_type = triggered_id.get("type")
+    insight_id = str(triggered_id.get("index"))
+
+    if not insight_id:
+        raise PreventUpdate
+
+    # Deserialize insight records from the store
+    records: List[Dict[str, Any]] = []
+    target_record: Optional[Dict[str, Any]] = None
+
+    for record in insights_data or []:
+        try:
+            parsed = json.loads(record) if isinstance(record, str) else dict(record)
+        except Exception:
+            continue
+
+        parsed.setdefault("editing", False)
+        if str(parsed.get("id")) == insight_id:
+            target_record = parsed
+        records.append(parsed)
+
+    # Fallback to database lookup if record missing from store
+    if target_record is None:
+        try:
+            with Session() as session:
+                insight = (
+                    session.query(Insights)
+                    .filter(Insights.id == insight_id)
+                    .first()
+                )
+                if insight:
+                    target_record = {
+                        "id": str(insight.id),
+                        "name": insight.name or "Untitled",
+                        "issuer": insight.issuer or "Unknown",
+                        "published_date": (
+                            str(insight.published_date) if insight.published_date else ""
+                        ),
+                        "status": insight.status or "new",
+                        "summary": insight.summary or "",
+                        "editing": False,
+                    }
+                    records.append(target_record)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error(f"Failed to load insight {insight_id} for editing: {exc}")
+            raise PreventUpdate
+
+    if target_record is None:
+        raise PreventUpdate
+
+    editor_state_map: Dict[str, Optional[str]] = {}
+    for state_key, value in ctx.states.items():
+        if not state_key.endswith(".value"):
+            continue
+        try:
+            state_id = json.loads(state_key.split(".")[0])
+        except Exception:
+            continue
+        if state_id.get("type") == "inline-summary-editor":
+            editor_state_map[str(state_id.get("index"))] = value
+
+    summary_edit_context: Optional[Dict[str, Any]] = None
+
+    if action_type == "edit-summary-button":
+        for record in records:
+            if str(record.get("id")) == insight_id:
+                record["editing"] = True
+                record["draft_summary"] = record.get("summary", "") or ""
+                summary_edit_context = {
+                    "id": insight_id,
+                    "name": record.get("name") or "Untitled insight",
+                }
+            else:
+                record["editing"] = False
+                record.pop("draft_summary", None)
+
+    elif action_type == "inline-summary-cancel":
+        for record in records:
+            record["editing"] = False
+            record.pop("draft_summary", None)
+
+    elif action_type == "inline-summary-save":
+        new_summary = (editor_state_map.get(insight_id) or "").strip()
+
+        try:
+            updated_record = set_insight_summary(insight_id, new_summary)
+        except Exception as exc:
+            logger.error(f"Failed to update summary for {insight_id}: {exc}")
+            # Keep editor open so the user can retry
+            for record in records:
+                if str(record.get("id")) == insight_id:
+                    record["editing"] = True
+                    record["draft_summary"] = new_summary
+            summary_edit_context = {
+                "id": insight_id,
+                "name": target_record.get("name") or "Untitled insight",
+                "error": str(exc),
+            }
+        else:
+            updated_summary = updated_record.get("summary", new_summary)
+            updated_status = updated_record.get("status")
+
+            for record in records:
+                if str(record.get("id")) == insight_id:
+                    record["summary"] = updated_summary
+                    if updated_status:
+                        record["status"] = updated_status
+                    record["editing"] = False
+                    record.pop("draft_summary", None)
+                else:
+                    record["editing"] = False
+                    record.pop("draft_summary", None)
+
+    else:
+        raise PreventUpdate
+
+    # Serialize updated records back into the store
+    serialized_updates: List[str] = []
+    rendered_cards: List[Any] = []
+
+    for record in records:
+        rendered_cards.append(create_insight_card(record))
+        record_copy = record.copy()
+        if not record_copy.get("editing"):
+            record_copy.pop("draft_summary", None)
+        serialized_updates.append(json.dumps(record_copy))
+
+    return serialized_updates, html.Div(rendered_cards), summary_edit_context

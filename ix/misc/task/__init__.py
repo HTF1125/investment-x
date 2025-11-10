@@ -276,16 +276,17 @@ def send_data_reports():
             data = ts_data['data']
 
             # Prepare price data for Equity:PX_LAST codes
-            if str(ts_code).endswith("EQUITY:PX_LAST"):
-                data_clean = data.dropna()
-                if not data_clean.empty:
-                    datas[ts_code] = data_clean.iloc[-1]
+            data_clean = data.dropna()
+            if not data_clean.empty:
+                datas[ts_code] = data_clean.iloc[-1]
 
             # Prepare timeseries data for all
             data_clean = data.dropna()
+            data_clean.name = ts_code
             if not data_clean.empty:
                 data_clean.index = pd.to_datetime(data_clean.index)
                 data_clean = data_clean.sort_index()
+                data_clean.name = ts_code
                 ts_list.append(data_clean)
 
     datas = pd.Series(datas)

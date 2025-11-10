@@ -234,6 +234,26 @@ class InsightCard:
                             fs="italic" if not summary else "normal",
                             style={"lineHeight": "1.6"},
                         ),
+                        dmc.Group(
+                            [
+                                dmc.Button(
+                                    "Edit Summary",
+                                    id={
+                                        "type": "edit-summary-button",
+                                        "index": insight_id,
+                                    },
+                                    n_clicks=0,
+                                    leftSection=DashIconify(
+                                        icon="carbon:edit", width=14
+                                    ),
+                                    variant="subtle",
+                                    color="blue",
+                                    size="xs",
+                                ),
+                            ],
+                            justify="flex-end",
+                            style={"marginTop": "10px"},
+                        ),
                     ],
                     p="md",
                     radius="md",
