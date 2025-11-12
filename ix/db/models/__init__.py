@@ -9,6 +9,7 @@ from sqlalchemy import (
     LargeBinary,
     text,
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from datetime import date, datetime
 from typing import Optional, Dict
@@ -18,6 +19,7 @@ from ix.db.conn import Base
 __all__ = [
     "Base",
     "Timeseries",
+    "TimeseriesData",
     "Publishers",
     "Universe",
     "EconomicCalendar",
@@ -27,7 +29,7 @@ __all__ = [
 
 
 class Timeseries(Base):
-    """Timeseries model with data stored as JSONB column."""
+    """Timeseries model with metadata and associated data payload."""
 
     __tablename__ = "timeseries"
 
@@ -52,14 +54,42 @@ class Timeseries(Base):
     parent_id = Column(UUID(as_uuid=False), ForeignKey("timeseries.id"), nullable=True)
     remark = Column(Text, default="")
 
-    # Store timeseries data as JSONB column
-    # Format: {"date_string": value, ...}
-    timeseries_data = Column(JSONB, default=dict)
+    # Legacy JSONB column retained for migration/backward compatibility.
     created = Column(DateTime, default=datetime.now, nullable=False)
     updated = Column(
         DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
     )
     num_data_queried = Column(Integer, default=0, nullable=False)
+
+    data_record = relationship(
+        "TimeseriesData",
+        uselist=False,
+        back_populates="timeseries",
+        cascade="all, delete-orphan",
+        lazy="select",
+        passive_deletes=True,
+    )
+
+    def _get_or_create_data_record(self, session):
+        """Ensure a TimeseriesData record exists."""
+        from sqlalchemy.exc import SQLAlchemyError
+
+        record = (
+            session.query(TimeseriesData)
+            .filter(TimeseriesData.timeseries_id == self.id)
+            .first()
+        )
+        if record is None:
+            record = TimeseriesData(timeseries_id=self.id, data={})
+            session.add(record)
+            # Flush to ensure the record is persisted before returning
+            try:
+                session.flush()
+            except SQLAlchemyError:
+                session.rollback()
+                raise
+
+        return record
 
     def update_data(self) -> None:
         if self.source_code is None:
@@ -87,7 +117,6 @@ class Timeseries(Base):
     def data(self):
         """Return timeseries data as pandas Series."""
         import pandas as pd
-        from ix.misc.date import today
         from ix.db.conn import Session
 
         # Reload the object from the database within session context
@@ -96,13 +125,14 @@ class Timeseries(Base):
             ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
             if ts is None:
                 # If not found, return empty series
-                return pd.Series(name=self.code if hasattr(self, 'code') else '', dtype=float)
+                return pd.Series(
+                    name=self.code if hasattr(self, "code") else "", dtype=float
+                )
 
             # Increment num_data_queried
             ts.num_data_queried = (ts.num_data_queried or 0) + 1
-
-            # Access the column data and attributes directly while in session
-            column_data = ts.timeseries_data
+            data_record = ts._get_or_create_data_record(session)
+            column_data = data_record.data if data_record and data_record.data else {}
             code = ts.code
             frequency = ts.frequency
 
@@ -125,13 +155,25 @@ class Timeseries(Base):
                 from ix.db.conn import Session
 
                 with Session() as session:
-                    # Reload the object from the database
-                    ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
+                    ts = (
+                        session.query(Timeseries)
+                        .filter(Timeseries.id == self.id)
+                        .first()
+                    )
                     if ts is not None:
-                        # Set the column directly
-                        ts.timeseries_data = {
-                            str(k.date()): float(v) for k, v in series.to_dict().items()
-                        }
+                        data_record = ts._get_or_create_data_record(session)
+                        cleaned = {}
+                        for k, v in series.to_dict().items():
+                            try:
+                                if hasattr(k, "date"):
+                                    key = str(k.date())
+                                else:
+                                    key = str(pd.to_datetime(k).date())
+                                cleaned[key] = float(v)
+                            except Exception:
+                                continue
+                        data_record.data = cleaned
+                        data_record.updated = datetime.now()
 
         series = series.map(lambda x: pd.to_numeric(x, errors="coerce")).dropna()
         series.name = code
@@ -160,33 +202,34 @@ class Timeseries(Base):
         if data.empty:
             return
 
-        # Get current column data directly
-        current_column_data = self.timeseries_data
-        current_data = current_column_data.copy() if current_column_data else {}
-
-        # Convert dates to strings for JSONB storage
-        new_data = {}
-        for k, v in data.to_dict().items():
-            if hasattr(k, "date"):
-                date_str = str(k.date())
-            elif isinstance(k, str):
-                date_str = k
-            else:
-                date_str = str(pd.to_datetime(k).date())
-            new_data[date_str] = float(v)
-        current_data.update(new_data)
-
-        # Update metadata and commit changes to database
         with Session() as session:
-            # Reload the object from the database
             ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
-            if ts is not None:
-                # Set the column directly
-                ts.timeseries_data = current_data
-                ts.start = data.index.min().date() if len(data.index) > 0 else None
-                ts.end = data.index.max().date() if len(data.index) > 0 else None
-                ts.num_data = len(data)
-                ts.updated = datetime.now()
+            if ts is None:
+                return
+
+            data_record = ts._get_or_create_data_record(session)
+            current_data = (
+                data_record.data.copy() if data_record and data_record.data else {}
+            )
+
+            # Convert dates to strings for storage
+            new_data = {}
+            for k, v in data.to_dict().items():
+                if hasattr(k, "date"):
+                    date_str = str(k.date())
+                elif isinstance(k, str):
+                    date_str = k
+                else:
+                    date_str = str(pd.to_datetime(k).date())
+                new_data[date_str] = float(v)
+
+            current_data.update(new_data)
+            data_record.data = current_data
+            data_record.updated = datetime.now()
+            ts.start = data.index.min().date() if len(data.index) > 0 else None
+            ts.end = data.index.max().date() if len(data.index) > 0 else None
+            ts.num_data = len(data)
+            ts.updated = datetime.now()
 
         # Feed to parent if exists
         self._feed_to_parent(data)
@@ -209,6 +252,7 @@ class Timeseries(Base):
                 if not parent_id or str(parent_id) == str(ts_id):
                     if str(parent_id) == str(ts_id):
                         import logging
+
                         logger = logging.getLogger(__name__)
                         logger.warning(
                             f"Timeseries {ts_id} has parent_id equal to self; ignoring."
@@ -217,9 +261,7 @@ class Timeseries(Base):
 
                 # Query for parent
                 parent = (
-                    session.query(Timeseries)
-                    .filter(Timeseries.id == parent_id)
-                    .first()
+                    session.query(Timeseries).filter(Timeseries.id == parent_id).first()
                 )
                 return parent
         except Exception:
@@ -285,51 +327,54 @@ class Timeseries(Base):
 
         import pandas as pd
 
-        # Get parent's current column data directly
-        parent_column_data = parent.timeseries_data
-        parent_data = parent_column_data.copy() if parent_column_data else {}
-
-        # Convert new_data to dict format with date strings
-        new_data_dict = {}
-        for k, v in new_data.to_dict().items():
-            if hasattr(k, "date"):
-                date_str = str(k.date())
-            elif isinstance(k, str):
-                date_str = k
-            else:
-                date_str = str(pd.to_datetime(k).date())
-            new_data_dict[date_str] = float(v)
-
-        parent_data.update(new_data_dict)
-
-        # Clean invalid dates
-        parent_data_clean = {}
-        for k, v in parent_data.items():
-            try:
-                pd.to_datetime(k)
-                parent_data_clean[k] = v
-            except:
-                continue
-
-        # Update parent metadata and commit
         with Session() as session:
-            # Reload the parent from the database
-            parent_ts = session.query(Timeseries).filter(Timeseries.id == parent.id).first()
-            if parent_ts is not None:
-                # Set the column directly
-                parent_ts.timeseries_data = parent_data_clean
-                if len(parent_data_clean) > 0:
-                    dates = pd.to_datetime(list(parent_data_clean.keys()), errors="coerce")
-                    valid_dates = dates[~pd.isna(dates)]
-                    if len(valid_dates) > 0:
-                        parent_ts.start = valid_dates.min().date()
-                        parent_ts.end = valid_dates.max().date()
-                        parent_ts.num_data = len(parent_data_clean)
+            parent_ts = (
+                session.query(Timeseries).filter(Timeseries.id == parent.id).first()
+            )
+            if parent_ts is None:
+                return
+
+            data_record = parent_ts._get_or_create_data_record(session)
+            parent_data = (
+                data_record.data.copy() if data_record and data_record.data else {}
+            )
+
+            # Convert new_data to dict format with date strings
+            new_data_dict = {}
+            for k, v in new_data.to_dict().items():
+                if hasattr(k, "date"):
+                    date_str = str(k.date())
+                elif isinstance(k, str):
+                    date_str = k
                 else:
-                    parent_ts.start = None
-                    parent_ts.end = None
-                    parent_ts.num_data = 0
-                parent_ts.updated = datetime.now()
+                    date_str = str(pd.to_datetime(k).date())
+                new_data_dict[date_str] = float(v)
+
+            parent_data.update(new_data_dict)
+
+            # Clean invalid dates
+            parent_data_clean = {}
+            for k, v in parent_data.items():
+                try:
+                    pd.to_datetime(k)
+                    parent_data_clean[k] = v
+                except Exception:
+                    continue
+
+            data_record.data = parent_data_clean
+            data_record.updated = datetime.now()
+            if len(parent_data_clean) > 0:
+                dates = pd.to_datetime(list(parent_data_clean.keys()), errors="coerce")
+                valid_dates = dates[~pd.isna(dates)]
+                if len(valid_dates) > 0:
+                    parent_ts.start = valid_dates.min().date()
+                    parent_ts.end = valid_dates.max().date()
+                    parent_ts.num_data = len(parent_data_clean)
+            else:
+                parent_ts.start = None
+                parent_ts.end = None
+                parent_ts.num_data = 0
+            parent_ts.updated = datetime.now()
 
     def reset(self) -> bool:
         """Reset timeseries data."""
@@ -339,14 +384,38 @@ class Timeseries(Base):
             # Reload the object from the database
             ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
             if ts is not None:
+                data_record = ts._get_or_create_data_record(session)
+                data_record.data = {}
+                data_record.updated = datetime.now()
                 ts.start = None
                 ts.end = None
                 ts.num_data = 0
-                # Set the column directly
-                ts.timeseries_data = {}
                 ts.updated = datetime.now()
                 return True
             return False
+
+
+class TimeseriesData(Base):
+    """Stores timeseries payload data separately from metadata."""
+
+    __tablename__ = "timeseries_data"
+
+    timeseries_id = Column(
+        UUID(as_uuid=False),
+        ForeignKey("timeseries.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    data = Column(JSONB, default=dict, nullable=False)
+    created = Column(DateTime, default=datetime.now, nullable=False)
+    updated = Column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
+
+    timeseries = relationship(
+        "Timeseries",
+        back_populates="data_record",
+        lazy="select",
+    )
 
 
 class Publishers(Base):

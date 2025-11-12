@@ -448,7 +448,7 @@ def update_timeseries_list(search, current_page):
     from ix.db.conn import Session
     from ix.db.models import Timeseries
     from sqlalchemy import func, or_
-    from sqlalchemy.orm import load_only, defer
+    from sqlalchemy.orm import load_only
 
     page_size = 50
     search_term = (search or "").strip()
@@ -487,8 +487,7 @@ def update_timeseries_list(search, current_page):
                     Timeseries.start,
                     Timeseries.end,
                     Timeseries.num_data,
-                ),
-                defer(Timeseries.timeseries_data),
+                )
             )
             .order_by(Timeseries.code.asc())
         )

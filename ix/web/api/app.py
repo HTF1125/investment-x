@@ -15,6 +15,7 @@ import re
 import ast
 import time
 from ix.db.custom import FinancialConditionsIndexUS
+from sqlalchemy.orm import load_only
 
 # Import routers
 from ix.web.api.routers import series
@@ -70,7 +71,27 @@ def register_api_routes(app):
 
         # Execute query with pagination using SQLAlchemy
         with Session() as session:
-            timeseries_query = session.query(Timeseries)
+            timeseries_query = session.query(Timeseries).options(
+                load_only(
+                    Timeseries.id,
+                    Timeseries.code,
+                    Timeseries.name,
+                    Timeseries.provider,
+                    Timeseries.asset_class,
+                    Timeseries.category,
+                    Timeseries.source,
+                    Timeseries.source_code,
+                    Timeseries.frequency,
+                    Timeseries.unit,
+                    Timeseries.scale,
+                    Timeseries.currency,
+                    Timeseries.country,
+                    Timeseries.start,
+                    Timeseries.end,
+                    Timeseries.num_data,
+                    Timeseries.remark,
+                )
+            )
 
             # Apply filters
             if query:
@@ -100,6 +121,7 @@ def register_api_routes(app):
                     'asset_class': ts.asset_class,
                     'category': ts.category,
                     'source': ts.source,
+                    "source_code": ts.source_code,
                     'frequency': ts.frequency,
                     'start': ts.start,
                     'end': ts.end,
@@ -546,152 +568,106 @@ def register_api_routes(app):
     @app.server.route("/api/insights", methods=["GET"])
     def get_insights():
         """
-        GET /api/insights - List all insights with optional filtering and pagination.
+        GET /api/insights - List insights with optional filtering, search, and pagination.
 
         Query parameters:
-        - limit: Limit number of results
+        - limit: Maximum number of results (default: 20)
         - offset: Offset for pagination (default: 0)
-        - issuer: Filter by issuer
+        - issuer: Filter by issuer (case-insensitive, partial match)
         - status: Filter by status (new, read, archived, etc.)
         - from_date: Filter by published_date >= from_date (YYYY-MM-DD)
         - to_date: Filter by published_date <= to_date (YYYY-MM-DD)
+        - q / query: Case-insensitive search across issuer, name, and summary
 
         Note: Content (PDF binary) is not included in the response.
         """
-        # Ensure MongoDB connection
         ensure_connection()
 
-        # Get query parameters
-        limit = request.args.get("limit", type=int)
+        # Query parameters
+        limit_param = request.args.get("limit", type=int)
+        limit = limit_param if limit_param and limit_param > 0 else 20
         offset = request.args.get("offset", 0, type=int)
         issuer = request.args.get("issuer")
         status = request.args.get("status")
         from_date = request.args.get("from_date")
         to_date = request.args.get("to_date")
+        query_text = request.args.get("q") or request.args.get("query")
 
-        # Build MongoDB query
-        query = {}
+        from sqlalchemy import and_, or_, desc
 
-        # Apply filters
+        filters = []
+
+        # Date parsing helpers
+        def parse_date(date_string: str, param_name: str):
+            try:
+                return datetime.strptime(date_string, "%Y-%m-%d").date()
+            except ValueError:
+                raise ValueError(f"Invalid {param_name} format: {date_string}")
+
         if issuer:
-            query["issuer"] = {"$regex": issuer, "$options": "i"}
+            filters.append(Insights.issuer.ilike(f"%{issuer}%"))
         if status:
-            query["status"] = status
+            filters.append(Insights.status == status)
         if from_date:
             try:
-                from datetime import datetime
-
-                from_dt = datetime.strptime(from_date, "%Y-%m-%d").date()
-                query["published_date"] = {"$gte": from_dt}
-            except ValueError:
-                return (
-                    jsonify({"error": f"Invalid from_date format: {from_date}"}),
-                    400,
-                )
+                filters.append(Insights.published_date >= parse_date(from_date, "from_date"))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
         if to_date:
             try:
-                from datetime import datetime
-
-                to_dt = datetime.strptime(to_date, "%Y-%m-%d").date()
-                if "published_date" in query:
-                    query["published_date"]["$lte"] = to_dt
-                else:
-                    query["published_date"] = {"$lte": to_dt}
-            except ValueError:
-                return jsonify({"error": f"Invalid to_date format: {to_date}"}), 400
-
-        # Execute query with pagination and sorting using SQLAlchemy
-        from sqlalchemy import or_, and_, desc
-        from datetime import date as date_type
+                filters.append(Insights.published_date <= parse_date(to_date, "to_date"))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+        if query_text:
+            like_expr = f"%{query_text}%"
+            filters.append(
+                or_(
+                    Insights.name.ilike(like_expr),
+                    Insights.issuer.ilike(like_expr),
+                    Insights.summary.ilike(like_expr),
+                )
+            )
 
         with Session() as session:
             insights_query = session.query(Insights)
 
-            # Apply filters
-            filters = []
-            if issuer:
-                filters.append(Insights.issuer.ilike(f"%{issuer}%"))
-            if status:
-                filters.append(Insights.status == status)
-            if from_date:
-                try:
-                    from_dt = datetime.strptime(from_date, "%Y-%m-%d").date()
-                    filters.append(Insights.published_date >= from_dt)
-                except ValueError:
-                    return jsonify({"error": f"Invalid from_date format: {from_date}"}), 400
-            if to_date:
-                try:
-                    to_dt = datetime.strptime(to_date, "%Y-%m-%d").date()
-                    filters.append(Insights.published_date <= to_dt)
-                except ValueError:
-                    return jsonify({"error": f"Invalid to_date format: {to_date}"}), 400
-
             if filters:
                 insights_query = insights_query.filter(and_(*filters))
 
-            # Apply sorting and pagination
             insights_query = insights_query.order_by(desc(Insights.published_date))
 
             if offset:
                 insights_query = insights_query.offset(offset)
-            if limit:
-                insights_query = insights_query.limit(limit)
+            insights_query = insights_query.limit(limit)
 
-            insights_list = insights_query.all()
+            insights = insights_query.all()
 
-            # Extract all attributes while in session
-            insights_data = []
-            for insight in insights_list:
-                # Convert date to ISO format string for JSON serialization
-                published_date_str = None
-                if insight.published_date:
-                    if isinstance(insight.published_date, str):
-                        published_date_str = insight.published_date
-                    elif hasattr(insight.published_date, 'isoformat'):
-                        published_date_str = insight.published_date.isoformat()
-                    else:
-                        published_date_str = str(insight.published_date)
+            results = []
+            for insight in insights:
+                published_date = insight.published_date
+                if isinstance(published_date, str):
+                    published_date_str = published_date
+                elif hasattr(published_date, "isoformat"):
+                    published_date_str = published_date.isoformat()
+                elif published_date is not None:
+                    published_date_str = str(published_date)
+                else:
+                    published_date_str = None
 
-                insights_data.append({
-                    'id': insight.id,
-                    'issuer': insight.issuer,
-                    'name': insight.name,
-                    'published_date': published_date_str,
-                    'summary': insight.summary,
-                    'status': insight.status,
-                })
-            insights_list = insights_data
+                results.append(
+                    {
+                        "id": str(insight.id),
+                        "issuer": insight.issuer,
+                        "name": insight.name,
+                        "published_date": published_date_str,
+                        "summary": insight.summary,
+                        "status": insight.status,
+                        "has_content": bool(insight.pdf_content),
+                    }
+                )
 
-        formatted_insights = []
-
-        for insight in insights_list:
-            formatted_insight = {
-                "id": str(insight.id),
-                "issuer": insight.issuer,
-                "name": insight.name,
-                "published_date": (
-                    insight.published_date.isoformat()
-                    if insight.published_date
-                    else None
-                ),
-                "summary": insight.summary,
-                "status": insight.status,
-                "has_content": True,  # Content stored in PostgreSQL
-                "created_at": (
-                    insight.created_at.isoformat()
-                    if hasattr(insight, "created_at") and insight.created_at
-                    else None
-                ),
-                "updated_at": (
-                    insight.updated_at.isoformat()
-                    if hasattr(insight, "updated_at") and insight.updated_at
-                    else None
-                ),
-            }
-            formatted_insights.append(formatted_insight)
-
-        logger.info(f"Retrieved {len(formatted_insights)} insights records")
-        return jsonify(formatted_insights)
+        logger.info(f"Retrieved {len(results)} insights records")
+        return jsonify(results)
 
     @app.server.route("/api/insights/<int:insight_id>", methods=["GET"])
     def get_insight_by_id(insight_id):
@@ -822,8 +798,8 @@ def register_api_routes(app):
                         continue
 
                     # Get existing data to merge with new data (within session)
-                    # Access timeseries_data directly to avoid detached instance error
-                    column_data = ts.timeseries_data if hasattr(ts, 'timeseries_data') else {}
+                    data_record = ts._get_or_create_data_record(session)
+                    column_data = data_record.data if data_record and data_record.data else {}
                     if column_data and len(column_data) > 0:
                         # Convert JSONB dict to pandas Series
                         # JSONB stores dates as strings, convert them back to datetime
@@ -865,7 +841,8 @@ def register_api_routes(app):
                         data_dict[date_str] = float(v)
 
                     # Update the timeseries data directly (within session)
-                    ts.timeseries_data = data_dict
+                    data_record.data = data_dict
+                    data_record.updated = datetime.now()
                     ts.start = combined_data.index.min().date() if len(combined_data.index) > 0 else None
                     ts.end = combined_data.index.max().date() if len(combined_data.index) > 0 else None
                     ts.num_data = len(combined_data)
