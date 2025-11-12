@@ -2,7 +2,7 @@ from typing import Union, List, Set, Tuple, Dict, Optional
 import pandas as pd
 import re
 import io
-from datetime import datetime
+from datetime import datetime, date
 import base64
 from ix.misc import get_logger, periods
 from .models import Universe, Insights, TacticalView, Timeseries, Publishers
@@ -345,6 +345,78 @@ def delete_insight(id: str):
             raise ValueError("Insight not found")
         session.delete(insight)
         return {"message": "Insight deleted successfully"}
+
+
+def update_insight_metadata(
+    id: str,
+    name: Optional[str] = None,
+    issuer: Optional[str] = None,
+    published_date: Optional[Union[str, date, datetime]] = None,
+) -> Dict[str, Optional[str]]:
+    """
+    Update basic metadata fields for an insight and return the updated record.
+    """
+    from ix.db.conn import Session
+
+    if not id:
+        raise ValueError("Insight id is required")
+
+    normalized_name = (name or "").strip() if name is not None else None
+    normalized_issuer = (issuer or "").strip() if issuer is not None else None
+
+    normalized_date: Optional[date] = None
+    if published_date is not None:
+        if isinstance(published_date, datetime):
+            normalized_date = published_date.date()
+        elif isinstance(published_date, date):
+            normalized_date = published_date
+        else:
+            date_str = str(published_date).strip()
+            if date_str:
+                try:
+                    normalized_date = datetime.fromisoformat(date_str).date()
+                except ValueError as exc:
+                    try:
+                        normalized_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                    except ValueError:
+                        raise ValueError(
+                            f"Invalid published_date format: {published_date}"
+                        ) from exc
+            else:
+                normalized_date = None
+
+    with Session() as session:
+        insight = session.query(Insights).filter(Insights.id == id).first()
+        if not insight:
+            raise ValueError("Insight not found")
+
+        if name is not None:
+            insight.name = normalized_name or None
+        if issuer is not None:
+            insight.issuer = normalized_issuer or None
+        if published_date is not None:
+            insight.published_date = normalized_date
+
+        session.flush()
+        session.refresh(insight)
+
+        published_date_str = None
+        if insight.published_date:
+            if isinstance(insight.published_date, str):
+                published_date_str = insight.published_date
+            elif hasattr(insight.published_date, "isoformat"):
+                published_date_str = insight.published_date.isoformat()
+            else:
+                published_date_str = str(insight.published_date)
+
+        return {
+            "id": str(insight.id),
+            "name": insight.name or "",
+            "issuer": insight.issuer or "",
+            "published_date": published_date_str,
+            "status": insight.status or "",
+            "summary": insight.summary or "",
+        }
 
 
 # TODO: consider deprecating update_insight_summary in favor of a more general update method

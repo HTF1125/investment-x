@@ -24,6 +24,7 @@ from ix.db.client import (
     create_publisher,
     touch_publisher,
     set_insight_summary,
+    update_insight_metadata,
 )
 from ix.db.conn import Session
 from ix.db.models import Insights
@@ -306,6 +307,10 @@ def create_insight_card(insight_data):
     summary_text = insight_data.get("summary", "") or ""
     is_editing = bool(insight_data.get("editing"))
     draft_summary = insight_data.get("draft_summary", summary_text)
+    draft_title = insight_data.get("draft_title", insight_data.get("name") or "Untitled")
+    draft_issuer = insight_data.get("draft_issuer", insight_data.get("issuer") or "Unknown")
+    published_date_value = insight_data.get("published_date") or ""
+    draft_date = insight_data.get("draft_date", published_date_value[:10] if published_date_value else "")
 
     summary_preview = (
         summary_text[:200] + "..." if len(summary_text) > 200 else summary_text
@@ -341,6 +346,90 @@ def create_insight_card(insight_data):
 
     summary_editor = html.Div(
         [
+            html.Div(
+                [
+                    html.Label(
+                        "Title",
+                        style={
+                            "color": "#94a3b8",
+                            "fontSize": "12px",
+                            "marginBottom": "4px",
+                            "display": "block",
+                        },
+                    ),
+                    dcc.Input(
+                        value=draft_title,
+                        id={"type": "inline-title-input", "index": insight_id},
+                        type="text",
+                        style={
+                            "width": "100%",
+                            "backgroundColor": "#0f172a",
+                            "color": "#e2e8f0",
+                            "border": "1px solid #3b82f6",
+                            "borderRadius": "6px",
+                            "padding": "8px",
+                            "marginBottom": "12px",
+                        },
+                        placeholder="Enter insight title",
+                    ),
+                ]
+            ),
+            html.Div(
+                [
+                    html.Label(
+                        "Source / Issuer",
+                        style={
+                            "color": "#94a3b8",
+                            "fontSize": "12px",
+                            "marginBottom": "4px",
+                            "display": "block",
+                        },
+                    ),
+                    dcc.Input(
+                        value=draft_issuer,
+                        id={"type": "inline-issuer-input", "index": insight_id},
+                        type="text",
+                        style={
+                            "width": "100%",
+                            "backgroundColor": "#0f172a",
+                            "color": "#e2e8f0",
+                            "border": "1px solid #3b82f6",
+                            "borderRadius": "6px",
+                            "padding": "8px",
+                            "marginBottom": "12px",
+                        },
+                        placeholder="Enter insight source",
+                    ),
+                ]
+            ),
+            html.Div(
+                [
+                    html.Label(
+                        "Published Date",
+                        style={
+                            "color": "#94a3b8",
+                            "fontSize": "12px",
+                            "marginBottom": "4px",
+                            "display": "block",
+                        },
+                    ),
+                    dcc.Input(
+                        value=draft_date,
+                        id={"type": "inline-date-input", "index": insight_id},
+                        type="text",
+                        style={
+                            "width": "100%",
+                            "backgroundColor": "#0f172a",
+                            "color": "#e2e8f0",
+                            "border": "1px solid #3b82f6",
+                            "borderRadius": "6px",
+                            "padding": "8px",
+                            "marginBottom": "12px",
+                        },
+                        placeholder="YYYY-MM-DD",
+                    ),
+                ]
+            ),
             dcc.Textarea(
                 value=draft_summary,
                 id={"type": "inline-summary-editor", "index": insight_id},
@@ -367,7 +456,7 @@ def create_insight_card(insight_data):
                                 className="fas fa-save",
                                 style={"marginRight": "6px"},
                             ),
-                            "Save Summary",
+                            "Save Changes",
                         ],
                         id={"type": "inline-summary-save", "index": insight_id},
                         n_clicks=0,
@@ -408,16 +497,12 @@ def create_insight_card(insight_data):
                     ),
                 ],
                 style={
-                    "marginTop": "10px",
                     "display": "flex",
-                    "justifyContent": "flex-end",
+                    "marginTop": "12px",
                 },
             ),
         ],
-        style={
-            "display": "block" if is_editing else "none",
-            "marginBottom": "15px",
-        },
+        style={"display": "block" if is_editing else "none"},
     )
 
     return html.Div(
@@ -512,7 +597,7 @@ def create_insight_card(insight_data):
                                 className="fas fa-edit",
                                 style={"marginRight": "6px"},
                             ),
-                            "Edit Summary",
+                            "Edit",
                         ],
                         id={
                             "type": "edit-summary-button",
@@ -894,6 +979,7 @@ def load_more_insights(n_clicks, current_children, insights_store):
 # Search functionality
 @callback(
     Output("insights-container", "children", allow_duplicate=True),
+    Output("insights-data", "data", allow_duplicate=True),
     [
         Input("search-button", "n_clicks"),
         Input("insights-search", "n_submit"),
@@ -958,7 +1044,7 @@ def search_insights(
                 pass
 
         if not insights:
-            return html.Div(
+            no_results = html.Div(
                 [
                     html.I(
                         className="fas fa-search fa-2x",
@@ -981,6 +1067,7 @@ def search_insights(
                     "border": "1px solid #475569",
                 },
             )
+            return no_results, []
 
         # Sort insights if sort value is provided
         if sort_value:
@@ -1009,6 +1096,7 @@ def search_insights(
 
         # Create cards
         insight_cards = []
+        serialized_store = []
         for insight in insights:
             if isinstance(insight, dict):
                 insight_data = {
@@ -1037,8 +1125,9 @@ def search_insights(
 
             card = create_insight_card(insight_data)
             insight_cards.append(card)
+            serialized_store.append(json.dumps(insight_data))
 
-        return html.Div(insight_cards)
+        return html.Div(insight_cards), serialized_store
 
     except Exception as e:
         logger.error(f"Error searching insights: {e}")
@@ -1053,7 +1142,7 @@ def search_insights(
                 "color": "#fca5a5",
                 "textAlign": "center",
             },
-        )
+        ), no_update
 
 
 # Clear search callback
@@ -1065,11 +1154,11 @@ def search_insights(
         Output("date-range-filter", "start_date"),
         Output("date-range-filter", "end_date"),
     ],
-    Input("search-button", "n_clicks"),
+    Input("clear-search", "n_clicks"),
     prevent_initial_call=True,
 )
-def clear_search_on_search(n_clicks):
-    """Clear search fields when search button is clicked"""
+def clear_search_inputs(_):
+    """Clear all search inputs when the clear icon is clicked."""
     return "", None, None, None, None
 
 
@@ -1668,6 +1757,9 @@ def display_enhanced_modal(
     Input({"type": "inline-summary-cancel", "index": ALL}, "n_clicks"),
     State("insights-data", "data"),
     State({"type": "inline-summary-editor", "index": ALL}, "value"),
+    State({"type": "inline-title-input", "index": ALL}, "value"),
+    State({"type": "inline-issuer-input", "index": ALL}, "value"),
+    State({"type": "inline-date-input", "index": ALL}, "value"),
     prevent_initial_call=True,
 )
 def handle_inline_summary_actions(
@@ -1676,6 +1768,9 @@ def handle_inline_summary_actions(
     _cancel_clicks: List[Optional[int]],
     insights_data: Optional[List[str]],
     _editor_values: List[Optional[str]],
+    _title_values: List[Optional[str]],
+    _issuer_values: List[Optional[str]],
+    _date_values: List[Optional[str]],
 ):
     """Handle inline summary editing actions (edit, save, cancel)."""
 
@@ -1746,6 +1841,9 @@ def handle_inline_summary_actions(
         raise PreventUpdate
 
     editor_state_map: Dict[str, Optional[str]] = {}
+    title_state_map: Dict[str, Optional[str]] = {}
+    issuer_state_map: Dict[str, Optional[str]] = {}
+    date_state_map: Dict[str, Optional[str]] = {}
     for state_key, value in ctx.states.items():
         if not state_key.endswith(".value"):
             continue
@@ -1753,8 +1851,46 @@ def handle_inline_summary_actions(
             state_id = json.loads(state_key.split(".")[0])
         except Exception:
             continue
-        if state_id.get("type") == "inline-summary-editor":
-            editor_state_map[str(state_id.get("index"))] = value
+        index_key = str(state_id.get("index"))
+        state_type = state_id.get("type")
+        if state_type == "inline-summary-editor":
+            editor_state_map[index_key] = value
+        elif state_type == "inline-title-input":
+            title_state_map[index_key] = value
+        elif state_type == "inline-issuer-input":
+            issuer_state_map[index_key] = value
+        elif state_type == "inline-date-input":
+            date_state_map[index_key] = value
+
+    # Dash may not include component states in ctx.states (e.g., after recent renders);
+    # fall back to the raw State inputs to ensure we capture the latest values.
+    if _title_values is not None:
+        for idx, value in enumerate(_title_values or []):
+            if idx < len(records):
+                record_id = str(records[idx].get("id"))
+                if record_id and record_id not in title_state_map:
+                    title_state_map[record_id] = value
+
+    if _issuer_values is not None:
+        for idx, value in enumerate(_issuer_values or []):
+            if idx < len(records):
+                record_id = str(records[idx].get("id"))
+                if record_id and record_id not in issuer_state_map:
+                    issuer_state_map[record_id] = value
+
+    if _date_values is not None:
+        for idx, value in enumerate(_date_values or []):
+            if idx < len(records):
+                record_id = str(records[idx].get("id"))
+                if record_id and record_id not in date_state_map:
+                    date_state_map[record_id] = value
+
+    if _editor_values is not None:
+        for idx, value in enumerate(_editor_values or []):
+            if idx < len(records):
+                record_id = str(records[idx].get("id"))
+                if record_id and record_id not in editor_state_map:
+                    editor_state_map[record_id] = value
 
     summary_edit_context: Optional[Dict[str, Any]] = None
 
@@ -1763,6 +1899,10 @@ def handle_inline_summary_actions(
             if str(record.get("id")) == insight_id:
                 record["editing"] = True
                 record["draft_summary"] = record.get("summary", "") or ""
+                record["draft_title"] = record.get("name") or ""
+                record["draft_issuer"] = record.get("issuer") or ""
+                existing_date = record.get("published_date") or ""
+                record["draft_date"] = existing_date[:10] if isinstance(existing_date, str) and existing_date else ""
                 summary_edit_context = {
                     "id": insight_id,
                     "name": record.get("name") or "Untitled insight",
@@ -1770,43 +1910,93 @@ def handle_inline_summary_actions(
             else:
                 record["editing"] = False
                 record.pop("draft_summary", None)
+                record.pop("draft_title", None)
+                record.pop("draft_issuer", None)
+                record.pop("draft_date", None)
 
     elif action_type == "inline-summary-cancel":
         for record in records:
             record["editing"] = False
             record.pop("draft_summary", None)
+            record.pop("draft_title", None)
+            record.pop("draft_issuer", None)
+            record.pop("draft_date", None)
 
     elif action_type == "inline-summary-save":
         new_summary = (editor_state_map.get(insight_id) or "").strip()
+        new_title = title_state_map.get(
+            insight_id,
+            target_record.get("draft_title", target_record.get("name", "")),
+        )
+        new_issuer = issuer_state_map.get(
+            insight_id,
+            target_record.get("draft_issuer", target_record.get("issuer", "")),
+        )
+        new_date = date_state_map.get(
+            insight_id,
+            target_record.get("draft_date", target_record.get("published_date", "")),
+        )
+
+        existing_name = target_record.get("name", "")
+        existing_issuer = target_record.get("issuer", "")
+        existing_date = target_record.get("published_date", "")
+
+        new_title = (new_title or existing_name or "").strip()
+        new_issuer = (new_issuer or existing_issuer or "").strip()
+        new_date = (new_date or (existing_date[:10] if isinstance(existing_date, str) else "")).strip()
+
+        metadata_error: Optional[str] = None
+        updated_metadata: Optional[Dict[str, Optional[str]]] = None
 
         try:
+            updated_metadata = update_insight_metadata(
+                id=insight_id,
+                name=new_title,
+                issuer=new_issuer,
+                published_date=new_date if new_date else None,
+            )
             updated_record = set_insight_summary(insight_id, new_summary)
         except Exception as exc:
-            logger.error(f"Failed to update summary for {insight_id}: {exc}")
-            # Keep editor open so the user can retry
+            metadata_error = str(exc)
+            logger.error(f"Failed to update insight {insight_id}: {metadata_error}")
             for record in records:
                 if str(record.get("id")) == insight_id:
                     record["editing"] = True
-                    record["draft_summary"] = new_summary
+                    record["draft_summary"] = new_summary or target_record.get("summary", "")
+                    record["draft_title"] = new_title or target_record.get("draft_title", target_record.get("name", ""))
+                    record["draft_issuer"] = new_issuer or target_record.get("draft_issuer", target_record.get("issuer", ""))
+                    record["draft_date"] = new_date or target_record.get("draft_date", target_record.get("published_date", ""))
             summary_edit_context = {
                 "id": insight_id,
                 "name": target_record.get("name") or "Untitled insight",
-                "error": str(exc),
+                "error": metadata_error,
             }
         else:
             updated_summary = updated_record.get("summary", new_summary)
             updated_status = updated_record.get("status")
+            updated_name = (updated_metadata.get("name") if updated_metadata else new_title) or existing_name
+            updated_issuer = (updated_metadata.get("issuer") if updated_metadata else new_issuer) or existing_issuer
+            updated_date = (updated_metadata.get("published_date") if updated_metadata else new_date) or existing_date
 
             for record in records:
                 if str(record.get("id")) == insight_id:
                     record["summary"] = updated_summary
+                    record["name"] = updated_name or ""
+                    record["issuer"] = updated_issuer or ""
+                    record["published_date"] = updated_date or ""
                     if updated_status:
                         record["status"] = updated_status
                     record["editing"] = False
                     record.pop("draft_summary", None)
+                    record.pop("draft_title", None)
+                    record.pop("draft_issuer", None)
+                    record.pop("draft_date", None)
                 else:
                     record["editing"] = False
                     record.pop("draft_summary", None)
+                    record.pop("draft_title", None)
+                    record.pop("draft_issuer", None)
+                    record.pop("draft_date", None)
 
     else:
         raise PreventUpdate
@@ -1820,6 +2010,9 @@ def handle_inline_summary_actions(
         record_copy = record.copy()
         if not record_copy.get("editing"):
             record_copy.pop("draft_summary", None)
+            record_copy.pop("draft_title", None)
+            record_copy.pop("draft_issuer", None)
+            record_copy.pop("draft_date", None)
         serialized_updates.append(json.dumps(record_copy))
 
     return serialized_updates, html.Div(rendered_cards), summary_edit_context

@@ -4,7 +4,7 @@ Ultra-modern, clean card design with outstanding visual hierarchy
 """
 
 from typing import Dict, Any
-from dash import html
+from dash import html, dcc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from datetime import datetime
@@ -139,6 +139,230 @@ class InsightCard:
             else "No summary available"
         )
 
+        is_editing = bool(insight.get("editing"))
+        draft_title = insight.get("draft_title") or name
+        draft_issuer = insight.get("draft_issuer") or issuer
+        raw_date = insight.get("draft_date") or insight.get("published_date") or ""
+        draft_date = raw_date[:10] if isinstance(raw_date, str) else raw_date
+        draft_summary = insight.get("draft_summary") or summary or ""
+
+        if is_editing:
+            summary_section = dmc.Paper(
+                [
+                    dmc.Group(
+                        [
+                            DashIconify(icon="carbon:edit", width=14, color="cyan"),
+                            dmc.Text(
+                                "Editing Summary",
+                                size="xs",
+                                fw="bold",
+                                c="cyan",
+                                tt="uppercase",
+                            ),
+                        ],
+                        gap=6,
+                        style={"marginBottom": "12px"},
+                    ),
+                    html.Div(
+                        [
+                            html.Label(
+                                "Title",
+                                style={
+                                    "color": "#94a3b8",
+                                    "fontSize": "12px",
+                                    "marginBottom": "4px",
+                                    "display": "block",
+                                },
+                            ),
+                            dcc.Input(
+                                value=draft_title,
+                                id={"type": "inline-title-input", "index": insight_id},
+                                type="text",
+                                style={
+                                    "width": "100%",
+                                    "backgroundColor": "#0f172a",
+                                    "color": "#f8fafc",
+                                    "border": "1px solid #3b82f6",
+                                    "borderRadius": "8px",
+                                    "padding": "8px",
+                                },
+                                placeholder="Enter insight title",
+                            ),
+                        ],
+                        style={"marginBottom": "12px"},
+                    ),
+                    html.Div(
+                        [
+                            html.Label(
+                                "Source / Issuer",
+                                style={
+                                    "color": "#94a3b8",
+                                    "fontSize": "12px",
+                                    "marginBottom": "4px",
+                                    "display": "block",
+                                },
+                            ),
+                            dcc.Input(
+                                value=draft_issuer,
+                                id={"type": "inline-issuer-input", "index": insight_id},
+                                type="text",
+                                style={
+                                    "width": "100%",
+                                    "backgroundColor": "#0f172a",
+                                    "color": "#f8fafc",
+                                    "border": "1px solid #3b82f6",
+                                    "borderRadius": "8px",
+                                    "padding": "8px",
+                                },
+                                placeholder="Enter insight source",
+                            ),
+                        ],
+                        style={"marginBottom": "12px"},
+                    ),
+                    html.Div(
+                        [
+                            html.Label(
+                                "Published Date",
+                                style={
+                                    "color": "#94a3b8",
+                                    "fontSize": "12px",
+                                    "marginBottom": "4px",
+                                    "display": "block",
+                                },
+                            ),
+                            dcc.Input(
+                                value=draft_date,
+                                id={"type": "inline-date-input", "index": insight_id},
+                                type="text",
+                                style={
+                                    "width": "100%",
+                                    "backgroundColor": "#0f172a",
+                                    "color": "#f8fafc",
+                                    "border": "1px solid #3b82f6",
+                                    "borderRadius": "8px",
+                                    "padding": "8px",
+                                },
+                                placeholder="YYYY-MM-DD",
+                            ),
+                        ],
+                        style={"marginBottom": "12px"},
+                    ),
+                    dcc.Textarea(
+                        value=draft_summary,
+                        id={"type": "inline-summary-editor", "index": insight_id},
+                        style={
+                            "width": "100%",
+                            "minHeight": "160px",
+                            "backgroundColor": "#0f172a",
+                            "color": "#f8fafc",
+                            "border": "1px solid #3b82f6",
+                            "borderRadius": "8px",
+                            "padding": "10px",
+                            "fontSize": "14px",
+                            "lineHeight": "1.6",
+                            "fontFamily": "inherit",
+                            "resize": "vertical",
+                        },
+                        spellCheck=True,
+                        placeholder="Write or paste the insight summary here...",
+                    ),
+                    dmc.Group(
+                        [
+                            dmc.Button(
+                                "Save",
+                                id={"type": "inline-summary-save", "index": insight_id},
+                                n_clicks=0,
+                                leftSection=DashIconify(icon="carbon:save", width=16),
+                                color="blue",
+                                variant="filled",
+                                size="sm",
+                            ),
+                            dmc.Button(
+                                "Cancel",
+                                id={"type": "inline-summary-cancel", "index": insight_id},
+                                n_clicks=0,
+                                leftSection=DashIconify(icon="carbon:close", width=16),
+                                variant="light",
+                                color="gray",
+                                size="sm",
+                            ),
+                        ],
+                        justify="flex-end",
+                        gap="sm",
+                        style={"marginTop": "12px"},
+                    ),
+                ],
+                p="md",
+                radius="md",
+                withBorder=True,
+                style={
+                    "background": "linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)",
+                    "borderColor": "#3b82f6",
+                    "marginBottom": "16px",
+                },
+            )
+        else:
+            summary_section = dmc.Paper(
+                [
+                    dmc.Group(
+                        [
+                            DashIconify(
+                                icon="carbon:notebook",
+                                width=14,
+                                color="cyan",
+                            ),
+                            dmc.Text(
+                                "AI Summary",
+                                size="xs",
+                                fw="bold",
+                                c="cyan",
+                                tt="uppercase",
+                            ),
+                        ],
+                        gap=6,
+                        style={"marginBottom": "8px"},
+                    ),
+                    dmc.Text(
+                        (
+                            summary_preview
+                            if summary
+                            else "Click 'View' to generate AI summary"
+                        ),
+                        size="sm",
+                        c="gray" if summary else "orange",
+                        fs="italic" if not summary else "normal",
+                        style={"lineHeight": "1.6"},
+                    ),
+                    dmc.Group(
+                        [
+                            dmc.Button(
+                                "Edit",
+                                id={
+                                    "type": "edit-summary-button",
+                                    "index": insight_id,
+                                },
+                                n_clicks=0,
+                                leftSection=DashIconify(
+                                    icon="carbon:edit", width=14
+                                ),
+                                variant="subtle",
+                                color="blue",
+                                size="xs",
+                            ),
+                        ],
+                        justify="flex-end",
+                        style={"marginTop": "10px"},
+                    ),
+                ],
+                p="md",
+                radius="md",
+                style={
+                    "background": "linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%)",
+                    "border": "1px solid #ccc",
+                    "marginBottom": "16px",
+                },
+            )
+
         # Ultra-modern card design
         card = dmc.Card(
             [
@@ -203,66 +427,7 @@ class InsightCard:
                     style={"marginBottom": "16px"},
                 ),
                 # Summary section with subtle background
-                dmc.Paper(
-                    [
-                        dmc.Group(
-                            [
-                                DashIconify(
-                                    icon="carbon:notebook",
-                                    width=14,
-                                    color="cyan",
-                                ),
-                                dmc.Text(
-                                    "AI Summary",
-                                    size="xs",
-                                    fw="bold",
-                                    c="cyan",
-                                    tt="uppercase",
-                                ),
-                            ],
-                            gap=6,
-                            style={"marginBottom": "8px"},
-                        ),
-                        dmc.Text(
-                            (
-                                summary_preview
-                                if summary
-                                else "Click 'View' to generate AI summary"
-                            ),
-                            size="sm",
-                            c="gray" if summary else "orange",
-                            fs="italic" if not summary else "normal",
-                            style={"lineHeight": "1.6"},
-                        ),
-                        dmc.Group(
-                            [
-                                dmc.Button(
-                                    "Edit Summary",
-                                    id={
-                                        "type": "edit-summary-button",
-                                        "index": insight_id,
-                                    },
-                                    n_clicks=0,
-                                    leftSection=DashIconify(
-                                        icon="carbon:edit", width=14
-                                    ),
-                                    variant="subtle",
-                                    color="blue",
-                                    size="xs",
-                                ),
-                            ],
-                            justify="flex-end",
-                            style={"marginTop": "10px"},
-                        ),
-                    ],
-                    p="md",
-                    radius="md",
-                    style={
-                        "background": "linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%)",
-                        "border": "1px solid #ccc",
-                        "marginBottom": "16px",
-                    },
-                ),
+                summary_section,
                 # Action buttons section
                 dmc.Group(
                     [
