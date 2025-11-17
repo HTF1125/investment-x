@@ -7,6 +7,7 @@ Incorporates features from wx implementation with improved design.
 import json
 import base64
 from datetime import datetime
+
 # from bson import ObjectId  # Removed - MongoDB-specific
 from typing import Any, Dict, List, Tuple, Optional
 
@@ -151,13 +152,12 @@ def _build_publishers_list(publishers: List[dict]) -> List[html.Div]:
 
 @callback(
     Output("insight-sources-list", "children"),
-    Output("sources-stat", "children"),
     Output("issuer-filter", "data"),
     Input("publishers-refresh-interval", "n_intervals"),
     Input("publishers-refresh-token", "data"),
 )
 def refresh_publishers_list(_: int, __: Optional[str]):
-    """Refresh publishers sidebar, stats card, and issuer filter options."""
+    """Refresh publishers sidebar and issuer filter options."""
 
     default_options = [{"label": "All Issuers", "value": "all"}]
 
@@ -173,7 +173,7 @@ def refresh_publishers_list(_: int, __: Optional[str]):
             color="red",
             variant="filled",
         )
-        return alert, "0", default_options
+        return alert, default_options
 
     if not publishers:
         empty_state = dmc.Text(
@@ -182,16 +182,19 @@ def refresh_publishers_list(_: int, __: Optional[str]):
             c="gray.5",
             ta="center",
         )
-        return empty_state, "0", default_options
+        return empty_state, default_options
 
     rows = _build_publishers_list(publishers)
     options = default_options + [
-        {"label": publisher.get("name") or "Unnamed", "value": publisher.get("name") or "Unnamed"}
+        {
+            "label": publisher.get("name") or "Unnamed",
+            "value": publisher.get("name") or "Unnamed",
+        }
         for publisher in publishers
         if publisher.get("name")
     ]
 
-    return rows, str(len(publishers)), options
+    return rows, options
 
 
 @callback(
@@ -307,10 +310,16 @@ def create_insight_card(insight_data):
     summary_text = insight_data.get("summary", "") or ""
     is_editing = bool(insight_data.get("editing"))
     draft_summary = insight_data.get("draft_summary", summary_text)
-    draft_title = insight_data.get("draft_title", insight_data.get("name") or "Untitled")
-    draft_issuer = insight_data.get("draft_issuer", insight_data.get("issuer") or "Unknown")
+    draft_title = insight_data.get(
+        "draft_title", insight_data.get("name") or "Untitled"
+    )
+    draft_issuer = insight_data.get(
+        "draft_issuer", insight_data.get("issuer") or "Unknown"
+    )
     published_date_value = insight_data.get("published_date") or ""
-    draft_date = insight_data.get("draft_date", published_date_value[:10] if published_date_value else "")
+    draft_date = insight_data.get(
+        "draft_date", published_date_value[:10] if published_date_value else ""
+    )
 
     summary_preview = (
         summary_text[:200] + "..." if len(summary_text) > 200 else summary_text
@@ -720,14 +729,16 @@ def load_initial_insights(container_id):
             # Handle both dict and object format
             if isinstance(insight, dict):
                 insight_data = {
-                    "id": str(insight.get('id', '')),
-                    "name": insight.get('name') or "Untitled",
-                    "issuer": insight.get('issuer') or "Unknown",
+                    "id": str(insight.get("id", "")),
+                    "name": insight.get("name") or "Untitled",
+                    "issuer": insight.get("issuer") or "Unknown",
                     "published_date": (
-                        str(insight.get('published_date')) if insight.get('published_date') else ""
+                        str(insight.get("published_date"))
+                        if insight.get("published_date")
+                        else ""
                     ),
-                    "status": insight.get('status') or "new",
-                    "summary": insight.get('summary') or "",
+                    "status": insight.get("status") or "new",
+                    "summary": insight.get("summary") or "",
                     "editing": False,
                 }
             else:
@@ -760,7 +771,9 @@ def load_initial_insights(container_id):
                 for key, value in insight_copy.items():
                     if isinstance(value, (date, datetime)):
                         insight_copy[key] = (
-                            value.isoformat() if hasattr(value, "isoformat") else str(value)
+                            value.isoformat()
+                            if hasattr(value, "isoformat")
+                            else str(value)
                         )
                 insight_copy["editing"] = False
 
@@ -773,7 +786,9 @@ def load_initial_insights(container_id):
                             "name": insight.name or "Untitled",
                             "issuer": insight.issuer or "Unknown",
                             "published_date": (
-                                str(insight.published_date) if insight.published_date else ""
+                                str(insight.published_date)
+                                if insight.published_date
+                                else ""
                             ),
                             "status": insight.status or "new",
                             "summary": insight.summary or "",
@@ -894,7 +909,9 @@ def load_more_insights(n_clicks, current_children, insights_store):
                     "name": insight.get("name") or "Untitled",
                     "issuer": insight.get("issuer") or "Unknown",
                     "published_date": (
-                        str(insight.get("published_date")) if insight.get("published_date") else ""
+                        str(insight.get("published_date"))
+                        if insight.get("published_date")
+                        else ""
                     ),
                     "status": insight.get("status") or "new",
                     "summary": insight.get("summary") or "",
@@ -1015,8 +1032,10 @@ def search_insights(
             insights = [
                 insight
                 for insight in insights
-                if isinstance(insight, dict) and issuer_value.lower() in (insight.get('issuer', '') or '').lower()
-                or not isinstance(insight, dict) and issuer_value.lower() in (insight.issuer or '').lower()
+                if isinstance(insight, dict)
+                and issuer_value.lower() in (insight.get("issuer", "") or "").lower()
+                or not isinstance(insight, dict)
+                and issuer_value.lower() in (insight.issuer or "").lower()
             ]
 
         if start_date:
@@ -1025,8 +1044,16 @@ def search_insights(
                 insights = [
                     insight
                     for insight in insights
-                    if (isinstance(insight, dict) and insight.get('published_date') and insight.get('published_date') >= start_date_obj)
-                    or (not isinstance(insight, dict) and insight.published_date and insight.published_date >= start_date_obj)
+                    if (
+                        isinstance(insight, dict)
+                        and insight.get("published_date")
+                        and insight.get("published_date") >= start_date_obj
+                    )
+                    or (
+                        not isinstance(insight, dict)
+                        and insight.published_date
+                        and insight.published_date >= start_date_obj
+                    )
                 ]
             except (ValueError, TypeError):
                 pass
@@ -1037,8 +1064,16 @@ def search_insights(
                 insights = [
                     insight
                     for insight in insights
-                    if (isinstance(insight, dict) and insight.get('published_date') and insight.get('published_date') <= end_date_obj)
-                    or (not isinstance(insight, dict) and insight.published_date and insight.published_date <= end_date_obj)
+                    if (
+                        isinstance(insight, dict)
+                        and insight.get("published_date")
+                        and insight.get("published_date") <= end_date_obj
+                    )
+                    or (
+                        not isinstance(insight, dict)
+                        and insight.published_date
+                        and insight.published_date <= end_date_obj
+                    )
                 ]
             except (ValueError, TypeError):
                 pass
@@ -1071,6 +1106,7 @@ def search_insights(
 
         # Sort insights if sort value is provided
         if sort_value:
+
             def get_published_date(x):
                 if isinstance(x, dict):
                     return x.get("published_date", "")
@@ -1082,17 +1118,13 @@ def search_insights(
                 return getattr(x, "name", "").lower()
 
             if sort_value == "date_desc":
-                insights = sorted(
-                    insights, key=get_published_date, reverse=True
-                )
+                insights = sorted(insights, key=get_published_date, reverse=True)
             elif sort_value == "date_asc":
                 insights = sorted(insights, key=get_published_date)
             elif sort_value == "name_asc":
                 insights = sorted(insights, key=get_name)
             elif sort_value == "name_desc":
-                insights = sorted(
-                    insights, key=get_name, reverse=True
-                )
+                insights = sorted(insights, key=get_name, reverse=True)
 
         # Create cards
         insight_cards = []
@@ -1104,7 +1136,9 @@ def search_insights(
                     "name": insight.get("name") or "Untitled",
                     "issuer": insight.get("issuer") or "Unknown",
                     "published_date": (
-                        str(insight.get("published_date")) if insight.get("published_date") else ""
+                        str(insight.get("published_date"))
+                        if insight.get("published_date")
+                        else ""
                     ),
                     "status": insight.get("status") or "new",
                     "summary": insight.get("summary") or "",
@@ -1132,17 +1166,20 @@ def search_insights(
     except Exception as e:
         logger.error(f"Error searching insights: {e}")
 
-        return html.Div(
-            f"Search error: {str(e)}",
-            style={
-                "backgroundColor": "rgba(239, 68, 68, 0.1)",
-                "border": "1px solid rgba(239, 68, 68, 0.3)",
-                "borderRadius": "8px",
-                "padding": "15px",
-                "color": "#fca5a5",
-                "textAlign": "center",
-            },
-        ), no_update
+        return (
+            html.Div(
+                f"Search error: {str(e)}",
+                style={
+                    "backgroundColor": "rgba(239, 68, 68, 0.1)",
+                    "border": "1px solid rgba(239, 68, 68, 0.3)",
+                    "borderRadius": "8px",
+                    "padding": "15px",
+                    "color": "#fca5a5",
+                    "textAlign": "center",
+                },
+            ),
+            no_update,
+        )
 
 
 # Clear search callback
@@ -1184,7 +1221,9 @@ def handle_enhanced_upload(
     contents_list = contents if isinstance(contents, list) else [contents]
     filenames_list = filename if isinstance(filename, list) else [filename]
     modified_list = (
-        last_modified if isinstance(last_modified, list) else [last_modified] * len(contents_list)
+        last_modified
+        if isinstance(last_modified, list)
+        else [last_modified] * len(contents_list)
     )
 
     def _error_message(message: str) -> Tuple[html.Div, bool]:
@@ -1248,7 +1287,10 @@ def handle_enhanced_upload(
                 session.flush()
 
                 try:
-                    if hasattr(Settings, "openai_secret_key") and Settings.openai_secret_key:
+                    if (
+                        hasattr(Settings, "openai_secret_key")
+                        and Settings.openai_secret_key
+                    ):
                         summarizer = PDFSummarizer(Settings.openai_secret_key)
                         summary_text = summarizer.process_insights(decoded)
                         insight.summary = summary_text
@@ -1286,8 +1328,14 @@ def handle_enhanced_upload(
                     ),
                     html.Div(
                         [
-                            html.P([html.Strong("📄 Name: "), name], style={"margin": "4px 0"}),
-                            html.P([html.Strong("🏢 Issuer: "), issuer], style={"margin": "4px 0"}),
+                            html.P(
+                                [html.Strong("📄 Name: "), name],
+                                style={"margin": "4px 0"},
+                            ),
+                            html.P(
+                                [html.Strong("🏢 Issuer: "), issuer],
+                                style={"margin": "4px 0"},
+                            ),
                             html.P(
                                 [
                                     html.Strong("📅 Published: "),
@@ -1296,7 +1344,10 @@ def handle_enhanced_upload(
                                 style={"margin": "4px 0"},
                             ),
                             html.P(
-                                [html.Strong("📁 File size: "), f"{len(decoded) / 1024:.2f} KB"],
+                                [
+                                    html.Strong("📁 File size: "),
+                                    f"{len(decoded) / 1024:.2f} KB",
+                                ],
                                 style={"margin": "4px 0"},
                             ),
                             html.P(
@@ -1400,7 +1451,9 @@ def handle_enhanced_upload(
                     DashIconify(icon="carbon:time", width=24, color="#38bdf8"),
                     dmc.Stack(
                         [
-                            dmc.Text("Processing complete", fw=600, size="sm", c="gray.1"),
+                            dmc.Text(
+                                "Processing complete", fw=600, size="sm", c="gray.1"
+                            ),
                             dmc.Text(
                                 f"{status_text} ({success_count}/{total_files} successful)",
                                 size="xs",
@@ -1412,7 +1465,9 @@ def handle_enhanced_upload(
                 ],
                 gap="md",
             ),
-            dmc.Progress(value=progress_value, color=progress_color, size="sm", mt="sm"),
+            dmc.Progress(
+                value=progress_value, color=progress_color, size="sm", mt="sm"
+            ),
         ],
         radius="md",
         withBorder=True,
@@ -1459,7 +1514,9 @@ def delete_insight(n_clicks_list, current_children):
         from ix.db.models import Insights
 
         with Session() as session:
-            insight_to_delete = session.query(Insights).filter(Insights.id == insight_id).first()
+            insight_to_delete = (
+                session.query(Insights).filter(Insights.id == insight_id).first()
+            )
             if insight_to_delete:
                 session.delete(insight_to_delete)
                 session.commit()
@@ -1586,7 +1643,9 @@ def display_enhanced_modal(
             from ix.db.models import Insights
 
             with Session() as session:
-                insight = session.query(Insights).filter(Insights.id == insight_id).first()
+                insight = (
+                    session.query(Insights).filter(Insights.id == insight_id).first()
+                )
                 if not insight:
                     return False, html.Div(
                         "Insight not found.",
@@ -1816,9 +1875,7 @@ def handle_inline_summary_actions(
         try:
             with Session() as session:
                 insight = (
-                    session.query(Insights)
-                    .filter(Insights.id == insight_id)
-                    .first()
+                    session.query(Insights).filter(Insights.id == insight_id).first()
                 )
                 if insight:
                     target_record = {
@@ -1826,7 +1883,9 @@ def handle_inline_summary_actions(
                         "name": insight.name or "Untitled",
                         "issuer": insight.issuer or "Unknown",
                         "published_date": (
-                            str(insight.published_date) if insight.published_date else ""
+                            str(insight.published_date)
+                            if insight.published_date
+                            else ""
                         ),
                         "status": insight.status or "new",
                         "summary": insight.summary or "",
@@ -1902,7 +1961,11 @@ def handle_inline_summary_actions(
                 record["draft_title"] = record.get("name") or ""
                 record["draft_issuer"] = record.get("issuer") or ""
                 existing_date = record.get("published_date") or ""
-                record["draft_date"] = existing_date[:10] if isinstance(existing_date, str) and existing_date else ""
+                record["draft_date"] = (
+                    existing_date[:10]
+                    if isinstance(existing_date, str) and existing_date
+                    else ""
+                )
                 summary_edit_context = {
                     "id": insight_id,
                     "name": record.get("name") or "Untitled insight",
@@ -1943,7 +2006,9 @@ def handle_inline_summary_actions(
 
         new_title = (new_title or existing_name or "").strip()
         new_issuer = (new_issuer or existing_issuer or "").strip()
-        new_date = (new_date or (existing_date[:10] if isinstance(existing_date, str) else "")).strip()
+        new_date = (
+            new_date or (existing_date[:10] if isinstance(existing_date, str) else "")
+        ).strip()
 
         metadata_error: Optional[str] = None
         updated_metadata: Optional[Dict[str, Optional[str]]] = None
@@ -1962,10 +2027,18 @@ def handle_inline_summary_actions(
             for record in records:
                 if str(record.get("id")) == insight_id:
                     record["editing"] = True
-                    record["draft_summary"] = new_summary or target_record.get("summary", "")
-                    record["draft_title"] = new_title or target_record.get("draft_title", target_record.get("name", ""))
-                    record["draft_issuer"] = new_issuer or target_record.get("draft_issuer", target_record.get("issuer", ""))
-                    record["draft_date"] = new_date or target_record.get("draft_date", target_record.get("published_date", ""))
+                    record["draft_summary"] = new_summary or target_record.get(
+                        "summary", ""
+                    )
+                    record["draft_title"] = new_title or target_record.get(
+                        "draft_title", target_record.get("name", "")
+                    )
+                    record["draft_issuer"] = new_issuer or target_record.get(
+                        "draft_issuer", target_record.get("issuer", "")
+                    )
+                    record["draft_date"] = new_date or target_record.get(
+                        "draft_date", target_record.get("published_date", "")
+                    )
             summary_edit_context = {
                 "id": insight_id,
                 "name": target_record.get("name") or "Untitled insight",
@@ -1974,9 +2047,15 @@ def handle_inline_summary_actions(
         else:
             updated_summary = updated_record.get("summary", new_summary)
             updated_status = updated_record.get("status")
-            updated_name = (updated_metadata.get("name") if updated_metadata else new_title) or existing_name
-            updated_issuer = (updated_metadata.get("issuer") if updated_metadata else new_issuer) or existing_issuer
-            updated_date = (updated_metadata.get("published_date") if updated_metadata else new_date) or existing_date
+            updated_name = (
+                updated_metadata.get("name") if updated_metadata else new_title
+            ) or existing_name
+            updated_issuer = (
+                updated_metadata.get("issuer") if updated_metadata else new_issuer
+            ) or existing_issuer
+            updated_date = (
+                updated_metadata.get("published_date") if updated_metadata else new_date
+            ) or existing_date
 
             for record in records:
                 if str(record.get("id")) == insight_id:

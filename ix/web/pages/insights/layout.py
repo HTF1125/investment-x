@@ -81,242 +81,6 @@ layout = dmc.Container(
                 "borderBottom": "1px solid #ccc",
             },
         ),
-        # Quick Stats - Redesigned with gradients
-        dmc.Grid(
-            [
-                # Total Insights Card
-                dmc.GridCol(
-                    dmc.Card(
-                        [
-                            dmc.Stack(
-                                [
-                                    dmc.Group(
-                                        [
-                                            dmc.ThemeIcon(
-                                                DashIconify(
-                                                    icon="carbon:document-tasks",
-                                                    width=24,
-                                                ),
-                                                size=50,
-                                                radius="md",
-                                                variant="gradient",
-                                                gradient={
-                                                    "from": "blue.6",
-                                                    "to": "cyan.6",
-                                                    "deg": 135,
-                                                },
-                                            ),
-                                            html.Div(
-                                                [
-                                                    dmc.Text(
-                                                        "Total Documents",
-                                                        size="xs",
-                                                        c="gray",
-                                                        fw="bold",
-                                                        tt="uppercase",
-                                                    ),
-                                                    dmc.Title(
-                                                        "0",
-                                                        order=2,
-                                                        id="total-insights-stat",
-                                                        c="blue.6",
-                                                    ),
-                                                ],
-                                                style={"flex": 1},
-                                            ),
-                                        ],
-                                        justify="flex-start",
-                                        align="center",
-                                    ),
-                                ],
-                                gap="xs",
-                            ),
-                        ],
-                        padding="lg",
-                        radius="md",
-                        withBorder=True,
-                        style={
-                            "height": "100%",
-                            "background": "linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(6, 182, 212, 0.05) 100%)",
-                        },
-                    ),
-                    span={"base": 12, "xs": 6, "sm": 4, "md": 3},
-                ),
-                # This Week Card
-                dmc.GridCol(
-                    dmc.Card(
-                        [
-                            dmc.Stack(
-                                [
-                                    dmc.Group(
-                                        [
-                                            dmc.ThemeIcon(
-                                                DashIconify(
-                                                    icon="carbon:calendar", width=24
-                                                ),
-                                                size=50,
-                                                radius="md",
-                                                variant="gradient",
-                                                gradient={
-                                                    "from": "teal.6",
-                                                    "to": "green.6",
-                                                    "deg": 135,
-                                                },
-                                            ),
-                                            html.Div(
-                                                [
-                                                    dmc.Text(
-                                                        "This Week",
-                                                        size="xs",
-                                                        c="gray",
-                                                        fw="bold",
-                                                        tt="uppercase",
-                                                    ),
-                                                    dmc.Title(
-                                                        "0",
-                                                        order=2,
-                                                        id="weekly-insights-stat",
-                                                        c="teal.6",
-                                                    ),
-                                                ],
-                                                style={"flex": 1},
-                                            ),
-                                        ],
-                                        justify="flex-start",
-                                        align="center",
-                                    ),
-                                ],
-                                gap="xs",
-                            ),
-                        ],
-                        padding="lg",
-                        radius="md",
-                        withBorder=True,
-                        style={
-                            "height": "100%",
-                            "background": "linear-gradient(135deg, rgba(20, 184, 166, 0.05) 0%, rgba(5, 150, 105, 0.05) 100%)",
-                        },
-                    ),
-                    span={"base": 12, "xs": 6, "sm": 4, "md": 3},
-                ),
-                # Publishers Card
-                dmc.GridCol(
-                    dmc.Card(
-                        [
-                            dmc.Stack(
-                                [
-                                    dmc.Group(
-                                        [
-                                            dmc.ThemeIcon(
-                                                DashIconify(
-                                                    icon="carbon:partnership", width=24
-                                                ),
-                                                size=50,
-                                                radius="md",
-                                                variant="gradient",
-                                                gradient={
-                                                    "from": "violet.6",
-                                                    "to": "purple.6",
-                                                    "deg": 135,
-                                                },
-                                            ),
-                                            html.Div(
-                                                [
-                                                    dmc.Text(
-                                                        "Publishers",
-                                                        size="xs",
-                                                        c="gray",
-                                                        fw="bold",
-                                                        tt="uppercase",
-                                                    ),
-                                                    dmc.Title(
-                                                        "0",
-                                                        order=2,
-                                                        id="sources-stat",
-                                                        c="violet.6",
-                                                    ),
-                                                ],
-                                                style={"flex": 1},
-                                            ),
-                                        ],
-                                        justify="flex-start",
-                                        align="center",
-                                    ),
-                                ],
-                                gap="xs",
-                            ),
-                        ],
-                        padding="lg",
-                        radius="md",
-                        withBorder=True,
-                        style={
-                            "height": "100%",
-                            "background": "linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(124, 58, 237, 0.05) 100%)",
-                        },
-                    ),
-                    span={"base": 12, "xs": 6, "sm": 4, "md": 3},
-                ),
-                # AI Processed Card
-                dmc.GridCol(
-                    dmc.Card(
-                        [
-                            dmc.Stack(
-                                [
-                                    dmc.Group(
-                                        [
-                                            dmc.ThemeIcon(
-                                                DashIconify(
-                                                    icon="carbon:ai-status", width=24
-                                                ),
-                                                size=50,
-                                                radius="md",
-                                                variant="gradient",
-                                                gradient={
-                                                    "from": "pink.6",
-                                                    "to": "grape.6",
-                                                    "deg": 135,
-                                                },
-                                            ),
-                                            html.Div(
-                                                [
-                                                    dmc.Text(
-                                                        "AI Processed",
-                                                        size="xs",
-                                                        c="gray",
-                                                        fw="bold",
-                                                        tt="uppercase",
-                                                    ),
-                                                    dmc.Title(
-                                                        "0",
-                                                        order=2,
-                                                        id="ai-processed-stat",
-                                                        c="pink.6",
-                                                    ),
-                                                ],
-                                                style={"flex": 1},
-                                            ),
-                                        ],
-                                        justify="flex-start",
-                                        align="center",
-                                    ),
-                                ],
-                                gap="xs",
-                            ),
-                        ],
-                        padding="lg",
-                        radius="md",
-                        withBorder=True,
-                        style={
-                            "height": "100%",
-                            "background": "linear-gradient(135deg, rgba(236, 72, 153, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%)",
-                        },
-                    ),
-                    span={"base": 12, "xs": 6, "sm": 4, "md": 3},
-                ),
-            ],
-            gutter="lg",
-            style={"marginBottom": "32px"},
-        ),
         # Upload & Quick Actions Section
         dmc.Grid(
             [
@@ -503,267 +267,259 @@ layout = dmc.Container(
             gutter="lg",
             style={"marginBottom": "32px"},
         ),
-        # Advanced Search & Filter Bar
-        dmc.Card(
-            [
-                dmc.Stack(
-                    [
-                        # Search bar
-                        dmc.TextInput(
-                            id="insights-search",
-                            placeholder="Search by title, issuer, date (YYYY-MM-DD), or keywords...",
-                            leftSection=DashIconify(icon="carbon:search", width=20),
-                            rightSection=dmc.ActionIcon(
-                                DashIconify(icon="carbon:close", width=16),
-                                variant="subtle",
-                                color="gray",
-                                id="clear-search",
-                            ),
-                            size="lg",
-                            radius="md",
-                        ),
-                        # Filter chips row
-                        dmc.Group(
-                            [
-                                dmc.ChipGroup(
-                                    [
-                                        dmc.Chip(
-                                            "All",
-                                            value="all",
-                                            variant="filled",
-                                            size="sm",
-                                        ),
-                                        dmc.Chip(
-                                            "Last 7 Days",
-                                            value="7d",
-                                            variant="filled",
-                                            size="sm",
-                                        ),
-                                        dmc.Chip(
-                                            "Last 30 Days",
-                                            value="30d",
-                                            variant="filled",
-                                            size="sm",
-                                        ),
-                                        dmc.Chip(
-                                            "Last 3 Months",
-                                            value="3m",
-                                            variant="filled",
-                                            size="sm",
-                                        ),
-                                    ],
-                                    id="time-filter-chips",
-                                    value="all",
-                                ),
-                                dmc.Button(
-                                    "Search",
-                                    id="search-button",
-                                    leftSection=DashIconify(
-                                        icon="carbon:search", width=16
-                                    ),
-                                    variant="gradient",
-                                    gradient={"from": "blue", "to": "cyan", "deg": 90},
-                                    size="sm",
-                                ),
-                            ],
-                            justify="space-between",
-                            align="center",
-                        ),
-                        # Advanced filters (collapsible)
-                        dmc.Accordion(
-                            [
-                                dmc.AccordionItem(
-                                    [
-                                        dmc.AccordionControl(
-                                            "Advanced Filters",
-                                            icon=DashIconify(
-                                                icon="carbon:filter", width=20
-                                            ),
-                                        ),
-                                        dmc.AccordionPanel(
-                                            dmc.Grid(
-                                                [
-                                                    dmc.GridCol(
-                                                        html.Div(
-                                                            [
-                                                                dmc.Text(
-                                                                    "Sort By",
-                                                                    size="sm",
-                                                                    fw="normal",
-                                                                    style={
-                                                                        "marginBottom": "4px"
-                                                                    },
-                                                                ),
-                                                                dmc.Select(
-                                                                    id="sort-dropdown",
-                                                                    placeholder="Select sort order",
-                                                                    data=[
-                                                                        {
-                                                                            "label": "📅 Newest First",
-                                                                            "value": "date_desc",
-                                                                        },
-                                                                        {
-                                                                            "label": "📅 Oldest First",
-                                                                            "value": "date_asc",
-                                                                        },
-                                                                        {
-                                                                            "label": "🔤 Name (A-Z)",
-                                                                            "value": "name_asc",
-                                                                        },
-                                                                        {
-                                                                            "label": "🔤 Name (Z-A)",
-                                                                            "value": "name_desc",
-                                                                        },
-                                                                    ],
-                                                                    size="sm",
-                                                                ),
-                                                            ]
-                                                        ),
-                                                        span={
-                                                            "base": 12,
-                                                            "sm": 6,
-                                                            "md": 4,
-                                                        },
-                                                    ),
-                                                    dmc.GridCol(
-                                                        html.Div(
-                                                            [
-                                                                dmc.Text(
-                                                                    "Issuer",
-                                                                    size="sm",
-                                                                    fw="normal",
-                                                                    style={
-                                                                        "marginBottom": "4px"
-                                                                    },
-                                                                ),
-                                                                dmc.Select(
-                                                                    id="issuer-filter",
-                                                                    placeholder="All publishers",
-                                                                    data=[
-                                                                        {
-                                                                            "label": "All Issuers",
-                                                                            "value": "all",
-                                                                        },
-                                                                    ],
-                                                                    size="sm",
-                                                                ),
-                                                            ]
-                                                        ),
-                                                        span={
-                                                            "base": 12,
-                                                            "sm": 6,
-                                                            "md": 4,
-                                                        },
-                                                    ),
-                                                    dmc.GridCol(
-                                                        html.Div(
-                                                            [
-                                                                dmc.Text(
-                                                                    "Date Range",
-                                                                    size="sm",
-                                                                    fw="normal",
-                                                                    style={
-                                                                        "marginBottom": "4px"
-                                                                    },
-                                                                ),
-                                                                dmc.DatePicker(
-                                                                    id="date-range-filter",
-                                                                    type="range",
-                                                                    size="sm",
-                                                                ),
-                                                            ]
-                                                        ),
-                                                        span={
-                                                            "base": 12,
-                                                            "sm": 6,
-                                                            "md": 4,
-                                                        },
-                                                    ),
-                                                ],
-                                                gutter="md",
-                                            ),
-                                        ),
-                                    ],
-                                    value="filters",
-                                ),
-                            ],
-                            variant="separated",
-                        ),
-                    ],
-                    gap="md",
-                ),
-            ],
-            padding="xl",
-            radius="lg",
-            withBorder=True,
-            shadow="sm",
-            style={"marginBottom": "32px"},
-        ),
         # Main content area - either insights list or PDF viewer
         html.Div(
             [
                 # Insights Feed - Completely Redesigned (default view)
                 dmc.Card(
                     [
-                        # Header with load more
-                        dmc.Group(
-                            [
-                                dmc.Group(
-                                    [
-                                        DashIconify(
-                                            icon="carbon:document-multiple-02",
-                                            width=24,
-                                            color="blue",
-                                        ),
-                                        dmc.Title(
-                                            "Research Library", order=3, c="blue.7"
-                                        ),
-                                    ],
-                                    gap="sm",
-                                ),
-                                dmc.Group(
-                                    [
-                                        dmc.Badge(
-                                            id="insights-count-badge",
-                                            children="0 documents",
-                                            size="lg",
-                                            variant="light",
-                                            color="blue",
-                                            leftSection=DashIconify(
-                                                icon="carbon:document", width=14
-                                            ),
-                                        ),
-                                        dmc.Button(
-                                            "Load More",
-                                            id="load-more-insights",
-                                            leftSection=DashIconify(
-                                                icon="carbon:add", width=16
-                                            ),
-                                            variant="light",
-                                            color="blue",
-                                            size="sm",
-                                            radius="md",
-                                        ),
-                                    ],
-                                    gap="sm",
-                                ),
-                            ],
-                            justify="space-between",
-                            align="center",
-                            style={"marginBottom": "24px"},
-                        ),
-                        # Insights container with modern scroll
                         dmc.Stack(
                             [
-                                html.Div(id="insights-container-wrapper"),
-                                html.Div(
-                                    id="insights-container",
-                                    style={
-                                        "minHeight": "400px",
-                                    },
+                                dmc.TextInput(
+                                    id="insights-search",
+                                    placeholder="Search by title, issuer, date (YYYY-MM-DD), or keywords...",
+                                    leftSection=DashIconify(
+                                        icon="carbon:search", width=20
+                                    ),
+                                    rightSection=dmc.ActionIcon(
+                                        DashIconify(icon="carbon:close", width=16),
+                                        variant="subtle",
+                                        color="gray",
+                                        id="clear-search",
+                                    ),
+                                    size="lg",
+                                    radius="md",
+                                ),
+                                dmc.Group(
+                                    [
+                                        dmc.ChipGroup(
+                                            [
+                                                dmc.Chip(
+                                                    "All",
+                                                    value="all",
+                                                    variant="filled",
+                                                    size="sm",
+                                                ),
+                                                dmc.Chip(
+                                                    "Last 7 Days",
+                                                    value="7d",
+                                                    variant="filled",
+                                                    size="sm",
+                                                ),
+                                                dmc.Chip(
+                                                    "Last 30 Days",
+                                                    value="30d",
+                                                    variant="filled",
+                                                    size="sm",
+                                                ),
+                                                dmc.Chip(
+                                                    "Last 3 Months",
+                                                    value="3m",
+                                                    variant="filled",
+                                                    size="sm",
+                                                ),
+                                            ],
+                                            id="time-filter-chips",
+                                            value="all",
+                                        ),
+                                        dmc.Button(
+                                            "Search",
+                                            id="search-button",
+                                            leftSection=DashIconify(
+                                                icon="carbon:search", width=16
+                                            ),
+                                            variant="gradient",
+                                            gradient={
+                                                "from": "blue",
+                                                "to": "cyan",
+                                                "deg": 90,
+                                            },
+                                            size="sm",
+                                        ),
+                                    ],
+                                    justify="space-between",
+                                    align="center",
+                                ),
+                                dmc.Accordion(
+                                    [
+                                        dmc.AccordionItem(
+                                            [
+                                                dmc.AccordionControl(
+                                                    "Advanced Filters",
+                                                    icon=DashIconify(
+                                                        icon="carbon:filter", width=20
+                                                    ),
+                                                ),
+                                                dmc.AccordionPanel(
+                                                    dmc.Grid(
+                                                        [
+                                                            dmc.GridCol(
+                                                                html.Div(
+                                                                    [
+                                                                        dmc.Text(
+                                                                            "Sort By",
+                                                                            size="sm",
+                                                                            fw="normal",
+                                                                            style={
+                                                                                "marginBottom": "4px"
+                                                                            },
+                                                                        ),
+                                                                        dmc.Select(
+                                                                            id="sort-dropdown",
+                                                                            placeholder="Select sort order",
+                                                                            data=[
+                                                                                {
+                                                                                    "label": "📅 Newest First",
+                                                                                    "value": "date_desc",
+                                                                                },
+                                                                                {
+                                                                                    "label": "📅 Oldest First",
+                                                                                    "value": "date_asc",
+                                                                                },
+                                                                                {
+                                                                                    "label": "🔤 Name (A-Z)",
+                                                                                    "value": "name_asc",
+                                                                                },
+                                                                                {
+                                                                                    "label": "🔤 Name (Z-A)",
+                                                                                    "value": "name_desc",
+                                                                                },
+                                                                            ],
+                                                                            size="sm",
+                                                                        ),
+                                                                    ]
+                                                                ),
+                                                                span={
+                                                                    "base": 12,
+                                                                    "sm": 6,
+                                                                    "md": 4,
+                                                                },
+                                                            ),
+                                                            dmc.GridCol(
+                                                                html.Div(
+                                                                    [
+                                                                        dmc.Text(
+                                                                            "Issuer",
+                                                                            size="sm",
+                                                                            fw="normal",
+                                                                            style={
+                                                                                "marginBottom": "4px"
+                                                                            },
+                                                                        ),
+                                                                        dmc.Select(
+                                                                            id="issuer-filter",
+                                                                            placeholder="All publishers",
+                                                                            data=[
+                                                                                {
+                                                                                    "label": "All Issuers",
+                                                                                    "value": "all",
+                                                                                },
+                                                                            ],
+                                                                            size="sm",
+                                                                        ),
+                                                                    ]
+                                                                ),
+                                                                span={
+                                                                    "base": 12,
+                                                                    "sm": 6,
+                                                                    "md": 4,
+                                                                },
+                                                            ),
+                                                            dmc.GridCol(
+                                                                html.Div(
+                                                                    [
+                                                                        dmc.Text(
+                                                                            "Date Range",
+                                                                            size="sm",
+                                                                            fw="normal",
+                                                                            style={
+                                                                                "marginBottom": "4px"
+                                                                            },
+                                                                        ),
+                                                                        dmc.DatePicker(
+                                                                            id="date-range-filter",
+                                                                            type="range",
+                                                                            size="sm",
+                                                                        ),
+                                                                    ]
+                                                                ),
+                                                                span={
+                                                                    "base": 12,
+                                                                    "sm": 6,
+                                                                    "md": 4,
+                                                                },
+                                                            ),
+                                                        ],
+                                                        gutter="md",
+                                                    ),
+                                                ),
+                                            ],
+                                            value="filters",
+                                        ),
+                                    ],
+                                    variant="separated",
+                                ),
+                                dmc.Group(
+                                    [
+                                        dmc.Group(
+                                            [
+                                                DashIconify(
+                                                    icon="carbon:document-multiple-02",
+                                                    width=24,
+                                                    color="blue",
+                                                ),
+                                                dmc.Title(
+                                                    "Research Library",
+                                                    order=3,
+                                                    c="blue.7",
+                                                ),
+                                            ],
+                                            gap="sm",
+                                        ),
+                                        dmc.Group(
+                                            [
+                                                dmc.Badge(
+                                                    id="insights-count-badge",
+                                                    children="0 documents",
+                                                    size="lg",
+                                                    variant="light",
+                                                    color="blue",
+                                                    leftSection=DashIconify(
+                                                        icon="carbon:document", width=14
+                                                    ),
+                                                ),
+                                                dmc.Button(
+                                                    "Load More",
+                                                    id="load-more-insights",
+                                                    leftSection=DashIconify(
+                                                        icon="carbon:add", width=16
+                                                    ),
+                                                    variant="light",
+                                                    color="blue",
+                                                    size="sm",
+                                                    radius="md",
+                                                ),
+                                            ],
+                                            gap="sm",
+                                        ),
+                                    ],
+                                    justify="space-between",
+                                    align="center",
+                                ),
+                                dmc.Stack(
+                                    [
+                                        html.Div(id="insights-container-wrapper"),
+                                        html.Div(
+                                            id="insights-container",
+                                            style={
+                                                "minHeight": "400px",
+                                            },
+                                        ),
+                                    ],
+                                    gap="md",
                                 ),
                             ],
-                            gap="md",
+                            gap="lg",
                         ),
                     ],
                     padding="xl",
