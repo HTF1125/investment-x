@@ -489,6 +489,17 @@ layout = dmc.Container(
                                                     ),
                                                 ),
                                                 dmc.Button(
+                                                    "No Summary Only",
+                                                    id="filter-no-summary",
+                                                    leftSection=DashIconify(
+                                                        icon="carbon:document-blank", width=16
+                                                    ),
+                                                    variant="light",
+                                                    color="orange",
+                                                    size="sm",
+                                                    radius="md",
+                                                ),
+                                                dmc.Button(
                                                     "Load More",
                                                     id="load-more-insights",
                                                     leftSection=DashIconify(
@@ -550,6 +561,7 @@ layout = dmc.Container(
         dcc.Store(id="total-insights-loaded", data=0),
         dcc.Store(id="search-query", data=""),
         dcc.Store(id="filter-state", data={}),
+        dcc.Store(id="no-summary-filter", data=False),  # Track if "no summary only" filter is active
         dcc.Store(
             id="current-view", data="insights-list"
         ),  # "insights-list" or "pdf-viewer"

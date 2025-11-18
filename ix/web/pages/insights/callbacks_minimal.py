@@ -679,19 +679,85 @@ def create_insight_card(insight_data):
     )
 
 
+# Toggle filter button callback
+@callback(
+    [
+        Output("filter-no-summary", "variant"),
+        Output("filter-no-summary", "color"),
+        Output("filter-no-summary", "children"),
+        Output("no-summary-filter", "data"),
+    ],
+    Input("filter-no-summary", "n_clicks"),
+    State("no-summary-filter", "data"),
+    prevent_initial_call=True,
+)
+def toggle_no_summary_filter(n_clicks, current_state):
+    """Toggle the 'no summary only' filter"""
+    if not n_clicks:
+        raise PreventUpdate
+
+    new_state = not current_state if current_state else True
+
+    if new_state:
+        return (
+            "filled",
+            "orange",
+            dmc.Group(
+                [
+                    DashIconify(icon="carbon:document-blank", width=16),
+                    "No Summary Only",
+                ],
+                gap="xs",
+            ),
+            True,
+        )
+    else:
+        return (
+            "light",
+            "orange",
+            dmc.Group(
+                [
+                    DashIconify(icon="carbon:document-blank", width=16),
+                    "No Summary Only",
+                ],
+                gap="xs",
+            ),
+            False,
+        )
+
+
 # Initial insights loading callback
 @callback(
     [
         Output("insights-container", "children"),
         Output("insights-data", "data"),
     ],
-    Input("insights-container", "id"),  # Triggers on page load
+    [
+        Input("insights-container", "id"),  # Triggers on page load
+        Input("filter-no-summary", "n_clicks"),  # Also trigger when filter is toggled
+    ],
+    State("no-summary-filter", "data"),
 )
-def load_initial_insights(container_id):
+def load_initial_insights(container_id, filter_clicks, no_summary_filter):
     """Load initial insights from database on page load"""
     try:
         # Get insights from database
         insights = get_insights()
+
+        # Apply "no summary only" filter if active
+        if no_summary_filter:
+            insights = [
+                insight
+                for insight in insights
+                if (
+                    isinstance(insight, dict)
+                    and (not insight.get("summary") or not insight.get("summary", "").strip())
+                )
+                or (
+                    not isinstance(insight, dict)
+                    and (not insight.summary or not str(insight.summary).strip())
+                )
+            ]
 
         if not insights:
             # No insights found
@@ -857,9 +923,10 @@ def load_initial_insights(container_id):
     Input("load-more-insights", "n_clicks"),
     State("insights-container", "children"),
     State("insights-data", "data"),
+    State("no-summary-filter", "data"),
     prevent_initial_call=True,
 )
-def load_more_insights(n_clicks, current_children, insights_store):
+def load_more_insights(n_clicks, current_children, insights_store, no_summary_filter):
     """Load more insights when button is clicked"""
     if not n_clicks:
         raise PreventUpdate
@@ -874,6 +941,21 @@ def load_more_insights(n_clicks, current_children, insights_store):
         # Get more insights from database (skip already loaded)
         skip_count = len(current_children)
         more_insights = get_insights(skip=skip_count, limit=5)
+
+        # Apply "no summary only" filter if active
+        if no_summary_filter:
+            more_insights = [
+                insight
+                for insight in more_insights
+                if (
+                    isinstance(insight, dict)
+                    and (not insight.get("summary") or not insight.get("summary", "").strip())
+                )
+                or (
+                    not isinstance(insight, dict)
+                    and (not insight.summary or not str(insight.summary).strip())
+                )
+            ]
 
         if not more_insights:
             # No more insights to load
@@ -1000,6 +1082,7 @@ def load_more_insights(n_clicks, current_children, insights_store):
     [
         Input("search-button", "n_clicks"),
         Input("insights-search", "n_submit"),
+        Input("filter-no-summary", "n_clicks"),
     ],
     [
         State("insights-search", "value"),
@@ -1007,17 +1090,20 @@ def load_more_insights(n_clicks, current_children, insights_store):
         State("issuer-filter", "value"),
         State("date-range-filter", "start_date"),
         State("date-range-filter", "end_date"),
+        State("no-summary-filter", "data"),
     ],
     prevent_initial_call=True,
 )
 def search_insights(
     search_clicks,
     search_submit,
+    filter_clicks,
     search_value,
     sort_value,
     issuer_value,
     start_date,
     end_date,
+    no_summary_filter,
 ):
     """Search and filter insights"""
     try:
@@ -1026,6 +1112,21 @@ def search_insights(
             insights = get_insights(search=search_value)
         else:
             insights = get_insights()
+
+        # Apply "no summary only" filter if active
+        if no_summary_filter:
+            insights = [
+                insight
+                for insight in insights
+                if (
+                    isinstance(insight, dict)
+                    and (not insight.get("summary") or not insight.get("summary", "").strip())
+                )
+                or (
+                    not isinstance(insight, dict)
+                    and (not insight.summary or not str(insight.summary).strip())
+                )
+            ]
 
         # Apply additional filters manually since get_insights doesn't support them
         if issuer_value and issuer_value != "all":
