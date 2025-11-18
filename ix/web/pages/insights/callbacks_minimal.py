@@ -1296,9 +1296,7 @@ def handle_enhanced_upload(
                         insight.summary = summary_text
                         insight.status = "completed"
                     else:
-                        insight.summary = (
-                            "AI summarization not available - API key not configured"
-                        )
+                        insight.summary = None
                         insight.status = "completed"
                 except Exception as summary_exc:
                     logger.error(f"Error generating summary: {summary_exc}")

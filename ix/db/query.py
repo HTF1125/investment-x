@@ -20,6 +20,15 @@ def Regime1(series) -> pd.Series:
     return regime
 
 
+def _MultiSeries(**series: pd.Series) -> pd.DataFrame:
+    out = []
+    for name, s in series.items():
+        s.name = name
+        out.append(s)
+
+    return pd.concat(out, axis=1)
+
+
 def MultiSeries(
     codes: str | list[str], field: str | None = None, freq: str | None = None
 ) -> pd.DataFrame:

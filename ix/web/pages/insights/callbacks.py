@@ -451,7 +451,7 @@ def enhanced_process_pdf_upload(
                 insight.summary = summary_text
                 insight.status = "completed"
             else:
-                insight.summary = "AI summarization not configured."
+                insight.summary = None
                 insight.status = "completed"
 
             insight_id = str(insight.id)
