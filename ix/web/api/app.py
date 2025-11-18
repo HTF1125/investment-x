@@ -3,17 +3,12 @@ API endpoints for the ix.web application.
 These are Flask routes that extend the Dash app server.
 """
 
-from flask import jsonify, request, Response
-from typing import Dict, Any, List, Optional
+from flask import jsonify, request
 import pandas as pd
 from ix.db.models import Timeseries, Insights, Publishers
 from ix.db.conn import ensure_connection, Session
 from ix.misc import get_logger
 from datetime import datetime
-from bson import ObjectId
-import re
-import ast
-import time
 from ix.db.custom import FinancialConditionsIndexUS
 from sqlalchemy.orm import load_only
 
