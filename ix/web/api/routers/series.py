@@ -8,7 +8,7 @@ import time
 from flask import jsonify, request, Response
 import pandas as pd
 from ix.db.conn import ensure_connection
-from ix.db.query import Series, MultiSeries
+from ix.db.query import Series, D_MultiSeries
 from ix.misc import get_logger
 from datetime import datetime
 from ix.db.custom import FinancialConditionsIndexUS
@@ -20,7 +20,7 @@ from ix.db.query import (
     StandardScalar,
     Offset,
     Cycle,
-    MultiSeries,
+    D_MultiSeries,
     MonthEndOffset,
     M2,
     InvestorPositions,

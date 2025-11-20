@@ -20,16 +20,20 @@ def Regime1(series) -> pd.Series:
     return regime
 
 
-def _MultiSeries(**series: pd.Series) -> pd.DataFrame:
+def MultiSeries(**series: pd.Series) -> pd.DataFrame:
     out = []
     for name, s in series.items():
         s.name = name
         out.append(s)
 
-    return pd.concat(out, axis=1)
+    data = pd.concat(out, axis=1)
+    data.index = pd.to_datetime(data.index)
+    data = data.sort_index()
+    data.index.name = "Date"
+    return data
 
 
-def MultiSeries(
+def D_MultiSeries(
     codes: str | list[str], field: str | None = None, freq: str | None = None
 ) -> pd.DataFrame:
     """Load multiple series and combine into DataFrame"""
@@ -553,7 +557,7 @@ def CustomSeries(code: str) -> pd.Series:
             "JPN.LOLITOAA.STSA:PX_LAST",
             "MEX.LOLITOAA.STSA:PX_LAST",
         ]
-        data = MultiSeries(*codes).diff()
+        data = D_MultiSeries(*codes).diff()
         df_numeric = data.apply(pd.to_numeric, errors="coerce")
         positive_counts = (df_numeric > 0).sum(axis=1)
         valid_counts = df_numeric.notna().sum(axis=1)
@@ -577,7 +581,7 @@ def CustomSeries(code: str) -> pd.Series:
             "NTCPMIMFGSA_IN:PX_LAST",
             "NTCPMIMFGNSA_CN:PX_LAST",
         ]
-        data = MultiSeries(*codes).diff()
+        data = D_MultiSeries(*codes).diff()
         df_numeric = data.apply(pd.to_numeric, errors="coerce")
         positive_counts = (df_numeric > 0).sum(axis=1)
         valid_counts = df_numeric.notna().sum(axis=1)
@@ -697,7 +701,7 @@ def NumofOecdCliMoMPositveEM():
         "ITA.LOLITOAA.STSA:PX_LAST",
         "MEX.LOLITOAA.STSA:PX_LAST",
     ]
-    data = MultiSeries(*codes).diff()
+    data = D_MultiSeries(*codes).diff()
     df_numeric = data.apply(pd.to_numeric, errors="coerce")
     positive_counts = (df_numeric > 0).sum(axis=1)
     valid_counts = df_numeric.notna().sum(axis=1)
@@ -723,6 +727,8 @@ def financial_conditions_us() -> pd.Series:
         .ewm(span=4 * 12)
         .mean()
     )
+    dd.index = pd.to_datetime(dd.index)
+    dd = dd.sort_index()
 
     dd.name = "FCI2"
     return dd
@@ -1132,7 +1138,7 @@ class AiCapex:
 
     def FE_CAPEX_NTMA(self) -> pd.DataFrame:
         return (
-            MultiSeries(
+            D_MultiSeries(
                 "Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META",
                 field="FE_CAPEX_NTMA",
                 freq="B",
@@ -1143,7 +1149,7 @@ class AiCapex:
 
     def FE_CAPEX_LTMA(self) -> pd.DataFrame:
         return (
-            MultiSeries(
+            D_MultiSeries(
                 "Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META",
                 field="FE_CAPEX_LTMA",
                 freq="B",
@@ -1154,7 +1160,7 @@ class AiCapex:
 
     def FE_CAPEX_Q(self) -> pd.DataFrame:
         return (
-            MultiSeries(
+            D_MultiSeries(
                 "Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META",
                 field="FE_CAPEX_Q",
                 freq="B",

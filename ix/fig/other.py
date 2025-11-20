@@ -9,7 +9,7 @@ from ix.db.query import (
     StandardScalar,
     Offset,
     Cycle,
-    MultiSeries,
+    D_MultiSeries,
     MonthEndOffset,
     M2,
     InvestorPositions,
@@ -240,21 +240,17 @@ def conference_board_leading_index():
 
 def financial_conditions_us():
 
-    fci_us = (
-        pd.concat(
-            [
-                StandardScalar(-Series("DXY Index:PX_LAST", freq="W").ffill(), 52 * 3),
-                StandardScalar(-Series("TRYUS10Y:PX_YTM", freq="W").ffill(), 52 * 3),
-                StandardScalar(-Series("TRYUS30Y:PX_YTM", freq="W").ffill(), 52 * 3),
-                StandardScalar(Series("SPX Index:PX_LAST", freq="W").ffill(), 52 * 3),
-                StandardScalar(
-                    -Series("MORTGAGE30US:PX_LAST", freq="W").ffill(), 52 * 3
-                ),
-                StandardScalar(-Series("CL1 Comdty:PX_LAST", freq="W").ffill(), 52 * 3),
-                StandardScalar(-Series("BAMLC0A0CM:PX_LAST", freq="W").ffill(), 52 * 3),
-            ],
-            axis=1,
-        )
+    fci_us = pd.concat(
+        [
+            StandardScalar(-Series("DXY Index:PX_LAST", freq="W").ffill(), 52 * 3),
+            StandardScalar(-Series("TRYUS10Y:PX_YTM", freq="W").ffill(), 52 * 3),
+            StandardScalar(-Series("TRYUS30Y:PX_YTM", freq="W").ffill(), 52 * 3),
+            StandardScalar(Series("SPX Index:PX_LAST", freq="W").ffill(), 52 * 3),
+            StandardScalar(-Series("MORTGAGE30US:PX_LAST", freq="W").ffill(), 52 * 3),
+            StandardScalar(-Series("CL1 Comdty:PX_LAST", freq="W").ffill(), 52 * 3),
+            StandardScalar(-Series("BAMLC0A0CM:PX_LAST", freq="W").ffill(), 52 * 3),
+        ],
+        axis=1,
     )
     fci_us.index = pd.to_datetime(fci_us.index)
     fci_us = fci_us.sort_index()
@@ -727,7 +723,7 @@ class AiCapex:
 
     def FE_CAPEX_NTMA(self) -> pd.DataFrame:
         return (
-            MultiSeries(
+            D_MultiSeries(
                 "Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META",
                 field="FE_CAPEX_NTMA",
                 freq="B",
@@ -738,7 +734,7 @@ class AiCapex:
 
     def FE_CAPEX_LTMA(self) -> pd.DataFrame:
         return (
-            MultiSeries(
+            D_MultiSeries(
                 "Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META",
                 field="FE_CAPEX_LTMA",
                 freq="B",
@@ -749,7 +745,7 @@ class AiCapex:
 
     def FE_CAPEX_Q(self) -> pd.DataFrame:
         return (
-            MultiSeries(
+            D_MultiSeries(
                 "Nvdia=NVDA,Google=GOOG,Microsoft=MSFT,Amazon=AMZN,Meta=META",
                 field="FE_CAPEX_Q",
                 freq="B",
@@ -1279,7 +1275,13 @@ def large_bank_credit_lending_conditions() -> go.Figure:
     fig = go.Figure()
     fig.update_layout(timeseries_layout)
 
-    consumer = Series("FRBBCABLBA@US:PX_LAST", freq="W-Fri").ffill().pct_change(52).mul(100).dropna()
+    consumer = (
+        Series("FRBBCABLBA@US:PX_LAST", freq="W-Fri")
+        .ffill()
+        .pct_change(52)
+        .mul(100)
+        .dropna()
+    )
     if not consumer.empty:
         fig.add_trace(
             go.Scatter(

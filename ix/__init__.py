@@ -8,4 +8,5 @@ from . import fig
 
 # from .db import get_timeseries
 # from .db.query import *
-from . import db
+from .db.query import *
+from .db.client import *

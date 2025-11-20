@@ -498,14 +498,14 @@ class Universe(Base):
         end: str | None = None,
     ):
         """Get series for universe assets."""
-        from ix.db.query import MultiSeries
+        from ix.db.query import D_MultiSeries
         import pandas as pd
 
         codes = [
             f"{asset.get('name', '')}={asset.get('code', '')}"
             for asset in (self.assets or [])
         ]
-        multiseries = MultiSeries(codes=codes, field=field, freq=freq)
+        multiseries = D_MultiSeries(codes=codes, field=field, freq=freq)
         if start:
             multiseries = multiseries.loc[start:]
         if end:

@@ -91,11 +91,17 @@ def register_api_routes(app):
             # Apply filters
             if query:
                 if "category" in query:
-                    timeseries_query = timeseries_query.filter(Timeseries.category == query["category"])
+                    timeseries_query = timeseries_query.filter(
+                        Timeseries.category == query["category"]
+                    )
                 if "asset_class" in query:
-                    timeseries_query = timeseries_query.filter(Timeseries.asset_class == query["asset_class"])
+                    timeseries_query = timeseries_query.filter(
+                        Timeseries.asset_class == query["asset_class"]
+                    )
                 if "provider" in query:
-                    timeseries_query = timeseries_query.filter(Timeseries.provider == query["provider"])
+                    timeseries_query = timeseries_query.filter(
+                        Timeseries.provider == query["provider"]
+                    )
 
             # Apply pagination
             if offset:
@@ -108,20 +114,22 @@ def register_api_routes(app):
             # Extract all attributes while in session
             ts_data_list = []
             for ts in timeseries_list:
-                ts_data_list.append({
-                    'id': ts.id,
-                    'code': ts.code,
-                    'name': ts.name,
-                    'provider': ts.provider,
-                    'asset_class': ts.asset_class,
-                    'category': ts.category,
-                    'source': ts.source,
-                    "source_code": ts.source_code,
-                    'frequency': ts.frequency,
-                    'start': ts.start,
-                    'end': ts.end,
-                    'num_data': ts.num_data,
-                })
+                ts_data_list.append(
+                    {
+                        "id": ts.id,
+                        "code": ts.code,
+                        "name": ts.name,
+                        "provider": ts.provider,
+                        "asset_class": ts.asset_class,
+                        "category": ts.category,
+                        "source": ts.source,
+                        "source_code": ts.source_code,
+                        "frequency": ts.frequency,
+                        "start": ts.start,
+                        "end": ts.end,
+                        "num_data": ts.num_data,
+                    }
+                )
             timeseries_list = ts_data_list
 
         formatted_timeseries = []
@@ -129,16 +137,16 @@ def register_api_routes(app):
         for ts in timeseries_list:
             # Handle both dict and object format
             if isinstance(ts, dict):
-                ts_id = ts.get('id')
-                ts_code = ts.get('code')
-                ts_name = ts.get('name')
-                ts_provider = ts.get('provider')
-                ts_asset_class = ts.get('asset_class')
-                ts_category = ts.get('category')
-                ts_source = ts.get('source')
-                ts_frequency = ts.get('frequency')
-                ts_start = ts.get('start')
-                ts_end = ts.get('end')
+                ts_id = ts.get("id")
+                ts_code = ts.get("code")
+                ts_name = ts.get("name")
+                ts_provider = ts.get("provider")
+                ts_asset_class = ts.get("asset_class")
+                ts_category = ts.get("category")
+                ts_source = ts.get("source")
+                ts_frequency = ts.get("frequency")
+                ts_start = ts.get("start")
+                ts_end = ts.get("end")
             else:
                 ts_id = ts.id
                 ts_code = ts.code
@@ -158,17 +166,53 @@ def register_api_routes(app):
                 "provider": ts_provider,
                 "asset_class": ts_asset_class,
                 "category": ts_category,
-                "start": ts_start.isoformat() if ts_start and hasattr(ts_start, 'isoformat') else (str(ts_start) if ts_start else None),
-                "end": ts_end.isoformat() if ts_end and hasattr(ts_end, 'isoformat') else (str(ts_end) if ts_end else None),
+                "start": (
+                    ts_start.isoformat()
+                    if ts_start and hasattr(ts_start, "isoformat")
+                    else (str(ts_start) if ts_start else None)
+                ),
+                "end": (
+                    ts_end.isoformat()
+                    if ts_end and hasattr(ts_end, "isoformat")
+                    else (str(ts_end) if ts_end else None)
+                ),
                 "source": ts_source,
-                "source_code": ts.get('source_code') if isinstance(ts, dict) else getattr(ts, 'source_code', None),
+                "source_code": (
+                    ts.get("source_code")
+                    if isinstance(ts, dict)
+                    else getattr(ts, "source_code", None)
+                ),
                 "frequency": ts_frequency,
-                "unit": ts.get('unit') if isinstance(ts, dict) else getattr(ts, 'unit', None),
-                "scale": ts.get('scale') if isinstance(ts, dict) else getattr(ts, 'scale', None),
-                "currency": ts.get('currency') if isinstance(ts, dict) else getattr(ts, 'currency', None),
-                "country": ts.get('country') if isinstance(ts, dict) else getattr(ts, 'country', None),
-                "num_data": ts.get('num_data') if isinstance(ts, dict) else getattr(ts, 'num_data', None),
-                "remark": ts.get('remark') if isinstance(ts, dict) else getattr(ts, 'remark', None),
+                "unit": (
+                    ts.get("unit")
+                    if isinstance(ts, dict)
+                    else getattr(ts, "unit", None)
+                ),
+                "scale": (
+                    ts.get("scale")
+                    if isinstance(ts, dict)
+                    else getattr(ts, "scale", None)
+                ),
+                "currency": (
+                    ts.get("currency")
+                    if isinstance(ts, dict)
+                    else getattr(ts, "currency", None)
+                ),
+                "country": (
+                    ts.get("country")
+                    if isinstance(ts, dict)
+                    else getattr(ts, "country", None)
+                ),
+                "num_data": (
+                    ts.get("num_data")
+                    if isinstance(ts, dict)
+                    else getattr(ts, "num_data", None)
+                ),
+                "remark": (
+                    ts.get("remark")
+                    if isinstance(ts, dict)
+                    else getattr(ts, "remark", None)
+                ),
             }
             formatted_timeseries.append(formatted_ts)
 
@@ -235,7 +279,11 @@ def register_api_routes(app):
             try:
                 # Find existing timeseries by code using SQLAlchemy
                 with Session() as session:
-                    ts = session.query(Timeseries).filter(Timeseries.code == code).first()
+                    ts = (
+                        session.query(Timeseries)
+                        .filter(Timeseries.code == code)
+                        .first()
+                    )
 
                     if ts is None:
                         # Create new timeseries
@@ -282,7 +330,10 @@ def register_api_routes(app):
                             try:
                                 # Ensure scale is within reasonable range
                                 scale_value = int(value)
-                                if scale_value > 2147483647 or scale_value < -2147483648:
+                                if (
+                                    scale_value > 2147483647
+                                    or scale_value < -2147483648
+                                ):
                                     logger.warning(
                                         f"Scale value {scale_value} out of range for {code}, setting to 1"
                                     )
@@ -387,7 +438,11 @@ def register_api_routes(app):
 
         # Get timeseries by code using SQLAlchemy
         with Session() as session:
-            ts = session.query(Timeseries).filter(Timeseries.code == timeseries_id).first()
+            ts = (
+                session.query(Timeseries)
+                .filter(Timeseries.code == timeseries_id)
+                .first()
+            )
 
             if not ts:
                 return jsonify({"error": "Timeseries not found"}), 404
@@ -411,7 +466,7 @@ def register_api_routes(app):
             ts_num_data = ts.num_data
             ts_remark = ts.remark
             # Get data within session
-            ts_data = ts.data.copy() if hasattr(ts, 'data') else pd.Series()
+            ts_data = ts.data.copy() if hasattr(ts, "data") else pd.Series()
 
         # Format the timeseries object
         formatted_ts = {
@@ -421,8 +476,16 @@ def register_api_routes(app):
             "provider": ts_provider,
             "asset_class": ts_asset_class,
             "category": ts_category,
-            "start_date": ts_start.isoformat() if ts_start and hasattr(ts_start, 'isoformat') else (str(ts_start) if ts_start else None),
-            "end_date": ts_end.isoformat() if ts_end and hasattr(ts_end, 'isoformat') else (str(ts_end) if ts_end else None),
+            "start_date": (
+                ts_start.isoformat()
+                if ts_start and hasattr(ts_start, "isoformat")
+                else (str(ts_start) if ts_start else None)
+            ),
+            "end_date": (
+                ts_end.isoformat()
+                if ts_end and hasattr(ts_end, "isoformat")
+                else (str(ts_end) if ts_end else None)
+            ),
             "num_data_points": ts_num_data,
             "source": ts_source,
             "source_code": ts_source_code,
@@ -506,7 +569,7 @@ def register_api_routes(app):
             ts_id = ts.id
             ts_code = ts.code
             ts_name = ts.name
-            ts_data = ts.data.copy() if hasattr(ts, 'data') else pd.Series()
+            ts_data = ts.data.copy() if hasattr(ts, "data") else pd.Series()
 
         # Format the timeseries object
         formatted_ts = {
@@ -572,7 +635,7 @@ def register_api_routes(app):
         - status: Filter by status (new, read, archived, etc.)
         - from_date: Filter by published_date >= from_date (YYYY-MM-DD)
         - to_date: Filter by published_date <= to_date (YYYY-MM-DD)
-        - q / query: Case-insensitive search across issuer, name, and summary
+        - q / query / search / search_text: Case-insensitive search across issuer, name, and summary
 
         Note: Content (PDF binary) is not included in the response.
         """
@@ -580,13 +643,18 @@ def register_api_routes(app):
 
         # Query parameters
         limit_param = request.args.get("limit", type=int)
-        limit = limit_param if limit_param and limit_param > 0 else 20
+        limit = limit_param if limit_param and limit_param > 0 else 100
         offset = request.args.get("offset", 0, type=int)
         issuer = request.args.get("issuer")
         status = request.args.get("status")
         from_date = request.args.get("from_date")
         to_date = request.args.get("to_date")
-        query_text = request.args.get("q") or request.args.get("query")
+        query_text = (
+            request.args.get("q")
+            or request.args.get("query")
+            or request.args.get("search")
+            or request.args.get("search_text")
+        )
 
         from sqlalchemy import and_, or_, desc
 
@@ -605,12 +673,16 @@ def register_api_routes(app):
             filters.append(Insights.status == status)
         if from_date:
             try:
-                filters.append(Insights.published_date >= parse_date(from_date, "from_date"))
+                filters.append(
+                    Insights.published_date >= parse_date(from_date, "from_date")
+                )
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
         if to_date:
             try:
-                filters.append(Insights.published_date <= parse_date(to_date, "to_date"))
+                filters.append(
+                    Insights.published_date <= parse_date(to_date, "to_date")
+                )
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
         if query_text:
@@ -664,6 +736,187 @@ def register_api_routes(app):
         logger.info(f"Retrieved {len(results)} insights records")
         return jsonify(results)
 
+    @app.server.route("/api/insights", methods=["POST"])
+    def create_or_update_insights():
+        """
+        POST /api/insights - Create new or update existing insights.
+
+        Request body should be a JSON object or list of insight objects:
+        {
+            "id": "optional-uuid",  # If provided, MUST exist - updates existing insight only
+            "issuer": "Publisher Name",
+            "name": "Document Title",
+            "published_date": "2024-01-15",  # YYYY-MM-DD format
+            "summary": "Document summary text",
+            "status": "new",  # new, processing, completed, failed
+            "pdf_content": "base64_encoded_string"  # Optional, base64 encoded PDF
+        }
+
+        Or as a list:
+        [
+            {"issuer": "...", "name": "...", ...},
+            ...
+        ]
+
+        Required fields (for new insights, when id is NOT provided):
+        - issuer: Publisher/issuer name
+        - name: Document title/name
+
+        Optional fields:
+        - id: Insight ID (UUID). If provided, MUST exist - will only update, never create
+        - published_date: Date in YYYY-MM-DD format (defaults to today)
+        - summary: Text summary of the insight
+        - status: Status string (defaults to "new")
+        - pdf_content: Base64 encoded PDF content
+
+        Note: If id is provided, the insight MUST exist or an error will be returned.
+              If id is NOT provided, a new insight will be created (requires issuer and name).
+        """
+        ensure_connection()
+
+        # Get the JSON payload
+        payload = request.get_json()
+
+        if not payload:
+            return jsonify({"error": "Empty payload provided."}), 400
+
+        # Normalize to list
+        if isinstance(payload, dict):
+            payload = [payload]
+        elif not isinstance(payload, list):
+            return (
+                jsonify(
+                    {
+                        "error": "Invalid payload: expected an object or list of insight objects."
+                    }
+                ),
+                400,
+            )
+
+        created_ids = []
+        updated_ids = []
+        errors = []
+
+        for insight_data in payload:
+            insight_id = insight_data.get("id")
+            issuer = insight_data.get("issuer")
+            name = insight_data.get("name")
+
+            try:
+                with Session() as session:
+                    insight = None
+                    if insight_id:
+                        # Try to find existing insight for update
+                        insight = (
+                            session.query(Insights)
+                            .filter(Insights.id == str(insight_id))
+                            .first()
+                        )
+                        if insight is None:
+                            errors.append(
+                                f"Insight with id '{insight_id}' not found. Cannot update non-existent insight."
+                            )
+                            continue
+                        updated_ids.append(str(insight.id))
+                    else:
+                        # Create new insight - validate required fields
+                        if not issuer or not name:
+                            errors.append(
+                                "Missing required fields: 'issuer' and 'name' are required for new insights"
+                            )
+                            continue
+                        insight = Insights()
+                        session.add(insight)
+                        session.flush()  # Flush to get the auto-generated ID
+                        created_ids.append(str(insight.id))
+
+                    # Update fields
+                    if "issuer" in insight_data:
+                        insight.issuer = (
+                            str(insight_data["issuer"])
+                            if insight_data["issuer"]
+                            else "Unnamed"
+                        )
+                    if "name" in insight_data:
+                        insight.name = (
+                            str(insight_data["name"])
+                            if insight_data["name"]
+                            else "Unnamed"
+                        )
+                    if "summary" in insight_data:
+                        insight.summary = (
+                            str(insight_data["summary"])
+                            if insight_data["summary"]
+                            else None
+                        )
+                    if "status" in insight_data:
+                        insight.status = (
+                            str(insight_data["status"])
+                            if insight_data["status"]
+                            else "new"
+                        )
+
+                    # Handle published_date
+                    if (
+                        "published_date" in insight_data
+                        and insight_data["published_date"]
+                    ):
+                        try:
+                            published_date = datetime.strptime(
+                                insight_data["published_date"], "%Y-%m-%d"
+                            ).date()
+                            insight.published_date = published_date
+                        except ValueError:
+                            logger.warning(
+                                f"Invalid published_date format '{insight_data['published_date']}' for insight {insight.id}, using today's date"
+                            )
+
+                    # Handle PDF content (base64 encoded)
+                    if "pdf_content" in insight_data and insight_data["pdf_content"]:
+                        try:
+                            import base64
+
+                            content_bytes = base64.b64decode(
+                                insight_data["pdf_content"]
+                            )
+                            insight.save_content(content_bytes)
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to decode PDF content for insight {insight.id}: {e}"
+                            )
+                            errors.append(
+                                f"Failed to decode PDF content for insight {insight.id}: {str(e)}"
+                            )
+
+                    # Commit changes
+                    session.commit()
+
+            except Exception as e:
+                logger.error(f"Error processing insight: {e}")
+                errors.append(f"Error processing insight: {str(e)}")
+                continue
+
+        logger.info(
+            f"Successfully processed {len(created_ids)} new and {len(updated_ids)} updated insights"
+        )
+
+        response = {
+            "message": f"Successfully processed {len(payload)} insight(s).",
+            "created_ids": created_ids,
+            "created_count": len(created_ids),
+            "updated_ids": updated_ids,
+            "updated_count": len(updated_ids),
+        }
+
+        if errors:
+            response["errors"] = errors
+            response["error_count"] = len(errors)
+
+        # Return 207 Multi-Status if there were partial failures
+        status_code = 200 if not errors else 207
+
+        return jsonify(response), status_code
+
     @app.server.route("/api/insights/<int:insight_id>", methods=["GET"])
     def get_insight_by_id(insight_id):
         """
@@ -676,7 +929,9 @@ def register_api_routes(app):
 
         # Get insight by id using SQLAlchemy
         with Session() as session:
-            insight = session.query(Insights).filter(Insights.id == str(insight_id)).first()
+            insight = (
+                session.query(Insights).filter(Insights.id == str(insight_id)).first()
+            )
 
             if not insight:
                 return jsonify({"error": "Insight not found"}), 404
@@ -694,7 +949,7 @@ def register_api_routes(app):
         if insight_published_date:
             if isinstance(insight_published_date, str):
                 published_date_str = insight_published_date
-            elif hasattr(insight_published_date, 'isoformat'):
+            elif hasattr(insight_published_date, "isoformat"):
                 published_date_str = insight_published_date.isoformat()
             else:
                 published_date_str = str(insight_published_date)
@@ -787,14 +1042,20 @@ def register_api_routes(app):
             not_found_codes = []
             for code in pivoted.columns:
                 with Session() as session:
-                    ts = session.query(Timeseries).filter(Timeseries.code == code).first()
+                    ts = (
+                        session.query(Timeseries)
+                        .filter(Timeseries.code == code)
+                        .first()
+                    )
                     if ts is None:
                         not_found_codes.append(code)
                         continue
 
                     # Get existing data to merge with new data (within session)
                     data_record = ts._get_or_create_data_record(session)
-                    column_data = data_record.data if data_record and data_record.data else {}
+                    column_data = (
+                        data_record.data if data_record and data_record.data else {}
+                    )
                     if column_data and len(column_data) > 0:
                         # Convert JSONB dict to pandas Series
                         # JSONB stores dates as strings, convert them back to datetime
@@ -803,8 +1064,12 @@ def register_api_routes(app):
                         existing_data = pd.Series(data_dict)
                         if not existing_data.empty:
                             # Convert string dates to datetime index
-                            existing_data.index = pd.to_datetime(existing_data.index, errors='coerce')
-                            existing_data = existing_data.dropna()  # Remove any invalid dates
+                            existing_data.index = pd.to_datetime(
+                                existing_data.index, errors="coerce"
+                            )
+                            existing_data = (
+                                existing_data.dropna()
+                            )  # Remove any invalid dates
                     else:
                         existing_data = pd.Series(dtype=float)
 
@@ -838,8 +1103,16 @@ def register_api_routes(app):
                     # Update the timeseries data directly (within session)
                     data_record.data = data_dict
                     data_record.updated = datetime.now()
-                    ts.start = combined_data.index.min().date() if len(combined_data.index) > 0 else None
-                    ts.end = combined_data.index.max().date() if len(combined_data.index) > 0 else None
+                    ts.start = (
+                        combined_data.index.min().date()
+                        if len(combined_data.index) > 0
+                        else None
+                    )
+                    ts.end = (
+                        combined_data.index.max().date()
+                        if len(combined_data.index) > 0
+                        else None
+                    )
                     ts.num_data = len(combined_data)
                     ts.updated = datetime.now()
 
@@ -894,7 +1167,11 @@ def register_api_routes(app):
             from ix.db.conn import Session
 
             with Session() as session:
-                publisher = session.query(Publishers).filter(Publishers.url == publisher_url).first()
+                publisher = (
+                    session.query(Publishers)
+                    .filter(Publishers.url == publisher_url)
+                    .first()
+                )
 
                 if publisher:
                     publisher.last_visited = datetime.now()
@@ -932,9 +1209,7 @@ def register_api_routes(app):
             # Fetch insight using SQLAlchemy session
             with Session() as session:
                 insight = (
-                    session.query(Insights)
-                    .filter(Insights.id == normalized_id)
-                    .first()
+                    session.query(Insights).filter(Insights.id == normalized_id).first()
                 )
 
                 if not insight:
@@ -966,9 +1241,7 @@ def register_api_routes(app):
             issuer_clean = (
                 (issuer_value or "unknown").replace(" ", "_").replace("/", "_")
             )
-            title_clean = (
-                (name_value or "document").replace(" ", "_").replace("/", "_")
-            )
+            title_clean = (name_value or "document").replace(" ", "_").replace("/", "_")
             # Truncate title if too long
             if len(title_clean) > 50:
                 title_clean = title_clean[:50]
@@ -1030,6 +1303,7 @@ def register_api_routes(app):
     print("  - GET /api/timeseries/{id} - Get timeseries by ID")
     print("  - GET /api/timeseries/code/{code} - Get timeseries by code")
     print("  - GET /api/insights - List all insights")
+    print("  - POST /api/insights - Create or update insights")
     print("  - GET /api/insights/{id} - Get insight by ID")
     print("  - POST /api/upload_data - Upload timeseries data")
     print("  - POST /api/publisher-visit - Track publisher visits")
