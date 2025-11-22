@@ -5,7 +5,7 @@ Updated callbacks to support the new modern design and additional features.
 
 import json
 import base64
-from datetime import datetime
+from datetime import datetime, date
 from typing import Any, List, Tuple, Optional
 
 import dash
@@ -414,30 +414,30 @@ def enhanced_process_pdf_upload(
                 None,
             )
 
-        # Parse filename
+        # Parse filename - try to extract metadata, but allow upload even if format is incorrect
+        needs_metadata = False
+        published_date = None
+        issuer = None
+        name = None
+        
         try:
             published_date_str, issuer, name = filename.rsplit("_", 2)
             name = name.rsplit(".", 1)[0]
             published_date = datetime.strptime(published_date_str, "%Y%m%d").date()
         except ValueError:
-            return (
-                dbc.Alert(
-                    [
-                        html.I(className="fas fa-exclamation-triangle me-2"),
-                        "Filename must be in the format 'YYYYMMDD_issuer_name.pdf'",
-                    ],
-                    color="danger",
-                    className="mt-3",
-                ),
-                None,
-                None,
-            )
+            # Filename format is incorrect - use defaults and extract what we can
+            needs_metadata = True
+            # Try to extract name from filename (remove .pdf extension)
+            name = filename.rsplit(".", 1)[0] if "." in filename else filename
+            # Use default values from model (today's date, "Unnamed")
+            published_date = date.today()
+            issuer = "Unnamed"
 
         with Session() as session:
             insight = Insights(
                 published_date=published_date,
-                issuer=issuer,
-                name=name,
+                issuer=issuer or "Unnamed",
+                name=name or "Unnamed",
                 status="processing",
                 pdf_content=decoded,
             )
@@ -485,21 +485,21 @@ def enhanced_process_pdf_upload(
                                 html.Small(
                                     [
                                         html.Strong("Published Date: "),
-                                        published_date.strftime("%B %d, %Y"),
+                                        published_date.strftime("%B %d, %Y") if published_date else "Not set",
                                     ],
                                     className="d-block mb-1",
                                 ),
                                 html.Small(
                                     [
                                         html.Strong("Issuer: "),
-                                        issuer,
+                                        issuer or "Unnamed",
                                     ],
                                     className="d-block mb-1",
                                 ),
                                 html.Small(
                                     [
                                         html.Strong("Document: "),
-                                        name,
+                                        name or "Unnamed",
                                     ],
                                     className="d-block mb-1",
                                 ),
@@ -537,6 +537,21 @@ def enhanced_process_pdf_upload(
                 "backgroundColor": COLORS["surface"],
             },
         )
+
+        # Add warning if metadata needs to be edited
+        if needs_metadata:
+            warning_alert = dbc.Alert(
+                [
+                    html.I(className="fas fa-exclamation-circle me-2"),
+                    html.Strong("Note: "),
+                    f"The filename '{filename}' doesn't match the expected format. ",
+                    "The file has been uploaded with default values. ",
+                    "You can edit the metadata (date, issuer, name) later by clicking the edit button on the insight card.",
+                ],
+                color="warning",
+                className="mt-3",
+            )
+            return html.Div([success_alert, warning_alert]), None, None
 
         return success_alert, None, None
 

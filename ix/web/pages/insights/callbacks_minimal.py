@@ -6,7 +6,7 @@ Incorporates features from wx implementation with improved design.
 
 import json
 import base64
-from datetime import datetime
+from datetime import datetime, date
 
 # from bson import ObjectId  # Removed - MongoDB-specific
 from typing import Any, Dict, List, Tuple, Optional
@@ -16,6 +16,7 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash import html, dcc, callback, Input, Output, State, no_update, ALL
 from dash.exceptions import PreventUpdate
+from dash_iconify import DashIconify
 
 from uuid import uuid4
 
@@ -1367,20 +1368,30 @@ def handle_enhanced_upload(
             if not decoded.startswith(b"%PDF-"):
                 return _error_message(f"{file_name}: Invalid PDF file format.")
 
+            # Parse filename - try to extract metadata, but allow upload even if format is incorrect
+            needs_metadata = False
+            published_date = None
+            issuer = None
+            name = None
+
             try:
                 published_date_str, issuer, name = file_name.rsplit("_", 2)
                 name = name.rsplit(".", 1)[0]
                 published_date = datetime.strptime(published_date_str, "%Y%m%d").date()
             except ValueError:
-                return _error_message(
-                    f"{file_name}: Filename must follow 'YYYYMMDD_issuer_title.pdf'."
-                )
+                # Filename format is incorrect - use defaults and extract what we can
+                needs_metadata = True
+                # Try to extract name from filename (remove .pdf extension)
+                name = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+                # Use default values from model (today's date, "Unnamed")
+                published_date = date.today()
+                issuer = "Unnamed"
 
             with Session() as session:
                 insight = Insights(
                     published_date=published_date,
-                    issuer=issuer,
-                    name=name,
+                    issuer=issuer or "Unnamed",
+                    name=name or "Unnamed",
                     status="processing",
                     pdf_content=decoded,
                 )
@@ -1428,17 +1439,17 @@ def handle_enhanced_upload(
                     html.Div(
                         [
                             html.P(
-                                [html.Strong("📄 Name: "), name],
+                                [html.Strong("📄 Name: "), name or "Unnamed"],
                                 style={"margin": "4px 0"},
                             ),
                             html.P(
-                                [html.Strong("🏢 Issuer: "), issuer],
+                                [html.Strong("🏢 Issuer: "), issuer or "Unnamed"],
                                 style={"margin": "4px 0"},
                             ),
                             html.P(
                                 [
                                     html.Strong("📅 Published: "),
-                                    published_date.strftime("%B %d, %Y"),
+                                    published_date.strftime("%B %d, %Y") if published_date else "Not set",
                                 ],
                                 style={"margin": "4px 0"},
                             ),
@@ -1480,6 +1491,60 @@ def handle_enhanced_upload(
                     "color": "#6ee7b7",
                 },
             )
+
+            # Add warning if metadata needs to be edited
+            if needs_metadata:
+                warning_card = html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.I(
+                                    className="fas fa-exclamation-circle",
+                                    style={
+                                        "color": "#f59e0b",
+                                        "fontSize": "20px",
+                                        "marginRight": "8px",
+                                    },
+                                ),
+                                html.Div(
+                                    [
+                                        html.Strong(
+                                            "Note: ",
+                                            style={"color": "#fbbf24"},
+                                        ),
+                                        html.Span(
+                                            f"The filename '{file_name}' doesn't match the expected format. ",
+                                            style={"color": "#fde68a"},
+                                        ),
+                                        html.Span(
+                                            "The file has been uploaded with default values. ",
+                                            style={"color": "#fde68a"},
+                                        ),
+                                        html.Span(
+                                            "You can edit the metadata (date, issuer, name) later by clicking the edit button on the insight card.",
+                                            style={"color": "#fde68a"},
+                                        ),
+                                    ],
+                                    style={"flex": "1"},
+                                ),
+                            ],
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                                "padding": "12px",
+                            },
+                        ),
+                    ],
+                    style={
+                        "backgroundColor": "rgba(245, 158, 11, 0.1)",
+                        "border": "1px solid rgba(245, 158, 11, 0.3)",
+                        "borderRadius": "12px",
+                        "padding": "16px",
+                        "marginTop": "12px",
+                        "color": "#fde68a",
+                    },
+                )
+                return html.Div([success_card, warning_card]), True
 
             return success_card, True
 
