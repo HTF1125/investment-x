@@ -419,7 +419,7 @@ def enhanced_process_pdf_upload(
         published_date = None
         issuer = None
         name = None
-        
+
         try:
             published_date_str, issuer, name = filename.rsplit("_", 2)
             name = name.rsplit(".", 1)[0]

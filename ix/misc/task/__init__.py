@@ -10,6 +10,8 @@ from ix.misc.crawler import get_yahoo_data
 from ix.misc.crawler import get_fred_data
 from ix.misc.crawler import get_naver_data
 from ix.db.models import Timeseries
+from ix.db.query import macro_data
+
 
 logger = get_logger(__name__)
 
@@ -269,8 +271,8 @@ def send_data_reports():
 
         # Process the extracted data outside the session
         for ts_data in ts_data_list:
-            ts_code = ts_data['code']
-            data = ts_data['data']
+            ts_code = ts_data["code"]
+            data = ts_data["data"]
 
             # Prepare price data for Equity:PX_LAST codes
             data_clean = data.dropna()
@@ -290,6 +292,10 @@ def send_data_reports():
     datas.index.name = "Code"
     datas.name = "Value"
 
+    macro_df = macro_data()
+    macro_df.index.name = "Date"
+    macro_df.name = "Value"
+
     timeseries_data = pd.concat(ts_list, axis=1)
     timeseries_data = timeseries_data.sort_index()
     timeseries_data = timeseries_data.resample("B").last()
@@ -305,12 +311,13 @@ def send_data_reports():
     timeseries_buffer = io.BytesIO()
     with pd.ExcelWriter(timeseries_buffer, engine="xlsxwriter") as writer:
         timeseries_data.to_excel(writer, sheet_name="Data")
+        macro_df.to_excel(writer, sheet_name="Macro")
     timeseries_buffer.seek(0)
 
     # Create and send email with both attachments
     email_sender = EmailSender(
         to="26106825@heungkuklife.co.kr, 26107455@heungkuklife.co.kr, hantianfeng@outlook.com",
-        subject="[IX] Data Reports",
+        subject="[IX] Data",
         content="\n\nPlease find the attached Excel files with price data and timeseries data.\n\nBest regards,\nYour Automation",
     )
     email_sender.attach(file_buffer=price_buffer, filename="Data.xlsx")
