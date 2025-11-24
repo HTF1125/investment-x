@@ -248,6 +248,51 @@
     background: var(--mantine-color-blue-5);
 }
 
+/* Scrollbar styling for insights scroll container */
+.insights-scroll-container::-webkit-scrollbar {
+    width: 10px;
+}
+
+.insights-scroll-container::-webkit-scrollbar-track {
+    background: #0f172a;
+    border-radius: 5px;
+}
+
+.insights-scroll-container::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 5px;
+    border: 2px solid #0f172a;
+}
+
+.insights-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}
+
+/* Scrollbar styling for table scroll container */
+.insights-table-scroll-container::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.insights-table-scroll-container::-webkit-scrollbar-track {
+    background: #0f172a;
+    border-radius: 5px;
+}
+
+.insights-table-scroll-container::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 5px;
+    border: 2px solid #0f172a;
+}
+
+.insights-table-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}
+
+.insights-table-scroll-container::-webkit-scrollbar-corner {
+    background: #0f172a;
+}
+
 /* Pulse animation for badges */
 @keyframes pulse {
 
@@ -466,6 +511,20 @@
         opacity: 1;
         transform: translateX(0);
     }
+}
+
+/* Table row hover effects */
+.insight-table-row {
+    cursor: pointer;
+}
+
+.insight-table-row:hover {
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    transform: translateX(2px);
+}
+
+.insight-table-row:hover td {
+    color: #60a5fa !important;
 }
 
 /* Responsive adjustments for modal */

@@ -105,6 +105,89 @@ app.index_string = """
                 }
             }
 
+            /* Scrollbar styling for insights table */
+            #scroll-container::-webkit-scrollbar {
+                width: 12px;
+                height: 12px;
+            }
+            #scroll-container::-webkit-scrollbar-track {
+                background: #1e293b;
+                border-radius: 6px;
+            }
+            #scroll-container::-webkit-scrollbar-thumb {
+                background: #475569;
+                border-radius: 6px;
+                border: 2px solid #1e293b;
+            }
+            #scroll-container::-webkit-scrollbar-thumb:hover {
+                background: #64748b;
+            }
+
+            /* Enhanced Insights page full height layout */
+            .insights-page-container {
+                height: 100vh;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                position: relative;
+            }
+            .insights-search-header {
+                flex-shrink: 0;
+            }
+            #scroll-container {
+                flex: 1;
+                overflow-y: auto !important;
+                overflow-x: auto !important;
+                scroll-behavior: smooth;
+                min-height: 0;
+                position: relative;
+                padding: 0;
+            }
+
+            /* Ensure table fills container */
+            #insights-table-container {
+                width: 100%;
+            }
+
+            /* Enhanced Insights table styling */
+            .insight-table-row {
+                transition: all 0.2s ease;
+            }
+            .insight-table-row:hover {
+                background-color: #1e293b !important;
+                cursor: pointer;
+                transform: scale(1.001);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+
+            /* Table container enhancements */
+            .insights-scroll-container {
+                scrollbar-width: thin;
+                scrollbar-color: #475569 #1e293b;
+            }
+            .insights-scroll-container::-webkit-scrollbar {
+                width: 10px;
+                height: 10px;
+            }
+            .insights-scroll-container::-webkit-scrollbar-track {
+                background: #1e293b;
+                border-radius: 5px;
+            }
+            .insights-scroll-container::-webkit-scrollbar-thumb {
+                background: #475569;
+                border-radius: 5px;
+                border: 2px solid #1e293b;
+            }
+            .insights-scroll-container::-webkit-scrollbar-thumb:hover {
+                background: #64748b;
+            }
+
+            /* Enhanced header styling */
+            .insights-search-header {
+                backdrop-filter: blur(10px);
+                background-color: rgba(15, 23, 42, 0.95) !important;
+            }
+
             /* Skeleton loader animations for dashboard */
             @keyframes pulse {
                 0% { background-position: 200% 0; }
