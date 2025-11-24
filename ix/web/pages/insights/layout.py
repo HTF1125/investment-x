@@ -12,7 +12,7 @@ dash.register_page(__name__, path="/insights", title="Research Insights", name="
 from ix.web.pages.insights.callbacks import *  # noqa: F403, F401
 
 # Import components
-from ix.web.pages.insights.components import create_header, create_all_modals
+from ix.web.pages.insights.components import create_header, create_all_modals, create_upload_zone
 
 
 # ============================================================================
@@ -115,12 +115,13 @@ def create_table_section() -> dmc.Paper:
 
 
 def create_main_content() -> html.Div:
-    """Create main content area with table."""
+    """Create main content area with table and upload zone."""
     return html.Div(
         dmc.Container(
             dmc.Stack(
                 [
                     create_stat_card(),
+                    create_upload_zone(),
                     create_table_section(),
                 ],
                 gap="md",
@@ -168,6 +169,7 @@ layout = html.Div(
         dcc.Store(id="current-page", data=1),
         dcc.Store(id="filter-config", data={"search": "", "no_summary": False}),
         dcc.Store(id="row-click-handler", data={}),  # Handles row clicks
+        dcc.Store(id="dragdrop-handler", data={}),  # Handles drag-drop visual feedback
     ],
     style={
         "height": "100vh",

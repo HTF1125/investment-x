@@ -527,6 +527,34 @@
     color: #60a5fa !important;
 }
 
+/* Drag and drop upload zone styling */
+.pdf-upload-zone {
+    position: relative;
+}
+
+.pdf-upload-zone:hover {
+    border-color: #3b82f6 !important;
+    background-color: #1e293b !important;
+    transform: scale(1.01);
+}
+
+.pdf-upload-zone.drag-over {
+    border-color: #60a5fa !important;
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    border-style: solid !important;
+    border-width: 3px !important;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3) !important;
+}
+
+.upload-zone-content {
+    pointer-events: none;
+}
+
+.pdf-upload-zone.drag-over .upload-zone-content {
+    transform: scale(1.05);
+    transition: transform 0.2s ease;
+}
+
 /* Responsive adjustments for modal */
 @media (max-width: 1200px) {
     .modern-modal {

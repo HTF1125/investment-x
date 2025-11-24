@@ -5,6 +5,7 @@ from .publishers_section import create_publishers_section
 from .table import create_insights_table
 from .filters import create_filters_section
 from .modals import create_all_modals
+from .upload_zone import create_upload_zone
 
 __all__ = [
     "create_header",
@@ -12,4 +13,5 @@ __all__ = [
     "create_insights_table",
     "create_filters_section",
     "create_all_modals",
+    "create_upload_zone",
 ]
