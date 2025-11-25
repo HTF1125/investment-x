@@ -19,7 +19,6 @@ from ix.web.pages.insights.components import create_header, create_all_modals, c
 # Constants
 # ============================================================================
 PAGE_SIZE = 20
-TABLE_MAX_HEIGHT = "calc(100vh - 350px)"
 
 
 # ============================================================================
@@ -64,29 +63,43 @@ def create_stat_card() -> dmc.Paper:
         style={
             "backgroundColor": "#1e293b",
             "borderColor": "#334155",
+            "flexShrink": 0,
         },
-        mb="lg",
     )
 
 
-def create_table_section() -> dmc.Paper:
-    """Create scrollable table section with pagination."""
-    return dmc.Paper(
-        dmc.Stack(
-            [
-                html.Div(
+def create_table_section() -> html.Div:
+    """Create scrollable table section with pagination always visible below."""
+    return html.Div(
+        [
+            # Scrollable table container
+            html.Div(
+                dmc.Paper(
                     html.Div(
                         id="insights-table-container",
                         style={"minHeight": "400px"},
                     ),
+                    p="md",
+                    radius="lg",
+                    withBorder=True,
                     style={
-                        "overflowY": "auto",
-                        "overflowX": "auto",
-                        "maxHeight": TABLE_MAX_HEIGHT,
-                        "scrollBehavior": "smooth",
+                        "backgroundColor": "#0f172a",
+                        "borderColor": "#475569",
+                        "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                        "height": "100%",
                     },
-                    className="insights-table-scroll-container",
                 ),
+                style={
+                    "overflowY": "auto",
+                    "overflowX": "auto",
+                    "flex": 1,
+                    "minHeight": 0,
+                    "scrollBehavior": "smooth",
+                },
+                className="insights-table-scroll-container",
+            ),
+            # Pagination - always visible, sticky at bottom of viewport
+            html.Div(
                 dmc.Center(
                     dmc.Pagination(
                         id="insights-pagination",
@@ -97,19 +110,25 @@ def create_table_section() -> dmc.Paper:
                         withEdges=True,
                         siblings=2,
                         boundaries=1,
-                        style={"marginTop": "20px"},
                     ),
                 ),
-            ],
-            gap="md",
-        ),
-        p="md",
-        radius="lg",
-        withBorder=True,
+                style={
+                    "padding": "15px 0",
+                    "backgroundColor": "#0f172a",
+                    "flexShrink": 0,
+                    "borderTop": "1px solid #334155",
+                    "position": "sticky",
+                    "bottom": 0,
+                    "zIndex": 10,
+                },
+            ),
+        ],
         style={
-            "backgroundColor": "#0f172a",
-            "borderColor": "#475569",
-            "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+            "display": "flex",
+            "flexDirection": "column",
+            "flex": 1,
+            "minHeight": 0,
+            "overflow": "hidden",
         },
     )
 
@@ -118,13 +137,19 @@ def create_main_content() -> html.Div:
     """Create main content area with table and upload zone."""
     return html.Div(
         dmc.Container(
-            dmc.Stack(
+            html.Div(
                 [
-                    create_stat_card(),
                     create_upload_zone(),
                     create_table_section(),
                 ],
-                gap="md",
+                style={
+                    "display": "flex",
+                    "flexDirection": "column",
+                    "flex": 1,
+                    "minHeight": 0,
+                    "overflow": "hidden",
+                    "gap": "16px",
+                },
             ),
             size="xl",
             px="xl",
@@ -134,6 +159,7 @@ def create_main_content() -> html.Div:
                 "flexDirection": "column",
                 "minHeight": 0,
                 "overflow": "hidden",
+                "height": "100%",
             },
         ),
         style={

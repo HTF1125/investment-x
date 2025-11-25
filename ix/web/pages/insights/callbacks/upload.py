@@ -19,43 +19,25 @@ logger = get_logger(__name__)
 
 @callback(
     Output("output-pdf-upload", "children", allow_duplicate=True),
-    Output("upload-pdf", "contents", allow_duplicate=True),
     Output("upload-pdf-dragdrop", "contents", allow_duplicate=True),
-    Input("upload-pdf", "contents"),
     Input("upload-pdf-dragdrop", "contents"),
-    State("upload-pdf", "filename"),
     State("upload-pdf-dragdrop", "filename"),
-    State("upload-pdf", "last_modified"),
     State("upload-pdf-dragdrop", "last_modified"),
     prevent_initial_call=True,
 )
 def handle_pdf_upload(
-    button_contents: Optional[Any],
     dragdrop_contents: Optional[Any],
-    button_filename: Optional[Any],
     dragdrop_filename: Optional[Any],
-    button_last_modified: Optional[Any],
     dragdrop_last_modified: Optional[Any],
-) -> Tuple[Any, Optional[str], Optional[str]]:
-    """Handle PDF upload with validation and AI summarization (both button and drag-drop)."""
-    # Determine which input triggered the callback
-    import dash
-
-    ctx = dash.callback_context
-    if not ctx.triggered:
+) -> Tuple[Any, Optional[str]]:
+    """Handle PDF upload with validation and AI summarization (drag-drop only)."""
+    # Check if upload was triggered
+    if dragdrop_contents is None or dragdrop_filename is None:
         raise PreventUpdate
 
-    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
-
-    # Use the appropriate input based on which was triggered
-    if trigger_id == "upload-pdf-dragdrop":
-        contents = dragdrop_contents
-        filename = dragdrop_filename
-        last_modified = dragdrop_last_modified
-    else:
-        contents = button_contents
-        filename = button_filename
-        last_modified = button_last_modified
+    contents = dragdrop_contents
+    filename = dragdrop_filename
+    last_modified = dragdrop_last_modified
 
     if contents is None or filename is None:
         raise PreventUpdate
@@ -144,8 +126,8 @@ def handle_pdf_upload(
 
     summary = create_upload_summary(success_count, total_files)
 
-    # Clear both upload components
-    return html.Div([summary] + message_cards, style={"display": "grid", "gap": "20px"}), None, None
+    # Clear upload component
+    return html.Div([summary] + message_cards, style={"display": "grid", "gap": "20px"}), None
 
 
 def create_error_message(message: str) -> html.Div:

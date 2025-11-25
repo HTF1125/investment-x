@@ -36,23 +36,6 @@ def create_header() -> html.Div:
                             # Action buttons group
                             dmc.Group(
                                 [
-                                    dcc.Upload(
-                                        dmc.Button(
-                                            "Upload PDF",
-                                            leftSection=DashIconify(icon="carbon:upload", width=16),
-                                            variant="gradient",
-                                            gradient={"from": "blue", "to": "cyan"},
-                                            size="md",
-                                            radius="md",
-                                        ),
-                                        id="upload-pdf",
-                                        multiple=True,
-                                        accept=".pdf",
-                                        style={
-                                            "display": "inline-block",
-                                            "textDecoration": "none",
-                                        },
-                                    ),
                                     dmc.Button(
                                         "Search",
                                         id="search-button",
