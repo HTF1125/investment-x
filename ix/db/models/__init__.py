@@ -7,6 +7,7 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     LargeBinary,
+    Boolean,
     text,
 )
 from sqlalchemy.orm import relationship
@@ -53,6 +54,7 @@ class Timeseries(Base):
     country = Column(String, nullable=True)
     parent_id = Column(UUID(as_uuid=False), ForeignKey("timeseries.id"), nullable=True)
     remark = Column(Text, default="")
+    favorite = Column(Boolean, default=False, nullable=False)
 
     # Legacy JSONB column retained for migration/backward compatibility.
     created = Column(DateTime, default=datetime.now, nullable=False)
@@ -578,6 +580,7 @@ class Insights(Base):
     summary = Column(Text, nullable=True)
     status = Column(String, default="new")  # new, processing, completed, failed
     pdf_content = Column(LargeBinary, nullable=True)
+    hash_tag = Column(String, nullable=True)  # Hash tag for the insight
 
     def save_content(self, content: bytes) -> bool:
         """Persist PDF content directly in the database."""

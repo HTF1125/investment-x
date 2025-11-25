@@ -3,14 +3,17 @@ API endpoints for the ix.web application.
 These are Flask routes that extend the Dash app server.
 """
 
-from flask import jsonify, request
+from flask import jsonify, request, Response
+from collections import OrderedDict
+import json
+import math
 import pandas as pd
 from ix.db.models import Timeseries, Insights, Publishers
 from ix.db.conn import ensure_connection, Session
 from ix.misc import get_logger
 from datetime import datetime
 from ix.db.custom import FinancialConditionsIndexUS
-from sqlalchemy.orm import load_only
+from sqlalchemy.orm import load_only, joinedload, joinedload
 
 # Import routers
 from ix.web.api.routers import series
@@ -85,6 +88,7 @@ def register_api_routes(app):
                     Timeseries.end,
                     Timeseries.num_data,
                     Timeseries.remark,
+                    Timeseries.favorite,
                 )
             )
 
@@ -128,6 +132,7 @@ def register_api_routes(app):
                         "start": ts.start,
                         "end": ts.end,
                         "num_data": ts.num_data,
+                        "favorite": ts.favorite if hasattr(ts, "favorite") else False,
                     }
                 )
             timeseries_list = ts_data_list
@@ -147,6 +152,7 @@ def register_api_routes(app):
                 ts_frequency = ts.get("frequency")
                 ts_start = ts.get("start")
                 ts_end = ts.get("end")
+                ts_favorite = ts.get("favorite", False)
             else:
                 ts_id = ts.id
                 ts_code = ts.code
@@ -158,6 +164,7 @@ def register_api_routes(app):
                 ts_frequency = ts.frequency
                 ts_start = ts.start
                 ts_end = ts.end
+                ts_favorite = ts.favorite if hasattr(ts, "favorite") else False
 
             formatted_ts = {
                 "id": str(ts_id),
@@ -213,6 +220,7 @@ def register_api_routes(app):
                     if isinstance(ts, dict)
                     else getattr(ts, "remark", None)
                 ),
+                "favorite": ts_favorite,
             }
             formatted_timeseries.append(formatted_ts)
 
@@ -244,6 +252,7 @@ def register_api_routes(app):
         - name, provider, asset_class, category, source, source_code
         - frequency, unit, scale, currency, country, remark
         - start, end, num_data (for metadata)
+        - favorite (boolean, default: false)
 
         Note: If timeseries doesn't exist, it will be created. If it exists, it will be updated.
         """
@@ -394,6 +403,30 @@ def register_api_routes(app):
                                 f"Invalid end date '{ts_data['end']}' for {code}"
                             )
 
+                    # Boolean field (favorite)
+                    if "favorite" in ts_data:
+                        value = ts_data["favorite"]
+                        if value is not None:
+                            try:
+                                # Convert to boolean (handles string "true"/"false", 1/0, etc.)
+                                if isinstance(value, bool):
+                                    favorite_value = value
+                                elif isinstance(value, str):
+                                    favorite_value = value.lower() in (
+                                        "true",
+                                        "1",
+                                        "yes",
+                                        "on",
+                                    )
+                                else:
+                                    favorite_value = bool(value)
+                                setattr(ts, "favorite", favorite_value)
+                            except (ValueError, TypeError):
+                                logger.warning(
+                                    f"Invalid favorite value '{value}' for {code}, setting to False"
+                                )
+                                setattr(ts, "favorite", False)
+
                     # Commit changes
                     session.commit()
 
@@ -465,6 +498,7 @@ def register_api_routes(app):
             ts_end = ts.end
             ts_num_data = ts.num_data
             ts_remark = ts.remark
+            ts_favorite = ts.favorite if hasattr(ts, "favorite") else False
             # Get data within session
             ts_data = ts.data.copy() if hasattr(ts, "data") else pd.Series()
 
@@ -495,6 +529,7 @@ def register_api_routes(app):
             "currency": ts_currency,
             "country": ts_country,
             "remark": ts_remark,
+            "favorite": ts_favorite,
         }
 
         # Add full data
@@ -569,6 +604,7 @@ def register_api_routes(app):
             ts_id = ts.id
             ts_code = ts.code
             ts_name = ts.name
+            ts_favorite = ts.favorite if hasattr(ts, "favorite") else False
             ts_data = ts.data.copy() if hasattr(ts, "data") else pd.Series()
 
         # Format the timeseries object
@@ -590,6 +626,7 @@ def register_api_routes(app):
             "currency": ts.currency,
             "country": ts.country,
             "remark": ts.remark,
+            "favorite": ts_favorite,
         }
 
         # Add basic data statistics (without full data for code lookup)
@@ -622,6 +659,155 @@ def register_api_routes(app):
             }
 
         return jsonify(formatted_ts)
+
+    @app.server.route("/api/timeseries/favorites", methods=["GET"])
+    def get_favorite_timeseries_data():
+        """
+        GET /api/timeseries/favorites - Get all favorite timeseries data as a concatenated DataFrame.
+
+        Returns all timeseries marked as favorite (favorite = true) with their data
+        concatenated into a single DataFrame format, similar to /api/series.
+
+        Response format: Column-oriented JSON object
+        {
+          "Date": ["2023-01-01T00:00:00", "2023-01-02T00:00:00"],
+          "AAPL US EQUITY:PX_LAST": [150.0, 151.0],
+          "MSFT US EQUITY:PX_LAST": [250.0, 251.0]
+        }
+
+        Notes:
+        - Returns column-oriented format for efficient JSON serialization
+        - Date column contains ISO 8601 datetime strings
+        - NaN values are represented as null
+        - Series are aligned by date (outer join)
+        """
+        ensure_connection()
+
+        try:
+            with Session() as session:
+                # Query all favorite timeseries with data_record eagerly loaded
+                favorite_timeseries = (
+                    session.query(Timeseries)
+                    .options(joinedload(Timeseries.data_record))
+                    .filter(Timeseries.favorite == True)
+                    .all()
+                )
+
+                if not favorite_timeseries:
+                    return Response(
+                        json.dumps({"Date": []}, ensure_ascii=False),
+                        mimetype="application/json",
+                    )
+
+                # Collect all series data as pandas Series for concatenation
+                series_list = []
+
+                for ts in favorite_timeseries:
+                    try:
+                        ts_code = ts.code
+
+                        # Access data directly via data_record relationship to avoid detached instance error
+                        data_record = ts._get_or_create_data_record(session)
+                        column_data = (
+                            data_record.data if data_record and data_record.data else {}
+                        )
+                        frequency = ts.frequency
+
+                        # Convert JSONB dict to pandas Series
+                        if column_data and isinstance(column_data, dict):
+                            ts_data = pd.Series(column_data)
+                            try:
+                                ts_data.index = pd.to_datetime(ts_data.index)
+                                # Convert to numeric and drop NaN
+                                ts_data = pd.to_numeric(
+                                    ts_data, errors="coerce"
+                                ).dropna()
+                                ts_data.name = ts_code
+                                if frequency and len(ts_data) > 0:
+                                    ts_data = (
+                                        ts_data.sort_index()
+                                        .resample(str(frequency))
+                                        .last()
+                                        .dropna()
+                                    )
+                                else:
+                                    ts_data = ts_data.sort_index()
+
+                                # Only add non-empty series
+                                if not ts_data.empty:
+                                    series_list.append(ts_data)
+                            except Exception:
+                                # If date conversion fails, try to clean it
+                                try:
+                                    valid_dates = pd.to_datetime(
+                                        ts_data.index, errors="coerce"
+                                    )
+                                    ts_data = ts_data[valid_dates.notna()]
+                                    ts_data.index = pd.to_datetime(ts_data.index)
+                                    ts_data = pd.to_numeric(
+                                        ts_data, errors="coerce"
+                                    ).dropna()
+                                    ts_data.name = ts_code
+                                    ts_data = ts_data.sort_index()
+                                    if not ts_data.empty:
+                                        series_list.append(ts_data)
+                                except Exception:
+                                    logger.warning(
+                                        f"Error processing timeseries {ts_code}: could not convert to Series"
+                                    )
+                                    continue
+                        else:
+                            logger.debug(f"Timeseries {ts_code} has no data")
+
+                    except Exception as e:
+                        error_code = ts_code if "ts_code" in locals() else "unknown"
+                        logger.warning(
+                            f"Error processing favorite timeseries {error_code}: {e}"
+                        )
+                        continue
+
+                # Concatenate all series into a DataFrame (like /api/series)
+                if series_list:
+                    # Combine all series into a single DataFrame
+                    df = pd.concat(series_list, axis=1)
+                    df.index.name = "Date"
+
+                    # Convert to column-oriented format like /api/series
+                    df_indexed = df.reset_index()
+
+                    # Convert to column-oriented format: {"Date": [...], "SERIES1": [...], ...}
+                    column_dict = OrderedDict()
+
+                    # Iterate in DataFrame column order to preserve order
+                    for col in df_indexed.columns:
+                        values = df_indexed[col].tolist()
+                        # Clean values for JSON serialization
+                        cleaned_values = []
+                        for v in values:
+                            if v is None or (isinstance(v, float) and math.isnan(v)):
+                                cleaned_values.append(None)
+                            elif isinstance(v, (pd.Timestamp, datetime)):
+                                # Convert timestamp/datetime to ISO string
+                                cleaned_values.append(v.isoformat())
+                            else:
+                                cleaned_values.append(v)
+                        column_dict[col] = cleaned_values
+
+                    # Return as JSON with preserved column order
+                    return Response(
+                        json.dumps(column_dict, ensure_ascii=False),
+                        mimetype="application/json",
+                    )
+                else:
+                    # No data available
+                    return Response(
+                        json.dumps({"Date": []}, ensure_ascii=False),
+                        mimetype="application/json",
+                    )
+
+        except Exception as e:
+            logger.exception(f"Error retrieving favorite timeseries: {e}")
+            return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
     @app.server.route("/api/insights", methods=["GET"])
     def get_insights():
@@ -730,6 +916,9 @@ def register_api_routes(app):
                         "summary": insight.summary,
                         "status": insight.status,
                         "has_content": bool(insight.pdf_content),
+                        "hash": (
+                            insight.hash_tag if hasattr(insight, "hash_tag") else None
+                        ),
                     }
                 )
 
@@ -768,6 +957,7 @@ def register_api_routes(app):
         - summary: Text summary of the insight
         - status: Status string (defaults to "new")
         - pdf_content: Base64 encoded PDF content
+        - hash: Hash tag for the insight
 
         Note: If id is provided, the insight MUST exist or an error will be returned.
               If id is NOT provided, a new insight will be created (requires issuer and name).
@@ -888,6 +1078,13 @@ def register_api_routes(app):
                                 f"Failed to decode PDF content for insight {insight.id}: {str(e)}"
                             )
 
+                    # Handle hash_tag field
+                    if "hash" in insight_data or "hash_tag" in insight_data:
+                        hash_value = insight_data.get("hash") or insight_data.get(
+                            "hash_tag"
+                        )
+                        insight.hash_tag = str(hash_value) if hash_value else None
+
                     # Commit changes
                     session.commit()
 
@@ -943,6 +1140,7 @@ def register_api_routes(app):
             insight_published_date = insight.published_date
             insight_summary = insight.summary
             insight_status = insight.status
+            insight_hash = insight.hash_tag if hasattr(insight, "hash_tag") else None
 
         # Format the insight object
         published_date_str = None
@@ -963,6 +1161,7 @@ def register_api_routes(app):
             "status": insight_status,
             "has_content": True,  # Content stored in PostgreSQL
             "content_size": 0,  # Size not directly available
+            "hash": insight_hash,
         }
 
         return jsonify(formatted_insight)
@@ -1302,6 +1501,7 @@ def register_api_routes(app):
     print("  - POST /api/timeseries - Update timeseries metadata (bulk)")
     print("  - GET /api/timeseries/{id} - Get timeseries by ID")
     print("  - GET /api/timeseries/code/{code} - Get timeseries by code")
+    print("  - GET /api/timeseries/favorites - Get all favorite timeseries with data")
     print("  - GET /api/insights - List all insights")
     print("  - POST /api/insights - Create or update insights")
     print("  - GET /api/insights/{id} - Get insight by ID")

@@ -203,3 +203,4 @@ def create_all_modals():
         create_add_publisher_modal(),
     ]
 
+

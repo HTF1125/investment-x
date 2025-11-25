@@ -15,6 +15,7 @@ def normalize_insight_data(insight: Union[Dict, Any]) -> Dict[str, Any]:
             "published_date": str(insight.get("published_date", "")) if insight.get("published_date") else "",
             "status": insight.get("status") or "new",
             "summary": insight.get("summary") or "",
+            "hash": insight.get("hash") or "",
             "editing": False,
         }
     else:
@@ -26,6 +27,7 @@ def normalize_insight_data(insight: Union[Dict, Any]) -> Dict[str, Any]:
             "published_date": str(insight.published_date) if insight.published_date else "",
             "status": insight.status or "new",
             "summary": insight.summary or "",
+            "hash": getattr(insight, "hash_tag", None) or getattr(insight, "hash", None) or "",
             "editing": False,
         }
 
@@ -69,6 +71,7 @@ def filter_insights(
                 search_lower in (insight.get("name", "") or "").lower()
                 or search_lower in (insight.get("issuer", "") or "").lower()
                 or search_lower in (insight.get("summary", "") or "").lower()
+                or search_lower in (insight.get("hash", "") or "").lower()
                 or search in (insight.get("published_date", "") or "")
             )
         ]
@@ -128,4 +131,3 @@ def sort_insights(insights: List[Dict[str, Any]], sort_by: Optional[str] = None)
         return sorted(insights, key=get_name, reverse=True)
 
     return insights
-

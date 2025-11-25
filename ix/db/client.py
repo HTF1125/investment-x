@@ -43,6 +43,7 @@ def get_insight_by_id(id: str) -> Dict[str, Optional[str]]:
         elif published_date is not None:
             published_date = str(published_date)
 
+        hash_tag_value = getattr(insight, "hash_tag", None) or ""
         return {
             "id": str(insight.id),
             "name": insight.name or "Untitled",
@@ -50,6 +51,7 @@ def get_insight_by_id(id: str) -> Dict[str, Optional[str]]:
             "published_date": published_date or "",
             "status": insight.status or "new",
             "summary": insight.summary or "",
+            "hash": hash_tag_value or "",
         }
 
 
@@ -102,6 +104,7 @@ def get_insights(
                     Insights.published_date,
                     Insights.status,
                     Insights.summary,
+                    Insights.hash_tag,
                 )
             )
 
@@ -131,6 +134,8 @@ def get_insights(
                             or_(
                                 Insights.issuer.ilike(f"%{keyword}%"),
                                 Insights.name.ilike(f"%{keyword}%"),
+                                Insights.summary.ilike(f"%{keyword}%"),
+                                Insights.hash_tag.ilike(f"%{keyword}%"),
                             )
                         )
                     query = query.filter(and_(*conditions))
@@ -154,6 +159,9 @@ def get_insights(
                     else:
                         published_date_str = str(insight.published_date)
 
+                # Get hash_tag value safely
+                hash_tag_value = getattr(insight, "hash_tag", None) or ""
+
                 insights_data.append(
                     {
                         "id": insight.id,
@@ -162,6 +170,7 @@ def get_insights(
                         "published_date": published_date_str,
                         "status": insight.status,
                         "summary": insight.summary,
+                        "hash": hash_tag_value if hash_tag_value else "",
                     }
                 )
             return insights_data

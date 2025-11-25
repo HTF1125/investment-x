@@ -16,6 +16,7 @@ def create_table_row(insight_data: Dict[str, Any]) -> html.Tr:
     published_date_display = format_date_for_display(insight_data.get("published_date", ""))
     summary = insight_data.get("summary", "")
     summary_preview = truncate_text(summary, max_length=200) if summary else "No summary available"
+    hash_tag = insight_data.get("hash", "")
 
     return html.Tr(
         [
@@ -84,6 +85,20 @@ def create_table_row(insight_data: Dict[str, Any]) -> html.Tr:
                     "padding": "16px 20px",
                     "verticalAlign": "top",
                     "maxWidth": "450px",
+                },
+            ),
+            html.Td(
+                dmc.Text(
+                    hash_tag if hash_tag else "-",
+                    size="sm",
+                    c="cyan" if hash_tag else "gray.7",
+                    fw="500" if hash_tag else "400",
+                ),
+                style={
+                    "padding": "16px 20px",
+                    "verticalAlign": "top",
+                    "whiteSpace": "nowrap",
+                    "maxWidth": "200px",
                 },
             ),
         ],
@@ -176,6 +191,23 @@ def create_insights_table(insights_data: List[Dict[str, Any]]) -> html.Div:
                                 ),
                                 html.Th(
                                     dmc.Text("Summary", size="sm", fw="700", c="gray.3"),
+                                    style={
+                                        "padding": "16px 20px",
+                                        "textAlign": "left",
+                                        "fontSize": "13px",
+                                        "textTransform": "uppercase",
+                                        "letterSpacing": "0.5px",
+                                    },
+                                ),
+                                html.Th(
+                                    dmc.Group(
+                                        [
+                                            DashIconify(icon="carbon:tag", width=16, color="#64748b"),
+                                            dmc.Text("Hash", size="sm", fw="700", c="gray.3"),
+                                        ],
+                                        gap="xs",
+                                        align="center",
+                                    ),
                                     style={
                                         "padding": "16px 20px",
                                         "textAlign": "left",

@@ -93,10 +93,20 @@ class Connection:
                 Base.metadata.create_all(bind=self.engine)
 
                 # Ensure new columns introduced outside migrations exist
-                with self.engine.connect() as conn_check:
+                with self.engine.begin() as conn_check:
                     conn_check.execute(
                         text(
                             "ALTER TABLE IF EXISTS insights ADD COLUMN IF NOT EXISTS pdf_content BYTEA"
+                        )
+                    )
+                    conn_check.execute(
+                        text(
+                            "ALTER TABLE IF EXISTS timeseries ADD COLUMN IF NOT EXISTS favorite BOOLEAN NOT NULL DEFAULT FALSE"
+                        )
+                    )
+                    conn_check.execute(
+                        text(
+                            "ALTER TABLE IF EXISTS insights ADD COLUMN IF NOT EXISTS hash_tag VARCHAR"
                         )
                     )
 

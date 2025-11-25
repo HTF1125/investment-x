@@ -38,3 +38,4 @@ def truncate_text(text: Optional[str], max_length: int = 100, suffix: str = "...
         return text
     return text[:max_length - len(suffix)] + suffix
 
+
