@@ -311,7 +311,7 @@ def register_api_routes(app):
                         ("asset_class", 50),
                         ("category", 100),
                         ("source", 100),
-                        ("source_code", 100),
+                        ("source_code",2000),
                         ("frequency", 20),
                         ("unit", 50),
                         ("currency", 10),
