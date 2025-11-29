@@ -25,15 +25,13 @@ logger = get_logger(__name__)
     Output("insights-pagination", "value", allow_duplicate=True),
     Output("search-query", "data", allow_duplicate=True),
     Output("filter-state", "data", allow_duplicate=True),
-    Input("search-button", "n_clicks"),
-    Input("insights-search", "n_submit"),
-    State("insights-search", "value"),
+    Input("terminal-search", "n_submit"),
+    State("terminal-search", "value"),
     State("no-summary-filter", "data"),
     State("page-size", "data"),
     prevent_initial_call=True,
 )
 def search_and_filter_insights(
-    search_clicks,
     search_submit,
     search_value,
     no_summary_filter,
@@ -94,7 +92,7 @@ def search_and_filter_insights(
 
 
 @callback(
-    Output("insights-search", "value"),
+    Output("terminal-search", "value"),
     Output("search-query", "data", allow_duplicate=True),
     Output("filter-state", "data", allow_duplicate=True),
     Input("clear-search", "n_clicks"),

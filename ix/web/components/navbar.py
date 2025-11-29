@@ -31,7 +31,7 @@ def create_nav_link(item, is_mobile=False):
         "textAlign": "center" if is_mobile else "left",
     }
 
-    return html.A(
+    return dcc.Link(
         [
             DashIconify(
                 icon=item["icon"], width=16, height=16, style={"color": "inherit"}
@@ -42,6 +42,7 @@ def create_nav_link(item, is_mobile=False):
         id=f"nav-link-{item['name'].lower()}-{'mobile' if is_mobile else 'desktop'}",
         className="nav-link",
         style=base_style,
+        refresh=False,
     )
 
 
@@ -137,7 +138,7 @@ def create_navbar():
                 html.Div(
                     [
                         # Logo
-                        html.A(
+                        dcc.Link(
                             html.Img(
                                 id="navbar-logo",
                                 src="/assets/images/investment-x-logo-light.svg",
@@ -150,6 +151,7 @@ def create_navbar():
                             ),
                             href="/",
                             style={"textDecoration": "none"},
+                            refresh=False,
                         ),
                         # Desktop navigation
                         html.Div(
@@ -540,7 +542,7 @@ def update_user_menu(token_data):
         )
     else:
         # User is not logged in, show login button
-        return html.A(
+        return dcc.Link(
             html.Button(
                 [
                     DashIconify(
@@ -567,6 +569,7 @@ def update_user_menu(token_data):
             ),
             href="/login",
             style={"textDecoration": "none"},
+            refresh=False,
         )
 
 

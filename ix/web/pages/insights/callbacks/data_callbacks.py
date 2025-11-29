@@ -8,7 +8,10 @@ from dash.exceptions import PreventUpdate
 from ix.misc.terminal import get_logger
 from ix.web.pages.insights.services.data_service import InsightsDataService
 from ix.web.pages.insights.components.table import create_insights_table
-from ix.web.pages.insights.utils.data_utils import deserialize_insights, serialize_insights
+from ix.web.pages.insights.utils.data_utils import (
+    deserialize_insights,
+    serialize_insights,
+)
 
 logger = get_logger(__name__)
 
@@ -56,6 +59,7 @@ def create_error_state(error_msg: str) -> html.Div:
             "padding": "60px 20px",
             "backgroundColor": "#1e293b",
             "borderRadius": "12px",
+            "border": "1px solid #475569",
         },
     )
 
@@ -86,7 +90,7 @@ def render_table(insights_data: list, page: int = 1) -> Tuple[html.Div, int]:
 
         # Get page data
         page_data, total_count, total_pages = InsightsDataService.get_page_data(
-            all_insights, page
+            all_insights, page, page_size=12
         )
 
         # Create table
@@ -178,13 +182,12 @@ def handle_pagination(current_page, insights_data):
     Output("insights-pagination", "value", allow_duplicate=True),
     Output("current-page", "data", allow_duplicate=True),
     Output("filter-config", "data", allow_duplicate=True),
-    Input("search-button", "n_clicks"),
-    Input("insights-search", "n_submit"),
-    State("insights-search", "value"),
+    Input("terminal-search", "n_submit"),
+    State("terminal-search", "value"),
     State("filter-config", "data"),
     prevent_initial_call=True,
 )
-def handle_search(search_clicks, search_submit, search_value, current_filter_config):
+def handle_search(search_submit, search_value, current_filter_config):
     """Handle search with unified filtering."""
     try:
         # Get current filter state
@@ -196,18 +199,34 @@ def handle_search(search_clicks, search_submit, search_value, current_filter_con
             "no_summary": no_summary,
         }
 
-        # Load data with filters
+        # Load data (server-side search first for performance)
         insights_list = InsightsDataService.load_all_insights(
             search_query=search_value if search_value else None,
             no_summary_filter=no_summary,
         )
 
-        if not insights_list:
+        # Always apply client-side filters to ensure fields like 'hash' are searchable
+        filtered = InsightsDataService.apply_filters(
+            insights_list,
+            search=search_value or None,
+            no_summary_only=no_summary,
+        )
+
+        # Fallback: if nothing found and a search term exists, fetch all and filter locally
+        if (not filtered) and (search_value and search_value.strip()):
+            insights_all = InsightsDataService.load_all_insights(
+                search_query=None, no_summary_filter=no_summary
+            )
+            filtered = InsightsDataService.apply_filters(
+                insights_all, search=search_value, no_summary_only=no_summary
+            )
+
+        if not filtered:
             empty = create_empty_state("No Results Found")
             return empty, [], 1, 1, 1, new_filter_config
 
         # Serialize
-        serialized = serialize_insights(insights_list)
+        serialized = serialize_insights(filtered)
 
         # Render first page
         table, total_pages = render_table(serialized, page=1)
@@ -220,7 +239,7 @@ def handle_search(search_clicks, search_submit, search_value, current_filter_con
 
 
 @callback(
-    Output("insights-search", "value"),
+    Output("terminal-search", "value"),
     Output("filter-config", "data", allow_duplicate=True),
     Input("clear-search", "n_clicks"),
     State("filter-config", "data"),

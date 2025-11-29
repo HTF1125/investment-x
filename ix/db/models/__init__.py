@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from datetime import date, datetime
 from typing import Optional, Dict
 from ix.db.conn import Base
+from .user import User
 
 # Re-export Base for convenience
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "EconomicCalendar",
     "Insights",
     "TacticalView",
+    "User",
 ]
 
 

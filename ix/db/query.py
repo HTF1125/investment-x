@@ -1,20 +1,116 @@
-from typing import Optional
+from typing import Optional, Union
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
+from pandas.tseries.offsets import MonthEnd
 from ix.db.models import Timeseries
 from cachetools import TTLCache, cached
 from ix import core
-from ix.misc.date import oneyearbefore, today
-
-import pandas as pd
 from ix.misc.date import today
-from cachetools import cached, TTLCache
 
 cache = TTLCache(maxsize=128, ttl=600)
 
+# Constants for PMI codes
+PMI_MANUFACTURING_CODES = [
+    "NTCPMIMFGSA_WLD:PX_LAST",
+    "NTCPMIMFGMESA_US:PX_LAST",
+    "ISMPMI_M:PX_LAST",
+    "NTCPMIMFGSA_CA:PX_LAST",
+    "NTCPMIMFGSA_EUZ:PX_LAST",
+    "NTCPMIMFGSA_DE:PX_LAST",
+    "NTCPMIMFGSA_FR:PX_LAST",
+    "NTCPMIMFGSA_IT:PX_LAST",
+    "NTCPMIMFGSA_ES:PX_LAST",
+    "NTCPMIMFGSA_GB:PX_LAST",
+    "NTCPMIMFGSA_JP:PX_LAST",
+    "NTCPMIMFGSA_KR",
+    "NTCPMIMFGSA_IN:PX_LAST",
+    "NTCPMIMFGNSA_CN:PX_LAST",
+]
 
-def Regime1(series) -> pd.Series:
+PMI_SERVICES_CODES = [
+    "NTCPMISVCBUSACTSA_WLD:PX_LAST",
+    "NTCPMISVCBUSACTMESA_US:PX_LAST",
+    "ISMNMI_NM:PX_LAST",
+    "NTCPMISVCBUSACTSA_EUZ:PX_LAST",
+    "NTCPMISVCBUSACTSA_DE:PX_LAST",
+    "NTCPMISVCBUSACTSA_FR:PX_LAST",
+    "NTCPMISVCBUSACTSA_IT:PX_LAST",
+    "NTCPMISVCBUSACTSA_ES:PX_LAST",
+    "NTCPMISVCBUSACTSA_GB:PX_LAST",
+    "NTCPMISVCPSISA_AU:PX_LAST",
+    "NTCPMISVCBUSACTSA_JP:PX_LAST",
+    "NTCPMISVCBUSACTSA_CN:PX_LAST",
+    "NTCPMISVCBUSACTSA_IN:PX_LAST",
+    "NTCPMISVCBUSACTSA_BR:PX_LAST",
+]
+
+OECD_CLI_CODES = [
+    "USA.LOLITOAA.STSA:PX_LAST",
+    "TUR.LOLITOAA.STSA:PX_LAST",
+    "IND.LOLITOAA.STSA:PX_LAST",
+    "IDN.LOLITOAA.STSA:PX_LAST",
+    "A5M.LOLITOAA.STSA:PX_LAST",
+    "CHN.LOLITOAA.STSA:PX_LAST",
+    "KOR.LOLITOAA.STSA:PX_LAST",
+    "BRA.LOLITOAA.STSA:PX_LAST",
+    "AUS.LOLITOAA.STSA:PX_LAST",
+    "CAN.LOLITOAA.STSA:PX_LAST",
+    "DEU.LOLITOAA.STSA:PX_LAST",
+    "ESP.LOLITOAA.STSA:PX_LAST",
+    "FRA.LOLITOAA.STSA:PX_LAST",
+    "G4E.LOLITOAA.STSA:PX_LAST",
+    "G7M.LOLITOAA.STSA:PX_LAST",
+    "GBR.LOLITOAA.STSA:PX_LAST",
+    "ITA.LOLITOAA.STSA:PX_LAST",
+    "JPN.LOLITOAA.STSA:PX_LAST",
+    "MEX.LOLITOAA.STSA:PX_LAST",
+]
+
+OECD_CLI_EM_CODES = [
+    "TUR.LOLITOAA.STSA:PX_LAST",
+    "IND.LOLITOAA.STSA:PX_LAST",
+    "IDN.LOLITOAA.STSA:PX_LAST",
+    "CHN.LOLITOAA.STSA:PX_LAST",
+    "KOR.LOLITOAA.STSA:PX_LAST",
+    "BRA.LOLITOAA.STSA:PX_LAST",
+    "ESP.LOLITOAA.STSA:PX_LAST",
+    "ITA.LOLITOAA.STSA:PX_LAST",
+    "MEX.LOLITOAA.STSA:PX_LAST",
+]
+
+
+# Helper function to calculate positive MoM percentage
+def _calculate_positive_mom_percentage(codes: list[str]) -> pd.Series:
+    """Calculate percentage of series with positive month-over-month changes."""
+    data = pd.DataFrame({code: Series(code) for code in codes}).ffill().diff()
+    df_numeric = data.apply(pd.to_numeric, errors="coerce")
+    positive_counts = (df_numeric > 0).sum(axis=1)
+    valid_counts = df_numeric.notna().sum(axis=1)
+    percent_positive = (positive_counts / valid_counts) * 100
+    percent_positive.index = pd.to_datetime(percent_positive.index)
+    percent_positive = percent_positive.sort_index()
+    return percent_positive
+
+
+# Helper function to calculate regime percentages
+def _calculate_regime_percentages(codes: list[str]) -> pd.DataFrame:
+    """Calculate regime percentages from a list of series codes."""
+    regimes = []
+    for code in codes:
+        regime = core.Regime1(core.MACD(Series(code)).histogram).regime
+        regimes.append(regime)
+
+    regimes_df = pd.concat(regimes, axis=1)
+    regime_counts = regimes_df.apply(
+        lambda row: row.value_counts(normalize=True) * 100, axis=1
+    )
+    regime_pct = regime_counts.fillna(0).round(2)
+    return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
+
+
+def Regime1(series: pd.Series) -> pd.Series:
+    """Calculate regime classification based on MACD histogram."""
     macd = core.MACD(px=series).histogram
     regime = core.Regime1(series=macd).to_dataframe()["regime"]
     return regime
@@ -109,14 +205,16 @@ def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Se
         start_dt = pd.to_datetime(ts_start) if ts_start else s.index.min()
         end_dt = pd.to_datetime(today())
 
-        # Slice first (in case resample is heavy)
-        s = s.reindex(pd.date_range(start_dt, end_dt, freq="D"))
         # Choose target frequency: override > DB value
-        target_freq = freq or ts_frequency
-        if target_freq:
+        if freq:
             try:
-                # Resample to last observation in each bin; drop empty bins
-                s = s.dropna().resample(str(target_freq)).last().dropna()
+                # Forward-fill daily series first to ensure target frequency dates get values
+                # This ensures month-end dates (e.g., 2025-10-31) get the value from the last
+                # available day in the month (e.g., 2025-10-30)
+                s = s.resample("D").last().ffill()
+                idx = pd.date_range(start_dt, end_dt, freq=freq)
+                # Resample to target frequency using last observation in each bin
+                s = s.reindex(idx)
             except Exception:
                 # If target_freq is invalid, fall back to unsampled series
                 pass
@@ -128,14 +226,18 @@ def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Se
         return s
 
     except Exception as e:
-        print(e)
-        return pd.Series(name=code)
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Error loading series {code}: {e}")
+        return pd.Series(name=code, dtype=float)
 
 
 def Resample(
     series: pd.Series,
     freq: str = "ME",
 ) -> pd.Series:
+    """Resample series to target frequency using last value."""
     return series.resample(freq).last()
 
 
@@ -143,6 +245,7 @@ def PctChange(
     series: pd.Series,
     periods: int = 1,
 ) -> pd.Series:
+    """Calculate percentage change over specified periods."""
     return series.pct_change(periods=periods).dropna()
 
 
@@ -150,6 +253,7 @@ def Diff(
     series: pd.Series,
     periods: int = 1,
 ) -> pd.Series:
+    """Calculate difference over specified periods."""
     return series.diff(periods=periods)
 
 
@@ -157,6 +261,7 @@ def MovingAverage(
     series: pd.Series,
     window: int = 3,
 ) -> pd.Series:
+    """Calculate moving average over specified window."""
     return series.rolling(window=window).mean()
 
 
@@ -164,8 +269,7 @@ def MonthEndOffset(
     series: pd.Series,
     months: int = 3,
 ) -> pd.Series:
-    from pandas.tseries.offsets import MonthEnd
-
+    """Offset series index by months and align to month end."""
     shifted = series.index + pd.DateOffset(months=months)
     series.index = shifted + MonthEnd(0)
     return series
@@ -175,6 +279,7 @@ def MonthsOffset(
     series: pd.Series,
     months: int,
 ) -> pd.Series:
+    """Offset series index by specified number of months."""
     shifted = series.index + pd.DateOffset(months=months)
     series.index = shifted
     return series
@@ -185,6 +290,7 @@ def Offset(
     months: int = 0,
     days: int = 0,
 ) -> pd.Series:
+    """Offset series index by specified months and/or days."""
     shifted = series.index + pd.DateOffset(months=months, days=days)
     series.index = shifted
     return series
@@ -194,6 +300,7 @@ def StandardScalar(
     series: pd.Series,
     window: int = 20,
 ) -> pd.Series:
+    """Standardize series using rolling mean and standard deviation."""
     roll = series.rolling(window=window)
     mean, std = roll.mean(), roll.std()
     return series.sub(mean).div(std).dropna()
@@ -204,17 +311,13 @@ def Clip(
     lower: Optional[float] = None,
     upper: Optional[float] = None,
 ) -> pd.Series:
+    """Clip series values to specified lower and upper bounds."""
     return series.clip(lower=lower, upper=upper)
 
 
 def Ffill(series: pd.Series) -> pd.Series:
+    """Forward fill missing values in a series."""
     return series.ffill()
-
-
-import numpy as np
-import pandas as pd
-from scipy.optimize import curve_fit
-from typing import Optional
 
 
 def Cycle(series: pd.Series, max_points_per_cycle: Optional[int] = None) -> pd.Series:
@@ -279,15 +382,7 @@ def Cycle(series: pd.Series, max_points_per_cycle: Optional[int] = None) -> pd.S
     return scaled
 
 
-import numpy as np
-
-
-import numpy as np
-import pandas as pd
-from scipy.optimize import curve_fit
-
-
-def find_best_window(series, max_lag=None):
+def find_best_window(series: pd.Series, max_lag: Optional[int] = None) -> int:
     """
     Automatically find the dominant cycle length (best window size)
     using the autocorrelation function.
@@ -299,7 +394,9 @@ def find_best_window(series, max_lag=None):
     return best_window
 
 
-def CycleForecast(series: pd.Series, forecast_steps=12, window_size=None):
+def CycleForecast(
+    series: pd.Series, forecast_steps: int = 12, window_size: Optional[int] = None
+) -> pd.Series:
     series = series.dropna()
     t = np.arange(len(series))
     y = series.values
@@ -355,90 +452,45 @@ def CycleForecast(series: pd.Series, forecast_steps=12, window_size=None):
     return fitted_series
 
 
-def Drawdown(series: pd.Series, window: int | None = None) -> pd.Series:
+def Drawdown(series: pd.Series, window: Optional[int] = None) -> pd.Series:
+    """Calculate drawdown from peak (rolling or expanding)."""
     if window:
         return series.div(series.rolling(window=window).max()).abs()
     return series.div(series.expanding().max()).abs()
 
 
-def Rebase(series: pd.Series):
+def Rebase(series: pd.Series) -> pd.Series:
+    """Rebase series to start at 1.0 using first non-null value."""
     return series / series.dropna().iloc[0]
 
 
-def PMI_Manufacturing_Regime():
-    manufacturing_pmis = [
-        "NTCPMIMFGSA_WLD:PX_LAST",
-        "NTCPMIMFGMESA_US:PX_LAST",
-        "ISMPMI_M:PX_LAST",
-        "NTCPMIMFGSA_CA:PX_LAST",
-        "NTCPMIMFGSA_EUZ:PX_LAST",
-        "NTCPMIMFGSA_DE:PX_LAST",
-        "NTCPMIMFGSA_FR:PX_LAST",
-        "NTCPMIMFGSA_IT:PX_LAST",
-        "NTCPMIMFGSA_ES:PX_LAST",
-        "NTCPMIMFGSA_GB:PX_LAST",
-        "NTCPMIMFGSA_JP:PX_LAST",
-        "NTCPMIMFGSA_KR",
-        "NTCPMIMFGSA_IN:PX_LAST",
-        "NTCPMIMFGNSA_CN:PX_LAST",
-    ]
-    regimes = []
-    for manufacturing_pmi in manufacturing_pmis:
-        regime = core.Regime1(core.MACD(Series(manufacturing_pmi)).histogram).regime
-        regimes.append(regime)
-
-    regimes_df = pd.concat(regimes, axis=1)
-    regime_counts = regimes_df.apply(
-        lambda row: row.value_counts(normalize=True) * 100, axis=1
-    )
-    regime_pct = regime_counts.fillna(0).round(2)
-    return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
+def PMI_Manufacturing_Regime() -> pd.DataFrame:
+    """Calculate PMI Manufacturing regime percentages."""
+    return _calculate_regime_percentages(PMI_MANUFACTURING_CODES)
 
 
-def PMI_Services_Regime():
-    manufacturing_pmis = [
-        "NTCPMISVCBUSACTSA_WLD:PX_LAST",
-        "NTCPMISVCBUSACTMESA_US:PX_LAST",
-        "ISMNMI_NM:PX_LAST",
-        "NTCPMISVCBUSACTSA_EUZ:PX_LAST",
-        "NTCPMISVCBUSACTSA_DE:PX_LAST",
-        "NTCPMISVCBUSACTSA_FR:PX_LAST",
-        "NTCPMISVCBUSACTSA_IT:PX_LAST",
-        "'NTCPMISVCBUSACTSA_ES",
-        "NTCPMISVCBUSACTSA_GB:PX_LAST",
-        "NTCPMISVCPSISA_AU",
-        "NTCPMISVCBUSACTSA_JP:PX_LAST",
-        "NTCPMISVCBUSACTSA_CN:PX_LAST",
-        "NTCPMISVCBUSACTSA_IN",
-        "NTCPMISVCBUSACTSA_BR:PX_LAST",
-    ]
-    regimes = []
-    for manufacturing_pmi in manufacturing_pmis:
-        regime = core.Regime1(core.MACD(Series(manufacturing_pmi)).histogram).regime
-        regimes.append(regime)
-
-    regimes_df = pd.concat(regimes, axis=1)
-    regime_counts = regimes_df.apply(
-        lambda row: row.value_counts(normalize=True) * 100, axis=1
-    )
-    regime_pct = regime_counts.fillna(0).round(2)
-    regime_pct.index = pd.to_datetime(regime_pct.index)
-    regime_pct = regime_pct.sort_index()
-    return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
+def PMI_Services_Regime() -> pd.DataFrame:
+    """Calculate PMI Services regime percentages."""
+    result = _calculate_regime_percentages(PMI_SERVICES_CODES)
+    result.index = pd.to_datetime(result.index)
+    result = result.sort_index()
+    return result
 
 
 def FinancialConditionsIndex1() -> pd.Series:
+    """Calculate Financial Conditions Index from multiple standardized series."""
     series = [
         StandardScalar(Series("VIX Index:PX_LAST"), 160),
         StandardScalar(Series("MOVE Index:PX_LAST"), 160),
         StandardScalar(Series("BAMLH0A0HYM2"), 160),
         StandardScalar(Series("BAMLC0A0CM"), 160),
     ]
-
-    return pd.concat(series, axis=1).ffill().mean(axis=1)
+    result = pd.concat(series, axis=1).ffill().mean(axis=1)
+    return result
 
 
 def FedNetLiquidity() -> pd.Series:
+    """Calculate Fed Net Liquidity (Assets - Treasury - Repo) in trillions USD."""
     # 1) Load raw series
     asset_mil = Series("WALCL")  # millions USD
     treasury_bil = Series("WTREGEN")  # billions USD
@@ -458,71 +510,24 @@ def FedNetLiquidity() -> pd.Series:
     return daily.dropna()
 
 
-def NumOfPmiServicesPositiveMoM():
-    manufacturing_pmis = [
-        "NTCPMISVCBUSACTSA_WLD:PX_LAST",
-        "NTCPMISVCBUSACTMESA_US:PX_LAST",
-        "ISMNMI_NM:PX_LAST",
-        "NTCPMISVCBUSACTSA_EUZ:PX_LAST",
-        "NTCPMISVCBUSACTSA_DE:PX_LAST",
-        "NTCPMISVCBUSACTSA_FR:PX_LAST",
-        "NTCPMISVCBUSACTSA_IT:PX_LAST",
-        "'NTCPMISVCBUSACTSA_ES",
-        "NTCPMISVCBUSACTSA_GB:PX_LAST",
-        "NTCPMISVCBUSACTSA_JP:PX_LAST",
-        "NTCPMISVCBUSACTSA_CN:PX_LAST",
-        "NTCPMISVCBUSACTSA_IN",
-        "NTCPMISVCBUSACTSA_BR:PX_LAST",
-    ]
-    regimes = []
-    for manufacturing_pmi in manufacturing_pmis:
-        regimes.append(Series(manufacturing_pmi))
-    regimes_df = pd.concat(regimes, axis=1)
-    df_numeric = regimes_df.apply(pd.to_numeric, errors="coerce").diff()
-    positive_counts = (df_numeric > 0).sum(axis=1)
-    valid_counts = df_numeric.notna().sum(axis=1)
-    percent_positive = (positive_counts / valid_counts) * 100
-    percent_positive.index = pd.to_datetime(percent_positive.index)
-    percent_positive = percent_positive.sort_index()
-    return percent_positive
+def NumOfPmiServicesPositiveMoM() -> pd.Series:
+    """Calculate percentage of PMI Services series with positive MoM changes."""
+    return _calculate_positive_mom_percentage(PMI_SERVICES_CODES)
 
 
-def oecd_cli_regime():
-    manufacturing_pmis = [
-        "USA.LOLITOAA.STSA:PX_LAST",
-        "TUR.LOLITOAA.STSA:PX_LAST",
-        "IND.LOLITOAA.STSA:PX_LAST",
-        "IDN.LOLITOAA.STSA:PX_LAST",
-        "A5M.LOLITOAA.STSA:PX_LAST",
-        "CHN.LOLITOAA.STSA:PX_LAST",
-        "KOR.LOLITOAA.STSA:PX_LAST",
-        "BRA.LOLITOAA.STSA:PX_LAST",
-        "AUS.LOLITOAA.STSA:PX_LAST",
-        "CAN.LOLITOAA.STSA:PX_LAST",
-        "DEU.LOLITOAA.STSA:PX_LAST",
-        "ESP.LOLITOAA.STSA:PX_LAST",
-        "FRA.LOLITOAA.STSA:PX_LAST",
-        "G4E.LOLITOAA.STSA:PX_LAST",
-        "G7M.LOLITOAA.STSA:PX_LAST",
-        "GBR.LOLITOAA.STSA:PX_LAST",
-        "ITA.LOLITOAA.STSA:PX_LAST",
-        "JPN.LOLITOAA.STSA:PX_LAST",
-        "MEX.LOLITOAA.STSA:PX_LAST",
-    ]
-    regimes = []
-    for manufacturing_pmi in manufacturing_pmis:
-        regime = core.Regime1(core.MACD(Series(manufacturing_pmi)).histogram).regime
-        regimes.append(regime)
-
-    regimes_df = pd.concat(regimes, axis=1)
-    regime_counts = regimes_df.apply(
-        lambda row: row.value_counts(normalize=True) * 100, axis=1
-    )
-    regime_pct = regime_counts.fillna(0).round(2)
-    return regime_pct[["Expansion", "Slowdown", "Contraction", "Recovery"]].dropna()
+def oecd_cli_regime() -> pd.DataFrame:
+    """Calculate OECD CLI regime percentages."""
+    return _calculate_regime_percentages(OECD_CLI_CODES)
 
 
-def CustomSeries(code: str) -> pd.Series:
+def CustomSeries(code: str) -> Union[pd.Series, pd.DataFrame, None]:
+    """
+    Return custom calculated series based on code.
+
+    Returns:
+        pd.Series or pd.DataFrame depending on the code requested.
+        Returns None if code is not recognized.
+    """
     if code == "GlobalGrowthRegime-Expansion":
         return PMI_Manufacturing_Regime()["Expansion"]
 
@@ -536,57 +541,10 @@ def CustomSeries(code: str) -> pd.Series:
         return PMI_Manufacturing_Regime()["Recovery"]
 
     if code == "NumOfOECDLeadingPositiveMoM":
-        codes = [
-            "USA.LOLITOAA.STSA:PX_LAST",
-            "TUR.LOLITOAA.STSA:PX_LAST",
-            "IND.LOLITOAA.STSA:PX_LAST",
-            "IDN.LOLITOAA.STSA:PX_LAST",
-            "A5M.LOLITOAA.STSA:PX_LAST",
-            "CHN.LOLITOAA.STSA:PX_LAST",
-            "KOR.LOLITOAA.STSA:PX_LAST",
-            "BRA.LOLITOAA.STSA:PX_LAST",
-            "AUS.LOLITOAA.STSA:PX_LAST",
-            "CAN.LOLITOAA.STSA:PX_LAST",
-            "DEU.LOLITOAA.STSA:PX_LAST",
-            "ESP.LOLITOAA.STSA:PX_LAST",
-            "FRA.LOLITOAA.STSA:PX_LAST",
-            "G4E.LOLITOAA.STSA:PX_LAST",
-            "G7M.LOLITOAA.STSA:PX_LAST",
-            "GBR.LOLITOAA.STSA:PX_LAST",
-            "ITA.LOLITOAA.STSA:PX_LAST",
-            "JPN.LOLITOAA.STSA:PX_LAST",
-            "MEX.LOLITOAA.STSA:PX_LAST",
-        ]
-        data = D_MultiSeries(*codes).diff()
-        df_numeric = data.apply(pd.to_numeric, errors="coerce")
-        positive_counts = (df_numeric > 0).sum(axis=1)
-        valid_counts = df_numeric.notna().sum(axis=1)
-        percent_positive = (positive_counts / valid_counts) * 100
-        return percent_positive
+        return _calculate_positive_mom_percentage(OECD_CLI_CODES)
 
     if code == "NumOfPmiPositiveMoM":
-        codes = [
-            "NTCPMIMFGSA_WLD:PX_LAST",
-            "NTCPMIMFGMESA_US:PX_LAST",
-            "ISMPMI_M:PX_LAST",
-            "NTCPMIMFGSA_CA:PX_LAST",
-            "NTCPMIMFGSA_EUZ:PX_LAST",
-            "NTCPMIMFGSA_DE:PX_LAST",
-            "NTCPMIMFGSA_FR:PX_LAST",
-            "NTCPMIMFGSA_IT:PX_LAST",
-            "NTCPMIMFGSA_ES:PX_LAST",
-            "NTCPMIMFGSA_GB:PX_LAST",
-            "NTCPMIMFGSA_JP:PX_LAST",
-            "NTCPMIMFGSA_KR",
-            "NTCPMIMFGSA_IN:PX_LAST",
-            "NTCPMIMFGNSA_CN:PX_LAST",
-        ]
-        data = D_MultiSeries(*codes).diff()
-        df_numeric = data.apply(pd.to_numeric, errors="coerce")
-        positive_counts = (df_numeric > 0).sum(axis=1)
-        valid_counts = df_numeric.notna().sum(axis=1)
-        percent_positive = (positive_counts / valid_counts) * 100
-        return percent_positive
+        return _calculate_positive_mom_percentage(PMI_MANUFACTURING_CODES)
 
     if code == "GlobalM2":
         data = pd.concat(
@@ -688,28 +646,17 @@ def CustomSeries(code: str) -> pd.Series:
     if code == "OecdCliRegime-Recovery":
         return oecd_cli_regime()["Recovery"]
 
+    # Return None if code not found (caller should handle)
+    return None
 
-def NumofOecdCliMoMPositveEM():
-    codes = [
-        "TUR.LOLITOAA.STSA:PX_LAST",
-        "IND.LOLITOAA.STSA:PX_LAST",
-        "IDN.LOLITOAA.STSA:PX_LAST",
-        "CHN.LOLITOAA.STSA:PX_LAST",
-        "KOR.LOLITOAA.STSA:PX_LAST",
-        "BRA.LOLITOAA.STSA:PX_LAST",
-        "ESP.LOLITOAA.STSA:PX_LAST",
-        "ITA.LOLITOAA.STSA:PX_LAST",
-        "MEX.LOLITOAA.STSA:PX_LAST",
-    ]
-    data = D_MultiSeries(*codes).diff()
-    df_numeric = data.apply(pd.to_numeric, errors="coerce")
-    positive_counts = (df_numeric > 0).sum(axis=1)
-    valid_counts = df_numeric.notna().sum(axis=1)
-    percent_positive = (positive_counts / valid_counts) * 100
-    return percent_positive
+
+def NumOfOecdCliMoMPositiveEM() -> pd.Series:
+    """Calculate percentage of OECD CLI EM series with positive MoM changes."""
+    return _calculate_positive_mom_percentage(OECD_CLI_EM_CODES)
 
 
 def financial_conditions_us() -> pd.Series:
+    """Calculate US Financial Conditions Index from multiple standardized series."""
     dd = (
         pd.concat(
             [
@@ -734,7 +681,8 @@ def financial_conditions_us() -> pd.Series:
     return dd
 
 
-def FinancialConditionsKR():
+def FinancialConditionsKR() -> pd.Series:
+    """Calculate Korea Financial Conditions Index from multiple standardized series."""
     dd = (
         pd.concat(
             [
@@ -757,24 +705,13 @@ def FinancialConditionsKR():
     return dd
 
 
-def NumOfPmiMfgPositiveMoM():
-    codes = [
-        "NTCPMIMFGSA_WLD:PX_LAST",
-        "NTCPMIMFGMESA_US:PX_LAST",
-        "ISMPMI_M:PX_LAST",
-        "NTCPMIMFGSA_CA:PX_LAST",
-        "NTCPMIMFGSA_EUZ:PX_LAST",
-        "NTCPMIMFGSA_DE:PX_LAST",
-        "NTCPMIMFGSA_FR:PX_LAST",
-        "NTCPMIMFGSA_IT:PX_LAST",
-        "NTCPMIMFGSA_ES:PX_LAST",
-        "NTCPMIMFGSA_GB:PX_LAST",
-        "NTCPMIMFGSA_JP:PX_LAST",
-        "NTCPMIMFGSA_KR",
-        "NTCPMIMFGSA_IN:PX_LAST",
-        "NTCPMIMFGNSA_CN:PX_LAST",
-    ]
-    data = pd.DataFrame({code: Series(code) for code in codes}).ffill().diff()
+def NumOfPmiMfgPositiveMoM() -> pd.Series:
+    """Calculate percentage of PMI Manufacturing series with positive MoM changes."""
+    data = (
+        pd.DataFrame({code: Series(code) for code in PMI_MANUFACTURING_CODES})
+        .ffill()
+        .diff()
+    )
     data = data.dropna(thresh=10)
     df_numeric = data.apply(pd.to_numeric, errors="coerce")
     positive_counts = (df_numeric > 0).sum(axis=1)
@@ -783,12 +720,14 @@ def NumOfPmiMfgPositiveMoM():
     return percent_positive
 
 
-def USD_Open_Interest():
+def USD_Open_Interest() -> pd.Series:
+    """Calculate USD open interest (long - short)."""
     data = Series("CFTNCLOI%ALLJUSDNYBTOF_US") - Series("CFTNCSOI%ALLJUSDNYBTOF_US")
     return data
 
 
-def InvestorPositions():
+def InvestorPositions() -> pd.DataFrame:
+    """Calculate investor positions (long - short) for various assets."""
     data = {
         "S&P500": Series("CFTNCLOI%ALLS5C3512CMEOF_US")
         - Series("CFTNCSOI%ALLS5C3512CMEOF_US"),
@@ -807,7 +746,8 @@ def InvestorPositions():
     return data
 
 
-def InvestorPositionsvsTrend(weeks: int = 52):
+def InvestorPositionsvsTrend(weeks: int = 52) -> pd.DataFrame:
+    """Calculate investor positions vs rolling trend."""
     data = {
         "S&P500": Series("CFTNCLOI%ALLS5C3512CMEOF_US")
         - Series("CFTNCSOI%ALLS5C3512CMEOF_US"),
@@ -946,35 +886,9 @@ class CalendarYearSeasonality:
         return pd.concat(components, axis=1)
 
 
-def NumOfOECDLeadingPositiveMoM():
-    codes = [
-        "USA.LOLITOAA.STSA:PX_LAST",
-        "TUR.LOLITOAA.STSA:PX_LAST",
-        "IND.LOLITOAA.STSA:PX_LAST",
-        "IDN.LOLITOAA.STSA:PX_LAST",
-        "A5M.LOLITOAA.STSA:PX_LAST",
-        "CHN.LOLITOAA.STSA:PX_LAST",
-        "KOR.LOLITOAA.STSA:PX_LAST",
-        "BRA.LOLITOAA.STSA:PX_LAST",
-        "AUS.LOLITOAA.STSA:PX_LAST",
-        "CAN.LOLITOAA.STSA:PX_LAST",
-        "DEU.LOLITOAA.STSA:PX_LAST",
-        "ESP.LOLITOAA.STSA:PX_LAST",
-        "FRA.LOLITOAA.STSA:PX_LAST",
-        "G4E.LOLITOAA.STSA:PX_LAST",
-        "G7M.LOLITOAA.STSA:PX_LAST",
-        "GBR.LOLITOAA.STSA:PX_LAST",
-        "ITA.LOLITOAA.STSA:PX_LAST",
-        "JPN.LOLITOAA.STSA:PX_LAST",
-        "MEX.LOLITOAA.STSA:PX_LAST",
-    ]
-
-    data = pd.DataFrame({code: Series(code) for code in codes}).ffill().diff()
-    df_numeric = data.apply(pd.to_numeric, errors="coerce")
-    positive_counts = (df_numeric > 0).sum(axis=1)
-    valid_counts = df_numeric.notna().sum(axis=1)
-    percent_positive = (positive_counts / valid_counts) * 100
-    return percent_positive
+def NumOfOECDLeadingPositiveMoM() -> pd.Series:
+    """Calculate percentage of OECD CLI series with positive MoM changes."""
+    return _calculate_positive_mom_percentage(OECD_CLI_CODES)
 
 
 class M2:
@@ -1074,7 +988,8 @@ class M2:
         )
 
 
-def LocalIndices():
+def LocalIndices() -> pd.DataFrame:
+    """Calculate local indices performance metrics (Level, 1D, 1W, 1M, 3M, 1Y, YTD)."""
     from ix.db import get_timeseries
 
     # 1) 벤치마크 티커 정의
@@ -1194,7 +1109,7 @@ class AiCapex:
 
 
 def macro_data() -> pd.DataFrame:
-
+    """Calculate macro data indicators and combine into a DataFrame."""
     return MultiSeries(
         **{
             "ACWI YoY": Series("ACWI US EQUITY:PX_LAST", freq="ME")
@@ -1228,7 +1143,9 @@ def macro_data() -> pd.DataFrame:
             .div(Series("SPY US EQUITY:PX_LAST"))
             .pct_change(250)
             .mul(100),
-            "Financial Conditions (US, 26W Lead)": Offset(financial_conditions_us().mul(100), days=26),
+            "Financial Conditions (US, 26W Lead)": Offset(
+                financial_conditions_us().mul(100), days=26
+            ),
             "ISM Manufacturing PMI": Series("ISMPMI_M:PX_LAST"),
             "Global M2 YoY (%, 9M Lead)": Offset(
                 M2("ME").WorldTotal.pct_change(12), months=9

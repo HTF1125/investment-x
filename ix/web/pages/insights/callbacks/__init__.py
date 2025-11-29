@@ -2,7 +2,6 @@
 
 # Import all callbacks to register them
 from .data_callbacks import *  # noqa: F403, F401
-from .filter_callbacks import *  # noqa: F403, F401
 from .action_callbacks import *  # noqa: F403, F401
 from .row_click import *  # noqa: F403, F401
 from .dragdrop_callbacks import *  # noqa: F403, F401

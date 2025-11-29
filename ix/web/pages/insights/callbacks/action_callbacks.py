@@ -8,6 +8,7 @@ from ix.db.conn import Session
 from ix.db.models import Insights
 from ix.misc.terminal import get_logger
 from ix.web.pages.insights.services.data_service import InsightsDataService
+from ix.misc.auth import get_current_user
 from ix.web.pages.insights.callbacks.data_callbacks import (
     render_table,
     create_empty_state,
@@ -25,17 +26,21 @@ logger = get_logger(__name__)
     Output("current-page", "data", allow_duplicate=True),
     Input({"type": "delete-insight-button", "index": ALL}, "n_clicks"),
     State("insights-data", "data"),
+    State("token-store", "data"),
     State("current-page", "data"),
     State("filter-config", "data"),
     prevent_initial_call=True,
 )
-def handle_delete(n_clicks_list, insights_data, current_page, filter_config):
+def handle_delete(
+    n_clicks_list, insights_data, token_data, current_page, filter_config
+):
     """Handle insight deletion."""
     if not any(n_clicks_list):
         raise PreventUpdate
 
     try:
         import dash
+
         ctx = dash.callback_context
         if not ctx.triggered:
             raise PreventUpdate
@@ -44,9 +49,21 @@ def handle_delete(n_clicks_list, insights_data, current_page, filter_config):
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
         insight_id = json.loads(button_id)["index"]
 
+        # Require authenticated admin
+        user = None
+        if isinstance(token_data, dict):
+            token = token_data.get("token")
+            if token:
+                user = get_current_user(token)
+        if not user or not getattr(user, "is_admin", False):
+            logger.warning("Blocked delete: unauthorized user")
+            raise PreventUpdate
+
         # Delete from database
         with Session() as session:
-            insight_to_delete = session.query(Insights).filter(Insights.id == insight_id).first()
+            insight_to_delete = (
+                session.query(Insights).filter(Insights.id == insight_id).first()
+            )
             if insight_to_delete:
                 session.delete(insight_to_delete)
                 session.commit()
@@ -61,7 +78,9 @@ def handle_delete(n_clicks_list, insights_data, current_page, filter_config):
             return create_empty_state(), [], 1, 1, 1
 
         # Adjust page if needed
-        _, _, total_pages = InsightsDataService.get_page_data(insights_list, current_page)
+        _, _, total_pages = InsightsDataService.get_page_data(
+            insights_list, current_page
+        )
         page = min(current_page or 1, total_pages)
 
         # Render table

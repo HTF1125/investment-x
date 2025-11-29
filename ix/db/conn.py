@@ -78,9 +78,12 @@ class Connection:
                 with self.engine.connect() as conn:
                     conn.execute(text("SELECT 1"))
 
-                # Create session factory
+                # Create session factory (prevent attribute expiration on commit)
                 self.SessionLocal = sessionmaker(
-                    autocommit=False, autoflush=False, bind=self.engine
+                    autocommit=False,
+                    autoflush=False,
+                    expire_on_commit=False,
+                    bind=self.engine,
                 )
 
                 # Create scoped session for thread-safe session management

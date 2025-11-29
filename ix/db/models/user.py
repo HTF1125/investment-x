@@ -8,9 +8,12 @@ from ix.db.conn import Base
 
 class User(Base):
     """User model for PostgreSQL."""
+
     __tablename__ = "user"
 
-    id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    id = Column(
+        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
+    )
     username = Column(String, unique=True, nullable=False, index=True)
     password = Column(String, nullable=False)  # Hashed password
     disabled = Column(Boolean, default=False)
@@ -36,7 +39,13 @@ class User(Base):
             return session.query(cls).filter(cls.username == username).first()
 
     @classmethod
-    def new_user(cls, username: str, password: str, email: Optional[str] = None, is_admin: bool = False):
+    def new_user(
+        cls,
+        username: str,
+        password: str,
+        email: Optional[str] = None,
+        is_admin: bool = False,
+    ):
         """Create a new user with hashed password"""
         from ix.db.conn import Session
 
@@ -51,6 +60,8 @@ class User(Base):
 
         with Session() as session:
             session.add(user)
+            # Ensure the instance is persisted before refresh in SQLAlchemy 2.x
+            session.flush()
             session.refresh(user)
             return user
 

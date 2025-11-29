@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 # Login page layout
 layout = html.Div(
     [
-        dcc.Location(id="login-redirect", refresh=True),
+        dcc.Location(id="login-redirect", refresh=False),
         dmc.Container(
             [
                 dmc.Paper(
@@ -159,6 +159,10 @@ def handle_login(n_clicks, username, password):
     """Handle user login"""
     if not n_clicks:
         raise PreventUpdate
+
+    # Normalize inputs
+    username = (username or "").strip()
+    password = password or ""
 
     # Validate inputs
     if not username or not password:
