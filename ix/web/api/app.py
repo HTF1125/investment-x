@@ -13,7 +13,7 @@ from ix.db.conn import ensure_connection, Session
 from ix.misc import get_logger
 from datetime import datetime
 from ix.db.custom import FinancialConditionsIndexUS
-from sqlalchemy.orm import load_only, joinedload, joinedload
+from sqlalchemy.orm import joinedload
 
 # Import routers
 from ix.web.api.routers import series
@@ -69,28 +69,7 @@ def register_api_routes(app):
 
         # Execute query with pagination using SQLAlchemy
         with Session() as session:
-            timeseries_query = session.query(Timeseries).options(
-                load_only(
-                    Timeseries.id,
-                    Timeseries.code,
-                    Timeseries.name,
-                    Timeseries.provider,
-                    Timeseries.asset_class,
-                    Timeseries.category,
-                    Timeseries.source,
-                    Timeseries.source_code,
-                    Timeseries.frequency,
-                    Timeseries.unit,
-                    Timeseries.scale,
-                    Timeseries.currency,
-                    Timeseries.country,
-                    Timeseries.start,
-                    Timeseries.end,
-                    Timeseries.num_data,
-                    Timeseries.remark,
-                    Timeseries.favorite,
-                )
-            )
+            timeseries_query = session.query(Timeseries)
 
             # Apply filters
             if query:
@@ -115,27 +94,7 @@ def register_api_routes(app):
 
             timeseries_list = timeseries_query.all()
 
-            # Extract all attributes while in session
-            ts_data_list = []
-            for ts in timeseries_list:
-                ts_data_list.append(
-                    {
-                        "id": ts.id,
-                        "code": ts.code,
-                        "name": ts.name,
-                        "provider": ts.provider,
-                        "asset_class": ts.asset_class,
-                        "category": ts.category,
-                        "source": ts.source,
-                        "source_code": ts.source_code,
-                        "frequency": ts.frequency,
-                        "start": ts.start,
-                        "end": ts.end,
-                        "num_data": ts.num_data,
-                        "favorite": ts.favorite if hasattr(ts, "favorite") else False,
-                    }
-                )
-            timeseries_list = ts_data_list
+            # At this point, all columns are loaded for each Timeseries row
 
         formatted_timeseries = []
 
@@ -311,7 +270,7 @@ def register_api_routes(app):
                         ("asset_class", 50),
                         ("category", 100),
                         ("source", 100),
-                        ("source_code",2000),
+                        ("source_code", 2000),
                         ("frequency", 20),
                         ("unit", 50),
                         ("currency", 10),

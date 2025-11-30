@@ -498,7 +498,7 @@ def FedNetLiquidity() -> pd.Series:
 
     # 2) Normalize to trillions USD
     asset = asset_mil.div(1_000_000)  # → trillions
-    treasury = treasury_bil.div(1_000)  # → trillions
+    treasury = treasury_bil.div(1_000_000)  # → trillions
     repo = repo_bil.div(1_000)  # → trillions
     # 3) Combine
     df = pd.concat({"asset": asset, "treasury": treasury, "repo": repo}, axis=1)
