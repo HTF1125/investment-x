@@ -3,7 +3,7 @@
 from dash import clientside_callback, Input, Output
 
 
-# Add drag and drop visual feedback
+# Add drag and drop visual feedback (without interfering with dcc.Upload handling)
 clientside_callback(
     """
     function(upload_zone_rendered) {
@@ -16,20 +16,21 @@ clientside_callback(
             if (uploadZone.dataset.dragdropInitialized === 'true') return;
             uploadZone.dataset.dragdropInitialized = 'true';
 
-            // Prevent default drag behaviors on the document
-            function preventDefaults(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                document.addEventListener(eventName, preventDefaults, false);
-                uploadZone.addEventListener(eventName, preventDefaults, false);
+            // Prevent page from opening files when dropping outside the zone
+            ['dragenter', 'dragover'].forEach(eventName => {
+                document.addEventListener(eventName, function(e){ e.preventDefault(); }, false);
             });
+            document.addEventListener('drop', function(e){
+                if (!e.target.closest('.pdf-upload-zone')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }, false);
 
             // Add visual feedback when dragging over
             ['dragenter', 'dragover'].forEach(eventName => {
                 uploadZone.addEventListener(eventName, function(e) {
+                    e.preventDefault(); // allow drop
                     uploadZone.classList.add('drag-over');
                 }, false);
             });
@@ -45,6 +46,6 @@ clientside_callback(
         return window.dash_clientside.no_update;
     }
     """,
-    Output("dragdrop-handler", "data"),
+    Output("dragdrop-handler", "children"),
     Input("upload-pdf-dragdrop", "id"),
 )

@@ -234,6 +234,27 @@
     color: var(--text-primary);
 }
 
+/* Large centered summary modal (90% viewport) */
+#insight-modal .modal-dialog {
+    max-width: 90vw !important;
+    width: 90vw !important;
+    margin: 5vh auto !important; /* centers vertically with top/bottom space */
+}
+#insight-modal .modal-content {
+    height: 90vh !important;
+    background: var(--terminal-surface) !important;
+    border: 1px solid var(--terminal-border) !important;
+}
+#insight-modal .modal-body {
+    overflow: hidden auto;
+}
+
+/* Drag & drop visual feedback for upload zone */
+.pdf-upload-zone.drag-over {
+    border-color: var(--accent-primary);
+    background-color: rgba(56, 189, 248, 0.08);
+}
+
 /* ==========================================================================
    4. Utility Classes
    ========================================================================== */

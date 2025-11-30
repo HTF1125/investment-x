@@ -71,7 +71,7 @@ def create_upload_dropzone() -> html.Div:
             ),
             id="upload-pdf-dragdrop",
             multiple=True,
-            accept=".pdf",
+            accept="application/pdf,.pdf",
             style={
                 "width": "100%",
                 "height": "100%",

@@ -67,7 +67,8 @@ def create_summary_modal() -> dbc.Modal:
                             "padding": "28px",
                             "borderRadius": "12px",
                             "minHeight": "400px",
-                            "maxHeight": "calc(80vh - 240px)",
+                            "height": "calc(90vh - 140px)",
+                            "maxHeight": "calc(90vh - 140px)",
                         },
                     ),
                 ],
@@ -202,10 +203,3 @@ def create_all_modals():
         create_edit_summary_modal(),
         create_add_publisher_modal(),
     ]
-
-
-
-
-
-
-
