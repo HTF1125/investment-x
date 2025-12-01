@@ -151,7 +151,13 @@ def D_MultiSeries(
 
 
 @cached(cache)
-def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Series:
+def Series(
+    code: str,
+    freq: str | None = None,
+    name: str | None = None,
+    ccy: str | None = None,
+    scale: int | None = None,
+) -> pd.Series:
     """
     Return a pandas Series for `code`, resampled to `freq` if provided,
     otherwise to the DB frequency `ts.frequency`. Slice to [ts.start, today()].
@@ -219,12 +225,84 @@ def Series(code: str, freq: str | None = None, name: str | None = None) -> pd.Se
                 # If target_freq is invalid, fall back to unsampled series
                 pass
 
-        # Stable name
-        s.name = ts_code if ts_code else code
+        # Slice to [start, today] regardless of resampling for consistency
+        s = s.loc[start_dt:end_dt]
+
+        # Currency conversion to requested `ccy`
+        src_ccy = (ts.currency or "").upper() if hasattr(ts, "currency") else ""
+        tgt_ccy = (ccy or "").upper() if ccy else ""
+
+        def _fx_pair_series(base: str, quote: str) -> pd.Series:
+            """Fetch FX rate series base/quote as PX_LAST, daily and ffilled.
+            Tries both 'Curncy' and 'CURNCY' tickers.
+            Returns empty series when not found.
+            """
+            if not base or not quote or base == quote:
+                return pd.Series(dtype=float)
+            for asset_class in ("Curncy", "CURNCY"):
+                fx_code = f"{base}{quote} {asset_class}:PX_LAST"
+                fx = Series(fx_code, freq="D")
+                if not fx.empty:
+                    return fx.ffill()
+            return pd.Series(dtype=float)
+
+        if tgt_ccy and src_ccy and src_ccy != tgt_ccy:
+            # Try direct pair
+            fx = _fx_pair_series(src_ccy, tgt_ccy)
+            if not fx.empty:
+                fx = fx.reindex(s.index).ffill()
+                s = s.mul(fx).dropna()
+            else:
+                # Try reverse pair
+                fx_rev = _fx_pair_series(tgt_ccy, src_ccy)
+                if not fx_rev.empty:
+                    fx_rev = fx_rev.reindex(s.index).ffill()
+                    s = s.div(fx_rev).dropna()
+                else:
+                    # Fallback via USD cross (src -> USD -> tgt)
+                    pivot = "USD"
+                    tmp = s
+                    if src_ccy != pivot:
+                        fx1 = _fx_pair_series(src_ccy, pivot)
+                        if fx1.empty:
+                            fx1 = _fx_pair_series(pivot, src_ccy)
+                            if not fx1.empty:
+                                fx1 = fx1.reindex(tmp.index).ffill()
+                                tmp = tmp.div(fx1)
+                        else:
+                            fx1 = fx1.reindex(tmp.index).ffill()
+                            tmp = tmp.mul(fx1)
+                    if tgt_ccy != pivot:
+                        fx2 = _fx_pair_series(pivot, tgt_ccy)
+                        if fx2.empty:
+                            fx2 = _fx_pair_series(tgt_ccy, pivot)
+                            if not fx2.empty:
+                                fx2 = fx2.reindex(tmp.index).ffill()
+                                tmp = tmp.div(fx2)
+                        else:
+                            fx2 = fx2.reindex(tmp.index).ffill()
+                            tmp = tmp.mul(fx2)
+                    s = tmp.dropna()
+
+        # Apply scale conversion if requested:
+        # Convert stored series by its intrinsic ts.scale to target `scale`.
+        if scale is not None:
+            try:
+                ts_scale = int(ts.scale or 1)
+            except Exception:
+                ts_scale = 1
+            try:
+                target_scale = int(scale) if scale else None
+            except Exception:
+                target_scale = None
+            if target_scale and target_scale != 0:
+                s = s.mul(ts_scale).div(target_scale)
+
+        # Override name if provided
         if name:
             s.name = name
-        return s
 
+        return s
     except Exception as e:
         import logging
 
