@@ -627,6 +627,10 @@ def register_api_routes(app):
         Returns all timeseries marked as favorite (favorite = true) with their data
         concatenated into a single DataFrame format, similar to /api/series.
 
+        Query parameters (optional):
+        - start_date: ISO-8601 date or datetime (inclusive lower bound)
+        - end_date: ISO-8601 date or datetime (inclusive upper bound)
+
         Response format: Column-oriented JSON object
         {
           "Date": ["2023-01-01T00:00:00", "2023-01-02T00:00:00"],
@@ -730,6 +734,62 @@ def register_api_routes(app):
                     # Combine all series into a single DataFrame
                     df = pd.concat(series_list, axis=1)
                     df.index.name = "Date"
+
+                    # Optional date slicing via query params
+                    start_date_str = request.args.get("start_date")
+                    end_date_str = request.args.get("end_date")
+
+                    start_ts = (
+                        pd.to_datetime(start_date_str, errors="coerce")
+                        if start_date_str
+                        else None
+                    )
+                    end_ts = (
+                        pd.to_datetime(end_date_str, errors="coerce")
+                        if end_date_str
+                        else None
+                    )
+
+                    # Normalize timezone info on both index and bounds for safe comparison
+                    try:
+                        df.index = pd.DatetimeIndex(df.index).tz_localize(None)
+                    except Exception:
+                        try:
+                            df.index = pd.DatetimeIndex(df.index).tz_convert(None)
+                        except Exception:
+                            pass
+
+                    if isinstance(start_ts, pd.Timestamp):
+                        try:
+                            start_ts = start_ts.tz_localize(None)
+                        except Exception:
+                            try:
+                                start_ts = start_ts.tz_convert(None)
+                            except Exception:
+                                pass
+
+                    if isinstance(end_ts, pd.Timestamp):
+                        try:
+                            end_ts = end_ts.tz_localize(None)
+                        except Exception:
+                            try:
+                                end_ts = end_ts.tz_convert(None)
+                            except Exception:
+                                pass
+
+                    # If both provided and reversed, swap to ensure valid range
+                    if (
+                        isinstance(start_ts, pd.Timestamp)
+                        and isinstance(end_ts, pd.Timestamp)
+                        and start_ts > end_ts
+                    ):
+                        start_ts, end_ts = end_ts, start_ts
+
+                    # Apply slicing if bounds are valid Timestamps
+                    if isinstance(start_ts, pd.Timestamp):
+                        df = df[df.index >= start_ts]
+                    if isinstance(end_ts, pd.Timestamp):
+                        df = df[df.index <= end_ts]
 
                     # Convert to column-oriented format like /api/series
                     df_indexed = df.reset_index()

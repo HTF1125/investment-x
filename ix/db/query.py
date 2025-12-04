@@ -1261,3 +1261,10 @@ def macro_data() -> pd.DataFrame:
             ).diff(12),
         }
     )
+
+
+def NumPositivePercentByRow(df: pd.DataFrame):
+    """Return a Series giving the percentage of positive entries per row (ignoring NaN)."""
+    positive = (df > 0).sum(axis=1)
+    total = df.notna().sum(axis=1)
+    return (positive / total * 100).fillna(0)
