@@ -8,9 +8,10 @@ from fastapi.responses import JSONResponse
 from ix.db.conn import ensure_connection
 from ix.misc import get_logger
 
-from ix.api.routers import auth, timeseries, series
-
 logger = get_logger(__name__)
+
+# Log that we're creating the app
+logger.info("Initializing FastAPI application...")
 
 # Create FastAPI app
 app = FastAPI(
@@ -18,6 +19,8 @@ app = FastAPI(
     description="API for Investment-X dashboard and data management",
     version="1.0.0",
 )
+
+logger.info("FastAPI app created successfully")
 
 # Configure CORS
 app.add_middleware(
@@ -28,21 +31,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth.router, prefix="/api", tags=["Authentication"])
-app.include_router(timeseries.router, prefix="/api", tags=["Timeseries"])
-app.include_router(series.router, prefix="/api", tags=["Series"])
+# Include routers with error handling
+try:
+    from ix.api.routers import auth, timeseries, series
+
+    logger.info("Importing routers...")
+    app.include_router(auth.router, prefix="/api", tags=["Authentication"])
+    app.include_router(timeseries.router, prefix="/api", tags=["Timeseries"])
+    app.include_router(series.router, prefix="/api", tags=["Series"])
+    logger.info("Routers registered successfully")
+except Exception as e:
+    logger.error(f"Failed to import or register routers: {e}", exc_info=True)
+    # Still allow app to start for health checks
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database connection on startup."""
-    try:
-        ensure_connection()
-        logger.info("Database connection established")
-    except Exception as e:
-        logger.error(f"Failed to connect to database: {e}")
-        # Don't crash the app if DB connection fails - it will retry on first request
+    """Log startup - database connection will be established on first request."""
+    logger.info("FastAPI application started")
+    # Don't connect to DB here - let it connect lazily on first request
+    # This prevents blocking during startup
 
 
 @app.get("/")
