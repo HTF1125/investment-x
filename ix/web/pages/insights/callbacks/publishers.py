@@ -6,7 +6,6 @@ from dash.exceptions import PreventUpdate
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 
-from ix.db.client import get_publishers, create_publisher
 from ix.misc.terminal import get_logger
 from ix.web.pages.insights.components.publishers_section import create_publishers_list_items
 

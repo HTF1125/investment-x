@@ -22,10 +22,8 @@ __all__ = [
     "Base",
     "Timeseries",
     "TimeseriesData",
-    "Publishers",
     "Universe",
     "EconomicCalendar",
-    "Insights",
     "TacticalView",
     "User",
 ]
@@ -422,21 +420,6 @@ class TimeseriesData(Base):
     )
 
 
-class Publishers(Base):
-    """Publishers model."""
-
-    __tablename__ = "publishers"
-
-    id = Column(
-        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
-    )
-    url = Column(String, nullable=False)
-    name = Column(String, default="Unnamed")
-    frequency = Column(String, default="Unclassified")
-    remark = Column(Text, nullable=True)
-    last_visited = Column(DateTime, default=datetime.now)
-
-
 class Universe(Base):
     """Universe model."""
 
@@ -568,37 +551,6 @@ class EconomicCalendar(Base):
             return df
 
 
-class Insights(Base):
-    """Insights model."""
-
-    __tablename__ = "insights"
-
-    id = Column(
-        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
-    )
-    issuer = Column(String, default="Unnamed")
-    name = Column(String, default="Unnamed")
-    published_date = Column(Date, default=date.today)
-    summary = Column(Text, nullable=True)
-    status = Column(String, default="new")  # new, processing, completed, failed
-    pdf_content = Column(LargeBinary, nullable=True)
-    hash_tag = Column(String, nullable=True)  # Hash tag for the insight
-
-    def save_content(self, content: bytes) -> bool:
-        """Persist PDF content directly in the database."""
-
-        if content is None:
-            self.pdf_content = None
-        else:
-            self.pdf_content = bytes(content)
-        return True
-
-    def get_content(self) -> bytes:
-        """Retrieve PDF content from the database."""
-
-        return self.pdf_content or b""
-
-
 class TacticalView(Base):
     """TacticalView model for storing tactical asset allocation views."""
 
@@ -618,8 +570,6 @@ def all():
     """Return all model classes."""
     return [
         EconomicCalendar,
-        Insights,
-        Publishers,
         Universe,
         Timeseries,
         TacticalView,

@@ -7,7 +7,6 @@ import dash_mantine_components as dmc
 NAV_ITEMS = [
     {"name": "Dashboard", "href": "/", "icon": "fa6-solid:chart-line"},
     {"name": "Macro", "href": "/macro", "icon": "fa6-solid:globe"},
-    {"name": "Insights", "href": "/insights", "icon": "fa6-solid:lightbulb"},
     {"name": "Strategies", "href": "/strategies", "icon": "fa6-solid:bolt"},
     {"name": "Data", "href": "/data", "icon": "fa6-solid:database"},
     {"name": "Risk", "href": "/risk", "icon": "fa6-solid:shield-halved"},

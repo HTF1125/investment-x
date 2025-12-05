@@ -447,7 +447,6 @@ if __name__ == "__main__":
     print("Pages available:")
     print("  - Dashboard: http://localhost:8050/")
     print("  - Macro: http://localhost:8050/macro")
-    print("  - Insights: http://localhost:8050/insights")
     print("  - Strategies: http://localhost:8050/strategies")
     print("  - Data: http://localhost:8050/data")
     print("  - Risk: http://localhost:8050/risk")
