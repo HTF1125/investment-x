@@ -6,21 +6,14 @@
 # Let's instrument timing and reduce flush frequency for diagnostics.
 
 import time
+import logging
 from ix.db import Timeseries
 from ix.db.conn import Session
-from ix.db.query import (
-    Offset,
-    Series,
-    MultiSeries,
-    M2,
-    MonthEndOffset,
-    NumOfOECDLeadingPositiveMoM,
-    NumOfPmiMfgPositiveMoM,
-    NumOfPmiServicesPositiveMoM,
-    financial_conditions_us,
-    FedNetLiquidity,
-)
-from ix.db.query import *
+from ix.engine import execute_source_code
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 with Session() as session:
     timeseries_rows = (
         session.query(Timeseries.id, Timeseries.code, Timeseries.source_code)
@@ -28,31 +21,29 @@ with Session() as session:
         .all()
     )
 
-    print(f"Fetched {len(timeseries_rows)} timeseries rows.")
+    logger.info(f"Fetched {len(timeseries_rows)} timeseries rows.")
 
     n = 0
     start_time = time.time()
     for row_id, row_code, row_source_code in timeseries_rows:
-        print(row_code)
+        logger.info(f"Processing row_code: {row_code}")
         n += 1
         t0 = time.time()
         # Try to measure eval/processing
         try:
             s_eval = time.time()
-            data = eval(
-                str(row_source_code)
-            )  # Beware: eval is potentially slow/dangerous!
+            data = execute_source_code(str(row_source_code))
             s_eval_done = time.time()
             if hasattr(data, "dropna"):
                 data = data.dropna()
             data.name = row_code
         except Exception as e:
-            print(f"Error evaluating row {row_id} ({row_code}): {e}")
+            logger.error(f"Error evaluating row {row_id} ({row_code}): {e}")
             continue
         s_proc_done = time.time()
 
         # Print timing
-        print(
+        logger.info(
             f"[{n}/{len(timeseries_rows)}] eval: {s_eval_done-s_eval:.3f}s, proc: {s_proc_done-s_eval_done:.3f}s"
         )
 
@@ -61,12 +52,11 @@ with Session() as session:
         ts_row = session.get(Timeseries, row_id)
         ts_row.reset()
         ts_row.data = data.to_dict()
-        session.flush()  # This flush writes pending changes. Could be slow if repeated.
         t_db1 = time.time()
-        print(
-            f"    DB update + flush: {t_db1-t_db0:.3f}s, total {t_db1-t0:.3f}s for this row, elapsed: {t_db1-start_time:.1f}s"
+        logger.info(
+            f"    DB update: {t_db1-t_db0:.3f}s, total {t_db1-t0:.3f}s for this row, elapsed: {t_db1-start_time:.1f}s"
         )
 
         # If this is slow, try commenting out flush() in-loop and only flush/commit at end.
-
-    print("Done. Total time: %.2fs" % (time.time() - start_time))
+    session.commit()
+    logger.info("Done. Total time: %.2fs" % (time.time() - start_time))
