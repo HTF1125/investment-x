@@ -68,23 +68,23 @@ async def get_timeseries(
     for ts in timeseries_list:
         formatted_ts = TimeseriesResponse(
             id=str(ts.id),
-            code=str(ts.code),
-            name=str(ts.name),
+            code=str(ts.code) if ts.code else None,
+            name=str(ts.name) if ts.name else None,
             provider=ts.provider,
-            asset_class=str(ts.asset_class),
+            asset_class=str(ts.asset_class) if ts.asset_class else None,
             category=ts.category,
             start=ts.start,
             end=ts.end,
-            num_data=int(ts.num_data),
+            num_data=int(ts.num_data) if ts.num_data is not None else None,
             source=ts.source,
             source_code=getattr(ts, "source_code", None),
-            frequency=str(ts.frequency),
+            frequency=str(ts.frequency) if ts.frequency else None,
             unit=getattr(ts, "unit", None),
             scale=getattr(ts, "scale", None),
             currency=getattr(ts, "currency", None),
             country=getattr(ts, "country", None),
-            remark=str(ts.remark),
-            favorite=bool(ts.favorite),
+            remark=str(ts.remark) if ts.remark else None,
+            favorite=bool(ts.favorite) if ts.favorite is not None else False,
         )
         formatted_timeseries.append(formatted_ts)
 
@@ -838,7 +838,11 @@ async def upload_data(
                     date_str = k
                 else:
                     date_str = str(pd.to_datetime(k).date())
-                data_dict[date_str] = float(v)
+                data_dict[date_str] = (
+                    float(v)
+                    if v is not None and not (isinstance(v, float) and pd.isna(v))
+                    else None
+                )
 
             # Update the timeseries data
             data_record.data = data_dict

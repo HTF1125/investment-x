@@ -95,10 +95,10 @@ async def register(user_data: UserRegister):
         return UserResponse(
             id=str(user.id),
             username=str(user.username),
-            email=str(user.email),
+            email=str(user.email) if user.email else None,
             is_admin=bool(user.is_admin),
             disabled=bool(user.disabled),
-            created_at=user.created_at.date(),
+            created_at=user.created_at,
         )
     except Exception as e:
         logger.error(f"Error registering user: {e}")
@@ -117,11 +117,11 @@ async def get_current_user_info(
     """
     return UserResponse(
         id=str(current_user.id),
-        username=str(current_user.username) ,
-        email=str(current_user.email),
+        username=str(current_user.username),
+        email=str(current_user.email) if current_user.email else None,
         is_admin=bool(current_user.is_admin),
         disabled=bool(current_user.disabled),
-        created_at=current_user.created_at.date(),
+        created_at=current_user.created_at,
     )
 
 
@@ -130,5 +130,7 @@ async def refresh_token(current_user: User = Depends(get_current_user)):
     """
     Refresh access token.
     """
-    access_token = create_user_token(str(current_user.username), bool(current_user.is_admin))
+    access_token = create_user_token(
+        str(current_user.username), bool(current_user.is_admin)
+    )
     return {"access_token": access_token, "token_type": "bearer"}
