@@ -42,6 +42,13 @@ async def startup_event():
         logger.info("Database connection established")
     except Exception as e:
         logger.error(f"Failed to connect to database: {e}")
+        # Don't crash the app if DB connection fails - it will retry on first request
+
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {"message": "Investment-X API", "status": "running"}
 
 
 @app.get("/api/health")
