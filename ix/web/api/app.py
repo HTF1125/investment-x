@@ -828,6 +828,255 @@ def register_api_routes(app):
             logger.exception(f"Error retrieving favorite timeseries: {e}")
             return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
+    @app.server.route("/api/timeseries.custom", methods=["GET"])
+    def get_custom_timeseries_data():
+        """
+        GET /api/timeseries.custom - Get selected timeseries data based on provided codes.
+
+        Accepts JSON body (not query string):
+        { "codes": ["CODE1", "CODE2", ...] }
+        or
+        { "codes": "CODE1, CODE2, ..." }
+
+        Optional query parameters:
+        - start_date: ISO-8601 date or datetime (inclusive lower bound)
+        - end_date: ISO-8601 date or datetime (inclusive upper bound)
+
+        Returns the same column-oriented format as /api/timeseries/favorites.
+        - Column order follows the input codes order
+        - Dates are sorted descending
+        """
+        ensure_connection()
+
+        try:
+            # Parse codes from JSON body (not from URL)
+            payload = request.get_json(silent=True)
+            codes = []
+            if isinstance(payload, list):
+                codes = [str(c).strip() for c in payload if str(c).strip()]
+            elif isinstance(payload, dict) and payload is not None:
+                raw_codes = payload.get("codes")
+                if isinstance(raw_codes, list):
+                    codes = [str(c).strip() for c in raw_codes if str(c).strip()]
+                elif isinstance(raw_codes, str):
+                    codes = [c.strip() for c in raw_codes.split(",") if c.strip()]
+
+            # Fallback to header if provided
+            if not codes:
+                header_codes = request.headers.get("X-Codes")
+                if header_codes:
+                    codes = [c.strip() for c in header_codes.split(",") if c.strip()]
+
+            # Ensure we have codes
+            if not codes:
+                return (
+                    jsonify(
+                        {
+                            "error": "No codes provided. Provide JSON body with 'codes' list or 'X-Codes' header."
+                        }
+                    ),
+                    400,
+                )
+
+            # Deduplicate while preserving order to avoid duplicate JSON keys
+            seen_codes = set()
+            unique_codes = []
+            for code in codes:
+                if code not in seen_codes:
+                    unique_codes.append(code)
+                    seen_codes.add(code)
+            codes = unique_codes
+
+            # Optional date slicing via query params
+            start_date_str = request.args.get("start_date")
+            end_date_str = request.args.get("end_date")
+
+            with Session() as session:
+                # Fetch all requested timeseries in one query
+                ts_list = (
+                    session.query(Timeseries)
+                    .options(joinedload(Timeseries.data_record))
+                    .filter(Timeseries.code.in_(codes))
+                    .all()
+                )
+                code_to_ts = {ts.code: ts for ts in ts_list}
+
+                series_list = []
+
+                for code in codes:
+                    ts = code_to_ts.get(code)
+                    if not ts:
+                        continue
+                    try:
+                        # Access data directly via data_record
+                        data_record = ts._get_or_create_data_record(session)
+                        column_data = (
+                            data_record.data if data_record and data_record.data else {}
+                        )
+                        frequency = ts.frequency
+
+                        # Convert JSONB dict to pandas Series
+                        if column_data and isinstance(column_data, dict):
+                            ts_data = pd.Series(column_data)
+                            try:
+                                ts_data.index = pd.to_datetime(ts_data.index)
+                                ts_data = pd.to_numeric(
+                                    ts_data, errors="coerce"
+                                ).dropna()
+                                ts_data.name = ts.code
+                                if frequency and len(ts_data) > 0:
+                                    ts_data = (
+                                        ts_data.sort_index()
+                                        .resample(str(frequency))
+                                        .last()
+                                        .dropna()
+                                    )
+                                else:
+                                    ts_data = ts_data.sort_index()
+
+                                # Only add non-empty series
+                                if not ts_data.empty:
+                                    series_list.append(ts_data)
+                            except Exception:
+                                # If date conversion fails, try to clean it
+                                try:
+                                    valid_dates = pd.to_datetime(
+                                        ts_data.index, errors="coerce"
+                                    )
+                                    ts_data = ts_data[valid_dates.notna()]
+                                    ts_data.index = pd.to_datetime(ts_data.index)
+                                    ts_data = pd.to_numeric(
+                                        ts_data, errors="coerce"
+                                    ).dropna()
+                                    ts_data.name = ts.code
+                                    ts_data = ts_data.sort_index()
+                                    if not ts_data.empty:
+                                        series_list.append(ts_data)
+                                except Exception:
+                                    logger.warning(
+                                        f"Error processing timeseries {ts.code}: could not convert to Series"
+                                    )
+                                    continue
+                        else:
+                            logger.debug(f"Timeseries {ts.code} has no data")
+
+                    except Exception as e:
+                        error_code = code
+                        logger.warning(
+                            f"Error processing custom timeseries {error_code}: {e}"
+                        )
+                        continue
+
+                # Concatenate all series into a DataFrame
+                if series_list:
+                    df = pd.concat(series_list, axis=1)
+                    df.index.name = "Date"
+
+                    # Optional date bounds
+                    start_ts = (
+                        pd.to_datetime(start_date_str, errors="coerce")
+                        if start_date_str
+                        else None
+                    )
+                    end_ts = (
+                        pd.to_datetime(end_date_str, errors="coerce")
+                        if end_date_str
+                        else None
+                    )
+
+                    # Normalize timezone info on both index and bounds for safe comparison
+                    try:
+                        df.index = pd.DatetimeIndex(df.index).tz_localize(None)
+                    except Exception:
+                        try:
+                            df.index = pd.DatetimeIndex(df.index).tz_convert(None)
+                        except Exception:
+                            pass
+
+                    if isinstance(start_ts, pd.Timestamp):
+                        try:
+                            start_ts = start_ts.tz_localize(None)
+                        except Exception:
+                            try:
+                                start_ts = start_ts.tz_convert(None)
+                            except Exception:
+                                pass
+
+                    if isinstance(end_ts, pd.Timestamp):
+                        try:
+                            end_ts = end_ts.tz_localize(None)
+                        except Exception:
+                            try:
+                                end_ts = end_ts.tz_convert(None)
+                            except Exception:
+                                pass
+
+                    # If both provided and reversed, swap to ensure valid range
+                    if (
+                        isinstance(start_ts, pd.Timestamp)
+                        and isinstance(end_ts, pd.Timestamp)
+                        and start_ts > end_ts
+                    ):
+                        start_ts, end_ts = end_ts, start_ts
+
+                    # Apply slicing if bounds are valid Timestamps
+                    if isinstance(start_ts, pd.Timestamp):
+                        df = df[df.index >= start_ts]
+                    if isinstance(end_ts, pd.Timestamp):
+                        df = df[df.index <= end_ts]
+
+                    # Reorder columns to preserve input order
+                    present_in_order = [
+                        s.name for s in series_list if s.name in df.columns
+                    ]
+                    # Ensure unique order in case of duplicates
+                    seen_present = set()
+                    present_in_order = [
+                        c
+                        for c in present_in_order
+                        if not (c in seen_present or seen_present.add(c))
+                    ]
+                    df = df[present_in_order]
+
+                    # Sort dates descending as requested
+                    df = df.sort_index(ascending=False)
+
+                    # Convert to column-oriented format like /api/series and /favorites
+                    df_indexed = df.reset_index()
+
+                    column_dict = OrderedDict()
+
+                    # Iterate in DataFrame column order to preserve order
+                    for col in df_indexed.columns:
+                        values = df_indexed[col].tolist()
+                        # Clean values for JSON serialization
+                        cleaned_values = []
+                        for v in values:
+                            if v is None or (isinstance(v, float) and math.isnan(v)):
+                                cleaned_values.append(None)
+                            elif isinstance(v, (pd.Timestamp, datetime)):
+                                # Convert timestamp/datetime to ISO string
+                                cleaned_values.append(v.isoformat())
+                            else:
+                                cleaned_values.append(v)
+                        column_dict[col] = cleaned_values
+
+                    # Return as JSON with preserved column order
+                    return Response(
+                        json.dumps(column_dict, ensure_ascii=False),
+                        mimetype="application/json",
+                    )
+                else:
+                    # No data available
+                    return Response(
+                        json.dumps({"Date": []}, ensure_ascii=False),
+                        mimetype="application/json",
+                    )
+
+        except Exception as e:
+            logger.exception(f"Error retrieving custom timeseries: {e}")
+            return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
     @app.server.route("/api/insights", methods=["GET"])
     def get_insights():
         """
@@ -1521,6 +1770,9 @@ def register_api_routes(app):
     print("  - GET /api/timeseries/{id} - Get timeseries by ID")
     print("  - GET /api/timeseries/code/{code} - Get timeseries by code")
     print("  - GET /api/timeseries/favorites - Get all favorite timeseries with data")
+    print(
+        "  - GET /api/timeseries.custom - Get selected timeseries by codes (JSON body)"
+    )
     print("  - GET /api/insights - List all insights")
     print("  - POST /api/insights - Create or update insights")
     print("  - GET /api/insights/{id} - Get insight by ID")
