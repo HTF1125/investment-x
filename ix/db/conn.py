@@ -22,7 +22,7 @@ class Connection:
         self.Session = None  # scoped_session
         self._is_connected = False
 
-    def connect(self, max_retries: int = 3, retry_delay: float = 2.0) -> bool:
+    def connect(self, max_retries: int = 1, retry_delay: float = 1.0) -> bool:
         """
         Establishes a connection to PostgreSQL with retry logic.
 
@@ -41,8 +41,9 @@ class Connection:
 
                 # Get database URL from settings
                 settings = Settings()
-                # db_url = settings.db_url
-                db_url = "postgresql://robertashan1125:kJV4nO4u2eruNiCUo7LwpO6t8ov8JkR7@dpg-d44jfqm3jp1c73ddsae0-a.singapore-postgres.render.com/investmentx_16o7"
+                db_url = settings.db_url
+                if not db_url:
+                    raise ValueError("DB_URL environment variable is not set")
 
                 # Convert MongoDB URL format to PostgreSQL if needed
                 # If it's already a PostgreSQL URL, use it as is
@@ -63,7 +64,8 @@ class Connection:
                         "postgresql://", "postgresql+psycopg2://", 1
                     )
 
-                # Create SQLAlchemy engine with connection pooling
+                # Create SQLAlchemy engine with connection pooling and timeout
+                # connect_args with connect_timeout prevents hanging on connection attempts
                 self.engine = create_engine(
                     db_url,
                     poolclass=QueuePool,
@@ -72,6 +74,9 @@ class Connection:
                     pool_pre_ping=True,  # Verify connections before using them
                     pool_recycle=3600,  # Recycle connections after 1 hour
                     echo=False,  # Set to True for SQL query logging
+                    connect_args={
+                        "connect_timeout": 5,  # 5 second timeout for connection attempts
+                    },
                 )
 
                 # Validate connection
@@ -250,9 +255,6 @@ def ensure_connection():
     return True
 
 
-# Initialize connection on module import
-try:
-    ensure_connection()
-except Exception as e:
-    logger.error(f"Failed to initialize database connection: {e}")
-    # Don't raise here to allow the application to start and retry later
+# Don't initialize connection on module import - let it be lazy
+# This prevents blocking during application startup
+# Connection will be established on first use via ensure_connection()
