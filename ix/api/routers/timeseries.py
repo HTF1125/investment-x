@@ -447,7 +447,7 @@ async def get_favorite_timeseries_data(
 
 
 async def _parse_codes_from_request(request: Request) -> List[str]:
-    """Parse codes from request body or X-Codes header."""
+    """Parse codes from request body, query parameters, or X-Codes header."""
     codes = []
 
     # Try to get from request body (works for POST, and GET with body in some clients)
@@ -464,7 +464,13 @@ async def _parse_codes_from_request(request: Request) -> List[str]:
     except Exception:
         pass
 
-    # Fallback to header if body didn't work
+    # Fallback to query parameters (for GET requests)
+    if not codes:
+        query_codes = request.query_params.get("codes")
+        if query_codes:
+            codes = [c.strip() for c in query_codes.split(",") if c.strip()]
+
+    # Fallback to header if body and query didn't work
     if not codes:
         header_codes = request.headers.get("X-Codes")
         if header_codes:
@@ -487,7 +493,17 @@ async def _parse_codes_from_request(request: Request) -> List[str]:
     if not codes:
         raise HTTPException(
             status_code=400,
-            detail="No codes provided. Provide JSON body with 'codes' list.",
+            detail="No codes provided. Provide JSON body with 'codes' list, 'codes' query parameter, or 'X-Codes' header.",
+        )
+
+    # Filter out reserved column names
+    RESERVED_NAMES = {"Date", "date"}  # Reserved for index column
+    codes = [c for c in codes if c not in RESERVED_NAMES]
+
+    if not codes:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid codes provided after filtering reserved names.",
         )
 
     # Deduplicate while preserving order
@@ -721,6 +737,7 @@ async def get_custom_timeseries_data(
 
     try:
         codes = await _parse_codes_from_request(request)
+        logger.debug(f"Processing {len(codes)} codes: {codes}")
         series_list = []
 
         # Process each code one by one
