@@ -499,8 +499,37 @@ async def _parse_codes_from_request(request: Request) -> List[str]:
                         f"X-Codes JSON parsed but unexpected format: {type(parsed)}"
                     )
             except (json.JSONDecodeError, ValueError) as e:
-                # Fallback to comma-separated for backward compatibility
-                # Note: This will break if codes contain commas
+                # Check if header looks like it might contain complex expressions with commas
+                # If it contains function calls, quotes, or parentheses, it's likely JSON should be used
+                has_complex_expressions = any(
+                    char in header_codes
+                    for char in [
+                        "(",
+                        ")",
+                        "{",
+                        "}",
+                        '"',
+                        "'",
+                        "Series(",
+                        "MultiSeries(",
+                    ]
+                )
+
+                if has_complex_expressions:
+                    logger.error(
+                        f"X-Codes header contains complex expressions but is not valid JSON. "
+                        f'Please send codes as JSON array: ["code1", "code2"]. '
+                        f"Error: {e}. Header preview: {header_codes[:200]}..."
+                    )
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "X-Codes header must be a JSON array when codes contain commas or special characters. "
+                            'Example: X-Codes: ["CODE1", "Series(\'CODE2\').pct_change()"]'
+                        ),
+                    )
+
+                # Fallback to comma-separated for simple codes only
                 logger.warning(
                     f"X-Codes header is not valid JSON (falling back to comma-separated): {e}. "
                     f"Header value starts with: {header_codes[:100]}..."
