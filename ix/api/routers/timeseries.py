@@ -700,6 +700,9 @@ def _format_dataframe_response(
         except Exception:
             pass
 
+    # Resample to daily frequency
+    df = df.resample("D").last()
+
     if isinstance(start_ts, pd.Timestamp):
         start_ts = _normalize_timezone(start_ts)
     if isinstance(end_ts, pd.Timestamp):
@@ -719,8 +722,8 @@ def _format_dataframe_response(
     ]
     df = df[present_in_order]
 
-    # Sort dates descending as requested
-    df = df.sort_index(ascending=False)
+    # Sort dates ascending as requested
+    df = df.sort_index(ascending=True)
 
     # Convert to column-oriented format
     df_indexed = df.reset_index()
