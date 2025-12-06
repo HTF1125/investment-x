@@ -479,15 +479,32 @@ async def _parse_codes_from_request(request: Request) -> List[str]:
                 parsed = json.loads(header_codes)
                 if isinstance(parsed, list):
                     codes = [str(c).strip() for c in parsed if str(c).strip()]
+                    logger.debug(
+                        f"Parsed {len(codes)} codes from JSON array in X-Codes header"
+                    )
                 elif isinstance(parsed, dict) and "codes" in parsed:
                     codes_list = parsed["codes"]
                     if isinstance(codes_list, list):
                         codes = [str(c).strip() for c in codes_list if str(c).strip()]
+                        logger.debug(
+                            f"Parsed {len(codes)} codes from JSON dict in X-Codes header"
+                        )
                     elif isinstance(codes_list, str):
                         codes = [c.strip() for c in codes_list.split(",") if c.strip()]
-            except (json.JSONDecodeError, ValueError):
+                        logger.warning(
+                            "X-Codes header contains dict with string 'codes' - using comma-split (may break)"
+                        )
+                else:
+                    logger.warning(
+                        f"X-Codes JSON parsed but unexpected format: {type(parsed)}"
+                    )
+            except (json.JSONDecodeError, ValueError) as e:
                 # Fallback to comma-separated for backward compatibility
                 # Note: This will break if codes contain commas
+                logger.warning(
+                    f"X-Codes header is not valid JSON (falling back to comma-separated): {e}. "
+                    f"Header value starts with: {header_codes[:100]}..."
+                )
                 codes = [c.strip() for c in header_codes.split(",") if c.strip()]
 
     if not codes:
