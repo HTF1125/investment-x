@@ -13,7 +13,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from ix.db.conn import ensure_connection
-from ix.db.query import Series, D_MultiSeries
+from ix.db.query import *
 from ix.misc import get_logger
 
 logger = get_logger(__name__)
