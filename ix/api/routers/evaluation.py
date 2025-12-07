@@ -31,17 +31,17 @@ class EvaluationRequest(BaseModel):
 @router.post("/data/evaluation")
 async def evaluate_code(request: EvaluationRequest):
     """
-    POST /api/data/evaluation - Evaluate function code and return dataframe.
+    POST /api/data/evaluation - Evaluate code expression and return dataframe.
 
     Request body:
-    - code: Long string of function code to evaluate (must return a DataFrame)
+    - code: Code expression that evaluates to a DataFrame or Series
     - format: Response format ('json' or 'csv', default: 'json')
 
-    The code will be executed with access to module-level imports.
+    The code will be evaluated with access to module-level imports.
 
     Example request:
     {
-        "code": "import pandas as pd\\ndf = pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})\\nreturn df"
+        "code": "pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})"
     }
     """
     ensure_connection()
@@ -54,108 +54,11 @@ async def evaluate_code(request: EvaluationRequest):
             status_code=400, detail="Invalid format. Must be 'json' or 'csv'"
         )
 
-    eval_locals = {}
-
     try:
         code = request.code.strip()
 
-        # Check if code is a function definition
-        is_function_def = code.strip().startswith("def ") or "\ndef " in code
-
-        # If code contains 'return' but is not a function definition, wrap it in a function
-        has_return = "return" in code
-        if has_return and not is_function_def:
-            # Wrap in a function and call it
-            lines = code.split("\n")
-            indented_lines = ["    " + line if line.strip() else line for line in lines]
-            wrapped_code = "\n".join(
-                [
-                    "def _evaluate():",
-                ]
-                + indented_lines
-                + ["", "result = _evaluate()"]
-            )
-            exec(wrapped_code, globals(), eval_locals)
-        else:
-            # Execute the code directly
-            exec(code, globals(), eval_locals)
-
-        # Try to get the result from locals
-        result = None
-
-        # Priority order for finding result
-        result_vars = ["result", "df", "dataframe", "data"]
-        for var in result_vars:
-            if var in eval_locals:
-                result = eval_locals[var]
-                break
-
-        # If code defines a function, try to call it (look for the first function defined)
-        if result is None and is_function_def:
-            # Find all function names in the code
-            import re
-
-            func_matches = re.findall(r"def\s+(\w+)\s*\(", code)
-            if func_matches:
-                func_name = func_matches[0]  # Get the first function
-                if func_name in eval_locals:
-                    func = eval_locals[func_name]
-                    if callable(func):
-                        try:
-                            # Try calling with no arguments first
-                            result = func()
-                        except TypeError as e:
-                            # Function might need arguments
-                            error_msg = str(e)
-                            if (
-                                "required" in error_msg.lower()
-                                or "missing" in error_msg.lower()
-                            ):
-                                raise HTTPException(
-                                    status_code=400,
-                                    detail=f"Function '{func_name}' requires arguments. Please call it in your code or provide a function that takes no arguments.",
-                                )
-                            raise
-
-        # If still no result, try evaluating the last line as an expression
-        if result is None:
-            lines = [line.strip() for line in code.split("\n") if line.strip()]
-            if lines:
-                last_line = lines[-1]
-                # Skip if last line is a statement (not an expression)
-                statement_keywords = [
-                    "return",
-                    "def",
-                    "class",
-                    "if",
-                    "for",
-                    "while",
-                    "import",
-                    "from",
-                    "#",
-                    "print",
-                    "pass",
-                    "break",
-                    "continue",
-                ]
-                if last_line and not any(
-                    last_line.startswith(kw) for kw in statement_keywords
-                ):
-                    try:
-                        result = eval(last_line, globals(), eval_locals)
-                    except:
-                        pass
-
-        # If still no result, raise an error
-        if result is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Code execution did not produce a result. Please ensure your code:\n"
-                "1. Returns a DataFrame (e.g., 'return df')\n"
-                "2. Assigns result to 'df', 'result', 'dataframe', or 'data'\n"
-                "3. Ends with an expression that evaluates to a DataFrame\n"
-                "4. If defining a function, call it or ensure it returns a DataFrame",
-            )
+        # Evaluate the code expression directly
+        result = eval(code, globals(), {})
 
         # Convert result to DataFrame if it's a Series
         if isinstance(result, pd.Series):
