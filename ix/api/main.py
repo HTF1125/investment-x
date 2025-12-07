@@ -33,12 +33,13 @@ app.add_middleware(
 
 # Include routers with error handling
 try:
-    from ix.api.routers import auth, timeseries, series
+    from ix.api.routers import auth, timeseries, series, evaluation
 
     logger.info("Importing routers...")
     app.include_router(auth.router, prefix="/api", tags=["Authentication"])
     app.include_router(timeseries.router, prefix="/api", tags=["Timeseries"])
     app.include_router(series.router, prefix="/api", tags=["Series"])
+    app.include_router(evaluation.router, prefix="/api", tags=["Evaluation"])
     logger.info("Routers registered successfully")
 except Exception as e:
     logger.error(f"Failed to import or register routers: {e}", exc_info=True)
