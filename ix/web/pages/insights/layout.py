@@ -116,7 +116,21 @@ def create_command_bar() -> html.Div:
                     # Action Buttons
                     dmc.Group(
                         [
-                            create_upload_button(),
+                                # Open Drive Button
+                                html.A(
+                                    dmc.Button(
+                                        "Drive Folder",
+                                        leftSection=DashIconify(icon="logos:google-drive", width=16),
+                                        variant="light",
+                                        color="blue",
+                                        size="sm",
+                                        radius="md",
+                                    ),
+                                    href="https://drive.google.com/drive/folders/1jkpxtpaZophtkx5Lhvb-TAF9BuKY_pPa",
+                                    target="_blank",
+                                    style={"textDecoration": "none"},
+                                ),
+                                create_upload_button(),
                         ],
                         gap="sm",
                     ),
@@ -128,6 +142,9 @@ def create_command_bar() -> html.Div:
     )
 
 
+# ============================================================================
+# Main Feed Area
+# ============================================================================
 # ============================================================================
 # Main Feed Area
 # ============================================================================
@@ -143,36 +160,27 @@ def create_feed_area() -> html.Div:
                 children=html.Div(id="output-pdf-upload"),
                 parent_style={"marginTop": "12px"},
             ),
-            # Content Grid
+            # Content Table (Replaces Grid)
             html.Div(
-                id="insights-grid-container",
-                className="insight-grid",
+                id="insights-table-container",
                 style={"marginTop": "20px"},
             ),
-            # Load more button
-            dmc.Center(
-                dmc.Button(
-                    "Load more",
-                    id="load-more-insights",
-                    variant="light",
-                    leftSection=DashIconify(icon="carbon:chevron-down", width=16),
-                    size="sm",
-                ),
-                style={"marginTop": "12px"},
-                id="load-more-container",
-            ),
-            # Pagination (Hidden but functional for infinite scroll logic if needed)
+            # Pagination
             html.Div(
                 dmc.Pagination(
                     id="insights-pagination",
                     total=1,
                     value=1,
-                    style={"display": "none"},
+                    color="gray",
+                    size="md",
+                    withEdges=True,
                 ),
+                style={"marginTop": "20px", "display": "flex", "justifyContent": "center"},
             ),
         ],
         className="terminal-feed",
         id="feed-scroll-container",
+        style={"maxWidth": "1200px", "margin": "0 auto", "padding": "0 20px"} # Centered container
     )
 
 
@@ -186,7 +194,7 @@ layout = html.Div(
         dcc.Store(id="selected-insight-id", data=None),
         dcc.Store(id="current-page", data=1),
         dcc.Store(id="filter-config", data={"search": "", "no_summary": False}),
-        dcc.Store(id="view-mode", data="grid"),  # 'grid' or 'list'
+        dcc.Store(id="view-mode", data="list"),  # Force list/table mode
         dcc.Store(id="publishers-refresh-token", data=None),
         dcc.Interval(
             id="publishers-refresh-interval", interval=60 * 1000, n_intervals=0
@@ -197,42 +205,87 @@ layout = html.Div(
         # Layout Structure
         html.Div(
             [
-                # Left Sidebar
-                create_sidebar(),
-                # Main Content Area (Column)
+                # Main Content Area (Full Width)
                 html.Div(
                     [
-                        create_command_bar(),
-                        html.Div(
+                        dmc.Paper(
                             [
+                                # Library Header
+                                dmc.Group(
+                                    [
+                                        dmc.Group(
+                                            [
+                                                dmc.ThemeIcon(
+                                                    DashIconify(icon="carbon:catalog", width=20),
+                                                    size="lg",
+                                                    radius="md",
+                                                    variant="light",
+                                                    color="blue",
+                                                ),
+                                                dmc.Stack(
+                                                    [
+                                                        dmc.Text("Research Library", size="lg", fw=700, c="gray.2", lh=1),
+                                                        dmc.Text("Global Equity & Macro Insights", size="xs", c="dimmed"),
+                                                    ],
+                                                    gap="2px",
+                                                ),
+                                            ],
+                                            gap="md",
+                                        ),
+                                        dmc.Badge(
+                                            id="insights-count-badge", # Connected to callback
+                                            children="0 documents",
+                                            variant="outline",
+                                            color="gray",
+                                            size="sm",
+                                        )
+                                    ],
+                                    justify="space-between",
+                                    align="center",
+                                    mb="xl",
+                                    pb="lg",
+                                    style={"borderBottom": "1px solid #334155"}
+                                ),
+
+                                # Toolbar
+                                create_command_bar(),
+
+                                # Feed Content
                                 create_feed_area(),
                             ],
-                            id="terminal-main-split",
-                            className="terminal-grid",
+                            p="xl",
+                            radius="lg",
+                            style={
+                                "backgroundColor": "#0f172a",
+                                "border": "1px solid #1e293b",
+                                "minHeight": "800px",
+                                "boxShadow": "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                            }
                         ),
                     ],
                     style={
-                        "display": "flex",
-                        "flexDirection": "column",
-                        "height": "100vh",
-                        "overflow": "hidden",
+                        "padding": "30px",
+                        "maxWidth": "1600px",
+                        "margin": "0 auto",
+                        "width": "100%",
+                        "minHeight": "100vh",
                     },
                 ),
             ],
-            className="terminal-grid-outer",  # Renamed for clarity
+            className="terminal-layout-outer",
             style={
-                "display": "grid",
-                "gridTemplateColumns": "260px 1fr",
-                "height": "100vh",
-                "overflow": "hidden",
+                "backgroundColor": "#0f172a",
+                "minHeight": "100vh",
             },
         ),
         # Hidden components for callback compatibility
-        html.Div(id="insights-table-container", style={"display": "none"}),
         html.Div(id="row-click-handler", style={"display": "none"}),
         html.Div(id="dragdrop-handler", style={"display": "none"}),
         # Dummy div for keyboard shortcut callback
         html.Div(id="keyboard-shortcut-listener", style={"display": "none"}),
+        # Hidden grid container to satisfy callbacks that might output to it (if any remain)
+        html.Div(id="insights-grid-container", style={"display": "none"}),
+        html.Div(id="load-more-container", style={"display": "none"}), # Hide load more button
     ],
     className="insights-page-container",
 )
@@ -276,107 +329,82 @@ def render_grid_feed(insights_data, current_page, view_mode, token_data):
     cards = []
     for insight in insights_to_render:
         insight_id = str(insight.get("id"))
-        summary_text = insight.get("summary") or "No summary available."
-        hash_text = insight.get("hash") or ""
+        url = insight.get("url")
 
         # Create Card Component
-        card = html.Div(
-            [
-                html.Div(
-                    [
-                        dmc.Badge(
-                            insight.get("issuer", "Unknown"),
-                            size="sm",
-                            radius="sm",
-                            variant="light",
-                            color="blue",
-                            style={
-                                "whiteSpace": "normal",
-                                "lineHeight": 1.2,
-                                "maxWidth": "100%",
-                            },
-                        ),
-                        dmc.Text(insight.get("published_date"), size="xs", c="dimmed"),
-                    ],
-                    className="card-meta",
-                ),
-                html.Div(insight.get("name"), className="card-title"),
-                # Hash tag (full) under title when present
-                (
-                    dmc.Badge(
-                        f"#{hash_text}",
-                        size="xs",
-                        variant="light",
-                        color="cyan",
-                        style={
-                            "fontFamily": "monospace",
-                            "wordBreak": "break-all",
-                            "marginBottom": "6px",
-                        },
-                    )
-                    if hash_text
-                    else None
-                ),
-                # Short preview only (avoid long card)
-                dmc.Text(
-                    (
-                        (summary_text[:180] + "...")
-                        if len(summary_text) > 180
-                        else summary_text
-                    ),
-                    size="sm",
-                    c="dimmed",
-                    style={"lineHeight": "1.6", "marginBottom": "8px"},
-                ),
-                html.Div(
-                    [
-                        dmc.Group(
-                            [
-                                dmc.Badge(
-                                    "Macro", size="xs", variant="outline", color="gray"
-                                ),
-                                dmc.Anchor(
-                                    dmc.Button(
-                                        "View PDF",
-                                        leftSection=DashIconify(
-                                            icon="carbon:document-pdf", width=14
-                                        ),
-                                        variant="light",
-                                        color="blue",
-                                        size="xs",
-                                    ),
-                                    href=f"/api/download-pdf/{insight_id}",
-                                    target="_blank",
-                                    style={"textDecoration": "none"},
-                                    className="pdf-link",
-                                ),
-                            ]
-                            + (
-                                [
-                                    dmc.ActionIcon(
-                                        DashIconify(icon="mdi:trash-outline", width=16),
-                                        color="red",
-                                        variant="light",
-                                        id={
-                                            "type": "delete-insight-button",
-                                            "index": insight_id,
-                                        },
-                                        title="Delete (admin only)",
-                                        className="stop-prop",
-                                    )
-                                ]
-                                if is_admin
-                                else []
+        card = html.A(
+            html.Div(
+                [
+                    # Icon and Issuer Header
+                    dmc.Group(
+                        [
+                            DashIconify(icon="vscode-icons:file-type-pdf2", width=32),
+                            dmc.Badge(
+                                insight.get("issuer", "Unknown"),
+                                size="sm",
+                                radius="sm",
+                                variant="light",
+                                color="gray",
                             ),
-                            gap="xs",
-                        )
-                    ],
-                    className="card-tags",
-                ),
-            ],
-            className="insight-card",
-            id={"type": "insight-card", "index": insight_id},
-            **{"data-insight-id": insight_id, "style": {"cursor": "pointer"}},
+                        ],
+                        justify="space-between",
+                        mb="md",
+                    ),
+
+                    # File Name
+                    dmc.Text(
+                        insight.get("name"),
+                        fw=600,
+                        size="md",
+                        c="bright",
+                        style={
+                            "lineHeight": "1.4",
+                            "height": "44px", # Fixed height for 2 lines
+                            "overflow": "hidden",
+                            "display": "-webkit-box",
+                            "-webkitLineClamp": "2",
+                            "-webkitBoxOrient": "vertical",
+                            "marginBottom": "12px",
+                        }
+                    ),
+
+                    # Footer: Date
+                    dmc.Group(
+                        [
+                            dmc.Text(
+                                str(insight.get("published_date") or ""),
+                                size="xs",
+                                c="dimmed",
+                                style={"fontFamily": "monospace"}
+                            ),
+                            DashIconify(icon="carbon:arrow-up-right", width=14, color="#64748b"),
+                        ],
+                        justify="space-between",
+                        align="center",
+                        mt="auto", # Push to bottom
+                    )
+                ],
+                style={
+                    "padding": "20px",
+                    "height": "100%",
+                    "display": "flex",
+                    "flexDirection": "column",
+                    "backgroundColor": "#1e293b",
+                    "borderRadius": "12px",
+                    "border": "1px solid #334155",
+                    "transition": "all 0.2s ease",
+                },
+                className="file-card-inner", # For CSS hover effects if needed
+            ),
+            href=url,
+            target="_blank",
+            style={
+                "textDecoration": "none",
+                "color": "inherit",
+                "display": "block",
+                "height": "180px", # Fixed card height
+            },
+            className="insight-card-link",
         )
         cards.append(card)
 

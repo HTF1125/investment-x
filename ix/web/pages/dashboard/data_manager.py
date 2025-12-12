@@ -57,19 +57,20 @@ class DataManager:
     def load_universe_data_optimized(
         universe_name: str, as_of_date: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Optimized function to load data for a single universe."""
+        """Optimized function to load data for a single universe using batch fetching."""
+        from ix.db.conn import Session
+        from ix.db.models import Timeseries, TimeseriesData
+        from sqlalchemy.orm import joinedload
+
         try:
             logger.info(f"Loading data for {universe_name} as of {as_of_date}")
             universe_db = Universe.from_name(universe_name)
 
-            # Batch fetch all timeseries at once
-            asset_codes = [
-                asset.code + ":PX_LAST"
-                for asset in universe_db.assets
-                if asset.code is not None
-            ]
+            # 1. Collect all target codes
+            asset_map = {}  # {code: asset_name}
+            target_codes = []
 
-            if not asset_codes:
+            if not universe_db.assets:
                 return {
                     "latest_values": None,
                     "performance_matrix": None,
@@ -78,52 +79,90 @@ class DataManager:
                     "last_updated": datetime.now().isoformat(),
                 }
 
-            # Fetch all timeseries in one query
+            for asset in universe_db.assets:
+                if asset.code:
+                    full_code = asset.code + ":PX_LAST"
+                    target_codes.append(full_code)
+                    asset_map[full_code] = asset.name
+
+            if not target_codes:
+                return {
+                    "latest_values": None,
+                    "performance_matrix": None,
+                    "data_available": False,
+                    "figure": None,
+                    "last_updated": datetime.now().isoformat(),
+                }
+
+            # 2. Batch fetch from DB with eager loading of data_record
             re = {}
 
-            # Optimized data fetching - limit to recent data for faster loading
-            for asset in universe_db.assets:
-                if not asset.code:
-                    continue
+            with Session() as session:
+                # Fetch all matching timeseries in one query
+                timeseries_batch = (
+                    session.query(Timeseries)
+                    .filter(Timeseries.code.in_(target_codes))
+                    .options(joinedload(Timeseries.data_record))
+                    .all()
+                )
 
-                try:
-                    ts = Timeseries.find_one({"code": asset.code + ":PX_LAST"}).run()
-                    if ts:
-                        # Safe access to data property with minimal error handling
-                        try:
-                            ts_data = ts.data
-                            if (
-                                ts_data is not None
-                                and hasattr(ts_data, "empty")
-                                and not ts_data.empty
-                            ):
-                                # Resample to business days and forward fill to avoid NaN
-                                resampled_data = ts_data.resample("B").last().ffill()
+                # 3. Process data in-memory
+                for ts in timeseries_batch:
+                    asset_name = asset_map.get(ts.code)
+                    if not asset_name:
+                        continue
 
-                                # Limit to last 400 business days for faster processing (includes buffer for 252D calc)
-                                recent_data = resampled_data.tail(400)
-
-                                # Filter by as_of_date if provided
-                                if as_of_date:
-                                    try:
-                                        as_of_dt = pd.to_datetime(as_of_date)
-                                        recent_data = recent_data.loc[:as_of_dt]
-                                    except Exception as e:
-                                        logger.warning(
-                                            f"Error parsing as_of_date {as_of_date}: {e}"
-                                        )
-
-                                if not recent_data.empty:
-                                    re[asset.name] = recent_data
-                        except Exception as e:
-                            logger.warning(
-                                f"Error accessing data for {asset.code}: {e}"
-                            )
+                    try:
+                        # Direct access to data_record to avoid overhead
+                        if not ts.data_record or not ts.data_record.data:
                             continue
-                except Exception as e:
-                    logger.warning(f"Error loading {asset.code}: {e}")
-                    continue
 
+                        # Convert JSONB dict to Series
+                        raw_data = ts.data_record.data
+                        if not raw_data:
+                            continue
+
+                        # Optimized Series creation
+                        df_temp = pd.DataFrame.from_dict(
+                            raw_data, orient="index", columns=["value"]
+                        )
+                        df_temp.index = pd.to_datetime(df_temp.index, errors="coerce")
+                        series = df_temp["value"].sort_index()
+
+                        # Remove bad indices
+                        match_valid = series.index.notna()
+                        if not match_valid.all():
+                            series = series[match_valid]
+
+                        if series.empty:
+                            continue
+
+                        # Resample to Business Day 'B' and ffill
+                        resampled_data = series.resample("B").last().ffill()
+
+                        # Limit to last 400 business days
+                        recent_data = resampled_data.tail(400)
+
+                        # Filter by as_of_date if provided
+                        if as_of_date:
+                            try:
+                                as_of_dt = pd.to_datetime(as_of_date)
+                                recent_data = recent_data.loc[:as_of_dt]
+                            except Exception as e:
+                                logger.warning(
+                                    f"Error parsing as_of_date {as_of_date}: {e}"
+                                )
+
+                        if not recent_data.empty:
+                            re[asset_name] = recent_data
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Error processing batch loaded data for {ts.code}: {e}"
+                        )
+                        continue
+
+            # 4. Construct DataFrame from results
             pxs = pd.DataFrame(re)
             if not pxs.empty:
                 # Optimized performance calculation - essential periods
@@ -143,8 +182,7 @@ class DataManager:
                             "last_updated": datetime.now().isoformat(),
                         }
 
-                    # Data is already resampled to "B" and ffilled, so use directly
-                    # Calculate only essential performance metrics for faster loading
+                    # Data is already resampled to "B" and ffilled
                     for p in periods:
                         try:
                             pct = pxs.pct_change(p).ffill().iloc[-1]

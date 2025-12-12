@@ -76,33 +76,31 @@ def handle_pdf_upload(
                 published_date = date.today()
                 issuer = "Unnamed"
 
-            # Save to database
-            with Session() as session:
-                insight = Insights(
-                    published_date=published_date,
-                    issuer=issuer or "Unnamed",
-                    name=name or "Unnamed",
-                    status="processing",
-                    pdf_content=decoded,
-                )
-                session.add(insight)
-                session.flush()
+            # Upload to Google Drive
+            try:
+                from ix.web.pages.insights.services.drive_client import drive_client
+                drive_file = drive_client.upload_file(file_name, decoded)
+                insight_id = drive_file.get('id')
+                # No summarization in direct mode
+            except Exception as e:
+                error_str = str(e)
+                if "storageQuotaExceeded" in error_str or "Service Accounts do not have storage quota" in error_str:
+                    logger.error(f"Drive Quota Error: {e}")
+                    return html.Div(
+                        [
+                            create_error_message("Upload failed: Service Accounts cannot own files (0 storage)."),
+                            html.A(
+                                dmc.Button("Open Drive Folder", color="blue", variant="light", size="xs", mt="sm"),
+                                href="https://drive.google.com/drive/folders/1jkpxtpaZophtkx5Lhvb-TAF9BuKY_pPa",
+                                target="_blank",
+                                style={"textDecoration": "none"}
+                            )
+                        ],
+                        style={"display": "flex", "flexDirection": "column", "gap": "10px"}
+                    ), False
 
-                # Generate AI summary
-                try:
-                    if hasattr(Settings, "openai_secret_key") and Settings.openai_secret_key:
-                        summarizer = PDFSummarizer(Settings.openai_secret_key)
-                        summary_text = summarizer.process_insights(decoded)
-                        insight.summary = summary_text
-                        insight.status = "completed"
-                    else:
-                        insight.status = "completed"
-                except Exception as e:
-                    logger.error(f"Error generating summary: {e}")
-                    insight.status = "failed"
-
-                session.commit()
-                insight_id = str(insight.id)
+                logger.error(f"Error uploading to Drive: {e}")
+                return create_error_message(f"Upload failed: {str(e)}"), False
 
             success_card = create_success_message(file_name, name, issuer, published_date, insight_id, len(decoded))
             if needs_metadata:

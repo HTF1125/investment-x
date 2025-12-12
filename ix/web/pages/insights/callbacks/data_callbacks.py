@@ -20,25 +20,72 @@ logger = get_logger(__name__)
 # UI State Components
 # ============================================================================
 def create_empty_state(message: str = "No Insights Found") -> html.Div:
-    """Create empty state component."""
+    """Create empty state component with Google Drive integration."""
+    folder_id = "1jkpxtpaZophtkx5Lhvb-TAF9BuKY_pPa"
+    drive_url = f"https://drive.google.com/drive/folders/{folder_id}"
+
     return html.Div(
         [
             html.I(
-                className="fas fa-search fa-3x",
-                style={"color": "#64748b", "marginBottom": "20px"},
+                className="fab fa-google-drive fa-3x",
+                style={"color": "#34A853", "marginBottom": "20px"},
             ),
-            html.H4(message, style={"color": "#ffffff", "marginBottom": "10px"}),
+            html.H4("Research Library (Google Drive)", style={"color": "#ffffff", "marginBottom": "10px"}),
             html.P(
-                "Upload some documents to get started with AI-powered insights.",
-                style={"color": "#94a3b8"},
+                "Access your insights and research documents directly from Google Drive.",
+                style={"color": "#94a3b8", "marginBottom": "20px"},
+            ),
+            # Button to open in new tab
+            html.A(
+                html.Button(
+                    children=[
+                        html.I(className="fas fa-external-link-alt", style={"marginRight": "8px"}),
+                        "Open in Google Drive"
+                    ],
+                    style={
+                        "padding": "10px 20px",
+                        "backgroundColor": "#4285F4",
+                        "color": "white",
+                        "border": "none",
+                        "borderRadius": "4px",
+                        "cursor": "pointer",
+                        "fontWeight": "600",
+                        "fontSize": "14px",
+                    }
+                ),
+                href=drive_url,
+                target="_blank",
+                style={"textDecoration": "none", "display": "inline-block", "marginBottom": "25px"},
+            ),
+            # Embedded view (using list layout for better visibility)
+            html.Div(
+                html.Iframe(
+                    src=f"https://drive.google.com/embeddedfolderview?id={folder_id}#list",
+                    style={
+                        "width": "100%",
+                        "height": "100%",
+                        "border": "none",
+                        "backgroundColor": "#ffffff",
+                    },
+                ),
+                style={
+                    "width": "100%",
+                    "height": "600px",
+                    "borderRadius": "8px",
+                    "overflow": "hidden",
+                    "border": "1px solid #475569",
+                },
             ),
         ],
         style={
             "textAlign": "center",
-            "padding": "60px 20px",
+            "padding": "40px",
             "backgroundColor": "#1e293b",
             "borderRadius": "12px",
             "border": "1px solid #475569",
+            "display": "flex",
+            "flexDirection": "column",
+            "alignItems": "center",
         },
     )
 
@@ -90,7 +137,7 @@ def render_table(insights_data: list, page: int = 1) -> Tuple[html.Div, int]:
 
         # Get page data
         page_data, total_count, total_pages = InsightsDataService.get_page_data(
-            all_insights, page, page_size=12
+            all_insights, page, page_size=50
         )
 
         # Create table

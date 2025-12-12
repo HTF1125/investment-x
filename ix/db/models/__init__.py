@@ -26,6 +26,7 @@ __all__ = [
     "EconomicCalendar",
     "TacticalView",
     "User",
+    "Insights",
 ]
 
 
@@ -566,6 +567,24 @@ class TacticalView(Base):
         return f"<TacticalView(id={self.id}, published_date={self.published_date})>"
 
 
+class Insights(Base):
+    """Insights model for storing PDF summaries and metadata."""
+
+    __tablename__ = "insights"
+
+    id = Column(
+        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    published_date = Column(Date, nullable=True)
+    issuer = Column(String, nullable=True)
+    name = Column(String, nullable=True)
+    status = Column(String, default="new")
+    summary = Column(Text, nullable=True)
+    pdf_content = Column(LargeBinary, nullable=True)
+    hash = Column(String, nullable=True)
+    created = Column(DateTime, default=datetime.now, nullable=False)
+
+
 def all():
     """Return all model classes."""
     return [
@@ -573,4 +592,5 @@ def all():
         Universe,
         Timeseries,
         TacticalView,
+        Insights,
     ]

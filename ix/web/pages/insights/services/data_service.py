@@ -1,9 +1,12 @@
 """Unified Data Service - Centralized data operations for Insights page."""
 
 import math
-from typing import Dict, List, Optional, Tuple
+import os
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Any
 from ix.db.client import get_insights
 from ix.misc.terminal import get_logger
+from ix.web.pages.insights.services.drive_client import drive_client
 from ix.web.pages.insights.utils.data_utils import (
     normalize_insight_data,
     serialize_insights,
@@ -27,7 +30,7 @@ class InsightsDataService:
         no_summary_filter: bool = False,
     ) -> List[Dict]:
         """
-        Load all insights from database with optional filtering.
+        Load all insights directly from Google Drive.
 
         Args:
             search_query: Optional search term
@@ -37,26 +40,76 @@ class InsightsDataService:
             List of normalized insight dictionaries
         """
         try:
-            # Get insights from database
+            files = drive_client.list_files()
+
+            insights_list = []
+            for f in files:
+                # Create a virtual object that mimics the SQLAlchemy model
+                class VirtualInsight:
+                    def __init__(self, data):
+                        self.id = data['id']
+                        self.name = data['name']
+                        self.url = data['webViewLink']
+                        # Handle createdTime format 2023-10-25T12:00:00.000Z
+                        try:
+                            self.created = datetime.fromisoformat(data['createdTime'].replace('Z', '+00:00'))
+                        except:
+                            self.created = datetime.now()
+                        self.published_date = self.created.date()
+                        self.summary = None # Not available in direct mode
+                        self.issuer = "Unknown"
+
+                        # Parse filename for better metadata
+                        try:
+                            base_name = os.path.splitext(self.name)[0]
+                            parts = base_name.split('_')
+                            if len(parts) >= 3:
+                                date_str = parts[0]
+                                self.issuer = parts[1]
+                                self.name = "_".join(parts[2:])
+                                self.published_date = datetime.strptime(date_str, "%Y%m%d").date()
+                        except:
+                            pass
+
+                    def __getitem__(self, item):
+                        return getattr(self, item)
+
+                    def get(self, item, default=None):
+                        return getattr(self, item, default)
+
+                # Normalize expects an object it can getattr from, or a dict.
+                # normalize_insight_data likely does hasattr checks or .get()
+                # Let's inspect normalize_insight_data if this fails, but for now returned normalized dicts directly
+
+                v_insight = VirtualInsight(f)
+
+                # Manual normalization to ensure dict format
+                normalized = {
+                    "id": v_insight.id,
+                    "name": v_insight.name,
+                    "issuer": v_insight.issuer,
+                    "published_date": str(v_insight.published_date) if v_insight.published_date else "",
+                    "summary": None,
+                    "url": v_insight.url, # Special field for direct link
+                    "created": str(v_insight.created) if v_insight.created else "",
+                }
+                insights_list.append(normalized)
+
+            # Apply local search filtering (naive)
             if search_query and search_query.strip():
-                insights_raw = get_insights(search=search_query, limit=InsightsDataService.MAX_ITEMS)
-            else:
-                insights_raw = get_insights(limit=InsightsDataService.MAX_ITEMS)
-
-            # Normalize to dict format
-            insights_list = [normalize_insight_data(insight) for insight in insights_raw]
-
-            # Apply no-summary filter if active
-            if no_summary_filter:
+                q = search_query.lower()
                 insights_list = [
-                    insight for insight in insights_list
-                    if not insight.get("summary") or not str(insight.get("summary", "")).strip()
+                    i for i in insights_list
+                    if q in i['name'].lower() or q in i['issuer'].lower()
                 ]
+
+            # Sort by published_date descending (User Request)
+            insights_list.sort(key=lambda x: x.get('published_date', ''), reverse=True)
 
             return insights_list
 
         except Exception as e:
-            logger.error(f"Error loading insights: {e}")
+            logger.error(f"Error loading insights from Drive: {e}")
             return []
 
     @staticmethod

@@ -37,3 +37,12 @@ def get_recent_tactical_view() -> Optional[TacticalView]:
             .order_by(TacticalView.published_date.desc())
             .first()
         )
+
+
+def get_insights(search: Optional[str] = None, limit: int = 10000) -> List[Dict]:
+    """
+    Placeholder for get_insights.
+    The Insight model seems to be missing, so this returns an empty list to prevent import errors.
+    """
+    logger.warning("get_insights called but not implemented (Insight model missing). Returning empty list.")
+    return []

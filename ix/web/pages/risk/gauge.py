@@ -213,7 +213,7 @@ def make_gauge(px: pd.Series, indicator_type: str = "stock"):
         },
         height=250,
         autosize=True,
-        margin=dict(l=30, r=30, t=80, b=30),
+        margin=dict(l=30, r=30, t=110, b=30),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Inter, sans-serif", size=10),

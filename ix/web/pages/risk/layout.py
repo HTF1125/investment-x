@@ -27,199 +27,19 @@ except dash.exceptions.PageError:
     pass
 
 
+from ix.web.pages.risk import analytics
 from ix.db.query import NumOfOECDLeadingPositiveMoM
 
-
 def create_oecd_chart():
-    """Create OECD CLI chart"""
-    # Get OECD CLI positive percentage (already calculated)
-    positive_pct = NumOfOECDLeadingPositiveMoM()
-
-    fig = go.Figure()
-
-    # Determine color based on latest value
-    latest_value = positive_pct.iloc[-1] if len(positive_pct) > 0 else 50
-
-    if latest_value >= 75:
-        line_color = "#10b981"  # Green
-        fill_color = "rgba(16, 185, 129, 0.2)"
-    elif latest_value >= 50:
-        line_color = "#3b82f6"  # Blue
-        fill_color = "rgba(59, 130, 246, 0.2)"
-    elif latest_value >= 25:
-        line_color = "#f59e0b"  # Yellow
-        fill_color = "rgba(245, 158, 11, 0.2)"
-    else:
-        line_color = "#dc2626"  # Red
-        fill_color = "rgba(220, 38, 38, 0.2)"
-
-    # Add filled area chart for positive percentage
-    fig.add_trace(
-        go.Scatter(
-            x=positive_pct.index,
-            y=positive_pct.values,
-            mode="lines+markers",
-            name="OECD CLI 양수 비율 (%)",
-            line=dict(color=line_color, width=3),
-            marker=dict(size=8, color=line_color),
-            fill="tonexty",
-            fillcolor=fill_color,
-            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>"
-            + "OECD CLI 양수 비율: %{y:.1f}%<br>"
-            + "<extra></extra>",
-        )
-    )
-
-    # Add horizontal reference lines with Korean labels
-    fig.add_hline(
-        y=50,
-        line_dash="dash",
-        line_color="#cbd5e0",
-        line_width=2,
-        annotation_text="50% (중립)",
-        annotation_position="top right",
-        annotation_font_size=12,
-        annotation_font_color="#ffffff",
-    )
-    fig.add_hline(
-        y=75,
-        line_dash="dot",
-        line_color="#10b981",
-        line_width=2,
-        annotation_text="75% (강한 긍정)",
-        annotation_position="top right",
-        annotation_font_size=12,
-        annotation_font_color="#ffffff",
-    )
-    fig.add_hline(
-        y=25,
-        line_dash="dot",
-        line_color="#dc2626",
-        line_width=2,
-        annotation_text="25% (강한 부정)",
-        annotation_position="bottom right",
-        annotation_font_size=12,
-        annotation_font_color="#ffffff",
-    )
-
-    # Add current value annotation
-    if len(positive_pct) > 0:
-        fig.add_annotation(
-            x=positive_pct.index[-1],
-            y=latest_value,
-            text=f"현재: {latest_value:.1f}%",
-            showarrow=True,
-            arrowhead=2,
-            arrowcolor=line_color,
-            bgcolor="rgba(30, 41, 59, 0.9)",
-            bordercolor=line_color,
-            borderwidth=1,
-            font=dict(size=12, color="#ffffff"),
-        )
-
-    # Update layout with enhanced styling
-    fig.update_layout(
-        title={
-            "text": "<b>OECD CLI 서브인덱스: 양수 비율</b><br>"
-            + '<span style="font-size:14px; color:#cbd5e0">OECD CLI 서브인덱스 중 양수 모멘텀을 보이는 비율</span>',
-            "x": 0.5,
-            "xanchor": "center",
-            "font": {"family": "Inter, sans-serif", "size": 18},
-        },
-        xaxis_title="날짜",
-        yaxis_title="양수 비율 (%)",
-        height=450,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="center",
-            x=0.5,
-            bgcolor="rgba(30, 41, 59, 0.9)",
-            bordercolor="rgba(71, 85, 105, 0.5)",
-            borderwidth=1,
-            font=dict(size=12, color="#ffffff"),
-        ),
-        hovermode="x unified",
-        plot_bgcolor="rgba(30, 41, 59, 0.3)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, sans-serif", size=12, color="#ffffff"),
-        margin=dict(l=60, r=60, t=120, b=60),
-    )
-
-    # Update axes with better styling
-    fig.update_xaxes(
-        gridcolor="rgba(71, 85, 105, 0.3)",
-        gridwidth=1,
-        showgrid=True,
-        title_font=dict(size=14, color="#ffffff"),
-        tickfont=dict(size=12, color="#cbd5e0"),
-    )
-    fig.update_yaxes(
-        gridcolor="rgba(71, 85, 105, 0.3)",
-        gridwidth=1,
-        showgrid=True,
-        range=[0, 100],
-        title_font=dict(size=14, color="#ffffff"),
-        tickfont=dict(size=12, color="#cbd5e0"),
-    )
-
-    return fig
-
-
-import pandas as pd
-from ix.db import Series
-
-
-def get_index():
-    """Load and process index data"""
-    try:
-        data = pd.DataFrame(
-            {
-                "코스피": Series("KOSPI INDEX:PX_LAST", freq="W-Fri"),
-                "S&P 500": Series("SPX INDEX:PX_LAST", freq="W-Fri"),
-                "한국CD91": Series("BONDHANYLD920:PX_YTM", freq="W-Fri"),
-                "한국 3년": Series("TRYKR3Y:PX_YTM", freq="W-Fri"),
-                "한국 10년": Series("BONDAVG01@10Y:PX_YTM", freq="W-Fri"),
-                "미국 10년": Series("GVO:TR10Y:PX_YTM", freq="W-Fri"),
-                "미국 - 한국 10년": (
-                    Series("GVO:TR10Y:PX_YTM", freq="W-Fri")
-                    - Series("BONDAVG01@10Y:PX_YTM", freq="W-Fri")
-                ),
-                "한국회사채스프레드(AA-)": (
-                    Series("BONDAVG57:PX_YTM", freq="W-Fri").ffill()
-                    - Series("TRYKR3Y:PX_YTM", freq="W-Fri").ffill()
-                ),
-                "달러 - 원 환율": Series("USDKRW CURNCY:PX_LAST", freq="W-Fri"),
-            }
-        ).ffill()
-
-        data = data[
-            [
-                "코스피",
-                "S&P 500",
-                "한국CD91",
-                "한국 10년",
-                "미국 10년",
-                "미국 - 한국 10년",
-                "한국회사채스프레드(AA-)",
-                "달러 - 원 환율",
-            ]
-        ]
-
-        return data
-    except Exception as e:
-        print(f"Error loading index data: {e}")
-        return pd.DataFrame()
-
+    """Create OECD CLI chart using shared analytics"""
+    return analytics.create_oecd_chart()
 
 def create_risk_metrics():
-    """Create risk metrics cards"""
+    """Create risk metrics cards using shared analytics"""
     try:
-        data = get_index().loc["2022":].ffill()
-
-        if data.empty:
+        metrics = analytics.calculate_risk_metrics()
+        
+        if not metrics:
             return html.Div(
                 "No data available",
                 style={
@@ -232,131 +52,53 @@ def create_risk_metrics():
                 },
             )
 
-        latest_date = data.index[-1]
-        today = date.today()
-        if latest_date.date() > today:
-            latest_date = today
-        num_indices = len(data.columns)
-        latest_values = data.iloc[-1]
-
-        # Calculate sigma values for all indices
-        sigma_values = []
-        for name, series in data.items():
-            if name in ["코스피", "S&P 500", "달러 - 원 환율"]:
-                d = series.resample("W").last().pct_change(5).dropna().loc["2000":]
-                if name == "달러 - 원 환율":
-                    d = d * (-1)
-            else:
-                d = series.resample("W").last().diff(5).dropna().loc["2000":] * (-1)
-            window = 52 * 2  # 104 weeks
-
-            if len(d) < window:
-                continue
-
-            rolling_mean = d.rolling(window).mean()
-            rolling_std = d.rolling(window).std()
-            mean = rolling_mean.iloc[-1]
-            std = rolling_std.iloc[-1]
-            current = d.iloc[-1]
-
-            if pd.notna(mean) and pd.notna(std) and pd.notna(current) and std != 0:
-                z = (current - mean) / std
-                if pd.notna(z):
-                    sigma_values.append(z)
-
-        # Calculate average sigma
-        if sigma_values:
-            avg_sigma = np.mean(sigma_values)
-        else:
-            avg_sigma = 0
-
-        # Current Status Alert
-        if len(sigma_values) > 0:
-            if abs(avg_sigma) >= 2.7:
-                alert_color = "#dc2626" if avg_sigma < 0 else "#1d4ed8"
-                alert_text = "🔴 위험 경보" if avg_sigma < 0 else "🔵 위험 경보"
-                alert_bg = (
-                    "rgba(239, 68, 68, 0.1)"
-                    if avg_sigma < 0
-                    else "rgba(29, 78, 216, 0.1)"
-                )
-            elif abs(avg_sigma) >= 2:
-                alert_color = "#f59e0b" if avg_sigma < 0 else "#3b82f6"
-                alert_text = "🟡 주의 경보" if avg_sigma < 0 else "🔵 주의 경보"
-                alert_bg = (
-                    "rgba(245, 158, 11, 0.1)"
-                    if avg_sigma < 0
-                    else "rgba(59, 130, 246, 0.1)"
-                )
-            else:
-                alert_color = "#10b981"
-                alert_text = "🟢 정상 상태"
-                alert_bg = "rgba(16, 185, 129, 0.1)"
-
-            # Determine badge text and style
-            if abs(avg_sigma) >= 2.7:
-                badge_text = "위험 +" if avg_sigma > 0 else "위험 -"
-                badge_color = "#1d4ed8" if avg_sigma > 0 else "#dc2626"
-            elif abs(avg_sigma) >= 2:
-                badge_text = "주의 +" if avg_sigma > 0 else "주의 -"
-                badge_color = "#3b82f6" if avg_sigma > 0 else "#f59e0b"
-            elif avg_sigma >= 0:
-                badge_text = "중립 +"
-                badge_color = "#10b981"
-            else:
-                badge_text = "중립 -"
-                badge_color = "#cbd5e0"
-
+        alert_status = metrics["alert"]
+        
+        # Build Alert Component
+        if alert_status["level"] != "Normal":
+            alert_bg = "rgba(239, 68, 68, 0.1)" if alert_status["color"] == "#dc2626" else ("rgba(245, 158, 11, 0.1)" if alert_status["color"] == "#f59e0b" else "rgba(59, 130, 246, 0.1)" if alert_status["color"] == "#3b82f6" else "rgba(29, 78, 216, 0.1)")
+            
             alert_component = html.Div(
                 [
                     html.Div(
                         [
                             html.Div(
                                 [
-                                    html.Span(alert_text, style={"fontSize": "1.2rem"}),
+                                    html.Span(alert_status["text"], style={"fontSize": "1.2rem"}),
                                     html.Span(
-                                        f"현재 시그마: {avg_sigma:.2f}σ",
+                                        f"현재 시그마: {alert_status['sigma']:.2f}σ",
                                         style={
-                                            "color": alert_color,
+                                            "color": alert_status["color"],
                                             "fontWeight": "600",
                                             "fontSize": "1.1rem",
                                             "marginLeft": "10px",
                                         },
                                     ),
                                 ],
-                                style={
-                                    "display": "flex",
-                                    "alignItems": "center",
-                                    "gap": "10px",
-                                },
+                                style={"display": "flex", "alignItems": "center", "gap": "10px"},
                             ),
                             html.Div(
-                                badge_text,
+                                alert_status["badge"],
                                 style={
-                                    "background": badge_color,
+                                    "background": alert_status["color"],
                                     "color": "white",
                                     "padding": "6px 12px",
                                     "borderRadius": "20px",
                                     "fontWeight": "600",
                                     "fontSize": "0.8rem",
                                     "textTransform": "uppercase",
-                                    "letterSpacing": "0.5px",
                                     "boxShadow": "0 2px 4px rgba(0,0,0,0.2)",
                                 },
                             ),
                         ],
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "justifyContent": "space-between",
-                        },
+                        style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"},
                     )
                 ],
                 style={
                     "background": alert_bg,
                     "padding": "12px 20px",
                     "borderRadius": "8px",
-                    "borderLeft": f"4px solid {alert_color}",
+                    "borderLeft": f"4px solid {alert_status['color']}",
                     "margin": "10px 0",
                     "boxShadow": "0 2px 8px rgba(0,0,0,0.1)",
                 },
@@ -364,445 +106,139 @@ def create_risk_metrics():
         else:
             alert_component = html.Div()
 
-        # Calculate positive percentage
-        positive_change = (data.pct_change().iloc[-1] > 0).sum()
-        positive_pct = positive_change / num_indices if num_indices > 0 else 0
+        # Helper for card style
+        def card_style():
+            return {
+                "background": "linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)",
+                "padding": "0.5rem",
+                "borderRadius": "0.5rem",
+                "border": "1px solid rgba(71, 85, 105, 0.5)",
+                "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)",
+                "transition": "all 0.3s ease",
+                "position": "relative",
+                "overflow": "hidden",
+                "height": "90px",
+                "display": "flex",
+                "flexDirection": "column",
+                "justifyContent": "flex-start",
+                "margin": "2px",
+                "backdropFilter": "saturate(180%) blur(20px)",
+            }
 
-        # Determine state for positive percentage
-        if positive_pct >= 0.75:
-            positive_state = "Strong"
-            positive_color = "#10b981"  # Green
-        elif positive_pct >= 0.5:
-            positive_state = "Moderate"
-            positive_color = "#3b82f6"  # Blue
-        elif positive_pct >= 0.25:
-            positive_state = "Weak"
-            positive_color = "#f59e0b"  # Yellow
-        else:
-            positive_state = "Critical"
-            positive_color = "#dc2626"  # Red
-
-        # Calculate OECD CLI positive percentage
-        positive_pct_oecd = NumOfOECDLeadingPositiveMoM()
-        latest_oecd_pct = (
-            positive_pct_oecd.iloc[-1] if len(positive_pct_oecd) > 0 else 0
-        )
-
-        # Determine OECD CLI state
-        if latest_oecd_pct >= 75:
-            oecd_state = "Strong"
-            oecd_color = "#10b981"  # Green
-        elif latest_oecd_pct >= 50:
-            oecd_state = "Moderate"
-            oecd_color = "#3b82f6"  # Blue
-        elif latest_oecd_pct >= 25:
-            oecd_state = "Weak"
-            oecd_color = "#f59e0b"  # Yellow
-        else:
-            oecd_state = "Critical"
-            oecd_color = "#dc2626"  # Red
+        positive = metrics["positive"]
+        oecd = metrics["oecd"]
+        latest_date = metrics["latest_date"]
 
         return html.Div(
             [
                 alert_component,
                 html.Div(
                     [
+                        # Date Card
                         html.Div(
                             [
                                 html.Div(
-                                    [
-                                        html.Span(
-                                            "📅",
-                                            style={
-                                                "fontSize": "1.2rem",
-                                                "marginRight": "6px",
-                                            },
-                                        ),
-                                        html.Span(
-                                            "Latest Update",
-                                            style={
-                                                "fontSize": "0.8rem",
-                                                "fontWeight": "600",
-                                                "color": "#ffffff",
-                                            },
-                                        ),
-                                    ],
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "marginBottom": "0.5rem",
-                                    },
+                                    [html.Span("📅", style={"fontSize": "1.2rem", "marginRight": "6px"}),
+                                     html.Span("Latest Update", style={"fontSize": "0.8rem", "fontWeight": "600", "color": "#ffffff"})],
+                                    style={"display": "flex", "alignItems": "center", "marginBottom": "0.5rem"}
                                 ),
-                                html.Div(
-                                    latest_date.strftime("%Y-%m-%d"),
-                                    style={
-                                        "fontSize": "1.1rem",
-                                        "fontWeight": "700",
-                                        "color": "#ffffff",
-                                    },
-                                ),
+                                html.Div(latest_date.strftime("%Y-%m-%d"), style={"fontSize": "1.1rem", "fontWeight": "700", "color": "#ffffff"}),
                             ],
-                            style={
-                                "background": "linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)",
-                                "padding": "0.5rem",
-                                "borderRadius": "0.5rem",
-                                "border": "1px solid rgba(71, 85, 105, 0.5)",
-                                "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)",
-                                "transition": "all 0.3s ease",
-                                "position": "relative",
-                                "overflow": "hidden",
-                                "height": "90px",
-                                "display": "flex",
-                                "flexDirection": "column",
-                                "justifyContent": "flex-start",
-                                "margin": "2px",
-                                "backdropFilter": "saturate(180%) blur(20px)",
-                            },
+                            style=card_style(),
                         ),
+                        # Total Card
                         html.Div(
                             [
                                 html.Div(
-                                    [
-                                        html.Span(
-                                            "📈",
-                                            style={
-                                                "fontSize": "1.2rem",
-                                                "marginRight": "6px",
-                                            },
-                                        ),
-                                        html.Span(
-                                            "Total Indices",
-                                            style={
-                                                "fontSize": "0.8rem",
-                                                "fontWeight": "600",
-                                                "color": "#ffffff",
-                                            },
-                                        ),
-                                    ],
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "marginBottom": "0.5rem",
-                                    },
+                                    [html.Span("📈", style={"fontSize": "1.2rem", "marginRight": "6px"}),
+                                     html.Span("Total Indices", style={"fontSize": "0.8rem", "fontWeight": "600", "color": "#ffffff"})],
+                                    style={"display": "flex", "alignItems": "center", "marginBottom": "0.5rem"}
                                 ),
-                                html.Div(
-                                    str(num_indices),
-                                    style={
-                                        "fontSize": "1.1rem",
-                                        "fontWeight": "700",
-                                        "color": "#ffffff",
-                                    },
-                                ),
+                                html.Div(str(positive["total"]), style={"fontSize": "1.1rem", "fontWeight": "700", "color": "#ffffff"}),
                             ],
-                            style={
-                                "background": "linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)",
-                                "padding": "0.5rem",
-                                "borderRadius": "0.5rem",
-                                "border": "1px solid rgba(71, 85, 105, 0.5)",
-                                "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)",
-                                "transition": "all 0.3s ease",
-                                "position": "relative",
-                                "overflow": "hidden",
-                                "height": "90px",
-                                "display": "flex",
-                                "flexDirection": "column",
-                                "justifyContent": "flex-start",
-                                "margin": "2px",
-                                "backdropFilter": "saturate(180%) blur(20px)",
-                            },
+                            style=card_style(),
                         ),
+                        # Positive Card
                         html.Div(
                             [
                                 html.Div(
-                                    [
-                                        html.Span(
-                                            "📊",
-                                            style={
-                                                "fontSize": "1.2rem",
-                                                "marginRight": "6px",
-                                            },
-                                        ),
-                                        html.Span(
-                                            "Positive Today",
-                                            style={
-                                                "fontSize": "0.8rem",
-                                                "fontWeight": "600",
-                                                "color": "#ffffff",
-                                            },
-                                        ),
-                                    ],
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "marginBottom": "0.5rem",
-                                    },
+                                    [html.Span("📊", style={"fontSize": "1.2rem", "marginRight": "6px"}),
+                                     html.Span("Positive Today", style={"fontSize": "0.8rem", "fontWeight": "600", "color": "#ffffff"})],
+                                    style={"display": "flex", "alignItems": "center", "marginBottom": "0.5rem"}
                                 ),
                                 html.Div(
                                     [
-                                        html.Span(
-                                            f"{positive_change}/{num_indices}",
-                                            style={
-                                                "fontSize": "1.1rem",
-                                                "fontWeight": "700",
-                                                "color": "#ffffff",
-                                            },
-                                        ),
-                                        html.Span(
-                                            positive_state,
-                                            style={
-                                                "background": positive_color,
-                                                "color": "white",
-                                                "padding": "3px 6px",
-                                                "borderRadius": "6px",
-                                                "fontWeight": "600",
-                                                "fontSize": "0.6rem",
-                                                "textTransform": "uppercase",
-                                                "marginLeft": "8px",
-                                            },
-                                        ),
+                                        html.Span(f"{positive['count']}/{positive['total']}", style={"fontSize": "1.1rem", "fontWeight": "700", "color": "#ffffff"}),
+                                        html.Span(positive["state"], style={"background": positive["color"], "color": "white", "padding": "3px 6px", "borderRadius": "6px", "fontWeight": "600", "fontSize": "0.6rem", "textTransform": "uppercase", "marginLeft": "8px"}),
                                     ],
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "gap": "8px",
-                                    },
+                                    style={"display": "flex", "alignItems": "center", "gap": "8px"},
                                 ),
                             ],
-                            style={
-                                "background": "linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)",
-                                "padding": "0.5rem",
-                                "borderRadius": "0.5rem",
-                                "border": "1px solid rgba(71, 85, 105, 0.5)",
-                                "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)",
-                                "transition": "all 0.3s ease",
-                                "position": "relative",
-                                "overflow": "hidden",
-                                "height": "90px",
-                                "display": "flex",
-                                "flexDirection": "column",
-                                "justifyContent": "flex-start",
-                                "margin": "2px",
-                                "backdropFilter": "saturate(180%) blur(20px)",
-                            },
+                            style=card_style(),
                         ),
+                        # OECD Card
                         html.Div(
                             [
                                 html.Div(
-                                    [
-                                        html.Span(
-                                            "🌍",
-                                            style={
-                                                "fontSize": "1.2rem",
-                                                "marginRight": "6px",
-                                            },
-                                        ),
-                                        html.Span(
-                                            "OECD CLI",
-                                            style={
-                                                "fontSize": "0.8rem",
-                                                "fontWeight": "600",
-                                                "color": "#ffffff",
-                                            },
-                                        ),
-                                    ],
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "marginBottom": "0.5rem",
-                                    },
+                                    [html.Span("🌍", style={"fontSize": "1.2rem", "marginRight": "6px"}),
+                                     html.Span("OECD CLI", style={"fontSize": "0.8rem", "fontWeight": "600", "color": "#ffffff"})],
+                                    style={"display": "flex", "alignItems": "center", "marginBottom": "0.5rem"}
                                 ),
                                 html.Div(
                                     [
-                                        html.Span(
-                                            f"{latest_oecd_pct:.1f}%",
-                                            style={
-                                                "fontSize": "1.1rem",
-                                                "fontWeight": "700",
-                                                "color": "#ffffff",
-                                            },
-                                        ),
-                                        html.Span(
-                                            oecd_state,
-                                            style={
-                                                "background": oecd_color,
-                                                "color": "white",
-                                                "padding": "3px 6px",
-                                                "borderRadius": "6px",
-                                                "fontWeight": "600",
-                                                "fontSize": "0.6rem",
-                                                "textTransform": "uppercase",
-                                                "marginLeft": "8px",
-                                            },
-                                        ),
+                                        html.Span(f"{oecd['pct']:.1f}%", style={"fontSize": "1.1rem", "fontWeight": "700", "color": "#ffffff"}),
+                                        html.Span(oecd["state"], style={"background": oecd["color"], "color": "white", "padding": "3px 6px", "borderRadius": "6px", "fontWeight": "600", "fontSize": "0.6rem", "textTransform": "uppercase", "marginLeft": "8px"}),
                                     ],
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "gap": "8px",
-                                    },
+                                    style={"display": "flex", "alignItems": "center", "gap": "8px"},
                                 ),
                             ],
-                            style={
-                                "background": "linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)",
-                                "padding": "0.5rem",
-                                "borderRadius": "0.5rem",
-                                "border": "1px solid rgba(71, 85, 105, 0.5)",
-                                "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)",
-                                "transition": "all 0.3s ease",
-                                "position": "relative",
-                                "overflow": "hidden",
-                                "height": "90px",
-                                "display": "flex",
-                                "flexDirection": "column",
-                                "justifyContent": "flex-start",
-                                "margin": "2px",
-                                "backdropFilter": "saturate(180%) blur(20px)",
-                            },
+                            style=card_style(),
                         ),
                     ],
-                    style={
-                        "display": "grid",
-                        "gridTemplateColumns": "repeat(4, 1fr)",
-                        "gap": "8px",
-                        "margin": "20px 0",
-                    },
+                    style={"display": "grid", "gridTemplateColumns": "repeat(4, 1fr)", "gap": "8px", "margin": "20px 0"},
                 ),
             ]
         )
-
     except Exception as e:
-        return html.Div(
-            f"Error creating metrics: {str(e)}",
-            style={
-                "color": "#dc2626",
-                "background": "rgba(239, 68, 68, 0.1)",
-                "padding": "12px",
-                "borderRadius": "8px",
-                "borderLeft": "4px solid #dc2626",
-                "margin": "10px 0",
-            },
-        )
+        return html.Div(f"Error creating metrics: {str(e)}", style={"color": "#dc2626", "background": "rgba(239, 68, 68, 0.1)", "padding": "12px", "borderRadius": "8px", "margin": "10px 0"})
 
 
 def create_gauge_charts():
-    """Create gauge charts for all indicators"""
+    """Create gauge charts using shared analytics"""
     try:
-        data = get_index().loc["2022":].ffill()
+        gauge_data = analytics.get_gauge_charts_data()
 
-        if data.empty:
-            return html.Div(
-                "No data available for gauges",
-                style={
-                    "color": "#dc2626",
-                    "background": "rgba(239, 68, 68, 0.1)",
-                    "padding": "12px",
-                    "borderRadius": "8px",
-                    "borderLeft": "4px solid #dc2626",
-                    "margin": "10px 0",
-                },
-            )
+        if not gauge_data:
+            return html.Div("No data available for gauges", style={"color": "#dc2626", "background": "rgba(239, 68, 68, 0.1)", "padding": "12px", "borderRadius": "8px", "margin": "10px 0"})
 
-        # Define the desired order for gauges
-        gauge_order = [
-            "코스피",
-            "S&P 500",
-            "한국CD91",
-            "한국 3년",
-            "한국 10년",
-            "미국 10년",
-            "미국 - 한국 10년",
-            "한국회사채스프레드(AA-)",
-            "달러 - 원 환율",
-        ]
-
-        # Define indicator types for proper gauge calculation
-        indicator_types = {
-            "코스피": "stock",
-            "S&P 500": "stock",
-            "한국CD91": "rate",
-            "한국 3년": "rate",
-            "한국 10년": "rate",
-            "미국 10년": "rate",
-            "미국 - 한국 10년": "rate",
-            "한국회사채스프레드(AA-)": "rate",
-            "달러 - 원 환율": "fx",
-        }
-
-        # Collect all gauge figures with metadata
-        gauge_data = []
-        for name in gauge_order:
-            if name in data.columns:
-                series = data[name].copy()
-                series.name = name  # Set the series name for display
-                indicator_type = indicator_types.get(name, "rate")
-                fig, current_state, state_color = make_gauge(
-                    series, indicator_type=indicator_type
-                )
-                gauge_data.append(
-                    {
-                        "name": name,
-                        "figure": fig,
-                        "latest_value": series.iloc[-1],
-                        "change": series.pct_change().iloc[-1],
-                        "current_state": current_state,
-                        "state_color": state_color,
-                    }
-                )
-
-        # Create gauge components
+        # Create gauge components row by row
         gauge_components = []
         for i in range(0, len(gauge_data), 2):
             row_components = []
+            
+            # Helper to create graph div
+            def create_graph_div(item):
+                return html.Div(
+                    [dcc.Graph(figure=item["figure"], config={"displayModeBar": False})],
+                    style={"width": "48%", "display": "inline-block"}
+                )
 
             # First gauge
-            row_components.append(
-                html.Div(
-                    [
-                        dcc.Graph(
-                            figure=gauge_data[i]["figure"],
-                            config={"displayModeBar": False},
-                        )
-                    ],
-                    style={"width": "48%", "display": "inline-block"},
-                )
-            )
+            row_components.append(create_graph_div(gauge_data[i]))
 
             # Second gauge if exists
             if i + 1 < len(gauge_data):
-                row_components.append(
-                    html.Div(
-                        [
-                            dcc.Graph(
-                                figure=gauge_data[i + 1]["figure"],
-                                config={"displayModeBar": False},
-                            )
-                        ],
-                        style={
-                            "width": "48%",
-                            "display": "inline-block",
-                            "marginLeft": "4%",
-                        },
-                    )
-                )
+                 # Add margin to second item
+                 div = create_graph_div(gauge_data[i+1])
+                 div.style["marginLeft"] = "4%"
+                 row_components.append(div)
 
-            gauge_components.append(
-                html.Div(row_components, style={"marginBottom": "20px"})
-            )
+            gauge_components.append(html.Div(row_components, style={"marginBottom": "20px"}))
 
         return html.Div(gauge_components)
 
     except Exception as e:
-        return html.Div(
-            f"Error creating gauges: {str(e)}",
-            style={
-                "color": "#dc2626",
-                "background": "rgba(239, 68, 68, 0.1)",
-                "padding": "12px",
-                "borderRadius": "8px",
-                "borderLeft": "4px solid #dc2626",
-                "margin": "10px 0",
-            },
-        )
+        return html.Div(f"Error creating gauges: {str(e)}", style={"color": "#dc2626", "background": "rgba(239, 68, 68, 0.1)", "padding": "12px"})
 
 
 # Main layout
@@ -1421,7 +857,7 @@ def update_data_stores(refresh_clicks, n_intervals, cached_risk_data, cached_oec
     if not ctx.triggered:
         # Initial load
         try:
-            risk_data = get_index().loc["2022":].ffill()
+            risk_data = analytics.get_index_data().loc["2022":].ffill()
             oecd_data = NumOfOECDLeadingPositiveMoM()
             # Serialize with index preserved
             risk_serialized = (
@@ -1441,7 +877,7 @@ def update_data_stores(refresh_clicks, n_intervals, cached_risk_data, cached_oec
 
     # Always refresh on button click, or every interval
     try:
-        risk_data = get_index().loc["2022":].ffill()
+        risk_data = analytics.get_index_data().loc["2022":].ffill()
         oecd_data = NumOfOECDLeadingPositiveMoM()
         # Serialize with index preserved
         risk_serialized = (

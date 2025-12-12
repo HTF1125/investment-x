@@ -14,230 +14,142 @@ def create_table_row(insight_data: Dict[str, Any]) -> html.Tr:
     name = insight_data.get("name", "Untitled Report")
     issuer = insight_data.get("issuer", "Unknown")
     published_date_display = format_date_for_display(insight_data.get("published_date", ""))
-    summary = insight_data.get("summary", "")
-    summary_preview = truncate_text(summary, max_length=200) if summary else "No summary available"
-    hash_tag = insight_data.get("hash", "")
+    url = insight_data.get("url", "#")
+
+    # Row styling for hover effect
+    row_style = {
+        "transition": "background-color 0.2s ease",
+        "cursor": "pointer",
+        "height": "48px",
+    }
 
     return html.Tr(
         [
+            # Icon Column
             html.Td(
-                dmc.Text(
-                    name,
-                    size="sm",
-                    fw="600",
-                    style={
-                        "color": "#f8fafc",
-                        "lineHeight": "1.5",
-                    },
-                ),
-                style={
-                    "padding": "16px 20px",
-                    "verticalAlign": "top",
-                    "maxWidth": "320px",
-                    "minWidth": "250px",
-                },
+                DashIconify(icon="vscode-icons:file-type-pdf2", width=20),
+                style={"width": "40px", "textAlign": "center", "padding": "0 10px"}
             ),
+            # Title Column
+            html.Td(
+                html.A(
+                    dmc.Text(
+                        name,
+                        size="sm",
+                        fw=500,
+                        c="blue.4",
+                        style={"lineHeight": "1.4"}
+                    ),
+                    href=url,
+                    target="_blank",
+                    style={"textDecoration": "none", "display": "block"}
+                ),
+                style={"padding": "12px", "maxWidth": "500px"}
+            ),
+            # Issuer Column
             html.Td(
                 dmc.Badge(
                     issuer,
-                    variant="light",
-                    color="blue",
-                    size="md",
+                    variant="dot",
+                    color="gray",
+                    size="sm",
                     radius="sm",
+                    style={"textTransform": "none", "backgroundColor": "transparent"}
                 ),
-                style={
-                    "padding": "16px 20px",
-                    "verticalAlign": "top",
-                    "whiteSpace": "nowrap",
-                },
+                style={"padding": "12px", "whiteSpace": "nowrap"}
             ),
+            # Date Column
             html.Td(
                 dmc.Text(
                     published_date_display,
-                    size="sm",
-                    c="gray.5",
-                    fw="500",
+                    size="xs",
+                    c="dimmed",
+                    ff="monospace",
                 ),
-                style={
-                    "padding": "16px 20px",
-                    "verticalAlign": "top",
-                    "whiteSpace": "nowrap",
-                    "minWidth": "120px",
-                },
+                style={"padding": "12px", "whiteSpace": "nowrap", "width": "120px"}
             ),
+            # Action Column
             html.Td(
-                dmc.Text(
-                    summary_preview,
-                    size="sm",
-                    c="gray.6",
-                    style={
-                        "display": "-webkit-box",
-                        "-webkitLineClamp": "3",
-                        "-webkitBoxOrient": "vertical",
-                        "overflow": "hidden",
-                        "textOverflow": "ellipsis",
-                        "lineHeight": "1.6",
-                        "maxWidth": "450px",
-                    },
+                html.A(
+                     dmc.ActionIcon(
+                        DashIconify(icon="carbon:launch", width=16),
+                        variant="subtle",
+                        color="gray",
+                        size="sm"
+                     ),
+                     href=url,
+                     target="_blank"
                 ),
-                title=summary if summary else "No summary",
-                style={
-                    "padding": "16px 20px",
-                    "verticalAlign": "top",
-                    "maxWidth": "450px",
-                },
-            ),
-            html.Td(
-                dmc.Text(
-                    hash_tag if hash_tag else "-",
-                    size="sm",
-                    c="cyan" if hash_tag else "gray.7",
-                    fw="500" if hash_tag else "400",
-                ),
-                style={
-                    "padding": "16px 20px",
-                    "verticalAlign": "top",
-                    "whiteSpace": "nowrap",
-                    "maxWidth": "200px",
-                },
-            ),
+                style={"width": "50px", "textAlign": "center", "padding": "0 10px"}
+            )
         ],
         id=f"insight-row-{insight_id}",
-        **{"data-insight-id": str(insight_id)},
-        style={
-            "borderBottom": "1px solid #334155",
-            "transition": "all 0.2s ease",
-            "backgroundColor": "transparent",
-            "cursor": "pointer",
-        },
         className="insight-table-row",
+        style=row_style
     )
 
 
 def create_insights_table(insights_data: List[Dict[str, Any]]) -> html.Div:
-    """Create an enhanced table from insights data."""
+    """Create an enhanced Mantine table from insights data."""
     if not insights_data:
         return html.Div(
             [
                 dmc.Stack(
                     [
-                        DashIconify(icon="carbon:document-blank", width=80, color="#64748b"),
-                        dmc.Text("No research reports found", size="xl", fw="600", c="gray.4"),
-                        dmc.Text(
-                            "Upload PDF reports to start building your research library",
-                            size="sm",
-                            c="gray.6",
-                        ),
+                        DashIconify(icon="carbon:document-blank", width=60, color="#475569"),
+                        dmc.Text("No documents found", size="md", c="gray.6"),
                     ],
                     align="center",
-                    gap="md",
+                    gap="sm",
                 ),
             ],
             style={
-                "padding": "100px 20px",
+                "padding": "60px 20px",
                 "textAlign": "center",
                 "backgroundColor": "#1e293b",
-                "borderRadius": "12px",
-                "border": "1px solid #334155",
+                "borderRadius": "8px",
+                "border": "1px dashed #334155",
             },
         )
 
     # Create table rows
     table_rows = [create_table_row(insight) for insight in insights_data]
 
-    return html.Div(
-        [
-            html.Table(
-                [
-                    html.Thead(
-                        html.Tr(
-                            [
-                                html.Th(
-                                    dmc.Group(
-                                        [
-                                            DashIconify(icon="carbon:document", width=16, color="#64748b"),
-                                            dmc.Text("Title", size="sm", fw="700", c="gray.3"),
-                                        ],
-                                        gap="xs",
-                                        align="center",
-                                    ),
-                                    style={
-                                        "padding": "16px 20px",
-                                        "textAlign": "left",
-                                        "fontSize": "13px",
-                                        "textTransform": "uppercase",
-                                        "letterSpacing": "0.5px",
-                                    },
-                                ),
-                                html.Th(
-                                    dmc.Text("Issuer", size="sm", fw="700", c="gray.3"),
-                                    style={
-                                        "padding": "16px 20px",
-                                        "textAlign": "left",
-                                        "fontSize": "13px",
-                                        "textTransform": "uppercase",
-                                        "letterSpacing": "0.5px",
-                                    },
-                                ),
-                                html.Th(
-                                    dmc.Text("Date", size="sm", fw="700", c="gray.3"),
-                                    style={
-                                        "padding": "16px 20px",
-                                        "textAlign": "left",
-                                        "fontSize": "13px",
-                                        "textTransform": "uppercase",
-                                        "letterSpacing": "0.5px",
-                                    },
-                                ),
-                                html.Th(
-                                    dmc.Text("Summary", size="sm", fw="700", c="gray.3"),
-                                    style={
-                                        "padding": "16px 20px",
-                                        "textAlign": "left",
-                                        "fontSize": "13px",
-                                        "textTransform": "uppercase",
-                                        "letterSpacing": "0.5px",
-                                    },
-                                ),
-                                html.Th(
-                                    dmc.Group(
-                                        [
-                                            DashIconify(icon="carbon:tag", width=16, color="#64748b"),
-                                            dmc.Text("Hash", size="sm", fw="700", c="gray.3"),
-                                        ],
-                                        gap="xs",
-                                        align="center",
-                                    ),
-                                    style={
-                                        "padding": "16px 20px",
-                                        "textAlign": "left",
-                                        "fontSize": "13px",
-                                        "textTransform": "uppercase",
-                                        "letterSpacing": "0.5px",
-                                    },
-                                ),
-                            ],
-                            style={
-                                "backgroundColor": "#1e293b",
-                                "borderBottom": "2px solid #475569",
-                                "position": "sticky",
-                                "top": "0",
-                                "zIndex": "10",
-                                "boxShadow": "0 2px 4px rgba(0, 0, 0, 0.1)",
-                            },
+    return dmc.Table(
+        children=[
+            html.Thead(
+                html.Tr(
+                    [
+                        html.Th("", style={"width": "40px"}), # Icon placeholder
+                        html.Th(
+                            dmc.Text("Document Name", size="xs", fw=700, c="dimmed", tt="uppercase"),
+                            style={"padding": "12px"}
                         ),
-                    ),
-                    html.Tbody(table_rows),
-                ],
-                style={
-                    "width": "100%",
-                    "borderCollapse": "collapse",
-                    "backgroundColor": "#0f172a",
-                    "fontSize": "14px",
-                },
+                        html.Th(
+                            dmc.Text("Issuer", size="xs", fw=700, c="dimmed", tt="uppercase"),
+                            style={"padding": "12px"}
+                        ),
+                        html.Th(
+                            dmc.Text("Date", size="xs", fw=700, c="dimmed", tt="uppercase"),
+                            style={"padding": "12px"}
+                        ),
+                        html.Th("", style={"width": "50px"}), # Action placeholder
+                    ],
+                    style={"backgroundColor": "#0f172a", "borderBottom": "1px solid #334155"}
+                )
             ),
+            html.Tbody(table_rows, style={"backgroundColor": "#1e293b"}),
         ],
+        striped=True,
+        highlightOnHover=True,
+        withTableBorder=True,
+        withColumnBorders=False,
+        verticalSpacing="xs",
+        horizontalSpacing="md",
         style={
-            "width": "100%",
-        },
+            "borderRadius": "8px",
+            "overflow": "hidden",
+            "border": "1px solid #334155",
+            "marginBottom": "20px"
+        }
     )
