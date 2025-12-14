@@ -97,26 +97,8 @@ class Connection:
                 # Import models to ensure they're registered with Base
                 from ix.db import models
 
-                # Create all tables
-                Base.metadata.create_all(bind=self.engine)
-
-                # Ensure new columns introduced outside migrations exist
-                with self.engine.begin() as conn_check:
-                    conn_check.execute(
-                        text(
-                            "ALTER TABLE IF EXISTS insights ADD COLUMN IF NOT EXISTS pdf_content BYTEA"
-                        )
-                    )
-                    conn_check.execute(
-                        text(
-                            "ALTER TABLE IF EXISTS timeseries ADD COLUMN IF NOT EXISTS favorite BOOLEAN NOT NULL DEFAULT FALSE"
-                        )
-                    )
-                    conn_check.execute(
-                        text(
-                            "ALTER TABLE IF EXISTS insights ADD COLUMN IF NOT EXISTS hash_tag VARCHAR"
-                        )
-                    )
+                # Import models to ensure they're registered with Base
+                from ix.db import models
 
                 self._is_connected = True
                 logger.info(f"Successfully connected to PostgreSQL: {settings.db_name}")
