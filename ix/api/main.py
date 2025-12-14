@@ -31,6 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 async def root():
     """Root endpoint."""
@@ -52,6 +53,7 @@ async def global_exception_handler(request, exc):
         content={"error": "Internal server error", "detail": str(exc)},
     )
 
+
 # Include routers with error handling
 try:
     from ix.api.routers import auth, timeseries, series, evaluation, task, risk
@@ -67,12 +69,12 @@ try:
 
 except Exception as e:
     import traceback
+
     traceback.print_exc()
     logger.error(f"Failed to import or register routers: {e}", exc_info=True)
     # Re-raise so the app fails to start if routers are broken
     raise e
 
-from ix.api.scheduler import start_scheduler, stop_scheduler
 
 @app.on_event("startup")
 async def startup_event():
@@ -80,15 +82,12 @@ async def startup_event():
     logger.info("FastAPI application started")
     # Don't connect to DB here - let it connect lazily on first request
     # This prevents blocking during startup
-    start_scheduler()
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop the scheduler on application shutdown."""
-    stop_scheduler()
-
-
+    """Shutdown event."""
+    pass
 
 
 if __name__ == "__main__":

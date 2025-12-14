@@ -1,11 +1,13 @@
 from typing import Optional, Union
 import numpy as np
 import pandas as pd
+
 from scipy.optimize import curve_fit
 from pandas.tseries.offsets import MonthEnd
 from ix.db.models import Timeseries
 from cachetools import TTLCache, cached
 from ix import core
+from ix.core.stat import Cycle
 from ix.misc.date import today
 
 cache = TTLCache(maxsize=128, ttl=600)
@@ -397,12 +399,11 @@ def Ffill(series: pd.Series) -> pd.Series:
     """Forward fill missing values in a series."""
     return series.ffill()
 
-
-def Cycle(series: pd.Series, max_points_per_cycle: Optional[int] = None) -> pd.Series:
     """
     series: pd.Series, 결측치 자동 제거
     max_points_per_cycle: int, 한 사이클당 최대 포인트 수. None 이면 제약 없음.
     """
+
     # 1) Prepare t and y
     series_clean = series.dropna()
     t = np.arange(len(series_clean))
@@ -475,6 +476,7 @@ def find_best_window(series: pd.Series, max_lag: Optional[int] = None) -> int:
 def CycleForecast(
     series: pd.Series, forecast_steps: int = 12, window_size: Optional[int] = None
 ) -> pd.Series:
+
     series = series.dropna()
     t = np.arange(len(series))
     y = series.values

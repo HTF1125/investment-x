@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
-from ix.web.pages.risk import analytics
-import plotly.io as pio
+
 
 router = APIRouter()
+
 
 @router.get("/risk/html", response_class=HTMLResponse)
 async def get_risk_report():
@@ -12,23 +12,29 @@ async def get_risk_report():
     """
     try:
         # Get data and figures
+        import plotly.io as pio
+        from ix.web.pages.risk import analytics
+
         metrics = analytics.calculate_risk_metrics()
         oecd_fig = analytics.create_oecd_chart()
         gauge_data = analytics.get_gauge_charts_data()
-        
+
         if not metrics:
-             return HTMLResponse(content="<html><body><h1>No Data Available</h1></body></html>", status_code=404)
+            return HTMLResponse(
+                content="<html><body><h1>No Data Available</h1></body></html>",
+                status_code=404,
+            )
 
         # Generate HTML components
-        
+
         # 1. OECD Chart
-        oecd_html = pio.to_html(oecd_fig, full_html=False, include_plotlyjs='cdn')
-        
+        oecd_html = pio.to_html(oecd_fig, full_html=False, include_plotlyjs="cdn")
+
         # 2. Key Metrics Cards
-        alert = metrics['alert']
-        positive = metrics['positive']
-        oecd_metric = metrics['oecd']
-        
+        alert = metrics["alert"]
+        positive = metrics["positive"]
+        oecd_metric = metrics["oecd"]
+
         # Styles
         style = """
         <style>
@@ -47,12 +53,18 @@ async def get_risk_report():
             h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 15px; color: #e2e8f0; }
         </style>
         """
-        
+
         # Alert Component
-        alert_bg = "rgba(239, 68, 68, 0.1)" if alert['color'] == "#dc2626" else "rgba(16, 185, 129, 0.1)"
-        if alert['level'] == 'Warning': alert_bg = "rgba(245, 158, 11, 0.1)"
-        if alert['level'] == 'Normal': alert_bg = "rgba(16, 185, 129, 0.1)"
-        
+        alert_bg = (
+            "rgba(239, 68, 68, 0.1)"
+            if alert["color"] == "#dc2626"
+            else "rgba(16, 185, 129, 0.1)"
+        )
+        if alert["level"] == "Warning":
+            alert_bg = "rgba(245, 158, 11, 0.1)"
+        if alert["level"] == "Normal":
+            alert_bg = "rgba(16, 185, 129, 0.1)"
+
         alert_html = f"""
         <div class="alert-box" style="background: {alert_bg}; border-color: {alert['color']};">
             <div>
@@ -62,7 +74,7 @@ async def get_risk_report():
             <span class="badge" style="background: {alert['color']}; color: white;">{alert['badge']}</span>
         </div>
         """
-        
+
         # Metrics Grid
         metrics_html = f"""
         <div class="grid">
@@ -90,13 +102,15 @@ async def get_risk_report():
             </div>
         </div>
         """
-        
+
         # Gauges
         gauges_html = '<div style="display: flex; flex-wrap: wrap; gap: 20px;">'
         for item in gauge_data:
-            chart_html = pio.to_html(item['figure'], full_html=False, include_plotlyjs=False)
+            chart_html = pio.to_html(
+                item["figure"], full_html=False, include_plotlyjs=False
+            )
             gauges_html += f'<div style="flex: 1 1 45%; min-width: 400px; background: rgba(30, 41, 59, 0.6); border-radius: 12px; border: 1px solid rgba(71, 85, 105, 0.3); padding: 10px;">{chart_html}</div>'
-        gauges_html += '</div>'
+        gauges_html += "</div>"
 
         # Full Page
         html_content = f"""
@@ -211,7 +225,7 @@ async def get_risk_report():
         </body>
         </html>
         """
-        
+
         return HTMLResponse(content=html_content)
 
     except Exception as e:

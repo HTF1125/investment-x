@@ -1,6 +1,9 @@
-import plotly.graph_objects as go
-import numpy as np
-import pandas as pd
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import plotly.graph_objects as go
+    import pandas as pd
 
 
 def make_gauge(px: pd.Series, indicator_type: str = "stock"):
@@ -14,6 +17,9 @@ def make_gauge(px: pd.Series, indicator_type: str = "stock"):
             - "rate": Interest rates/spreads - inverted sigma (higher = negative, left side)
             - "fx": Exchange rates - inverted sigma (higher = negative, left side)
     """
+    import plotly.graph_objects as go
+    import pandas as pd
+
     d = px.copy()
 
     # Rolling 3-year window length (104 weeks = 2 years)
