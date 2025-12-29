@@ -2,9 +2,17 @@ from typing import Optional, List
 import pandas as pd
 from ix.misc.terminal import get_logger
 from ix.misc.date import tomorrow, onemonthbefore, onemonthlater
-import pandas_datareader as pdr
 
 logger = get_logger(__name__)
+
+
+def _get_pandas_datareader():
+    try:
+        import pandas_datareader as pdr
+    except Exception as exc:
+        logger.warning(f"pandas_datareader unavailable: {exc}")
+        return None
+    return pdr
 
 
 def get_bloomberg_data(
@@ -64,6 +72,9 @@ def get_fred_data(
 
     logger = get_logger(get_fred_data)
     try:
+        pdr = _get_pandas_datareader()
+        if pdr is None:
+            raise ImportError("pandas_datareader is required for FRED data")
 
         data = pdr.DataReader(
             name=ticker,
@@ -110,6 +121,9 @@ def get_naver_data(
 
     logger = get_logger(get_naver_data)
     try:
+        pdr = _get_pandas_datareader()
+        if pdr is None:
+            raise ImportError("pandas_datareader is required for Naver data")
 
         data = pdr.DataReader(
             name=ticker,
