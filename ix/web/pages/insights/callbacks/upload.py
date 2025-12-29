@@ -12,7 +12,8 @@ from dash_iconify import DashIconify
 from ix.db.conn import Session
 from ix.db.models import Insights
 from ix.misc.terminal import get_logger
-from ix.misc import PDFSummarizer, Settings
+from ix.misc import Settings
+from ix.misc.openai import PDFSummarizer
 
 logger = get_logger(__name__)
 

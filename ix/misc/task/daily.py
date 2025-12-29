@@ -1,5 +1,4 @@
 from ix.misc.terminal import get_logger
-import investpy
 from ix.misc import as_date, onemonthbefore, onemonthlater
 
 # from ix.db import EconomicCalendar  # Commented out - MongoDB not in use
