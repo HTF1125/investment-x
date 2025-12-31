@@ -100,6 +100,25 @@ class TimeseriesCreate(BaseModel):
     favorite: Optional[bool] = False
 
 
+class TimeseriesUpdate(BaseModel):
+    """Timeseries update schema (all fields optional)."""
+
+    code: Optional[str] = None  # Allows renaming a timeseries
+    name: Optional[str] = None
+    provider: Optional[str] = None
+    asset_class: Optional[str] = None
+    category: Optional[str] = None
+    source: Optional[str] = None
+    source_code: Optional[str] = None
+    frequency: Optional[str] = None
+    unit: Optional[str] = None
+    scale: Optional[int] = None
+    currency: Optional[str] = None
+    country: Optional[str] = None
+    remark: Optional[str] = None
+    favorite: Optional[bool] = None
+
+
 class TimeseriesBulkUpdate(BaseModel):
     """Bulk timeseries update schema."""
 

@@ -16,6 +16,7 @@ from ix.api.schemas import (
     TimeseriesCreate,
     TimeseriesBulkUpdate,
     TimeseriesDataUpload,
+    TimeseriesUpdate,
 )
 from ix.api.dependencies import get_db
 from ix.db.models import Timeseries
@@ -28,6 +29,54 @@ from ix.misc import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def _apply_timeseries_updates(ts: Timeseries, data: dict) -> None:
+    """Apply whitelisted updates to a Timeseries instance."""
+    if "code" in data and data["code"] is not None:
+        ts.code = str(data["code"])
+
+    if "name" in data:
+        name = data["name"]
+        ts.name = str(name)[:200] if name else None
+    if "provider" in data:
+        provider = data["provider"]
+        ts.provider = str(provider)[:100] if provider else None
+    if "asset_class" in data:
+        asset_class = data["asset_class"]
+        ts.asset_class = str(asset_class)[:50] if asset_class else None
+    if "category" in data:
+        category = data["category"]
+        ts.category = str(category)[:100] if category else None
+    if "source" in data:
+        source = data["source"]
+        ts.source = str(source)[:100] if source else None
+    if "source_code" in data:
+        source_code = data["source_code"]
+        ts.source_code = str(source_code)[:2000] if source_code else None
+    if "frequency" in data:
+        frequency = data["frequency"]
+        ts.frequency = str(frequency)[:20] if frequency else None
+    if "unit" in data:
+        unit = data["unit"]
+        ts.unit = str(unit)[:50] if unit else None
+    if "scale" in data:
+        scale = data["scale"]
+        if scale is not None:
+            ts.scale = int(scale)
+        else:
+            ts.scale = None
+    if "currency" in data:
+        currency = data["currency"]
+        ts.currency = str(currency)[:10] if currency else None
+    if "country" in data:
+        country = data["country"]
+        ts.country = str(country)[:100] if country else None
+    if "remark" in data:
+        remark = data["remark"]
+        ts.remark = str(remark) if remark else None
+    if "favorite" in data:
+        ts.favorite = bool(data["favorite"]) if data["favorite"] is not None else None
 
 
 @router.get("/timeseries", response_model=List[TimeseriesResponse])
@@ -210,6 +259,134 @@ async def create_or_update_timeseries_bulk(
         response["error_count"] = len(errors)
 
     return response
+
+
+@router.put("/timeseries/{code}", response_model=TimeseriesResponse)
+async def update_timeseries(
+    code: str, payload: TimeseriesUpdate, db: SessionType = Depends(get_db)
+):
+    """
+    PUT /api/timeseries/{code} - Update a single timeseries metadata entry.
+
+    This endpoint follows REST best practices by using PUT for updates.
+    Only provided fields are updated (no payload -> 400).
+    """
+    ensure_connection()
+
+    ts = db.query(Timeseries).filter(Timeseries.code == code).first()
+    if not ts:
+        raise HTTPException(
+            status_code=404, detail=f"Timeseries with code '{code}' not found"
+        )
+
+    update_fields = payload.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields provided to update.")
+
+    try:
+        # Apply changes
+        try:
+            _apply_timeseries_updates(ts, update_fields)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=400, detail="Invalid field type in payload."
+            )
+
+        ts.updated = datetime.now()
+        db.commit()
+        db.refresh(ts)
+
+        return TimeseriesResponse(
+            id=str(ts.id),
+            code=ts.code,
+            name=ts.name,
+            provider=ts.provider,
+            asset_class=ts.asset_class,
+            category=ts.category,
+            start=ts.start,
+            end=ts.end,
+            num_data=ts.num_data,
+            source=ts.source,
+            source_code=getattr(ts, "source_code", None),
+            frequency=ts.frequency,
+            unit=getattr(ts, "unit", None),
+            scale=getattr(ts, "scale", None),
+            currency=getattr(ts, "currency", None),
+            country=getattr(ts, "country", None),
+            remark=getattr(ts, "remark", None),
+            favorite=getattr(ts, "favorite", False),
+        )
+    except HTTPException:
+        # Already constructed, just re-raise
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to update timeseries {code}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update timeseries '{code}'"
+        )
+
+
+@router.post("/timeseries/{code}", response_model=TimeseriesResponse, status_code=201)
+async def create_timeseries(
+    code: str, payload: TimeseriesCreate, db: SessionType = Depends(get_db)
+):
+    """
+    POST /api/timeseries/{code} - Create a single timeseries metadata entry.
+
+    - Returns 409 if the code already exists.
+    - Body fields mirror the bulk create schema; path code overrides body code.
+    """
+    ensure_connection()
+
+    # Validate existence
+    existing = db.query(Timeseries).filter(Timeseries.code == code).first()
+    if existing:
+        raise HTTPException(
+            status_code=409, detail=f"Timeseries with code '{code}' already exists"
+        )
+
+    # Build data from payload with path code taking precedence
+    create_data = payload.model_dump(exclude_unset=True)
+    create_data["code"] = code  # enforce path code
+
+    try:
+        ts = Timeseries(code=code)
+        _apply_timeseries_updates(ts, create_data)
+        ts.created = datetime.now()
+        ts.updated = datetime.now()
+
+        db.add(ts)
+        db.commit()
+        db.refresh(ts)
+
+        return TimeseriesResponse(
+            id=str(ts.id),
+            code=ts.code,
+            name=ts.name,
+            provider=ts.provider,
+            asset_class=ts.asset_class,
+            category=ts.category,
+            start=ts.start,
+            end=ts.end,
+            num_data=ts.num_data,
+            source=ts.source,
+            source_code=getattr(ts, "source_code", None),
+            frequency=ts.frequency,
+            unit=getattr(ts, "unit", None),
+            scale=getattr(ts, "scale", None),
+            currency=getattr(ts, "currency", None),
+            country=getattr(ts, "country", None),
+            remark=getattr(ts, "remark", None),
+            favorite=getattr(ts, "favorite", False),
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to create timeseries {code}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create timeseries '{code}'"
+        )
 
 
 @router.get("/timeseries/{timeseries_id}", response_model=TimeseriesResponse)
