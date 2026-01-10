@@ -139,6 +139,23 @@ class TimeseriesDataUpload(BaseModel):
     data: List[TimeseriesDataPoint]
 
 
+class TimeseriesColumnarUpload(BaseModel):
+    """Columnar timeseries data upload - much more efficient for large datasets.
+
+    Example payload:
+    {
+        "dates": ["2024-01-01", "2024-01-02", ...],
+        "columns": {
+            "CODE1": [1.23, 4.56, null, ...],
+            "CODE2": [7.89, 0.12, null, ...]
+        }
+    }
+    """
+
+    dates: List[str]
+    columns: Dict[str, List[Optional[float]]]
+
+
 # Series schemas
 class SeriesResponse(BaseModel):
     """Series response schema - column-oriented format."""

@@ -16,6 +16,7 @@ from ix.api.schemas import (
     TimeseriesCreate,
     TimeseriesBulkUpdate,
     TimeseriesDataUpload,
+    TimeseriesColumnarUpload,
     TimeseriesUpdate,
 )
 from ix.api.dependencies import get_db
@@ -1132,6 +1133,152 @@ async def upload_data(
 
     except Exception as e:
         logger.exception("Failed to process data upload")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process data upload: {str(e)}"
+        )
+
+
+@router.post("/upload_data_columnar")
+async def upload_data_columnar(
+    payload: TimeseriesColumnarUpload,
+    db: SessionType = Depends(get_db),
+):
+    """
+    POST /api/upload_data_columnar - Upload timeseries data in efficient columnar format.
+
+    This endpoint is optimized for large dataset uploads. Instead of sending
+    individual {date, code, value} objects, send data in columnar format:
+
+    {
+        "dates": ["2024-01-01", "2024-01-02", ...],
+        "columns": {
+            "CODE1": [1.23, 4.56, null, ...],
+            "CODE2": [7.89, 0.12, null, ...]
+        }
+    }
+
+    This reduces payload size by 80-90% compared to the row-by-row format.
+    """
+    try:
+        ensure_connection()
+
+        # Validate input
+        if not payload.dates or not payload.columns:
+            raise HTTPException(status_code=400, detail="No data provided")
+
+        # Direct DataFrame construction from columnar format (no pivot needed!)
+        try:
+            dates_index = pd.to_datetime(payload.dates, errors="coerce")
+            df = pd.DataFrame(payload.columns, index=dates_index)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid data format: {str(e)}"
+            )
+
+        # Drop rows where all values are null and columns where all values are null
+        df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
+
+        if df.empty:
+            raise HTTPException(
+                status_code=400, detail="No valid records to upload after cleaning."
+            )
+
+        # Track results
+        updated_codes = []
+        not_found_codes = []
+        total_points_merged = 0
+
+        # Process each column (timeseries code)
+        for code in df.columns:
+            ts = db.query(Timeseries).filter(Timeseries.code == code).first()
+            if ts is None:
+                not_found_codes.append(code)
+                continue
+
+            # Get existing data
+            data_record = ts._get_or_create_data_record(db)
+            column_data = data_record.data if data_record and data_record.data else {}
+
+            if column_data and isinstance(column_data, dict):
+                existing_data = pd.Series(column_data)
+                if not existing_data.empty:
+                    existing_data.index = pd.to_datetime(
+                        existing_data.index, errors="coerce"
+                    )
+                    existing_data = existing_data.dropna()
+            else:
+                existing_data = pd.Series(dtype=float)
+
+            # Get new data for this code
+            new_series = df[code].dropna()
+
+            # Merge new with existing (new values override)
+            if not existing_data.empty:
+                combined_data = pd.concat([existing_data, new_series], axis=0)
+                combined_data = combined_data[
+                    ~combined_data.index.duplicated(keep="last")
+                ]
+                combined_data = combined_data.sort_index()
+            else:
+                combined_data = new_series.sort_index()
+
+            # Convert to JSONB-friendly dict format
+            data_dict = {}
+            for k, v in combined_data.to_dict().items():
+                if hasattr(k, "date"):
+                    date_str = str(k.date())
+                elif isinstance(k, str):
+                    date_str = k
+                else:
+                    date_str = str(pd.to_datetime(k).date())
+                data_dict[date_str] = (
+                    float(v)
+                    if v is not None and not (isinstance(v, float) and pd.isna(v))
+                    else None
+                )
+
+            # Update timeseries record
+            data_record.data = data_dict
+            data_record.updated = datetime.now()
+            ts.start = (
+                combined_data.index.min().date()
+                if len(combined_data.index) > 0
+                else None
+            )
+            ts.end = (
+                combined_data.index.max().date()
+                if len(combined_data.index) > 0
+                else None
+            )
+            ts.num_data = len(combined_data)
+            ts.updated = datetime.now()
+
+            total_points_merged += len(new_series)
+            updated_codes.append(code)
+
+        # Single commit for all codes (much faster than per-code commits)
+        db.commit()
+
+        logger.info(
+            f"Columnar upload: updated {len(updated_codes)} codes with {total_points_merged} total data points"
+        )
+
+        response = {
+            "message": f"Successfully processed {len(payload.dates)} dates × {len(payload.columns)} columns.",
+            "updated_codes": updated_codes,
+            "total_points_merged": total_points_merged,
+        }
+
+        if not_found_codes:
+            response["warning"] = f"Codes not found in database: {not_found_codes}"
+            logger.warning(f"Codes not found: {not_found_codes}")
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to process columnar data upload")
         raise HTTPException(
             status_code=500, detail=f"Failed to process data upload: {str(e)}"
         )
