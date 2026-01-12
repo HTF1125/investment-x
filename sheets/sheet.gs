@@ -324,9 +324,9 @@ function processExcelUpload(base64Data, fileName, uploadId) {
 }
 
 /**
- * OPTIMIZED: Builds columnar format data and sends to API in a single request.
+ * OPTIMIZED v3: Handles WIDE datasets (3000+ columns).
+ * Chunks by COLUMNS since that's the bottleneck for wide spreadsheets.
  * Format: { dates: [...], columns: { CODE1: [...], CODE2: [...] } }
- * This reduces payload size by 80-90% compared to the old row-by-row format.
  */
 function sendDataFromValues(values, startTime, uploadId) {
   let apiUrl = "";
@@ -336,29 +336,22 @@ function sendDataFromValues(values, startTime, uploadId) {
 
   let cleanBaseUrl = String(apiUrl).trim();
   if (cleanBaseUrl.slice(-1) !== '/') cleanBaseUrl += '/';
-  // Use new columnar endpoint
   const endpoint = cleanBaseUrl + "api/upload_data_columnar";
 
   const numRows = values.length;     
   const numCols = values[0].length;
   const headers = values[0];
-
-  updateProgress(uploadId, "Building columnar data...", 35);
-
-  // Build columnar format in a single pass
-  const dates = [];
-  const columns = {};
   
-  // Initialize column arrays for each code
-  for (let c = 1; c < numCols; c++) {
-    const code = headers[c];
-    if (code != null && code !== "") {
-      columns[String(code).trim()] = [];
-    }
-  }
+  // Configuration - chunk by COLUMNS for wide datasets
+  const COLS_PER_CHUNK = 100; // Send 100 columns at a time
+  const MAX_EXECUTION_TIME_MS = 280 * 1000; // 4.5 minutes safety margin
 
-  // Fill dates and column values
-  let validRowCount = 0;
+  updateProgress(uploadId, "Preparing data...", 20);
+
+  // Step 1: Build ALL dates array once (reused for each column chunk)
+  const allDates = [];
+  const validRowIndices = [];
+  
   for (let r = 1; r < numRows; r++) {
     const dateRaw = values[r][0];
     if (!dateRaw) continue;
@@ -366,61 +359,98 @@ function sendDataFromValues(values, startTime, uploadId) {
     const formattedDate = formatDateValue(dateRaw);
     if (!formattedDate) continue;
     
-    dates.push(formattedDate);
-    validRowCount++;
+    allDates.push(formattedDate);
+    validRowIndices.push(r);
+  }
+
+  if (allDates.length === 0) {
+    return "No valid dates found in first column.";
+  }
+
+  // Step 2: Collect all valid column codes
+  const allColumnCodes = [];
+  for (let c = 1; c < numCols; c++) {
+    const code = headers[c];
+    if (code != null && code !== "") {
+      allColumnCodes.push({ index: c, code: String(code).trim() });
+    }
+  }
+
+  if (allColumnCodes.length === 0) {
+    return "No valid column headers found.";
+  }
+
+  updateProgress(uploadId, `Found ${allDates.length} dates × ${allColumnCodes.length} columns`, 25);
+
+  // Step 3: Process columns in chunks
+  let totalColumnsSent = 0;
+  let totalChunks = 0;
+  let currentColIndex = 0;
+
+  while (currentColIndex < allColumnCodes.length) {
+    // Timeout protection
+    if ((new Date().getTime() - startTime) > MAX_EXECUTION_TIME_MS) {
+      return `⚠️ PARTIAL: Time limit. Uploaded ${totalColumnsSent}/${allColumnCodes.length} columns in ${totalChunks} chunks.`;
+    }
+
+    // Get column slice for this chunk
+    const chunkEndCol = Math.min(currentColIndex + COLS_PER_CHUNK, allColumnCodes.length);
+    const columnSlice = allColumnCodes.slice(currentColIndex, chunkEndCol);
     
-    for (let c = 1; c < numCols; c++) {
-      const code = headers[c];
-      if (code == null || code === "") continue;
-      
-      const codeKey = String(code).trim();
-      const valueRaw = values[r][c];
-      
-      // Push value or null (preserve column alignment)
-      if (typeof valueRaw === 'number' && !isNaN(valueRaw)) {
-        columns[codeKey].push(valueRaw);
-      } else {
-        columns[codeKey].push(null);
+    // Build chunk data
+    const chunkColumns = {};
+    for (const col of columnSlice) {
+      const colData = [];
+      for (const rowIdx of validRowIndices) {
+        const valueRaw = values[rowIdx][col.index];
+        if (typeof valueRaw === 'number' && !isNaN(valueRaw)) {
+          colData.push(valueRaw);
+        } else {
+          colData.push(null);
+        }
       }
+      chunkColumns[col.code] = colData;
     }
+
+    currentColIndex = chunkEndCol;
+
+    // Send chunk
+    const payload = { dates: allDates, columns: chunkColumns };
+    const payloadStr = JSON.stringify(payload);
     
-    // Progress update every 500 rows
-    if (r % 500 === 0) {
-      const percent = 35 + Math.round((r / numRows) * 30);
-      updateProgress(uploadId, `Processing row ${r}/${numRows}...`, percent);
+    // Log payload size for debugging
+    console.log(`Chunk ${totalChunks + 1}: ${columnSlice.length} cols, ${(payloadStr.length / 1024).toFixed(1)} KB`);
+
+    const options = {
+      'method': 'post',
+      'contentType': 'application/json',
+      'payload': payloadStr,
+      'muteHttpExceptions': true
+    };
+
+    try {
+      const response = UrlFetchApp.fetch(endpoint, options);
+      const responseCode = response.getResponseCode();
+      
+      if (responseCode !== 200) {
+        const errorText = response.getContentText().substring(0, 500);
+        throw new Error(`API ${responseCode} at chunk ${totalChunks + 1}: ${errorText}`);
+      }
+    } catch (fetchError) {
+      throw new Error(`Network error at chunk ${totalChunks + 1}: ${fetchError.message}`);
     }
+
+    totalColumnsSent += columnSlice.length;
+    totalChunks++;
+
+    // Progress update
+    const percent = 25 + Math.round((currentColIndex / allColumnCodes.length) * 70);
+    updateProgress(uploadId, `Uploaded ${totalColumnsSent}/${allColumnCodes.length} columns...`, percent);
   }
 
-  if (validRowCount === 0) return "No valid data found.";
-
-  // Count non-null values for reporting
-  let totalDataPoints = 0;
-  for (const code in columns) {
-    totalDataPoints += columns[code].filter(v => v !== null).length;
-  }
-
-  updateProgress(uploadId, `Uploading ${validRowCount} rows × ${Object.keys(columns).length} columns...`, 70);
-
-  // Send entire dataset in one request (no chunking needed!)
-  const payload = { dates: dates, columns: columns };
-  const options = {
-    'method': 'post',
-    'contentType': 'application/json',
-    'payload': JSON.stringify(payload),
-    'muteHttpExceptions': true
-  };
-
-  const response = UrlFetchApp.fetch(endpoint, options);
-  const responseCode = response.getResponseCode();
+  updateProgress(uploadId, "Complete!", 98);
   
-  if (responseCode !== 200) {
-    const errorText = response.getContentText();
-    throw new Error(`API returned ${responseCode}: ${errorText}`);
-  }
-
-  updateProgress(uploadId, "Processing complete!", 95);
-  
-  return `✅ Success! Uploaded ${validRowCount} rows × ${Object.keys(columns).length} columns (${totalDataPoints} data points).`;
+  return `✅ Success! Uploaded ${allDates.length} rows × ${totalColumnsSent} columns in ${totalChunks} chunk(s).`;
 }
 
 function formatDateValue(dateInput) {
@@ -1045,60 +1075,40 @@ function getUploadHtml() {
     </html>`;
 }
 /**
- * Run this function.
- * v6.2: FORCE TEXT PRESERVATION.
- * Detects strings with leading zeros ("033") and forces the destination
- * cell to Plain Text (@) so Excel does not convert it to a number.
+ * OPTIMIZED v7: Fast Excel download.
+ * Removed slow O(n²) cell scanning. Uses direct export when possible.
  */
 function downloadNativeExcel() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sourceSheet = ss.getActiveSheet();
   var sheetName = sourceSheet.getName();
 
-  ss.toast('Reading data...', 'Step 1/3', 60);
+  ss.toast('Preparing download...', 'Status', 60);
 
   var tempSSId = null;
 
   try {
-    // --- STEP 1: READ DATA INTO MEMORY ---
+    // --- STEP 1: READ DATA INTO MEMORY (Single batch read) ---
     var sourceRange = sourceSheet.getDataRange();
-    var values = sourceRange.getValues();
-    var numberFormats = sourceRange.getNumberFormats();
+    var numRows = sourceRange.getNumRows();
+    var numCols = sourceRange.getNumColumns();
     
-    var numRows = values.length;
-    var numCols = values[0].length;
-    
-    // --- STEP 1.5: THE FIX FOR "033" ---
-    // Perform light check for leading zero strings
-    for (var r = 0; r < numRows; r++) {
-      for (var c = 0; c < numCols; c++) {
-        var val = values[r][c];
-        if (typeof val === 'string' && val.length > 1 && val.charCodeAt(0) === 48 && /^\d+$/.test(val)) {
-           numberFormats[r][c] = "@"; 
-        }
-      }
+    if (numRows === 0 || numCols === 0) {
+      throw new Error("Sheet is empty");
     }
 
-    ss.toast('Creating copy...', 'Step 2/3', 60);
-
-    // --- STEP 2: CREATE & COPY (Optimized) ---
+    // --- STEP 2: CREATE TEMP SPREADSHEET & COPY ---
     var newSS_File = SpreadsheetApp.create(sheetName);
     tempSSId = newSS_File.getId();
-    Utilities.sleep(500); // Minimal wait
 
-    // Use copyTo for fast full-clone (preserving widths/styles)
+    // Fast full-clone (preserves formatting, widths, styles)
     var destSheet = sourceSheet.copyTo(newSS_File);
     destSheet.setName(sheetName);
     newSS_File.deleteSheet(newSS_File.getSheets()[0]); // Remove empty Sheet1
     
-    // --- STEP 3: FLATTEN & FORMAT ---
-    var destRange = destSheet.getRange(1, 1, numRows, numCols);
-    
-    // Apply formats BEFORE values to ensure "033" stays as text
-    destRange.setNumberFormats(numberFormats);
-    
-    // Write values to flatten formulas
-    destRange.setValues(values);
+    // --- STEP 3: FLATTEN FORMULAS (batch operation) ---
+    var values = sourceRange.getValues();
+    destSheet.getRange(1, 1, numRows, numCols).setValues(values);
 
     SpreadsheetApp.flush();
     

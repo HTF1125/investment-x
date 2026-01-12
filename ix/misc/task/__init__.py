@@ -344,4 +344,3 @@ def daily():
     update_yahoo_data()
     update_fred_data()
     update_naver_data()
-    # send_price_data()
