@@ -12,14 +12,15 @@ from apscheduler.triggers.cron import CronTrigger
 
 from ix.db.conn import ensure_connection
 from ix.misc import get_logger
-from ix.misc.task import daily, send_data_reports
+from ix.misc.task import run_daily_tasks
 
 logger = get_logger(__name__)
 
 # Timezone config
-KST = pytz.timezone('Asia/Seoul')
+KST = pytz.timezone("Asia/Seoul")
 
 scheduler = AsyncIOScheduler()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,39 +31,32 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Initializing FastAPI application...")
     logger.info("Starting scheduler...")
-    
-    # Schedule daily() at 06:00 KST
-    scheduler.add_job(
-        daily, 
-        CronTrigger(hour=6, minute=0, timezone=KST),
-        id="daily_update",
-        replace_existing=True
-    )
-    logger.info("Scheduled 'daily' task for 06:00 KST")
 
-    # Schedule send_data_reports() at 07:00 KST
+    # Schedule run_daily_tasks() at 07:00 KST
     scheduler.add_job(
-        send_data_reports, 
+        run_daily_tasks,
         CronTrigger(hour=7, minute=0, timezone=KST),
-        id="send_reports",
-        replace_existing=True
+        id="daily_routine",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
-    logger.info("Scheduled 'send_data_reports' task for 07:00 KST")
+    logger.info("Scheduled 'run_daily_tasks' for 07:00 KST")
 
     scheduler.start()
-    
+
     logger.info("FastAPI application started")
     yield
-    
+
     logger.info("Shutting down scheduler...")
     scheduler.shutdown()
+
 
 # Create FastAPI app
 app = FastAPI(
     title="Investment-X API",
     description="API for Investment-X dashboard and data management",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 logger.info("FastAPI app created successfully")
@@ -94,11 +88,13 @@ async def get_jobs():
     """List currently scheduled jobs"""
     jobs = []
     for job in scheduler.get_jobs():
-        jobs.append({
-            "id": job.id,
-            "next_run_time": str(job.next_run_time),
-            "func": job.func.__name__
-        })
+        jobs.append(
+            {
+                "id": job.id,
+                "next_run_time": str(job.next_run_time),
+                "func": job.func.__name__,
+            }
+        )
     return {"jobs": jobs}
 
 

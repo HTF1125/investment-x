@@ -344,3 +344,10 @@ def daily():
     update_yahoo_data()
     update_fred_data()
     update_naver_data()
+
+
+def run_daily_tasks():
+    logger.info("Starting daily tasks execution (daily update + reports)")
+    daily()
+    send_data_reports()
+    logger.info("Daily tasks execution completed")
