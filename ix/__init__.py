@@ -1,11 +1,8 @@
 """ """
 
 from . import core
-from .core import bt
 from . import misc
 from . import fig
-
-# from .db import get_timeseries
-# from .db.query import *
+from .core import bt
 from .db.query import *
 from .db.client import *

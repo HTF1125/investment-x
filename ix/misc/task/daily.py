@@ -1,16 +1,12 @@
 from ix.misc.terminal import get_logger
 from ix.misc import as_date, onemonthbefore, onemonthlater
-
-# from ix.db import EconomicCalendar  # Commented out - MongoDB not in use
 import pandas as pd
-
-# from ix.db.models import Timeseries  # Commented out - MongoDB not in use
 from ix.misc.crawler import get_yahoo_data
 from ix.misc.crawler import get_fred_data
 from ix.misc.crawler import get_naver_data
 from ix.db.models import Timeseries
 from ix.db.query import macro_data
-
+from ix.db.conn import Session
 
 logger = get_logger(__name__)
 
@@ -35,276 +31,177 @@ logger = get_logger(__name__)
 #     EconomicCalendar.insert_many(objs)
 
 
-def update_yahoo_data():
+def run_update_task(source_name, fetch_func, session):
+    """
+    Generic memory-optimized update function.
+    Iterates through items in batches to keep memory usage low.
+    """
+    logger.info(f"Starting {source_name} data update process.")
 
-    logger.info("Starting Yahoo data update process.")
+    # Query only essential columns (Tuple) to avoid loading heavy 'data' JSON into memory
+    items = (
+        session.query(Timeseries.id, Timeseries.code, Timeseries.source_code)
+        .filter(Timeseries.source == source_name)
+        .all()
+    )
 
     count_total = 0
-    count_skipped_no_ticker = 0
-    count_skipped_empty_data = 0
     count_updated = 0
+    count_skipped = 0
 
-    from ix.db.conn import Session
+    # Process one by one, commit/expunge frequently
+    for ts_id, ts_code, ts_source_code in items:
+        count_total += 1
 
-    with Session() as session:
-        timeseries_list = (
-            session.query(Timeseries).filter(Timeseries.source == "Yahoo").all()
-        )
+        if not ts_source_code:
+            count_skipped += 1
+            continue
 
-        # Extract all attributes immediately to avoid detached instance errors
-        ts_data_list = []
-        for ts in timeseries_list:
-            ts_data_list.append(
-                {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
-            )
+        try:
+            # Parse ticker/field
+            if ":" in str(ts_source_code):
+                ticker, field = str(ts_source_code).split(":", maxsplit=1)
 
-        for ts_data in ts_data_list:
-            ts_id = ts_data["id"]
-            ts_code = ts_data["code"]
-            ts_source_code = ts_data["source_code"]
+                # Fetch Data (Network Call)
+                data_dict = fetch_func(ticker)
+                _data = data_dict.get(field)
 
-            count_total += 1
-            if ts_source_code is None:
-                logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
-                count_skipped_no_ticker += 1
-                continue
+                if _data is not None and not _data.empty:
+                    # Update DB - Load ONLY this single object now
+                    ts = session.get(Timeseries, ts_id)
+                    if ts:
+                        ts.data = _data
+                        count_updated += 1
 
-            ticker, field = str(ts_source_code).split(":", maxsplit=1)
+        except Exception as e:
+            logger.warning(f"Error updating {ts_code}: {e}")
 
-            logger.debug(f"Fetching data for {ticker} (field: {field}).")
+        # Batch Commit & Release Memory every 5 items
+        # This prevents the session from growing indefinitely
+        if count_total % 5 == 0:
             try:
-                _data = get_yahoo_data(code=ticker)[field]
+                session.commit()
+                # Expunge objects to free memory from session registry
+                session.expunge_all()
             except Exception as e:
-                logger.warning(f"Error fetching data for {ts_source_code}: {e}")
-                continue
+                logger.error(f"Commit failed: {e}")
+                session.rollback()
 
-            if _data.empty:
-                logger.debug(f"No data returned for {ts_source_code}. Skipping.")
-                count_skipped_empty_data += 1
-                continue
-
-            # Reload the object and set data within session
-            ts_reloaded = (
-                session.query(Timeseries).filter(Timeseries.id == ts_id).first()
-            )
-            if ts_reloaded is not None:
-                ts_reloaded.data = _data
-                logger.info(f"Updated data for {ts_code} from {ts_source_code}.")
-                count_updated += 1
+    # Final commit
+    try:
+        session.commit()
+    except Exception as e:
+        logger.error(f"Final commit failed: {e}")
 
     logger.info(
-        f"Yahoo data update complete: "
-        f"{count_total} total, "
-        f"{count_updated} updated, "
-        f"{count_skipped_no_ticker} skipped (no ticker), "
-        f"{count_skipped_empty_data} skipped (empty data)."
+        f"{source_name} update complete: {count_updated}/{count_total} updated."
     )
+
+
+def update_yahoo_data():
+    with Session() as session:
+        # Wrapper to match fetch signature
+        def fetch_yahoo(ticker):
+            return get_yahoo_data(code=ticker)
+
+        run_update_task("Yahoo", fetch_yahoo, session)
 
 
 def update_fred_data():
-
-    logger.info("Starting Fred data update process.")
-
-    count_total = 0
-    count_skipped_no_ticker = 0
-    count_skipped_empty_data = 0
-    count_updated = 0
-
-    from ix.db.conn import Session
-
     with Session() as session:
-        timeseries_list = (
-            session.query(Timeseries).filter(Timeseries.source == "Fred").all()
-        )
 
-        # Extract all attributes immediately to avoid detached instance errors
-        ts_data_list = []
-        for ts in timeseries_list:
-            ts_data_list.append(
-                {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
-            )
+        def fetch_fred(ticker):
+            # Fred crawler returns differently or same?
+            # get_fred_data(ticker) returns dict of series usually.
+            return get_fred_data(ticker)
 
-        for ts_data in ts_data_list:
-            ts_id = ts_data["id"]
-            ts_code = ts_data["code"]
-            ts_source_code = ts_data["source_code"]
-
-            count_total += 1
-            if ts_source_code is None:
-                logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
-                count_skipped_no_ticker += 1
-                continue
-            ticker, field = str(ts_source_code).split(":")
-            logger.debug(f"Fetching data for {ticker} (field: {field}).")
-            try:
-                _data = get_fred_data(ticker)[field]
-            except Exception as e:
-                logger.warning(f"Error fetching data for {ts_source_code}: {e}")
-                continue
-
-            if _data.empty:
-                logger.debug(f"No data returned for {ts_source_code}. Skipping.")
-                count_skipped_empty_data += 1
-                continue
-
-            # Reload the object and set data within session
-            ts_reloaded = (
-                session.query(Timeseries).filter(Timeseries.id == ts_id).first()
-            )
-            if ts_reloaded is not None:
-                ts_reloaded.data = _data
-                logger.info(f"Updated data for {ts_code} from {ts_source_code}.")
-                count_updated += 1
-
-    logger.info(
-        f"Fred data update complete: "
-        f"{count_total} total, "
-        f"{count_updated} updated, "
-        f"{count_skipped_no_ticker} skipped (no ticker), "
-        f"{count_skipped_empty_data} skipped (empty data)."
-    )
+        run_update_task("Fred", fetch_fred, session)
 
 
 def update_naver_data():
-
-    logger.info("Starting Naver data update process.")
-
-    count_total = 0
-    count_skipped_no_ticker = 0
-    count_skipped_empty_data = 0
-    count_updated = 0
-
-    from ix.db.conn import Session
-
     with Session() as session:
-        timeseries_list = (
-            session.query(Timeseries).filter(Timeseries.source == "Naver").all()
-        )
 
-        # Extract all attributes immediately to avoid detached instance errors
-        ts_data_list = []
-        for ts in timeseries_list:
-            ts_data_list.append(
-                {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
-            )
+        def fetch_naver(ticker):
+            return get_naver_data(ticker)
 
-        for ts_data in ts_data_list:
-            ts_id = ts_data["id"]
-            ts_code = ts_data["code"]
-            ts_source_code = ts_data["source_code"]
-
-            count_total += 1
-            if ts_source_code is None:
-                logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
-                count_skipped_no_ticker += 1
-                continue
-            ticker, field = str(ts_source_code).split(":")
-            logger.debug(f"Fetching data for {ticker} (field: {field}).")
-            try:
-                _data = get_naver_data(ticker)[field]
-            except Exception as e:
-                logger.warning(f"Error fetching data for {ts_source_code}: {e}")
-                continue
-
-            if _data.empty:
-                logger.debug(f"No data returned for {ts_source_code}. Skipping.")
-                count_skipped_empty_data += 1
-                continue
-
-            # Reload the object and set data within session
-            ts_reloaded = (
-                session.query(Timeseries).filter(Timeseries.id == ts_id).first()
-            )
-            if ts_reloaded is not None:
-                ts_reloaded.data = _data
-                logger.info(f"Updated data for {ts_code} from {ts_source_code}.")
-                count_updated += 1
-
-    logger.info(
-        f"Fred data update complete: "
-        f"{count_total} total, "
-        f"{count_updated} updated, "
-        f"{count_skipped_no_ticker} skipped (no ticker), "
-        f"{count_skipped_empty_data} skipped (empty data)."
-    )
+        run_update_task("Naver", fetch_naver, session)
 
 
 def send_data_reports():
     """
-    Send both price data and timeseries reports as separate Excel attachments in one email.
+    Send both price data and timeseries reports as separate Excel attachments.
+    Memory Optimized: Slices data BEFORE concatenation.
     """
     import io
-    import pandas as pd
-
     from ix.misc.email import EmailSender
-    from ix.db.conn import Session
-    from ix.db.models import Timeseries
 
-    # Prepare both price data and timeseries data in a single loop
     datas = {}
     ts_list = []
 
+    # Define a cutoff date for history to prevent loading decades of daily data into RAM
+    # 5 years should be plenty for the report (which asks for last 500 days)
+    cutoff_date = pd.Timestamp.now() - pd.DateOffset(years=5)
+
     with Session() as session:
-        timeseries_list = session.query(Timeseries).all()
+        # Tuple query for lightweight iteration
+        ids = session.query(Timeseries.id).all()
 
-        # Extract all necessary attributes while in session
-        ts_data_list = []
-        for ts in timeseries_list:
-            # Extract code and data while in session
+        for (ts_id,) in ids:
+            ts = session.get(Timeseries, ts_id)
+            if not ts:
+                continue
+
             ts_code = ts.code
-            data_record = ts._get_or_create_data_record(session)
-            column_data = data_record.data if data_record and data_record.data else {}
 
-            # Convert JSON dict to pandas Series
-            if column_data and len(column_data) > 0:
-                data_dict = column_data if isinstance(column_data, dict) else {}
-                data = pd.Series(data_dict)
-                if not data.empty:
-                    # Convert string dates to datetime index
-                    data.index = pd.to_datetime(data.index, errors="coerce")
-                    data = data.dropna()
-            else:
-                data = pd.Series(dtype=float)
+            # Efficiently extract data without keeping 'ts' object alive long
+            record = ts._get_or_create_data_record(session)
+            raw_data = record.data if record else {}
 
-            ts_data_list.append({"code": ts_code, "data": data})
+            # Convert
+            if raw_data:
+                s = pd.Series(raw_data)
+                s.index = pd.to_datetime(s.index, errors="coerce")
+                s = s.dropna()
 
-        # Process the extracted data outside the session
-        for ts_data in ts_data_list:
-            ts_code = ts_data["code"]
-            data = ts_data["data"]
+                if not s.empty:
+                    # 1. Capture Last Price
+                    datas[ts_code] = s.iloc[-1]
 
-            # Prepare price data for Equity:PX_LAST codes
-            data_clean = data.dropna()
-            if not data_clean.empty:
-                datas[ts_code] = data_clean.iloc[-1]
+                    # 2. Add to Timeseries List (Sliced)
+                    # Slice EARLY to save memory
+                    s_sliced = s[s.index >= cutoff_date]
+                    if not s_sliced.empty:
+                        s_sliced.name = ts_code
+                        ts_list.append(s_sliced)
 
-            # Prepare timeseries data for all
-            data_clean = data.dropna()
-            data_clean.name = ts_code
-            if not data_clean.empty:
-                data_clean.index = pd.to_datetime(data_clean.index)
-                data_clean = data_clean.sort_index()
-                data_clean.name = ts_code
-                ts_list.append(data_clean)
+            # Release memory per item
+            session.expunge(ts)
+            if record:
+                session.expunge(record)
 
-    datas = pd.Series(datas)
-    datas.index.name = "Code"
-    datas.name = "Value"
+    # 1. Price Snapshot
+    datas_series = pd.Series(datas)
+    datas_series.index.name = "Code"
+    datas_series.name = "Value"
 
+    # 2. Timeseries Matrix
+    if ts_list:
+        # concat is safer now that pieces are sliced
+        timeseries_data = pd.concat(ts_list, axis=1).sort_index()
+        timeseries_data = timeseries_data.resample("B").last().iloc[-500:]
+        timeseries_data.index.name = "Date"
+    else:
+        timeseries_data = pd.DataFrame()
+
+    # Macro Data
     macro_df = macro_data()
     macro_df.index.name = "Date"
     macro_df.name = "Value"
 
-    timeseries_data = pd.concat(ts_list, axis=1)
-    timeseries_data = timeseries_data.sort_index()
-    timeseries_data = timeseries_data.resample("B").last()
-    timeseries_data = timeseries_data.iloc[-500:]
-    timeseries_data.index.name = "Date"
-
-    # Create Excel buffers for both reports
+    # Create Excel Buffers
     price_buffer = io.BytesIO()
     with pd.ExcelWriter(price_buffer, engine="xlsxwriter") as writer:
-        datas.to_excel(writer, sheet_name="Data")
+        datas_series.to_excel(writer, sheet_name="Data")
     price_buffer.seek(0)
 
     timeseries_buffer = io.BytesIO()
@@ -313,7 +210,7 @@ def send_data_reports():
         macro_df.to_excel(writer, sheet_name="Macro")
     timeseries_buffer.seek(0)
 
-    # Create and send email with both attachments
+    # Send Email
     email_sender = EmailSender(
         to="26106825@heungkuklife.co.kr, 26107455@heungkuklife.co.kr, hantianfeng@outlook.com",
         subject="[IX] Data",
@@ -322,6 +219,8 @@ def send_data_reports():
     email_sender.attach(file_buffer=price_buffer, filename="Data.xlsx")
     email_sender.attach(file_buffer=timeseries_buffer, filename="Timeseries.xlsx")
     email_sender.send()
+
+    logger.info("Data reports sent successfully.")
 
 
 def send_price_data():

@@ -47,6 +47,7 @@ def func_scope(func: typing.Callable) -> str:
 import logging
 import os
 
+
 def get_logger(
     arg: str | typing.Callable,
     level: int | str = logging.INFO,
@@ -61,6 +62,7 @@ def get_logger(
     if isinstance(level, str):
         level = getattr(logging, level.upper())
     logger.setLevel(level)
+    logger.propagate = False
 
     formatter = logging.Formatter(fmt=fmt)
 
