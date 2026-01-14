@@ -17,3 +17,5 @@ cachetools
 yfinance
 pandas-datareader==0.10.0
 apscheduler
+pytz
+scikit-learn
