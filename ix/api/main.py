@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import pytz
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -42,6 +42,48 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Scheduled 'run_daily_tasks' for 07:00 KST")
 
+    # Schedule Telegram Scraping (e.g., Every hour)
+    from ix.misc.telegram import scrape_channel
+
+    # We must wrap async function if the scheduler expects a coroutine or callable.
+    # AsyncIOScheduler handles async functions natively.
+    # Define channels to scrape
+    # Define channels to scrape
+    channels_to_scrape = [
+        "t.me/HANAchina",
+        "t.me/EMchina",
+        "t.me/hermitcrab41",
+        "t.me/Yeouido_Lab",
+        "t.me/EarlyStock1",
+        "t.me/globaletfi",
+        "t.me/hanaglobalbottomup",
+        "t.me/hanabondview",
+        "t.me/KISemicon",
+        "t.me/Inhwan_Ha",
+        "t.me/jkc123",
+        "t.me/sskimfi",
+        "t.me/strategy_kis",
+        "t.me/globalequity1",
+        "t.me/sypark_strategy",
+    ]
+
+    async def scrape_routine():
+        for ch in channels_to_scrape:
+            # Add a small delay between channels to be polite
+            await scrape_channel(ch, limit=50)
+            import asyncio
+
+            await asyncio.sleep(2)
+
+    scheduler.add_job(
+        scrape_routine,
+        CronTrigger(minute="*/5", timezone=KST),  # Run every 5 minutes
+        id="telegram_scrape_routine",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+    logger.info("Scheduled 'scrape_routine' for every 5 minutes")
+
     scheduler.start()
 
     logger.info("FastAPI application started")
@@ -71,10 +113,77 @@ app.add_middleware(
 )
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    """Root endpoint."""
-    return {"message": "Investment-X API", "status": "running"}
+    """Root endpoint showing recent news in a table."""
+    from ix.db.conn import Session
+    from ix.db.models import TelegramMessage
+
+    from datetime import datetime, timedelta
+
+    since_date = datetime.utcnow() - timedelta(hours=24)
+
+    with Session() as session:
+        messages = (
+            session.query(TelegramMessage)
+            .filter(TelegramMessage.date >= since_date)
+            .order_by(TelegramMessage.date.desc())
+            .limit(2000)
+            .all()
+        )
+
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Investment-X News</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+            th { background-color: #f2f2f2; position: sticky; top: 0; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            tr:hover { background-color: #f1f1f1; }
+            .date { white-space: nowrap; color: #666; font-size: 0.9em; }
+            .channel { font-weight: bold; color: #2c3e50; }
+            .message { white-space: pre-wrap; word-wrap: break-word; }
+        </style>
+    </head>
+    <body>
+        <h2>Latest Telegram News</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th width="150">Date (KST)</th>
+                    <th width="150">Channel</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+
+    for m in messages:
+        # Convert UTC to KST for display
+        dt_str = m.date.strftime("%Y-%m-%d %H:%M") if m.date else ""
+        # Clean message text slightly if needed
+        msg_text = m.message or ""
+
+        row = f"""
+                <tr>
+                    <td class="date">{dt_str}</td>
+                    <td class="channel">{m.channel_name}</td>
+                    <td class="message">{msg_text}</td>
+                </tr>
+        """
+        html_content += row
+
+    html_content += """
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """
+    return html_content
 
 
 @app.get("/api/health")

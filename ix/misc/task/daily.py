@@ -130,54 +130,103 @@ def update_naver_data():
 def send_data_reports():
     """
     Send both price data and timeseries reports as separate Excel attachments.
-    Memory Optimized: Slices data BEFORE concatenation.
+    Memory Optimized:
+    - Uses a master index to align data immediately.
+    - Stores values as float32 numpy arrays to save memory and avoid Series/Index overhead.
+    - Constructs DataFrame directly from dict, bypassing pd.concat alignment.
     """
     import io
+    import gc
+    import numpy as np
     from ix.misc.email import EmailSender
 
     datas = {}
-    ts_list = []
 
-    # Define a cutoff date for history to prevent loading decades of daily data into RAM
-    # 5 years should be plenty for the report (which asks for last 500 days)
-    cutoff_date = pd.Timestamp.now() - pd.DateOffset(years=5)
+    # 1. Setup Master Index (last ~3 years covers the required 500 business days with buffer)
+    # Using 'B' (business day) freq might miss data if we just reindex,
+    # so we use 'D' (daily) to capture everything, then resample later.
+    end_date = pd.Timestamp.now().normalize()
+    start_date = end_date - pd.DateOffset(years=3)
+    master_index = pd.date_range(start=start_date, end=end_date, freq="D")
+
+    # Storage for aligned data: {code: numpy_array}
+    # This avoids storing thousands of Index objects and overhead.
+    aligned_data = {}
 
     with Session() as session:
         # Tuple query for lightweight iteration
-        ids = session.query(Timeseries.id).all()
+        ids = session.query(Timeseries.id, Timeseries.code).all()
+        total_count = len(ids)
 
-        for (ts_id,) in ids:
-            ts = session.get(Timeseries, ts_id)
-            if not ts:
-                continue
+        for idx, (ts_id, ts_code) in enumerate(ids):
+            # Explicitly clear loop variables
+            record = None
+            raw_data = None
+            s = None
 
-            ts_code = ts.code
+            try:
+                # Direct query for data record to avoid loading full Timeseries object
+                # We need to reflect the model structure. TimeseriesData is joined by id.
+                # Since we are optimizing, let's use the relationship via the ts object
+                # but detach it quickly, OR use direct query if we imported TimeseriesData.
+                # 'Timeseries' model was imported. 'TimeseriesData' is in the same file but
+                # might not be imported in daily.py.
+                # Let's stick to the existing method ensuring we expunge.
 
-            # Efficiently extract data without keeping 'ts' object alive long
-            record = ts._get_or_create_data_record(session)
-            raw_data = record.data if record else {}
+                ts = session.get(Timeseries, ts_id)
+                if not ts:
+                    continue
 
-            # Convert
-            if raw_data:
+                record = ts._get_or_create_data_record(session)
+                raw_data = record.data if record else {}
+
+                # Release DB objects immediately
+                session.expunge(ts)
+                if record:
+                    session.expunge(record)
+
+                if not raw_data:
+                    continue
+
+                # Convert to Series
+                # Note: creating Series from dict automatically handles index
                 s = pd.Series(raw_data)
+
+                # Convert index to datetime (handles "YYYY-MM-DD")
                 s.index = pd.to_datetime(s.index, errors="coerce")
                 s = s.dropna()
 
-                if not s.empty:
-                    # 1. Capture Last Price
-                    datas[ts_code] = s.iloc[-1]
+                if s.empty:
+                    continue
 
-                    # 2. Add to Timeseries List (Sliced)
-                    # Slice EARLY to save memory
-                    s_sliced = s[s.index >= cutoff_date]
-                    if not s_sliced.empty:
-                        s_sliced.name = ts_code
-                        ts_list.append(s_sliced)
+                # Sort index necessary for proper search/reindex
+                s = s.sort_index()
 
-            # Release memory per item
-            session.expunge(ts)
-            if record:
-                session.expunge(record)
+                # 1. Capture Last Price
+                datas[ts_code] = s.iloc[-1]
+
+                # 2. Slice to cutoff first
+                # Slice slightly wider than master index to ensure we have data for filling if needed
+                # But here we just want data overlapping with master_index.
+                s_sliced = s.loc[start_date:end_date]
+
+                if s_sliced.empty:
+                    continue
+
+                # Reindex to master_index (Daily)
+                # This fills missing dates with NaN.
+                s_aligned = s_sliced.reindex(master_index)
+
+                # Store as float32 numpy array to save memory
+                # We drop the index here since we know it aligns with master_index
+                aligned_data[ts_code] = s_aligned.values.astype("float32")
+
+            except Exception as e:
+                logger.error(f"Error processing {ts_code}: {e}")
+
+            # Frequent GC for large loops
+            if idx % 100 == 0:
+                gc.collect()
 
     # 1. Price Snapshot
     datas_series = pd.Series(datas)
@@ -185,24 +234,47 @@ def send_data_reports():
     datas_series.name = "Value"
 
     # 2. Timeseries Matrix
-    if ts_list:
-        # concat is safer now that pieces are sliced
-        timeseries_data = pd.concat(ts_list, axis=1).sort_index()
-        timeseries_data = timeseries_data.resample("B").last().iloc[-500:]
+    logger.info("Constructing Timeseries DataFrame...")
+    if aligned_data:
+        # Create DataFrame from dict of arrays.
+        # This is extremely fast and memory efficient compared to concat of Series.
+        timeseries_data = pd.DataFrame(aligned_data, index=master_index, copy=False)
+
+        # Resample to Business Days and take last 500
+        # 'copy=False' tries to avoid duplicating data
+        timeseries_data = timeseries_data.resample("B").last()
+        timeseries_data = timeseries_data.iloc[-500:]
         timeseries_data.index.name = "Date"
+
+        # Sort columns for tidiness
+        timeseries_data = timeseries_data.sort_index(axis=1)
     else:
         timeseries_data = pd.DataFrame()
 
+    # Clear large intermediate dict
+    del aligned_data
+    gc.collect()
+
     # Macro Data
-    macro_df = macro_data()
-    macro_df.index.name = "Date"
-    macro_df.name = "Value"
+    logger.info("Generating Macro Data...")
+    try:
+        macro_df = macro_data()
+        macro_df.index.name = "Date"
+        macro_df.name = "Value"
+    except Exception as e:
+        logger.error(f"Error generating macro data: {e}")
+        macro_df = pd.DataFrame()
 
     # Create Excel Buffers
+    logger.info("Writing to Excel...")
     price_buffer = io.BytesIO()
     with pd.ExcelWriter(price_buffer, engine="xlsxwriter") as writer:
         datas_series.to_excel(writer, sheet_name="Data")
     price_buffer.seek(0)
+
+    # Explicitly clear datas_series
+    del datas_series
+    gc.collect()
 
     timeseries_buffer = io.BytesIO()
     with pd.ExcelWriter(timeseries_buffer, engine="xlsxwriter") as writer:
@@ -210,7 +282,12 @@ def send_data_reports():
         macro_df.to_excel(writer, sheet_name="Macro")
     timeseries_buffer.seek(0)
 
+    del timeseries_data
+    del macro_df
+    gc.collect()
+
     # Send Email
+    logger.info("Sending Email...")
     email_sender = EmailSender(
         to="26106825@heungkuklife.co.kr, 26107455@heungkuklife.co.kr, hantianfeng@outlook.com",
         subject="[IX] Data",
