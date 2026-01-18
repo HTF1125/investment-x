@@ -234,6 +234,7 @@ def send_data_reports():
     Send both price data and timeseries reports as separate Excel attachments in one email.
     """
     import io
+    import gc
     import pandas as pd
 
     from ix.misc.email import EmailSender
@@ -244,62 +245,68 @@ def send_data_reports():
     datas = {}
     ts_list = []
 
+    # Use a separate scope or careful management to avoid keeping objects alive
     with Session() as session:
+        # Fetch only metadata first if possible, or just iterate. 
+        # Loading all Timeseries objects is usually okay (metadata is small), 
+        # but the relationships (data_record) and large JSONB are the issue.
         timeseries_list = session.query(Timeseries).all()
 
-        # Extract all necessary attributes while in session
-        ts_data_list = []
         for ts in timeseries_list:
-            # Extract code and data while in session
             ts_code = ts.code
+            
+            # Access the data relationship
+            # We assume data is loaded on access if not eager loading
             data_record = ts._get_or_create_data_record(session)
             column_data = data_record.data if data_record and data_record.data else {}
 
-            # Convert JSON dict to pandas Series
+            # Convert JSON dict to pandas Series immediately and release dict memory
             if column_data and len(column_data) > 0:
                 data_dict = column_data if isinstance(column_data, dict) else {}
                 data = pd.Series(data_dict)
+                
+                # Free the large dict from memory as soon as possible
+                del column_data 
+                
                 if not data.empty:
                     # Convert string dates to datetime index
                     data.index = pd.to_datetime(data.index, errors="coerce")
-                    data = data.dropna()
-            else:
-                data = pd.Series(dtype=float)
+                    data = data.dropna().sort_index()
+                    
+                    if not data.empty:
+                        # 1. Store last price
+                        datas[ts_code] = data.iloc[-1]
 
-            ts_data_list.append({"code": ts_code, "data": data})
-
-        # Process the extracted data outside the session
-        for ts_data in ts_data_list:
-            ts_code = ts_data["code"]
-            data = ts_data["data"]
-
-            # Prepare price data for Equity:PX_LAST codes
-            data_clean = data.dropna()
-            if not data_clean.empty:
-                datas[ts_code] = data_clean.iloc[-1]
-
-            # Prepare timeseries data for all
-            data_clean = data.dropna()
-            data_clean.name = ts_code
-            if not data_clean.empty:
-                data_clean.index = pd.to_datetime(data_clean.index)
-                data_clean = data_clean.sort_index()
-                data_clean.name = ts_code
-                ts_list.append(data_clean)
+                        # 2. Store truncated series for history
+                        # We limit to last 1000 items to save memory, 
+                        # which is sufficient for the final report (last 500 business days).
+                        data_truncated = data.iloc[-1000:]
+                        data_truncated.name = ts_code
+                        ts_list.append(data_truncated)
+            
+            # Hint to GC that big objects can be freed
+            del data_record
+    
+    # Force garbage collection to clear any lingering objects from the loop
+    gc.collect()
 
     datas = pd.Series(datas)
     datas.index.name = "Code"
     datas.name = "Value"
 
+    # Load macro data (cached or computed)
     macro_df = macro_data()
     macro_df.index.name = "Date"
     macro_df.name = "Value"
 
-    timeseries_data = pd.concat(ts_list, axis=1)
-    timeseries_data = timeseries_data.sort_index()
-    timeseries_data = timeseries_data.resample("B").last()
-    timeseries_data = timeseries_data.iloc[-500:]
-    timeseries_data.index.name = "Date"
+    if ts_list:
+        timeseries_data = pd.concat(ts_list, axis=1)
+        timeseries_data = timeseries_data.sort_index()
+        timeseries_data = timeseries_data.resample("B").last()
+        timeseries_data = timeseries_data.iloc[-500:]
+        timeseries_data.index.name = "Date"
+    else:
+        timeseries_data = pd.DataFrame()
 
     # Create Excel buffers for both reports
     price_buffer = io.BytesIO()
@@ -312,6 +319,12 @@ def send_data_reports():
         timeseries_data.to_excel(writer, sheet_name="Data")
         macro_df.to_excel(writer, sheet_name="Macro")
     timeseries_buffer.seek(0)
+    
+    # Release large dataframes
+    del ts_list
+    del timeseries_data
+    del macro_df
+    gc.collect()
 
     # Create and send email with both attachments
     email_sender = EmailSender(
@@ -347,7 +360,9 @@ def daily():
 
 
 def run_daily_tasks():
+    import gc
     logger.info("Starting daily tasks execution (daily update + reports)")
     daily()
+    gc.collect()
     send_data_reports()
     logger.info("Daily tasks execution completed")
