@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from ix.db.conn import ensure_connection
 from ix.db.query import *
 from ix.misc import get_logger
+from ix.core import ContributionToGrowth
 
 logger = get_logger(__name__)
 
