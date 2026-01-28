@@ -14,7 +14,7 @@ def progress(
     """
     Calls in a loop to create a terminal progress bar.
 
-    Args:
+    Args:F
         current_bar (int): Current iteration.
         total_bar (int): Total iteration.
         prefix (str, optional): Prefix string. Defaults to ''.

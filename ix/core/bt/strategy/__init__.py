@@ -1,4 +1,4 @@
-from .base import Strategy
+from .base import *
 from .new import *
 
 
