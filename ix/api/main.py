@@ -93,14 +93,14 @@ async def lifespan(app: FastAPI):
 
             await asyncio.sleep(2)
 
-    # scheduler.add_job(
-    #     scrape_routine,
-    #     CronTrigger(minute="*/5", timezone=KST),  # Run every 5 minutes
-    #     id="telegram_scrape_routine",
-    #     replace_existing=True,
-    #     misfire_grace_time=300,
-    # )
-    # logger.info("Scheduled 'scrape_routine' for every 5 minutes")
+    scheduler.add_job(
+        scrape_routine,
+        CronTrigger(minute="*/5", timezone=KST),  # Run every 5 minutes
+        id="telegram_scrape_routine",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+    logger.info("Scheduled 'scrape_routine' for every 5 minutes")
 
     from ix.misc.task import send_daily_market_brief
     
