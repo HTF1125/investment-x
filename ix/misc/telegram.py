@@ -1,6 +1,7 @@
 import asyncio
 import os
 from typing import Optional
+from datetime import datetime, timedelta
 from ix.misc.terminal import get_logger
 from ix.db.conn import Session, conn, Base
 from ix.db.models import TelegramMessage
@@ -82,8 +83,6 @@ async def scrape_channel(channel_name: str, limit: int = 100):
         # 1. Determine start point (min_id)
         # We want to fetch messages newer than what we already have.
         min_id = 0
-        from ix.db.models import TelegramMessage
-        from ix.db.conn import Session
 
         with Session() as session:
             # check the latest message_id for this channel
@@ -114,8 +113,6 @@ async def scrape_channel(channel_name: str, limit: int = 100):
             scrape_limit = 2000  # Safety cap
         else:
             # Initial scrape: Get last 24 hours
-            from datetime import datetime, timedelta
-
             offset_date = datetime.utcnow() - timedelta(hours=24)
             logger.info("Doing initial scrape for last 24 hours of messages.")
             # We set a high limit because we want ALL messages in that window
@@ -145,7 +142,11 @@ async def scrape_channel(channel_name: str, limit: int = 100):
                 sender_id=msg.sender_id,
                 sender_name=None,  # Extracting sender name requires more calls usually if it's a user
                 # Convert UTC to KST (+9h) before storing
-                date=(msg.date.replace(tzinfo=None) + timedelta(hours=9)) if msg.date else None,
+                date=(
+                    (msg.date.replace(tzinfo=None) + timedelta(hours=9))
+                    if msg.date
+                    else None
+                ),
                 message=msg.message,
                 views=msg.views if hasattr(msg, "views") else None,
             )
