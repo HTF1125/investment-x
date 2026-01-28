@@ -3,14 +3,16 @@ from email.message import EmailMessage
 from ix.misc import Settings
 import io
 
+
 class EmailSender:
     """A class to send emails with optional attachments using Gmail's SMTP server."""
 
     def __init__(
         self,
-        to: str,
         subject: str,
         content: str,
+        to: str = None,
+        bcc: str = None,
     ):
         """Initialize the EmailSender with login credentials from Settings."""
         self.login = Settings.email_login
@@ -19,7 +21,13 @@ class EmailSender:
         self.smtp_port = 465
         self.msg = EmailMessage()
         self.msg["From"] = self.login
-        self.msg["To"] = to
+
+        # If 'to' is not specified, sends to self
+        self.msg["To"] = to if to else self.login
+
+        if bcc:
+            self.msg["Bcc"] = bcc
+
         self.msg["Subject"] = subject
         self.msg.set_content(content)
 
@@ -31,8 +39,12 @@ class EmailSender:
             filename (str): The name of the attached file.
         """
         file_content = file_buffer.getvalue()
-        self.msg.add_attachment(file_content, maintype="application", subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename)
-
+        self.msg.add_attachment(
+            file_content,
+            maintype="application",
+            subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=filename,
+        )
 
     def send(
         self,

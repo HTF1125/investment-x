@@ -36,15 +36,15 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    username: Optional[str] = payload.get("sub")
-    if not username:
+    email: Optional[str] = payload.get("sub")
+    if not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = User.get_user(username)
+    user = User.get_by_email(email)
     if not user or getattr(user, "disabled", False):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

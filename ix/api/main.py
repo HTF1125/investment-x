@@ -42,74 +42,26 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Scheduled 'run_daily_tasks' for 07:00 KST")
 
-    # Schedule Telegram Scraping (e.g., Every hour)
-    from ix.misc.telegram import scrape_channel
-
-    # We must wrap async function if the scheduler expects a coroutine or callable.
-    # AsyncIOScheduler handles async functions natively.
-    # Define channels to scrape
-    # Define channels to scrape
-    channels_to_scrape = [
-        "t.me/HANAchina",
-        "t.me/EMchina",
-        "t.me/hermitcrab41",
-        "t.me/Yeouido_Lab",
-        "t.me/EarlyStock1",
-        "t.me/globaletfi",
-        "t.me/hanaglobalbottomup",
-        "t.me/hanabondview",
-        "t.me/KISemicon",
-        "t.me/Inhwan_Ha",
-        "t.me/jkc123",
-        "t.me/sskimfi",
-        "t.me/strategy_kis",
-        "t.me/globalequity1",
-        "t.me/sypark_strategy",
-        "t.me/bottomupquantapproach",
-        "t.me/TNBfolio",
-        "t.me/ReutersWorldChannel",
-        "t.me/bloomberg",
-        "t.me/FinancialNews",
-        "t.me/BloombergQ",
-        "t.me/wall_street_journal_news",
-        "t.me/globalbobo",
-        "t.me/aetherjapanresearch",
-        "t.me/shinhanresearch",
-        "t.me/kiwoom_semibat",
-        "t.me/lim_econ",
-        "t.me/Jstockclass",
-        "t.me/merITz_tech",
-        "t.me/growthresearch",
-        "t.me/awake_schedule",
-        "t.me/eugene2team",
-        "t.me/Brain_And_Body_Research",
-    ]
-
-    async def scrape_routine():
-        for ch in channels_to_scrape:
-            # Add a small delay between channels to be polite
-            await scrape_channel(ch, limit=50)
-            import asyncio
-
-            await asyncio.sleep(2)
+    # Schedule Telegram Scraping (e.g., Every 5 minutes)
+    from ix.misc.telegram import scrape_all_channels
 
     scheduler.add_job(
-        scrape_routine,
+        scrape_all_channels,
         CronTrigger(minute="*/5", timezone=KST),  # Run every 5 minutes
         id="telegram_scrape_routine",
         replace_existing=True,
         misfire_grace_time=300,
     )
-    logger.info("Scheduled 'scrape_routine' for every 5 minutes")
+    logger.info("Scheduled 'scrape_all_channels' for every 5 minutes")
 
     from ix.misc.task import send_daily_market_brief
-    
+
     scheduler.add_job(
         send_daily_market_brief,
-        CronTrigger(minute=0, timezone=KST), # Run every hour at minute 0
+        CronTrigger(minute=0, timezone=KST),  # Run every hour at minute 0
         id="market_brief_hourly",
         replace_existing=True,
-        misfire_grace_time=300
+        misfire_grace_time=300,
     )
     logger.info("Scheduled 'send_daily_market_brief' for every hour")
 

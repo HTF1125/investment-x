@@ -9,6 +9,7 @@ import markdown
 
 logger = get_logger(__name__)
 
+
 def send_daily_market_brief():
     """
     Generates the Daily Global Market Intelligence Brief using Google GenAI
@@ -20,27 +21,29 @@ def send_daily_market_brief():
     msgs_text = ""
     try:
         with Session() as session:
-            # DB stores KST. 
+            # DB stores KST.
             # Current KST = UTC + 9
             now_kst = datetime.utcnow() + timedelta(hours=9)
             cutoff = now_kst - timedelta(hours=24)
-            
+
             msgs = (
                 session.query(TelegramMessage)
                 .filter(TelegramMessage.date >= cutoff)
                 .order_by(TelegramMessage.date.desc())
                 .all()
             )
-            
+
             if not msgs:
-                logger.info("No messages found in the last 24h. Skipping brief generation.")
+                logger.info(
+                    "No messages found in the last 24h. Skipping brief generation."
+                )
                 return
 
             for m in msgs:
                 if m.message and m.message.strip():
                     # DB is KST, no adjustment needed
                     msgs_text += f"[{m.date.strftime('%Y-%m-%d %H:%M')}] @{m.channel_name}:\n{m.message}\n---\n"
-            
+
     except Exception as e:
         logger.error(f"Error fetching Telegram messages: {e}")
         return
@@ -52,7 +55,9 @@ def send_daily_market_brief():
     # 2. Configure GenAI Client
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        logger.error("GEMINI_API_KEY environment variable not set. Cannot generate brief.")
+        logger.error(
+            "GEMINI_API_KEY environment variable not set. Cannot generate brief."
+        )
         return
 
     client = genai.Client(api_key=api_key)
@@ -140,13 +145,14 @@ For **EACH** language (Korean, English, Chinese, Japanese), generate the report 
 * **Analysis:** [Gold, Oil, Bitcoin correlation with real rates and risk appetite.]
 * **On-Chain/Flows:** [If data exists, mention ETF flows or on-chain signals.]
 ```
-    """.format(raw_feed_content=msgs_text)
+    """.format(
+        raw_feed_content=msgs_text
+    )
 
     # 4. Generate Content
     try:
         response = client.models.generate_content(
-            model='gemini-3-pro-preview',
-            contents=base_prompt
+            model="gemini-3-pro-preview", contents=base_prompt
         )
         report_content = response.text
     except Exception as e:
@@ -154,13 +160,26 @@ For **EACH** language (Korean, English, Chinese, Japanese), generate the report 
         return
 
     # 5. Send Email
-    recipients = Settings.email_recipients
-    if not recipients:
-        logger.warning("No EMAIL_RECIPIENTS defined in settings/env.")
+    # 5. Send Email
+
+    # Fetch recipients from database (all enabled users with an email)
+    recipients = []
+    try:
+        from ix.db.models.user import User
+
+        with Session() as session:
+            users = session.query(User).filter(User.disabled == False).all()
+            recipients = [u.email for u in users if u.email]
+    except Exception as e:
+        logger.error(f"Error fetching email recipients from database: {e}")
         return
-    
+
+    if not recipients:
+        logger.warning("No enabled users found in database to send email to.")
+        return
+
     to_str = ", ".join(recipients)
-    
+
     # Formatting valid KST time for subject
     now_kst = datetime.utcnow() + timedelta(hours=9)
     subject = f"[IX] Daily Global Market Intelligence Brief ({now_kst.strftime('%Y-%m-%d %H:%M')} KST)"
@@ -190,14 +209,13 @@ For **EACH** language (Korean, English, Chinese, Japanese), generate the report 
     """
 
     try:
-        email_sender = EmailSender(
-            to=to_str,
-            subject=subject,
-            content=html_body
-        )
+        # Use BCC for privacy, 'to' defaults to sender in EmailSender
+        email_sender = EmailSender(subject=subject, content=html_body, bcc=to_str)
         # Note: EmailSender needs to handle HTML content type
-        email_sender.msg.set_content(html_body, subtype='html') 
+        email_sender.msg.set_content(html_body, subtype="html")
         email_sender.send()
-        logger.info(f"Successfully sent Market Brief to {len(recipients)} recipients.")
+        logger.info(
+            f"Successfully sent Market Brief to {len(recipients)} recipients (BCC)."
+        )
     except Exception as e:
         logger.error(f"Error sending email: {e}")

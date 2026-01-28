@@ -14,11 +14,12 @@ class User(Base):
     id = Column(
         UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
     )
-    username = Column(String, unique=True, nullable=False, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
     password = Column(String, nullable=False)  # Hashed password
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
     disabled = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
-    email = Column(String, nullable=True)
     created_at = Column(DateTime, nullable=True)
 
     def verify_password(self, password: str) -> bool:
@@ -31,19 +32,20 @@ class User(Base):
         return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     @classmethod
-    def get_user(cls, username: str):
-        """Get user by username"""
+    def get_by_email(cls, email: str):
+        """Get user by email"""
         from ix.db.conn import Session
 
         with Session() as session:
-            return session.query(cls).filter(cls.username == username).first()
+            return session.query(cls).filter(cls.email == email).first()
 
     @classmethod
     def new_user(
         cls,
-        username: str,
+        email: str,
         password: str,
-        email: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
         is_admin: bool = False,
     ):
         """Create a new user with hashed password"""
@@ -51,9 +53,10 @@ class User(Base):
 
         hashed_password = cls.hash_password(password)
         user = cls(
-            username=username,
-            password=hashed_password,
             email=email,
+            password=hashed_password,
+            first_name=first_name,
+            last_name=last_name,
             is_admin=is_admin,
             created_at=datetime.utcnow(),
         )
@@ -66,6 +69,6 @@ class User(Base):
             return user
 
     @classmethod
-    def exists(cls, username: str) -> bool:
-        """Check if user exists"""
-        return cls.get_user(username=username) is not None
+    def exists(cls, email: str) -> bool:
+        """Check if user exists by email"""
+        return cls.get_by_email(email=email) is not None

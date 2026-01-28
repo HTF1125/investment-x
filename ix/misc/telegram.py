@@ -16,10 +16,53 @@ except ImportError:
 logger = get_logger(__name__)
 
 # Constants for Telegram API
-# Users should set these in their environment variables
 API_ID = os.getenv("TELEGRAM_API_ID")
 API_HASH = os.getenv("TELEGRAM_API_HASH")
 SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME", "ix_session")
+
+CHANNELS_TO_SCRAPE = [
+    "t.me/HANAchina",
+    "t.me/EMchina",
+    "t.me/hermitcrab41",
+    "t.me/Yeouido_Lab",
+    "t.me/EarlyStock1",
+    "t.me/globaletfi",
+    "t.me/hanaglobalbottomup",
+    "t.me/hanabondview",
+    "t.me/KISemicon",
+    "t.me/Inhwan_Ha",
+    "t.me/jkc123",
+    "t.me/sskimfi",
+    "t.me/strategy_kis",
+    "t.me/globalequity1",
+    "t.me/sypark_strategy",
+    "t.me/bottomupquantapproach",
+    "t.me/TNBfolio",
+    "t.me/ReutersWorldChannel",
+    "t.me/bloomberg",
+    "t.me/FinancialNews",
+    "t.me/BloombergQ",
+    "t.me/wall_street_journal_news",
+    "t.me/globalbobo",
+    "t.me/aetherjapanresearch",
+    "t.me/shinhanresearch",
+    "t.me/kiwoom_semibat",
+    "t.me/lim_econ",
+    "t.me/Jstockclass",
+    "t.me/merITz_tech",
+    "t.me/growthresearch",
+    "t.me/awake_schedule",
+    "t.me/eugene2team",
+    "t.me/Brain_And_Body_Research",
+]
+
+
+async def scrape_all_channels():
+    """Scrape all channels defined in CHANNELS_TO_SCRAPE."""
+    for channel in CHANNELS_TO_SCRAPE:
+        # Add a small delay between channels to be polite
+        await scrape_channel(channel, limit=50)
+        await asyncio.sleep(2)
 
 
 def create_telegram_table():

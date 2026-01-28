@@ -31,37 +31,12 @@ async def run_market_brief_task(background_tasks: BackgroundTasks):
     return {"message": "Daily Market Brief task triggered in background"}
 
 
-@router.get("/task/telegram")
-async def get_telegram_messages(channel: str = None, limit: int = 1000):
+@router.post("/task/telegram")
+async def run_telegram_scrape_task(background_tasks: BackgroundTasks):
     """
-    Get recent Telegram messages.
-    If channel is not specified, returns messages from all channels in last 24 hours.
+    Trigger Telegram scraping for all configured channels in the background.
     """
-    from ix.db.conn import Session
-    from ix.db.models import TelegramMessage
-    from datetime import datetime, timedelta
+    from ix.misc.telegram import scrape_all_channels
 
-    since_date = datetime.utcnow() - timedelta(hours=24)
-
-    with Session() as session:
-        query = session.query(TelegramMessage)
-
-        if channel:
-            query = query.filter(TelegramMessage.channel_name == channel)
-        else:
-            # If no channel specified, default to last 24 hours
-            query = query.filter(TelegramMessage.date >= since_date)
-
-        messages = query.order_by(TelegramMessage.date.desc()).limit(limit).all()
-        data = [
-            {
-                "id": str(m.id),
-                "channel": m.channel_name,
-                "message_id": m.message_id,
-                "date": m.date,
-                "message": m.message,
-                "views": m.views,
-            }
-            for m in messages
-        ]
-        return data
+    background_tasks.add_task(scrape_all_channels)
+    return {"message": "Telegram scraping task triggered in background"}

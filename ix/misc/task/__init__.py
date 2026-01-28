@@ -248,14 +248,14 @@ def send_data_reports():
 
     # Use a separate scope or careful management to avoid keeping objects alive
     with Session() as session:
-        # Fetch only metadata first if possible, or just iterate. 
-        # Loading all Timeseries objects is usually okay (metadata is small), 
+        # Fetch only metadata first if possible, or just iterate.
+        # Loading all Timeseries objects is usually okay (metadata is small),
         # but the relationships (data_record) and large JSONB are the issue.
         timeseries_list = session.query(Timeseries).all()
 
         for ts in timeseries_list:
             ts_code = ts.code
-            
+
             # Access the data relationship
             # We assume data is loaded on access if not eager loading
             data_record = ts._get_or_create_data_record(session)
@@ -265,29 +265,29 @@ def send_data_reports():
             if column_data and len(column_data) > 0:
                 data_dict = column_data if isinstance(column_data, dict) else {}
                 data = pd.Series(data_dict)
-                
+
                 # Free the large dict from memory as soon as possible
-                del column_data 
-                
+                del column_data
+
                 if not data.empty:
                     # Convert string dates to datetime index
                     data.index = pd.to_datetime(data.index, errors="coerce")
                     data = data.dropna().sort_index()
-                    
+
                     if not data.empty:
                         # 1. Store last price
                         datas[ts_code] = data.iloc[-1]
 
                         # 2. Store truncated series for history
-                        # We limit to last 1000 items to save memory, 
+                        # We limit to last 1000 items to save memory,
                         # which is sufficient for the final report (last 500 business days).
                         data_truncated = data.iloc[-1000:]
                         data_truncated.name = ts_code
                         ts_list.append(data_truncated)
-            
+
             # Hint to GC that big objects can be freed
             del data_record
-    
+
     # Force garbage collection to clear any lingering objects from the loop
     gc.collect()
 
@@ -320,18 +320,42 @@ def send_data_reports():
         timeseries_data.to_excel(writer, sheet_name="Data")
         macro_df.to_excel(writer, sheet_name="Macro")
     timeseries_buffer.seek(0)
-    
+
     # Release large dataframes
     del ts_list
     del timeseries_data
     del macro_df
     gc.collect()
 
+    # Fetch recipients from database
+    recipients = []
+    try:
+        from ix.db.models.user import User
+
+        # Use a new session for user query to be safe/clean
+        with Session() as user_session:
+            # Filter for admins only
+            admins = (
+                user_session.query(User)
+                .filter(User.disabled == False, User.is_admin == True)
+                .all()
+            )
+            recipients = [u.email for u in admins if u.email]
+    except Exception as e:
+        logger.error(f"Error fetching email recipients from database: {e}")
+        return
+
+    if not recipients:
+        logger.warning("No recipients found in database.")
+        return
+
+    to_str = ", ".join(recipients)
+
     # Create and send email with both attachments
     email_sender = EmailSender(
-        to="26106825@heungkuklife.co.kr, 26107455@heungkuklife.co.kr, hantianfeng@outlook.com",
         subject="[IX] Data",
         content="\n\nPlease find the attached Excel files with price data and timeseries data.\n\nBest regards,\nYour Automation",
+        bcc=to_str,
     )
     email_sender.attach(file_buffer=price_buffer, filename="Data.xlsx")
     email_sender.attach(file_buffer=timeseries_buffer, filename="Timeseries.xlsx")
@@ -362,6 +386,7 @@ def daily():
 
 def run_daily_tasks():
     import gc
+
     logger.info("Starting daily tasks execution (daily update + reports)")
     daily()
     gc.collect()

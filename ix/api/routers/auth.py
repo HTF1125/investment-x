@@ -28,17 +28,19 @@ async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
     """
     Login endpoint - OAuth2 compatible.
 
-    Can also accept JSON body with username and password.
+    Can also accept JSON body with username (as email) and password.
     """
+    # form_data.username contains the email
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_user_token(str(user.username), bool(user.is_admin))
+    # Use email as the identifier in the token
+    access_token = create_user_token(str(user.email), bool(user.is_admin))
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -49,19 +51,19 @@ async def login_json(credentials: UserLogin):
 
     Request body:
     {
-        "username": "user@example.com",
+        "email": "user@example.com",
         "password": "password123"
     }
     """
-    user = authenticate_user(credentials.username, credentials.password)
+    user = authenticate_user(credentials.email, credentials.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_user_token(str(user.username), bool(user.is_admin))
+    access_token = create_user_token(str(user.email), bool(user.is_admin))
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -72,30 +74,33 @@ async def register(user_data: UserRegister):
 
     Request body:
     {
-        "username": "user@example.com",
+        "email": "user@example.com",
         "password": "password123",
-        "email": "user@example.com"  # optional
+        "first_name": "First", # optional
+        "last_name": "Last"   # optional
     }
     """
     # Check if user already exists
-    if User.exists(user_data.username):
+    if User.exists(user_data.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered",
+            detail="Email already registered",
         )
 
     try:
         user = User.new_user(
-            username=user_data.username,
+            email=user_data.email,
             password=user_data.password,
-            email=user_data.email or user_data.username,
+            first_name=user_data.first_name,
+            last_name=user_data.last_name,
             is_admin=False,
         )
-        logger.info(f"New user registered: {user.username}")
+        logger.info(f"New user registered: {user.email}")
         return UserResponse(
             id=str(user.id),
-            username=str(user.username),
-            email=str(user.email) if user.email else None,
+            email=str(user.email),
+            first_name=user.first_name,
+            last_name=user.last_name,
             is_admin=bool(user.is_admin),
             disabled=bool(user.disabled),
             created_at=user.created_at,
@@ -117,8 +122,9 @@ async def get_current_user_info(
     """
     return UserResponse(
         id=str(current_user.id),
-        username=str(current_user.username),
-        email=str(current_user.email) if current_user.email else None,
+        email=str(current_user.email),
+        first_name=current_user.first_name,
+        last_name=current_user.last_name,
         is_admin=bool(current_user.is_admin),
         disabled=bool(current_user.disabled),
         created_at=current_user.created_at,
@@ -131,6 +137,6 @@ async def refresh_token(current_user: User = Depends(get_current_user)):
     Refresh access token.
     """
     access_token = create_user_token(
-        str(current_user.username), bool(current_user.is_admin)
+        str(current_user.email), bool(current_user.is_admin)
     )
     return {"access_token": access_token, "token_type": "bearer"}

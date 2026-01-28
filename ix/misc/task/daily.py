@@ -287,11 +287,36 @@ def send_data_reports():
     gc.collect()
 
     # Send Email
+    # Send Email
     logger.info("Sending Email...")
+
+    # Fetch admin recipients from database
+    recipients = []
+    try:
+        from ix.db.models.user import User
+
+        with Session() as user_session:
+            # Filter for admins only
+            admins = (
+                user_session.query(User)
+                .filter(User.disabled == False, User.is_admin == True)
+                .all()
+            )
+            recipients = [u.email for u in admins if u.email]
+    except Exception as e:
+        logger.error(f"Error fetching admin recipients: {e}")
+        return
+
+    if not recipients:
+        logger.warning("No admin recipients found in database.")
+        return
+
+    to_str = ", ".join(recipients)
+
     email_sender = EmailSender(
-        to="26106825@heungkuklife.co.kr, 26107455@heungkuklife.co.kr, hantianfeng@outlook.com",
         subject="[IX] Data",
         content="\n\nPlease find the attached Excel files with price data and timeseries data.\n\nBest regards,\nYour Automation",
+        bcc=to_str,
     )
     email_sender.attach(file_buffer=price_buffer, filename="Data.xlsx")
     email_sender.attach(file_buffer=timeseries_buffer, filename="Timeseries.xlsx")

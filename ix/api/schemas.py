@@ -18,31 +18,33 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     """Token data schema."""
 
-    username: Optional[str] = None
+    email: Optional[str] = None
     is_admin: bool = False
 
 
 class UserLogin(BaseModel):
     """User login request schema."""
 
-    username: str
+    email: EmailStr
     password: str
 
 
 class UserRegister(BaseModel):
     """User registration request schema."""
 
-    username: str
+    email: EmailStr
     password: str
-    email: Optional[EmailStr] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
 
 
 class UserResponse(BaseModel):
     """User response schema."""
 
     id: str
-    username: str
-    email: Optional[str] = None
+    email: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     is_admin: bool = False
     disabled: bool = False
     created_at: Optional[datetime] = None
