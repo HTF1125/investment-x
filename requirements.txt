@@ -21,3 +21,5 @@ pytz
 scikit-learn
 setuptools
 telethon
+google-genai
+markdown

@@ -144,7 +144,8 @@ async def scrape_channel(channel_name: str, limit: int = 100):
                 message_id=msg.id,
                 sender_id=msg.sender_id,
                 sender_name=None,  # Extracting sender name requires more calls usually if it's a user
-                date=msg.date.replace(tzinfo=None) if msg.date else None,
+                # Convert UTC to KST (+9h) before storing
+                date=(msg.date.replace(tzinfo=None) + timedelta(hours=9)) if msg.date else None,
                 message=msg.message,
                 views=msg.views if hasattr(msg, "views") else None,
             )

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks
-from ix.misc.task import daily, send_data_reports
+from ix.misc.task import daily, send_data_reports, send_daily_market_brief
 
 router = APIRouter()
 
@@ -20,6 +20,15 @@ async def run_report_task(background_tasks: BackgroundTasks):
     """
     background_tasks.add_task(send_data_reports)
     return {"message": "Report sending task triggered in background"}
+
+
+@router.post("/task/brief")
+async def run_market_brief_task(background_tasks: BackgroundTasks):
+    """
+    Manually trigger the Daily Market Brief task in the background.
+    """
+    background_tasks.add_task(send_daily_market_brief)
+    return {"message": "Daily Market Brief task triggered in background"}
 
 
 @router.get("/task/telegram")

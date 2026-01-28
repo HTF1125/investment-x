@@ -93,14 +93,25 @@ async def lifespan(app: FastAPI):
 
             await asyncio.sleep(2)
 
+    # scheduler.add_job(
+    #     scrape_routine,
+    #     CronTrigger(minute="*/5", timezone=KST),  # Run every 5 minutes
+    #     id="telegram_scrape_routine",
+    #     replace_existing=True,
+    #     misfire_grace_time=300,
+    # )
+    # logger.info("Scheduled 'scrape_routine' for every 5 minutes")
+
+    from ix.misc.task import send_daily_market_brief
+    
     scheduler.add_job(
-        scrape_routine,
-        CronTrigger(minute="*/5", timezone=KST),  # Run every 5 minutes
-        id="telegram_scrape_routine",
+        send_daily_market_brief,
+        CronTrigger(minute=0, timezone=KST), # Run every hour at minute 0
+        id="market_brief_hourly",
         replace_existing=True,
-        misfire_grace_time=300,
+        misfire_grace_time=300
     )
-    logger.info("Scheduled 'scrape_routine' for every 5 minutes")
+    logger.info("Scheduled 'send_daily_market_brief' for every hour")
 
     scheduler.start()
 
@@ -139,7 +150,10 @@ async def root():
 
     from datetime import datetime, timedelta
 
-    since_date = datetime.utcnow() - timedelta(hours=24)
+    # DB stores KST. We want last 24 hours relative to current KST time.
+    # Current KST = UTC + 9
+    now_kst = datetime.utcnow() + timedelta(hours=9)
+    since_date = now_kst - timedelta(hours=24)
 
     with Session() as session:
         messages = (
@@ -181,7 +195,7 @@ async def root():
     """
 
     for m in messages:
-        # Convert UTC to KST for display
+        # DB is now KST, so just format directly
         dt_str = m.date.strftime("%Y-%m-%d %H:%M") if m.date else ""
         # Clean message text slightly if needed
         msg_text = m.message or ""

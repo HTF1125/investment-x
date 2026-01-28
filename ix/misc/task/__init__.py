@@ -10,6 +10,7 @@ from ix.misc.crawler import get_fred_data
 from ix.misc.crawler import get_naver_data
 from ix.db.models import Timeseries
 from ix.db.query import macro_data
+from ix.misc.task.brief import send_daily_market_brief
 
 
 logger = get_logger(__name__)
