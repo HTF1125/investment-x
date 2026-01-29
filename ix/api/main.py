@@ -58,12 +58,12 @@ async def lifespan(app: FastAPI):
 
     scheduler.add_job(
         send_daily_market_brief,
-        CronTrigger(minute=0, timezone=KST),  # Run every hour at minute 0
-        id="market_brief_hourly",
+        CronTrigger(hour="1,7,13,19", minute=0, timezone=KST),
+        id="market_brief_6h",
         replace_existing=True,
         misfire_grace_time=300,
     )
-    logger.info("Scheduled 'send_daily_market_brief' for every hour")
+    logger.info("Scheduled 'send_daily_market_brief' for every 6 hours (1, 7, 13, 19 KST)")
 
     scheduler.start()
 

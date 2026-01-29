@@ -160,7 +160,6 @@ For **EACH** language (Korean, English, Chinese, Japanese), generate the report 
         return
 
     # 5. Send Email
-    # 5. Send Email
 
     # Fetch recipients from database (all enabled users with an email)
     recipients = []
