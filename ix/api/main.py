@@ -54,16 +54,17 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Scheduled 'scrape_all_channels' for every 5 minutes")
 
-    from ix.misc.task import send_daily_market_brief
+    # from ix.misc.task import send_daily_market_brief
 
-    scheduler.add_job(
-        send_daily_market_brief,
-        CronTrigger(hour="1,7,13,19", minute=0, timezone=KST),
-        id="market_brief_6h",
-        replace_existing=True,
-        misfire_grace_time=300,
-    )
-    logger.info("Scheduled 'send_daily_market_brief' for every 6 hours (1, 7, 13, 19 KST)")
+    # scheduler.add_job(
+    #     send_daily_market_brief,
+    #     CronTrigger(hour="1,7,13,19", minute=0, timezone=KST),
+    #     id="market_brief_6h",
+    #     replace_existing=True,
+    #     misfire_grace_time=300,
+    # )
+    # logger.info("Scheduled 'send_daily_market_brief' for every 6 hours (1, 7, 13, 19 KST)")
+
 
     scheduler.start()
 
