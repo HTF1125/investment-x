@@ -43,7 +43,7 @@ def apply_academic_style(fig: go.Figure) -> go.Figure:
     fig.update_layout(template="simple_white")
 
     # 2. Fonts & Colors
-    font_family = "Arial, sans-serif"
+    font_family = "Roboto, sans-serif"
     font_color = "#000000"
 
     # 3. Layout General
@@ -59,6 +59,7 @@ def apply_academic_style(fig: go.Figure) -> go.Figure:
             bgcolor="white",
             font_color="black",
             bordercolor="#e2e8f0",
+            font=dict(family=font_family, size=12),
         ),
     )
 

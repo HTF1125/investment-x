@@ -74,6 +74,7 @@ def GoldBullMarkets() -> go.Figure:
                         width=style["width"],
                         dash=style["dash"],
                     ),
+                    hovertemplate=f"{styles[col]['name']}: %{{y:.2f}}<extra></extra>",
                     connectgaps=True,
                 )
             )

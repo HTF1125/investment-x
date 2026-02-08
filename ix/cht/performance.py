@@ -51,7 +51,7 @@ def _create_performance_bar_chart(
             text=[f"{v:.2f}%" for v in latest.values],
             textposition="auto",
             marker=dict(color=colors),
-            hovertemplate="<b>%{y}</b>: %{x:.2f}%<extra></extra>",
+            hovertemplate="%{y}: %{x:.2f}%<extra></extra>",
         )
     )
 

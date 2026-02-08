@@ -246,7 +246,7 @@ def MarketCompositeViews() -> go.Figure:
             name=get_value_label(df[col_lead], "Implied Growth Index", ".2f"),
             mode="lines",
             line=dict(width=3),
-            hovertemplate="<b>Implied Growth Index</b>: %{y:.2f}<extra></extra>",
+            hovertemplate="Implied Growth Index: %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -260,7 +260,7 @@ def MarketCompositeViews() -> go.Figure:
             name=get_value_label(df[col_spx], "S&P500 YoY", ".2f"),
             mode="lines",
             line=dict(width=2),
-            hovertemplate="<b>S&P500 YoY</b>: %{y:.2f}%<extra></extra>",
+            hovertemplate="S&P500 YoY: %{y:.2f}%<extra></extra>",
         ),
         secondary_y=True,
     )
@@ -320,7 +320,7 @@ def CompositeLeadingIndicators() -> go.Figure:
                 name=get_value_label(df[col], col, fmt),
                 mode="lines",
                 line=dict(width=2.5),
-                hovertemplate=f"<b>{col}</b>: %{{y:{fmt}}}<extra></extra>",
+                hovertemplate=f"{col}: %{{y:{fmt}}}<extra></extra>",
                 connectgaps=True,
             ),
             secondary_y=is_secondary,
@@ -401,7 +401,7 @@ def MarketImpliedBusinessCycle() -> go.Figure:
             name=get_value_label(df[col1], col1, ".2f"),
             mode="lines",
             line=dict(width=2.5),
-            hovertemplate=f"<b>{col1}</b>: %{{y:.2f}}%<extra></extra>",
+            hovertemplate=f"{col1}: %{{y:.2f}}%<extra></extra>",
             connectgaps=True,
         ),
         secondary_y=False,
@@ -416,7 +416,7 @@ def MarketImpliedBusinessCycle() -> go.Figure:
             name=get_value_label(df[col2], col2, ".2f"),
             mode="lines",
             line=dict(width=2.5),
-            hovertemplate=f"<b>{col2}</b>: %{{y:.2f}}%<extra></extra>",
+            hovertemplate=f"{col2}: %{{y:.2f}}%<extra></extra>",
             connectgaps=True,
         ),
         secondary_y=True,
@@ -461,7 +461,7 @@ def MarketImpliedBusinessCycle_Components() -> go.Figure:
                 name=get_value_label(df[col], col, ".2f"),
                 mode="lines",
                 line=dict(width=2),
-                hovertemplate=f"<b>{col}</b>: %{{y:.2f}}%<extra></extra>",
+                hovertemplate=f"{col}: %{{y:.2f}}%<extra></extra>",
                 connectgaps=True,
             )
         )

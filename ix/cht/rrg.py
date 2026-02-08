@@ -199,7 +199,7 @@ def _create_rrg_chart(
                     size=10, color=style["color"], family="Arial, sans-serif"
                 ),
                 name=asset,
-                hovertemplate=f"<b>{asset}</b><br>Ratio: %{{x:.2f}}<br>Mom: %{{y:.2f}}<extra></extra>",
+                hovertemplate=f"{asset}<br>Ratio: %{{x:.2f}}<br>Mom: %{{y:.2f}}<extra></extra>",
             ),
             row=1,
             col=1,

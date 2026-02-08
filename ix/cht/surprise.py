@@ -47,7 +47,7 @@ def USSurpriseUST10YCycle() -> go.Figure:
             name=get_value_label(df[col2], "Economic Surprise (CESI)"),
             mode="lines",
             line=dict(width=3),
-            hovertemplate="Economic Surprise (CESI): %{y:.1f}<extra></extra>",
+            hovertemplate="Economic Surprise (CESI): %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -61,7 +61,7 @@ def USSurpriseUST10YCycle() -> go.Figure:
             name=get_value_label(df[col3], "CESI Cycle"),
             mode="lines",
             line=dict(width=3),
-            hovertemplate="CESI Cycle: %{y:.1f}<extra></extra>",
+            hovertemplate="CESI Cycle: %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -124,7 +124,7 @@ def USSurpriseDollarCycle() -> go.Figure:
             name=get_value_label(df[col2], "Economic Surprise (CESI)"),
             mode="lines",
             line=dict(width=3),
-            hovertemplate="Economic Surprise (CESI): %{y:.1f}<extra></extra>",
+            hovertemplate="Economic Surprise (CESI): %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -138,7 +138,7 @@ def USSurpriseDollarCycle() -> go.Figure:
             name=get_value_label(df[col3], "CESI Cycle"),
             mode="lines",
             line=dict(width=3),
-            hovertemplate="CESI Cycle: %{y:.1f}<extra></extra>",
+            hovertemplate="CESI Cycle: %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
     )

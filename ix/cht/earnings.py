@@ -261,7 +261,7 @@ def SPX_EqualWeight_SectorEarningsImpulse() -> go.Figure:
                 x=df.index,
                 y=df[col],
                 name=get_value_label(df[col], col, ".2f"),
-                hovertemplate=f"<b>{col}</b>: %{{y:.2f}}%<extra></extra>",
+                hovertemplate=f"{col}: %{{y:.2f}}%<extra></extra>",
             )
         )
 
@@ -275,7 +275,7 @@ def SPX_EqualWeight_SectorEarningsImpulse() -> go.Figure:
             mode="lines",
             line=dict(color="black", width=2, dash="dot"),
             connectgaps=True,
-            hovertemplate=f"<b>Total Impulse</b>: %{{y:.2f}}%<extra></extra>",
+            hovertemplate=f"Total Impulse: %{{y:.2f}}%<extra></extra>",
         )
     )
 

@@ -30,7 +30,7 @@ def MedianWageByQuartile() -> go.Figure:
                 name=get_value_label(df[col], col, ".2f"),
                 mode="lines",
                 line=dict(width=2.5),
-                hovertemplate=f"<b>{col}</b>: %{{y:.2f}}%<extra></extra>",
+                hovertemplate=f"{col}: %{{y:.2f}}%<extra></extra>",
             )
         )
 

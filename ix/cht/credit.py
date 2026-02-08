@@ -47,7 +47,7 @@ def US_CreditImpulse() -> go.Figure:
                 x=df.index,
                 y=df[col],
                 name=get_value_label(df[col], col, ".2f"),
-                hovertemplate=f"<b>{col}</b>: %{{y:.2f}}B<extra></extra>",
+                hovertemplate=f"{col}: %{{y:.2f}}B<extra></extra>",
             )
         )
 
@@ -60,7 +60,7 @@ def US_CreditImpulse() -> go.Figure:
             name=get_value_label(total, "Total Impulse", ".2f"),
             mode="lines",
             line=dict(color="black", width=2, dash="dot"),
-            hovertemplate="<b>Total Impulse</b>: %{y:.2f}B<extra></extra>",
+            hovertemplate="Total Impulse: %{y:.2f}B<extra></extra>",
             connectgaps=True,
         )
     )
@@ -126,7 +126,7 @@ def US_CreditImpulseToGDP() -> go.Figure:
                 x=df.index,
                 y=df[col],
                 name=get_value_label(df[col], col, ".2f"),
-                hovertemplate=f"<b>{col}</b>: %{{y:.2f}}%<extra></extra>",
+                hovertemplate=f"{col}: %{{y:.2f}}%<extra></extra>",
             )
         )
 
@@ -139,7 +139,7 @@ def US_CreditImpulseToGDP() -> go.Figure:
             name=get_value_label(total, "Total Impulse", ".2f"),
             mode="lines",
             line=dict(color="black", width=2, dash="dot"),
-            hovertemplate="<b>Total Impulse</b>: %{y:.2f}%<extra></extra>",
+            hovertemplate="Total Impulse: %{y:.2f}%<extra></extra>",
             connectgaps=True,
         )
     )
@@ -186,7 +186,7 @@ def BankCreditOutlook() -> go.Figure:
             name=get_value_label(df[col1], col1, ".2f"),
             mode="lines",
             line=dict(width=2.5),
-            hovertemplate=f"<b>{col1}</b>: %{{y:.2f}}%<extra></extra>",
+            hovertemplate=f"{col1}: %{{y:.2f}}%<extra></extra>",
             connectgaps=True,
         ),
         secondary_y=False,
@@ -201,7 +201,7 @@ def BankCreditOutlook() -> go.Figure:
             name=get_value_label(df[col2], col2, ".2f"),
             mode="lines",
             line=dict(width=2.5),
-            hovertemplate=f"<b>{col2}</b>: %{{y:.2f}}<extra></extra>",
+            hovertemplate=f"{col2}: %{{y:.2f}}<extra></extra>",
             connectgaps=True,
         ),
         secondary_y=True,

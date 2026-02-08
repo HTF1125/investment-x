@@ -157,7 +157,7 @@ def FinancialConditions() -> go.Figure:
             name=get_value_label(df["FCI (Proprietary)"], "FCI (Proprietary)", ".2f"),
             mode="lines",
             line=dict(width=2.5),
-            hovertemplate="<b>FCI (Proprietary)</b>: %{y:.2f}<extra></extra>",
+            hovertemplate="FCI (Proprietary): %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -170,7 +170,7 @@ def FinancialConditions() -> go.Figure:
             name=get_value_label(df["Cycle"], "Cycle", ".2f"),
             mode="lines",
             line=dict(width=2.5),
-            hovertemplate="<b>Cycle</b>: %{y:.2f}<extra></extra>",
+            hovertemplate="Cycle: %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -185,7 +185,7 @@ def FinancialConditions() -> go.Figure:
             ),
             mode="lines",
             line=dict(width=2.0),
-            hovertemplate="<b>FCI (Fed Model)</b>: %{y:.2f}<extra></extra>",
+            hovertemplate="FCI (Fed Model): %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -198,7 +198,7 @@ def FinancialConditions() -> go.Figure:
             name=get_value_label(df["S&P500 YoY (%)"], "S&P500 YoY", "+.2f"),
             mode="lines",
             line=dict(width=2.0),
-            hovertemplate="<b>S&P500 YoY</b>: %{y:.2f}%<extra></extra>",
+            hovertemplate="S&P500 YoY: %{y:.2f}%<extra></extra>",
         ),
         secondary_y=True,
     )
@@ -309,7 +309,7 @@ def FinancialConditionsComponents() -> go.Figure:
                 line=dict(
                     width=2.0,
                 ),
-                hovertemplate=f"<b>{col}</b>: %{{y:.2f}}<extra></extra>",
+                hovertemplate=f"{col}: %{{y:.2f}}<extra></extra>",
             )
         )
 

@@ -42,7 +42,7 @@ def AsianExportsYoY() -> go.Figure:
                 name=get_value_label(df[col], col, ".2f"),
                 mode="lines",
                 line=dict(width=2.5),
-                hovertemplate=f"<b>{col}</b>: %{{y:.2f}}%<extra></extra>",
+                hovertemplate=f"{col}: %{{y:.2f}}%<extra></extra>",
                 connectgaps=True,
             )
         )
@@ -94,7 +94,7 @@ def Mag7CapexGrowth() -> go.Figure:
                 name=get_value_label(df[col_name], "MAG7 CAPEX Growth", ".2f"),
                 mode="lines",
                 line=dict(width=3),
-                hovertemplate="<b>MAG7 CAPEX Growth</b>: %{y:.2f}%<extra></extra>",
+                hovertemplate="MAG7 CAPEX Growth: %{y:.2f}%<extra></extra>",
                 connectgaps=True,
             )
         )
@@ -142,7 +142,7 @@ def IndustrialProductionLeadingIndicator() -> go.Figure:
                 name=get_value_label(df[col], col, ".2f"),
                 mode="lines",
                 line=dict(width=2.5),
-                hovertemplate=f"<b>{col}</b>: %{{y:.2f}}<extra></extra>",
+                hovertemplate=f"{col}: %{{y:.2f}}<extra></extra>",
                 connectgaps=True,
             )
         )
@@ -185,7 +185,7 @@ def HeavyTruckSalesUnemployment() -> go.Figure:
             name=get_value_label(df[col1], col1, ".2f"),
             mode="lines",
             line=dict(width=2.5),
-            hovertemplate=f"<b>{col1}</b>: %{{y:,.2f}}<extra></extra>",
+            hovertemplate=f"{col1}: %{{y:,.2f}}<extra></extra>",
             connectgaps=True,
         ),
         secondary_y=False,
@@ -200,7 +200,7 @@ def HeavyTruckSalesUnemployment() -> go.Figure:
             name=get_value_label(df[col2], col2, ".2f"),
             mode="lines",
             line=dict(width=2.5, dash="dot"),
-            hovertemplate=f"<b>{col2}</b>: %{{y:.2f}}%<extra></extra>",
+            hovertemplate=f"{col2}: %{{y:.2f}}%<extra></extra>",
             connectgaps=True,
         ),
         secondary_y=True,
@@ -256,7 +256,7 @@ def EmpireStateManufacturing() -> go.Figure:
                 name=get_value_label(df[col], col, ".2f"),
                 mode="lines",
                 line=dict(width=2.5),
-                hovertemplate=f"<b>{col}</b>: %{{y:.2f}}<extra></extra>",
+                hovertemplate=f"{col}: %{{y:.2f}}<extra></extra>",
                 connectgaps=True,
             )
         )

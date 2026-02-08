@@ -27,7 +27,7 @@ def USFederalDebt() -> go.Figure:
             y=df[col1],
             name=get_value_label(df[col1], "Outstanding", ".2f"),
             line=dict(width=2.5),
-            hovertemplate="<b>Outstanding</b>: %{y:.2f}T<extra></extra>",
+            hovertemplate="Outstanding: %{y:.2f}T<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -40,7 +40,7 @@ def USFederalDebt() -> go.Figure:
             y=df[col2],
             name=get_value_label(df[col2], "YoY", "+.2f"),
             line=dict(width=2.5),
-            hovertemplate="<b>YoY</b>: %{y:.2f}%<extra></extra>",
+            hovertemplate="YoY: %{y:.2f}%<extra></extra>",
         ),
         secondary_y=True,
     )

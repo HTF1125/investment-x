@@ -90,7 +90,7 @@ def GlobalLiquidity() -> go.Figure:
             name=get_value_label(df[col1], "CB Assets ($Tr)", ".2f"),
             mode="lines",
             line=dict(width=3),
-            hovertemplate="<b>CB Assets ($Tr)</b>: %{y:.2f}T<extra></extra>",
+            hovertemplate="CB Assets ($Tr): %{y:.2f}T<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -104,7 +104,7 @@ def GlobalLiquidity() -> go.Figure:
             name=get_value_label(df[col2], "Money Supply ($Tr)", ".2f"),
             mode="lines",
             line=dict(width=3),
-            hovertemplate="<b>Money Supply ($Tr)</b>: %{y:.2f}T<extra></extra>",
+            hovertemplate="Money Supply ($Tr): %{y:.2f}T<extra></extra>",
         ),
         secondary_y=True,
     )
@@ -212,7 +212,7 @@ def GlobalLiquidityYoY() -> go.Figure:
             ),
             mode="lines",
             line=dict(width=3),
-            hovertemplate="<b>CB Assets YoY</b>: %{y:.2f}%<extra></extra>",
+            hovertemplate="CB Assets YoY: %{y:.2f}%<extra></extra>",
         )
     )
 
@@ -226,7 +226,7 @@ def GlobalLiquidityYoY() -> go.Figure:
             ),
             mode="lines",
             line=dict(width=3),
-            hovertemplate="<b>Money Supply YoY</b>: %{y:.2f}%<extra></extra>",
+            hovertemplate="Money Supply YoY: %{y:.2f}%<extra></extra>",
         )
     )
 
@@ -300,7 +300,7 @@ def GlobalAssetContribution() -> go.Figure:
                     x=df.index,
                     y=df[country],
                     name=get_value_label(df[country], country, "+.2f"),
-                    hovertemplate=f"<b>{country}</b>: %{{y:.2f}}%<extra></extra>",
+                    hovertemplate=f"{country}: %{{y:.2f}}%<extra></extra>",
                 )
             )
 
@@ -364,7 +364,7 @@ def GlobalMoneySupplyContribution() -> go.Figure:
                     x=df.index,
                     y=df[country],
                     name=get_value_label(df[country], country, "+.2f"),
-                    hovertemplate=f"<b>{country}</b>: %{{y:.2f}}%<extra></extra>",
+                    hovertemplate=f"{country}: %{{y:.2f}}%<extra></extra>",
                 )
             )
 
@@ -415,7 +415,7 @@ def FedLiquidityImpulse() -> go.Figure:
                     x=df.index,
                     y=df[col],
                     name=get_value_label(df[col], col, "+.2f"),
-                    hovertemplate=f"<b>{col}</b>: %{{y:.2f}}B<extra></extra>",
+                    hovertemplate=f"{col}: %{{y:.2f}}B<extra></extra>",
                 )
             )
 
@@ -429,7 +429,7 @@ def FedLiquidityImpulse() -> go.Figure:
             mode="lines",
             line=dict(width=3),
             opacity=0.8,
-            hovertemplate="<b>Net Liquidity Impulse</b>: %{y:.2f}B<extra></extra>",
+            hovertemplate="Net Liquidity Impulse: %{y:.2f}B<extra></extra>",
         )
     )
 
