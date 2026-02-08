@@ -151,6 +151,12 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
 
             # Chart cards
             for chart in charts:
+                last_updated = (
+                    chart.updated_at.strftime("%Y-%m-%d %H:%M")
+                    if chart.updated_at
+                    else "Never"
+                )
+
                 content.append(
                     dbc.Card(
                         [
@@ -158,10 +164,19 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                 dbc.Row(
                                     [
                                         dbc.Col(
-                                            html.H5(
-                                                chart.code, className="mb-0 text-light"
-                                            ),
-                                            width=10,
+                                            [
+                                                html.H5(
+                                                    chart.code,
+                                                    className="mb-0 text-white",
+                                                    style={"fontWeight": "600"},
+                                                ),
+                                                html.Small(
+                                                    f"Last updated: {last_updated}",
+                                                    className="text-muted",
+                                                    style={"fontSize": "0.75rem"},
+                                                ),
+                                            ],
+                                            width=9,
                                         ),
                                         dbc.Col(
                                             [
@@ -171,10 +186,11 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                                         "type": "refresh-btn",
                                                         "code": chart.code,
                                                     },
-                                                    color="link",
+                                                    color="light",
+                                                    outline=True,
                                                     size="sm",
-                                                    className="text-light p-0 me-2",
-                                                    title="Refresh chart",
+                                                    className="me-2 border-0",
+                                                    title="Refresh chart data",
                                                 ),
                                                 dbc.Button(
                                                     "📋",
@@ -182,31 +198,54 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                                         "type": "copy-btn",
                                                         "code": chart.code,
                                                     },
-                                                    color="link",
+                                                    color="light",
+                                                    outline=True,
                                                     size="sm",
-                                                    className="text-light p-0",
-                                                    title="Copy to clipboard",
+                                                    className="border-0",
+                                                    title="Copy chart to clipboard",
                                                 ),
                                             ],
-                                            width=2,
+                                            width=3,
                                             className="text-end",
                                         ),
                                     ],
                                     align="center",
                                 ),
+                                className="bg-transparent border-bottom border-secondary",
                             ),
                             dbc.CardBody(
                                 [
                                     # Description
                                     html.Div(
                                         [
-                                            html.P(
-                                                chart.description or "No description",
-                                                id={
-                                                    "type": "desc-text",
-                                                    "code": chart.code,
+                                            html.Div(
+                                                [
+                                                    html.Span("ℹ️ ", className="me-1"),
+                                                    html.Span(
+                                                        chart.description
+                                                        or "No description available",
+                                                        id={
+                                                            "type": "desc-text",
+                                                            "code": chart.code,
+                                                        },
+                                                        className="text-light small",
+                                                    ),
+                                                    dbc.Button(
+                                                        "✎",
+                                                        id={
+                                                            "type": "edit-btn",
+                                                            "code": chart.code,
+                                                        },
+                                                        color="link",
+                                                        size="sm",
+                                                        className="text-muted p-0 ms-2 text-decoration-none",
+                                                        title="Edit description",
+                                                    ),
+                                                ],
+                                                className="d-flex align-items-center mb-2 p-2 rounded",
+                                                style={
+                                                    "backgroundColor": "rgba(255,255,255,0.05)"
                                                 },
-                                                className="text-muted small mb-2",
                                             ),
                                             dbc.Collapse(
                                                 dbc.Card(
@@ -219,7 +258,7 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                                                 },
                                                                 value=chart.description
                                                                 or "",
-                                                                className="mb-2",
+                                                                className="mb-2 bg-dark text-light border-secondary",
                                                                 style={
                                                                     "height": "100px"
                                                                 },
@@ -234,6 +273,7 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                                                         },
                                                                         color="success",
                                                                         size="sm",
+                                                                        outline=True,
                                                                     ),
                                                                     dbc.Button(
                                                                         "Cancel",
@@ -243,6 +283,7 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                                                         },
                                                                         color="secondary",
                                                                         size="sm",
+                                                                        outline=True,
                                                                     ),
                                                                 ],
                                                                 size="sm",
@@ -256,23 +297,13 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                                             ),
                                                         ]
                                                     ),
-                                                    className="bg-dark border-secondary",
+                                                    className="bg-transparent border-0",
                                                 ),
                                                 id={
                                                     "type": "desc-collapse",
                                                     "code": chart.code,
                                                 },
                                                 is_open=False,
-                                            ),
-                                            dbc.Button(
-                                                "Edit Description",
-                                                id={
-                                                    "type": "edit-btn",
-                                                    "code": chart.code,
-                                                },
-                                                color="link",
-                                                size="sm",
-                                                className="p-0 text-muted",
                                             ),
                                         ],
                                         className="mb-3",
@@ -291,18 +322,27 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                                 "minHeight": "500px",
                                             },
                                             config={
-                                                "displayModeBar": True,
+                                                "displayModeBar": "hover",
                                                 "displaylogo": False,
                                                 "responsive": True,
+                                                "modeBarButtonsToRemove": [
+                                                    "lasso2d",
+                                                    "select2d",
+                                                ],
                                             },
                                         ),
                                         type="circle",
-                                        color="#17a2b8",
+                                        color="#0dcaf0",  # Info cyan color
                                     ),
                                 ]
                             ),
                         ],
-                        className="mb-4 bg-dark border-secondary",
+                        className="mb-5 shadow-sm border-secondary",
+                        style={
+                            "backgroundColor": "#1e2126",  # Slightly lighter than main bg
+                            "borderRadius": "10px",
+                            "overflow": "hidden",
+                        },
                     )
                 )
 
@@ -442,9 +482,16 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
             chart = s.query(Chart).filter(Chart.code == code).first()
             if chart:
                 try:
+                    # Re-render and update the cached figure
                     chart.update_figure()
-                    s.flush()
 
+                    # Ensure the object is marked as dirty in the session
+                    s.add(chart)
+
+                    # Explicit commit to persist changes
+                    s.commit()
+
+                    # Return the updated figure
                     fig = chart.render()
                     fig.update_layout(autosize=True, height=None, width=None)
                     return fig
