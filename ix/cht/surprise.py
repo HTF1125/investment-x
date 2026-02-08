@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries, Offset, Cycle
-from .style import apply_academic_style, add_zero_line, get_value_label
+from ix.cht.style import apply_academic_style, add_zero_line, get_value_label
 
 
 def USSurpriseUST10YCycle() -> go.Figure:
@@ -34,6 +34,7 @@ def USSurpriseUST10YCycle() -> go.Figure:
             mode="lines",
             line=dict(width=3),
             hovertemplate="UST10Y Dev: %{y:.2f}%<extra></extra>",
+            connectgaps=True,
         ),
         secondary_y=True,
     )
@@ -48,6 +49,7 @@ def USSurpriseUST10YCycle() -> go.Figure:
             mode="lines",
             line=dict(width=3),
             hovertemplate="Economic Surprise (CESI): %{y:.2f}<extra></extra>",
+            connectgaps=True,
         ),
         secondary_y=False,
     )
@@ -62,6 +64,7 @@ def USSurpriseUST10YCycle() -> go.Figure:
             mode="lines",
             line=dict(width=3),
             hovertemplate="CESI Cycle: %{y:.2f}<extra></extra>",
+            connectgaps=True,
         ),
         secondary_y=False,
     )
@@ -111,6 +114,7 @@ def USSurpriseDollarCycle() -> go.Figure:
             mode="lines",
             line=dict(width=3),
             hovertemplate="Dollar Dev: %{y:+.2f}%<extra></extra>",
+            connectgaps=True,
         ),
         secondary_y=True,
     )
@@ -125,6 +129,7 @@ def USSurpriseDollarCycle() -> go.Figure:
             mode="lines",
             line=dict(width=3),
             hovertemplate="Economic Surprise (CESI): %{y:.2f}<extra></extra>",
+            connectgaps=True,
         ),
         secondary_y=False,
     )
@@ -139,6 +144,7 @@ def USSurpriseDollarCycle() -> go.Figure:
             mode="lines",
             line=dict(width=3),
             hovertemplate="CESI Cycle: %{y:.2f}<extra></extra>",
+            connectgaps=True,
         ),
         secondary_y=False,
     )
