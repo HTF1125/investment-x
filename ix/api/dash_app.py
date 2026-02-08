@@ -3,34 +3,13 @@ Dash application for Investment-X charts.
 
 This module creates a Dash app that can be mounted to FastAPI.
 Displays all charts in a gallery view organized by category.
-Uses callbacks for lazy loading of charts.
+Uses callbacks for lazy loading of charts - no DB queries at import time.
 """
 
 import dash
-from dash import html, dcc, callback, Input, Output, State, MATCH, ALL, ctx
+from dash import html, dcc, Input, Output, State, MATCH, ALL
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
-from ix.db.conn import Session
-from ix.db.models import Chart
-
-
-def get_charts_by_category():
-    """Fetch all charts from DB grouped by category."""
-    charts_by_cat = {}
-    with Session() as s:
-        charts = s.query(Chart).all()
-        for chart in charts:
-            s.expunge(chart)
-            cat = chart.category or "Uncategorized"
-            if cat not in charts_by_cat:
-                charts_by_cat[cat] = []
-            charts_by_cat[cat].append(chart)
-
-    # Sort charts within each category
-    for cat in charts_by_cat:
-        charts_by_cat[cat].sort(key=lambda c: c.code)
-
-    return charts_by_cat
 
 
 # Define category order
@@ -59,13 +38,8 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
     """
     Creates and configures the Dash application.
 
-    Args:
-        requests_pathname_prefix: URL prefix for the Dash app
-
-    Returns:
-        Configured Dash application instance
+    Uses function-based layout to defer database queries until page is accessed.
     """
-
     # Create Dash app with Bootstrap theme
     app = dash.Dash(
         __name__,
@@ -75,233 +49,276 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
         title="Investment-X Charts",
     )
 
-    # Fetch chart metadata (not figures)
-    charts_by_cat = get_charts_by_category()
+    def serve_layout():
+        """Generate layout dynamically on each page load."""
+        # Import here to avoid import-time DB access
+        from ix.db.conn import Session
+        from ix.db.models import Chart
 
-    # Sort categories by order
-    sorted_cats = sorted(
-        charts_by_cat.keys(),
-        key=lambda x: (
-            CATEGORY_ORDER.index(x) if x in CATEGORY_ORDER else len(CATEGORY_ORDER)
-        ),
-    )
+        # Fetch charts
+        charts_by_cat = {}
+        try:
+            with Session() as s:
+                charts = s.query(Chart).all()
+                for chart in charts:
+                    s.expunge(chart)
+                    cat = chart.category or "Uncategorized"
+                    if cat not in charts_by_cat:
+                        charts_by_cat[cat] = []
+                    charts_by_cat[cat].append(chart)
 
-    # Build content with placeholders
-    content = []
+            # Sort charts within each category
+            for cat in charts_by_cat:
+                charts_by_cat[cat].sort(key=lambda c: c.code)
+        except Exception as e:
+            # If DB fails, show error
+            return dbc.Container(
+                [
+                    html.H2("Investment-X", className="text-primary"),
+                    dbc.Alert(f"Failed to load charts: {e}", color="danger"),
+                ],
+                className="py-3",
+            )
 
-    # Header
-    content.append(
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        html.H2("Investment-X", className="text-primary mb-0"),
-                        html.P("Research Library", className="text-muted"),
-                    ],
-                    width=6,
-                ),
-                dbc.Col(
-                    [
-                        # PDF Download button
-                        html.A(
-                            dbc.Button(
-                                "📥 Download PDF",
-                                color="info",
-                                size="sm",
-                                className="me-3",
-                            ),
-                            href="/api/charts/export/pdf",
-                            target="_blank",
-                        ),
-                        # Category quick links
-                        html.Span(
-                            [
-                                html.A(
-                                    cat,
-                                    href=f"#{cat.lower().replace(' ', '-')}",
-                                    className="badge bg-secondary me-1 text-decoration-none",
-                                )
-                                for cat in sorted_cats
-                            ]
-                        ),
-                    ],
-                    width=6,
-                    className="text-end",
-                ),
-            ],
-            className="py-3 border-bottom mb-4 sticky-top bg-dark align-items-center",
+        # Sort categories by order
+        sorted_cats = sorted(
+            charts_by_cat.keys(),
+            key=lambda x: (
+                CATEGORY_ORDER.index(x) if x in CATEGORY_ORDER else len(CATEGORY_ORDER)
+            ),
         )
-    )
 
-    # Charts by category - create placeholders
-    for cat in sorted_cats:
-        charts = charts_by_cat[cat]
-        anchor = cat.lower().replace(" ", "-")
+        # Build content
+        content = []
 
-        # Category header
+        # Header
         content.append(
-            html.H3(
-                cat,
-                id=anchor,
-                className="mt-4 mb-3 pb-2 border-bottom text-info",
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            html.H2("Investment-X", className="text-primary mb-0"),
+                            html.P("Research Library", className="text-muted"),
+                        ],
+                        width=6,
+                    ),
+                    dbc.Col(
+                        [
+                            # PDF Download button
+                            html.A(
+                                dbc.Button(
+                                    "📥 Download PDF",
+                                    color="info",
+                                    size="sm",
+                                    className="me-3",
+                                ),
+                                href="/api/charts/export/pdf",
+                                target="_blank",
+                            ),
+                            # Category quick links
+                            html.Span(
+                                [
+                                    html.A(
+                                        cat,
+                                        href=f"#{cat.lower().replace(' ', '-')}",
+                                        className="badge bg-secondary me-1 text-decoration-none",
+                                    )
+                                    for cat in sorted_cats
+                                ]
+                            ),
+                        ],
+                        width=6,
+                        className="text-end",
+                    ),
+                ],
+                className="py-3 border-bottom mb-4 sticky-top bg-dark align-items-center",
             )
         )
 
-        # Chart placeholders
-        for chart in charts:
+        # Charts by category
+        for cat in sorted_cats:
+            charts = charts_by_cat[cat]
+            anchor = cat.lower().replace(" ", "-")
+
+            # Category header
             content.append(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(
-                            dbc.Row(
-                                [
-                                    dbc.Col(
-                                        html.H5(
-                                            chart.code, className="mb-0 text-light"
-                                        ),
-                                        width=10,
-                                    ),
-                                    dbc.Col(
-                                        [
-                                            dbc.Button(
-                                                "🔄",
-                                                id={
-                                                    "type": "refresh-btn",
-                                                    "code": chart.code,
-                                                },
-                                                color="link",
-                                                size="sm",
-                                                className="text-light p-0 me-2",
-                                                title="Refresh chart",
-                                            ),
-                                            dbc.Button(
-                                                "📋",
-                                                id={
-                                                    "type": "copy-btn",
-                                                    "code": chart.code,
-                                                },
-                                                color="link",
-                                                size="sm",
-                                                className="text-light p-0",
-                                                title="Copy to clipboard",
-                                            ),
-                                        ],
-                                        width=2,
-                                        className="text-end",
-                                    ),
-                                ],
-                                align="center",
-                            ),
-                        ),
-                        dbc.CardBody(
-                            [
-                                # Description display and editor
-                                html.Div(
-                                    [
-                                        html.P(
-                                            chart.description or "No description",
-                                            id={
-                                                "type": "desc-text",
-                                                "code": chart.code,
-                                            },
-                                            className="text-muted small mb-2",
-                                        ),
-                                        dbc.Button(
-                                            "✏️ Edit",
-                                            id={"type": "edit-btn", "code": chart.code},
-                                            color="link",
-                                            size="sm",
-                                            className="p-0 mb-2",
-                                        ),
-                                    ]
-                                ),
-                                # Edit modal
-                                dbc.Collapse(
-                                    dbc.Card(
-                                        [
-                                            dbc.CardBody(
-                                                [
-                                                    dbc.Textarea(
-                                                        id={
-                                                            "type": "desc-input",
-                                                            "code": chart.code,
-                                                        },
-                                                        value=chart.description or "",
-                                                        placeholder="Enter description...",
-                                                        style={"height": "80px"},
-                                                        className="mb-2",
-                                                    ),
-                                                    dbc.ButtonGroup(
-                                                        [
-                                                            dbc.Button(
-                                                                "💾 Save",
-                                                                id={
-                                                                    "type": "save-btn",
-                                                                    "code": chart.code,
-                                                                },
-                                                                color="primary",
-                                                                size="sm",
-                                                            ),
-                                                            dbc.Button(
-                                                                "Cancel",
-                                                                id={
-                                                                    "type": "cancel-btn",
-                                                                    "code": chart.code,
-                                                                },
-                                                                color="secondary",
-                                                                size="sm",
-                                                            ),
-                                                        ]
-                                                    ),
-                                                    html.Div(
-                                                        id={
-                                                            "type": "save-status",
-                                                            "code": chart.code,
-                                                        },
-                                                        className="mt-2",
-                                                    ),
-                                                ]
-                                            ),
-                                        ],
-                                        className="bg-secondary",
-                                    ),
-                                    id={"type": "edit-collapse", "code": chart.code},
-                                    is_open=False,
-                                    className="mb-2",
-                                ),
-                                # Chart
-                                dcc.Loading(
-                                    dcc.Graph(
-                                        id={"type": "chart-graph", "code": chart.code},
-                                        responsive=True,
-                                        style={"width": "100%", "minHeight": "500px"},
-                                        config={
-                                            "displayModeBar": True,
-                                            "displaylogo": False,
-                                            "responsive": True,
-                                        },
-                                    ),
-                                    type="circle",
-                                    color="#17a2b8",
-                                ),
-                            ]
-                        ),
-                    ],
-                    className="mb-4 bg-dark border-secondary",
+                html.H3(
+                    cat,
+                    id=anchor,
+                    className="mt-4 mb-3 pb-2 border-bottom text-info",
                 )
             )
 
-    # Layout
-    app.layout = dbc.Container(
-        [
-            dcc.Store(id="charts-loaded", data=[]),
-            dcc.Interval(id="load-trigger", interval=100, max_intervals=1),
-            *content,
-        ],
-        fluid=True,
-        className="py-3",
-        style={"maxWidth": "800px", "margin": "0 auto"},
-    )
+            # Chart cards
+            for chart in charts:
+                content.append(
+                    dbc.Card(
+                        [
+                            dbc.CardHeader(
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            html.H5(
+                                                chart.code, className="mb-0 text-light"
+                                            ),
+                                            width=10,
+                                        ),
+                                        dbc.Col(
+                                            [
+                                                dbc.Button(
+                                                    "🔄",
+                                                    id={
+                                                        "type": "refresh-btn",
+                                                        "code": chart.code,
+                                                    },
+                                                    color="link",
+                                                    size="sm",
+                                                    className="text-light p-0 me-2",
+                                                    title="Refresh chart",
+                                                ),
+                                                dbc.Button(
+                                                    "📋",
+                                                    id={
+                                                        "type": "copy-btn",
+                                                        "code": chart.code,
+                                                    },
+                                                    color="link",
+                                                    size="sm",
+                                                    className="text-light p-0",
+                                                    title="Copy to clipboard",
+                                                ),
+                                            ],
+                                            width=2,
+                                            className="text-end",
+                                        ),
+                                    ],
+                                    align="center",
+                                ),
+                            ),
+                            dbc.CardBody(
+                                [
+                                    # Description
+                                    html.Div(
+                                        [
+                                            html.P(
+                                                chart.description or "No description",
+                                                id={
+                                                    "type": "desc-text",
+                                                    "code": chart.code,
+                                                },
+                                                className="text-muted small mb-2",
+                                            ),
+                                            dbc.Collapse(
+                                                dbc.Card(
+                                                    dbc.CardBody(
+                                                        [
+                                                            dbc.Textarea(
+                                                                id={
+                                                                    "type": "desc-input",
+                                                                    "code": chart.code,
+                                                                },
+                                                                value=chart.description
+                                                                or "",
+                                                                className="mb-2",
+                                                                style={
+                                                                    "height": "100px"
+                                                                },
+                                                            ),
+                                                            dbc.ButtonGroup(
+                                                                [
+                                                                    dbc.Button(
+                                                                        "Save",
+                                                                        id={
+                                                                            "type": "save-btn",
+                                                                            "code": chart.code,
+                                                                        },
+                                                                        color="success",
+                                                                        size="sm",
+                                                                    ),
+                                                                    dbc.Button(
+                                                                        "Cancel",
+                                                                        id={
+                                                                            "type": "cancel-btn",
+                                                                            "code": chart.code,
+                                                                        },
+                                                                        color="secondary",
+                                                                        size="sm",
+                                                                    ),
+                                                                ],
+                                                                size="sm",
+                                                            ),
+                                                            html.Div(
+                                                                id={
+                                                                    "type": "save-status",
+                                                                    "code": chart.code,
+                                                                },
+                                                                className="mt-2",
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    className="bg-dark border-secondary",
+                                                ),
+                                                id={
+                                                    "type": "desc-collapse",
+                                                    "code": chart.code,
+                                                },
+                                                is_open=False,
+                                            ),
+                                            dbc.Button(
+                                                "Edit Description",
+                                                id={
+                                                    "type": "edit-btn",
+                                                    "code": chart.code,
+                                                },
+                                                color="link",
+                                                size="sm",
+                                                className="p-0 text-muted",
+                                            ),
+                                        ],
+                                        className="mb-3",
+                                    ),
+                                    # Chart with loading spinner
+                                    dcc.Loading(
+                                        dcc.Graph(
+                                            figure=go.Figure(),
+                                            id={
+                                                "type": "chart-graph",
+                                                "code": chart.code,
+                                            },
+                                            responsive=True,
+                                            style={
+                                                "width": "100%",
+                                                "minHeight": "500px",
+                                            },
+                                            config={
+                                                "displayModeBar": True,
+                                                "displaylogo": False,
+                                                "responsive": True,
+                                            },
+                                        ),
+                                        type="circle",
+                                        color="#17a2b8",
+                                    ),
+                                ]
+                            ),
+                        ],
+                        className="mb-4 bg-dark border-secondary",
+                    )
+                )
+
+        return dbc.Container(
+            [
+                dcc.Store(id="charts-loaded", data=[]),
+                dcc.Interval(id="load-trigger", interval=100, max_intervals=1),
+                *content,
+            ],
+            fluid=True,
+            className="py-3",
+            style={"maxWidth": "800px", "margin": "0 auto"},
+        )
+
+    # Use function-based layout for lazy loading
+    app.layout = serve_layout
 
     # Callback to load all charts on initial load
     @app.callback(
@@ -311,55 +328,75 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
     )
     def load_all_charts(_):
         """Load all charts when the page loads."""
-        charts_by_cat = get_charts_by_category()
+        from ix.db.conn import Session
+        from ix.db.models import Chart
 
-        # Build ordered list of chart codes
-        all_codes = []
-        for cat in sorted_cats:
-            if cat in charts_by_cat:
-                for chart in charts_by_cat[cat]:
-                    all_codes.append(chart.code)
+        charts_by_cat = {}
+        try:
+            with Session() as s:
+                charts = s.query(Chart).all()
+                for chart in charts:
+                    s.expunge(chart)
+                    cat = chart.category or "Uncategorized"
+                    if cat not in charts_by_cat:
+                        charts_by_cat[cat] = []
+                    charts_by_cat[cat].append(chart)
+        except Exception:
+            return []
+
+        # Sort charts in the same order as layout
+        sorted_cats = sorted(
+            charts_by_cat.keys(),
+            key=lambda x: (
+                CATEGORY_ORDER.index(x) if x in CATEGORY_ORDER else len(CATEGORY_ORDER)
+            ),
+        )
 
         figures = []
-        with Session() as s:
-            for code in all_codes:
-                chart = s.query(Chart).filter(Chart.code == code).first()
-                if chart:
-                    try:
-                        fig = chart.render()
+        for cat in sorted_cats:
+            chart_list = sorted(charts_by_cat[cat], key=lambda c: c.code)
+            for chart in chart_list:
+                try:
+                    if chart.figure:
+                        fig = go.Figure(chart.figure)
                         fig.update_layout(autosize=True, height=None, width=None)
                         figures.append(fig)
-                    except Exception as e:
+                    else:
                         fig = go.Figure()
                         fig.add_annotation(
-                            text=f"Error: {str(e)}",
+                            text="No figure data",
                             xref="paper",
                             yref="paper",
                             x=0.5,
                             y=0.5,
                             showarrow=False,
-                            font=dict(color="red", size=14),
                         )
                         figures.append(fig)
-                else:
-                    figures.append(go.Figure())
+                except Exception as e:
+                    fig = go.Figure()
+                    fig.add_annotation(
+                        text=f"Error: {str(e)[:50]}",
+                        xref="paper",
+                        yref="paper",
+                        x=0.5,
+                        y=0.5,
+                        showarrow=False,
+                        font=dict(color="red"),
+                    )
+                    figures.append(fig)
 
         return figures
 
-    # Callback to toggle edit collapse
+    # Callback to toggle description editor
     @app.callback(
-        Output({"type": "edit-collapse", "code": MATCH}, "is_open"),
+        Output({"type": "desc-collapse", "code": MATCH}, "is_open"),
         Input({"type": "edit-btn", "code": MATCH}, "n_clicks"),
         Input({"type": "cancel-btn", "code": MATCH}, "n_clicks"),
-        Input({"type": "save-btn", "code": MATCH}, "n_clicks"),
-        State({"type": "edit-collapse", "code": MATCH}, "is_open"),
+        State({"type": "desc-collapse", "code": MATCH}, "is_open"),
         prevent_initial_call=True,
     )
-    def toggle_edit(edit_clicks, cancel_clicks, save_clicks, is_open):
-        triggered = ctx.triggered_id
-        if triggered and triggered.get("type") == "edit-btn":
-            return not is_open
-        return False
+    def toggle_description_editor(edit_clicks, cancel_clicks, is_open):
+        return not is_open
 
     # Callback to save description
     @app.callback(
@@ -371,19 +408,19 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
         prevent_initial_call=True,
     )
     def save_description(n_clicks, description, btn_id):
-        if not n_clicks:
-            return dash.no_update, dash.no_update
+        from ix.db.conn import Session
+        from ix.db.models import Chart
 
-        code = btn_id["code"]
-        with Session() as s:
-            chart = s.query(Chart).filter(Chart.code == code).first()
-            if chart:
-                chart.description = description
-                s.commit()
-                return (
-                    description or "No description",
-                    dbc.Alert("Saved!", color="success", duration=2000),
-                )
+        if n_clicks:
+            code = btn_id["code"]
+            with Session() as s:
+                chart = s.query(Chart).filter(Chart.code == code).first()
+                if chart:
+                    chart.description = description
+                    return (
+                        description or "No description",
+                        dbc.Alert("Saved!", color="success", duration=2000),
+                    )
         return dash.no_update, dbc.Alert("Error", color="danger")
 
     # Callback to refresh individual chart
@@ -394,6 +431,9 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
         prevent_initial_call=True,
     )
     def refresh_chart(n_clicks, btn_id):
+        from ix.db.conn import Session
+        from ix.db.models import Chart
+
         if not n_clicks:
             return dash.no_update
 
@@ -402,13 +442,9 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
             chart = s.query(Chart).filter(Chart.code == code).first()
             if chart:
                 try:
-                    # Re-render chart and update cached figure in database
-                    # update_figure now handles flag_modified and timestamp internally
                     chart.update_figure()
                     s.flush()
-                    # Session context manager will commit on exit
 
-                    # Return the freshly rendered figure
                     fig = chart.render()
                     fig.update_layout(autosize=True, height=None, width=None)
                     return fig
@@ -433,13 +469,11 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
         function(n_clicks, figure) {
             if (!n_clicks || !figure) return window.dash_clientside.no_update;
             
-            // Get the chart code for visual feedback
             const triggeredId = window.dash_clientside.callback_context.triggered[0];
             if (!triggeredId) return window.dash_clientside.no_update;
             const btnIdParsed = JSON.parse(triggeredId.prop_id.split('.')[0]);
             const chartCode = btnIdParsed.code;
             
-            // Create a temporary div for rendering
             const tempDiv = document.createElement('div');
             tempDiv.style.position = 'absolute';
             tempDiv.style.left = '-9999px';
@@ -447,7 +481,6 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
             tempDiv.style.height = '700px';
             document.body.appendChild(tempDiv);
             
-            // Create the plot from figure data
             Plotly.newPlot(tempDiv, figure.data, figure.layout, {staticPlot: true})
                 .then(() => {
                     return Plotly.toImage(tempDiv, {format: 'png', width: 1200, height: 700, scale: 2});
@@ -461,8 +494,6 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                     return navigator.clipboard.write([item]);
                 })
                 .then(() => {
-                    // Visual feedback
-                    const btnId = JSON.stringify({"type": "copy-btn", "code": chartCode});
                     const allBtns = document.querySelectorAll('button');
                     allBtns.forEach(btn => {
                         if (btn.id && btn.id.includes(chartCode) && btn.id.includes('copy-btn')) {
@@ -477,7 +508,6 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                     alert('Failed to copy chart: ' + err.message);
                 })
                 .finally(() => {
-                    // Clean up temp div
                     document.body.removeChild(tempDiv);
                 });
             
