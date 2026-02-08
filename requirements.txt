@@ -24,3 +24,7 @@ telethon
 google-genai
 markdown
 xlsxwriter
+dash
+dash-bootstrap-components
+reportlab
+kaleido
