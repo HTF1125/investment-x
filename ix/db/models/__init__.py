@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     LargeBinary,
     Boolean,
+    Float,
     text,
 )
 from sqlalchemy.orm import relationship
@@ -17,6 +18,7 @@ from typing import Optional, Dict
 from ix.db.conn import Base
 from .user import User
 from .telegram import TelegramMessage
+from .chart import Chart
 
 # Re-export Base for convenience
 __all__ = [
@@ -29,6 +31,7 @@ __all__ = [
     "User",
     "TelegramMessage",
     "Insights",
+    "Chart",
 ]
 
 
@@ -58,6 +61,7 @@ class Timeseries(Base):
     parent_id = Column(UUID(as_uuid=False), ForeignKey("timeseries.id"), nullable=True)
     remark = Column(Text, default="")
     favorite = Column(Boolean, default=False, nullable=False)
+    latest_value = Column(Float, nullable=True)
 
     # Legacy JSONB column retained for migration/backward compatibility.
     created = Column(DateTime, default=datetime.now, nullable=False)
@@ -231,9 +235,38 @@ class Timeseries(Base):
             current_data.update(new_data)
             data_record.data = current_data
             data_record.updated = datetime.now()
-            ts.start = data.index.min().date() if len(data.index) > 0 else None
-            ts.end = data.index.max().date() if len(data.index) > 0 else None
-            ts.num_data = len(data)
+
+            # Compute latest_value from the complete dataset
+            if current_data:
+                # Sort by date to find the latest
+                sorted_items = sorted(
+                    current_data.items(),
+                    key=lambda item: pd.to_datetime(item[0], errors="coerce"),
+                )
+                # Filter valid dates
+                sorted_items = [
+                    item
+                    for item in sorted_items
+                    if pd.notna(pd.to_datetime(item[0], errors="coerce"))
+                ]
+
+                if sorted_items:
+                    latest_date_str, latest_val = sorted_items[-1]
+                    ts.latest_value = float(latest_val)
+                    ts.end = pd.to_datetime(latest_date_str).date()
+                    ts.start = pd.to_datetime(sorted_items[0][0]).date()
+                    ts.num_data = len(sorted_items)
+                else:
+                    ts.latest_value = None
+                    ts.start = None
+                    ts.end = None
+                    ts.num_data = 0
+            else:
+                ts.latest_value = None
+                ts.start = None
+                ts.end = None
+                ts.num_data = 0
+
             ts.updated = datetime.now()
 
         # Feed to parent if exists
@@ -375,10 +408,31 @@ class Timeseries(Base):
                     parent_ts.start = valid_dates.min().date()
                     parent_ts.end = valid_dates.max().date()
                     parent_ts.num_data = len(parent_data_clean)
+
+                    # Compute latest date and value
+                    # Sort items by date to find the latest
+                    sorted_items = sorted(
+                        parent_data_clean.items(),
+                        key=lambda item: pd.to_datetime(item[0], errors="coerce"),
+                    )
+                    # Filter valid dates just in case
+                    sorted_items = [
+                        item
+                        for item in sorted_items
+                        if pd.notna(pd.to_datetime(item[0], errors="coerce"))
+                    ]
+
+                    if sorted_items:
+                        latest_item = sorted_items[-1]
+                        parent_ts.latest_value = float(latest_item[1])
+                    else:
+                        parent_ts.latest_value = None
+
             else:
                 parent_ts.start = None
                 parent_ts.end = None
                 parent_ts.num_data = 0
+                parent_ts.latest_value = None
             parent_ts.updated = datetime.now()
 
     def reset(self) -> bool:
@@ -395,6 +449,7 @@ class Timeseries(Base):
                 ts.start = None
                 ts.end = None
                 ts.num_data = 0
+                ts.latest_value = None
                 ts.updated = datetime.now()
                 return True
             return False

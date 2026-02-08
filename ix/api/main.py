@@ -47,12 +47,12 @@ async def lifespan(app: FastAPI):
 
     scheduler.add_job(
         scrape_all_channels,
-        CronTrigger(minute="*/5", timezone=KST),  # Run every 5 minutes
+        CronTrigger(minute="*/30", timezone=KST),  # Run every 30 minutes
         id="telegram_scrape_routine",
         replace_existing=True,
         misfire_grace_time=300,
     )
-    logger.info("Scheduled 'scrape_all_channels' for every 5 minutes")
+    logger.info("Scheduled 'scrape_all_channels' for every 30 minutes")
 
     # from ix.misc.task import send_daily_market_brief
 
@@ -64,7 +64,6 @@ async def lifespan(app: FastAPI):
     #     misfire_grace_time=300,
     # )
     # logger.info("Scheduled 'send_daily_market_brief' for every 6 hours (1, 7, 13, 19 KST)")
-
 
     scheduler.start()
 
@@ -93,6 +92,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount Dash app
+try:
+    from starlette.middleware.wsgi import WSGIMiddleware
+    from ix.api.dash_app import dash_app
+
+    app.mount("/dash", WSGIMiddleware(dash_app.server))
+    logger.info("Dash app mounted at /dash")
+except Exception as e:
+    logger.warning(f"Failed to mount Dash app: {e}")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -204,7 +213,7 @@ async def global_exception_handler(request, exc):
 
 # Include routers with error handling
 try:
-    from ix.api.routers import auth, timeseries, series, evaluation, task, risk
+    from ix.api.routers import auth, timeseries, series, evaluation, task, risk, charts
 
     logger.info("Importing routers...")
     app.include_router(auth.router, prefix="/api", tags=["Authentication"])
@@ -213,6 +222,7 @@ try:
     app.include_router(evaluation.router, prefix="/api", tags=["Evaluation"])
     app.include_router(task.router, prefix="/api", tags=["Tasks"])
     app.include_router(risk.router, prefix="/api", tags=["Risk"])
+    app.include_router(charts.router, prefix="/api", tags=["Charts"])
     logger.info("Routers registered successfully")
 
 except Exception as e:

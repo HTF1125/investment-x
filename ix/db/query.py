@@ -1270,3 +1270,27 @@ def NumPositivePercentByRow(df: pd.DataFrame):
     positive = (df > 0).sum(axis=1)
     total = df.notna().sum(axis=1)
     return (positive / total * 100).fillna(0)
+
+
+def GetChart(name: str):
+    """
+    Get a chart by name from the database.
+
+    Args:
+        name: Chart name (e.g., "AsianExportsYoY")
+
+    Returns:
+        Chart object, or None if not found
+    """
+    from ix.db.conn import Session
+    from ix.db.models import Chart
+
+    # Normalize name - remove () if present
+    if name.endswith("()"):
+        name = name[:-2]
+
+    with Session() as session:
+        chart = session.query(Chart).filter(Chart.code == name).first()
+        if chart is None:
+            return None
+        return chart

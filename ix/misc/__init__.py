@@ -5,3 +5,4 @@ from .date import *
 from .util import *
 from .theme import *
 from .settings import Settings
+from .news import get_gurufocus_news
