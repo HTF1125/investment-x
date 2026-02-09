@@ -31,6 +31,7 @@ news_cache = TTLCache(maxsize=1, ttl=300)
 CATEGORY_ORDER = [
     "Performance",
     "RRG",
+    "Positions",
     "Business",
     "Composite",
     "Earnings",
@@ -695,11 +696,11 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
     )
     def trigger_refresh_all(n_clicks):
         import threading
-        from refresh_all_charts import refresh_all
+        from ix.misc.task import refresh_all_charts
 
         if n_clicks:
             # Run in a background thread to avoid blocking Dash
-            threading.Thread(target=refresh_all, daemon=True).start()
+            threading.Thread(target=refresh_all_charts, daemon=True).start()
             return dbc.Alert(
                 "Full refresh started in background...",
                 color="info",

@@ -13,12 +13,16 @@ except ImportError:
     TelegramClient = None
     Message = None
 
+from pathlib import Path
+
 logger = get_logger(__name__)
 
 # Constants for Telegram API
 API_ID = os.getenv("TELEGRAM_API_ID")
 API_HASH = os.getenv("TELEGRAM_API_HASH")
-SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME", "ix_session")
+
+# Session file is stored in the same folder as this __init__.py
+SESSION_NAME = str(Path(__file__).parent / "ix_session")
 
 CHANNELS_TO_SCRAPE = [
     "t.me/HANAchina",

@@ -188,3 +188,5 @@ yarn-error.log*
 next-env.d.ts
 ix/db/models/PxLast.csv
 ix/db/models/EconomicCalendar.csv
+ix/data/
+ix/misc/telegram/ix_session*

@@ -47,7 +47,7 @@ async def run_refresh_charts_task(background_tasks: BackgroundTasks):
     """
     Manually trigger a refresh of all charts in the background.
     """
-    from refresh_all_charts import refresh_all
+    from ix.misc.task import refresh_all_charts
 
-    background_tasks.add_task(refresh_all)
+    background_tasks.add_task(refresh_all_charts)
     return {"message": "Chart refresh task triggered in background"}

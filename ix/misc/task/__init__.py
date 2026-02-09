@@ -384,11 +384,33 @@ def daily():
     update_naver_data()
 
 
+def refresh_all_charts():
+    """Fetches all charts and forces a re-render to update cached figures."""
+    from ix.db.conn import Session
+    from ix.db.models.chart import Chart
+
+    with Session() as s:
+        charts = s.query(Chart).all()
+        logger.info(f"Found {len(charts)} charts to refresh.")
+
+        for chart in charts:
+            try:
+                logger.info(f"Refreshing {chart.code} ({chart.category})...")
+                # Force update simply by calling update_figure which calls render(force_update=True)
+                chart.update_figure()
+            except Exception as e:
+                logger.error(f"Failed to refresh {chart.code}: {e}")
+
+        s.commit()
+        logger.info("All charts processed.")
+
+
 def run_daily_tasks():
     import gc
 
     logger.info("Starting daily tasks execution (daily update + reports)")
     daily()
     gc.collect()
+    refresh_all_charts()
     # send_data_reports()
     logger.info("Daily tasks execution completed")

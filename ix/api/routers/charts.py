@@ -95,144 +95,22 @@ async def get_all_charts():
 
 
 @router.get("/charts/export/pdf")
-async def export_charts_pdf():
+def export_charts_pdf():
     """
     Generates and downloads a PDF report of all charts.
     """
-    import os
-    import io
-    import tempfile
     from datetime import datetime
     from fastapi.responses import StreamingResponse
-    import plotly.io as pio
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.pdfgen import canvas
-    from reportlab.lib.colors import HexColor
+    from ix.misc.scripts import export_charts_to_pdf
+    import io
 
-    # Color Scheme
-    DARK_BLUE = HexColor("#2c2f7a")
-    TEXT_COLOR = HexColor("#1e293b")
-    GREY_COLOR = HexColor("#64748b")
-    MAGENTA = HexColor("#ff00b8")
+    # Generate PDF bytes using the centralized script logic
+    pdf_content = export_charts_to_pdf(output_path=None)
 
-    # Category order
-    CATEGORY_ORDER = [
-        "Performance",
-        "RRG",
-        "Business",
-        "Composite",
-        "Earnings",
-        "Liquidity",
-        "Credit",
-        "Fiscal",
-        "Debt",
-        "Financial",
-        "Consumer",
-        "Inflation",
-        "Surprise",
-        "Gold",
-        "OECD",
-        "LongTerm",
-        "Uncategorized",
-    ]
+    if not pdf_content:
+        return {"error": "No charts found to export"}
 
-    def get_effective_category(chart):
-        return chart.category or "Uncategorized"
-
-    def sort_charts(charts):
-        def sort_key(chart):
-            category = get_effective_category(chart)
-            try:
-                cat_order = CATEGORY_ORDER.index(category)
-            except ValueError:
-                cat_order = len(CATEGORY_ORDER)
-            return (cat_order, chart.code)
-
-        return sorted(charts, key=sort_key)
-
-    # Generate PDF in temp directory
-    with tempfile.TemporaryDirectory() as temp_dir:
-        pdf_path = os.path.join(temp_dir, "investment_x_charts.pdf")
-
-        with Session() as session:
-            charts_raw = session.query(Chart).all()
-            charts = sort_charts(charts_raw)
-
-            landscape_a4 = landscape(A4)
-            c = canvas.Canvas(pdf_path, pagesize=landscape_a4)
-            width, height = landscape_a4
-
-            # Cover Page
-            c.setFillColor(DARK_BLUE)
-            c.rect(0, height - 150, width, 150, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.setFont("Helvetica-Bold", 48)
-            c.drawString(60, height - 100, "INVESTMENT-X")
-            c.setFillColor(TEXT_COLOR)
-            c.setFont("Helvetica-Bold", 32)
-            c.drawString(60, height - 250, "Global Macro Chartbook")
-            c.setFont("Helvetica-Bold", 14)
-            c.drawString(60, 60, f"Generated on {datetime.now().strftime('%B %d, %Y')}")
-            c.setStrokeColor(MAGENTA)
-            c.setLineWidth(5)
-            c.line(60, height - 265, 300, height - 265)
-            c.showPage()
-
-            # Charts
-            page_num = 1
-            for chart in charts:
-                if not chart.figure:
-                    continue
-
-                try:
-                    fig = go.Figure(chart.figure)
-                    fig.update_layout(
-                        width=1600,
-                        height=900,
-                        margin=dict(l=100, r=60, t=180, b=80),
-                        font=dict(size=21),
-                    )
-
-                    img_path = os.path.join(temp_dir, f"chart_{page_num}.png")
-                    pio.write_image(
-                        fig, img_path, format="png", width=1600, height=900, scale=2
-                    )
-
-                    category = get_effective_category(chart)
-
-                    # Header
-                    c.setFillColor(DARK_BLUE)
-                    c.rect(0, height - 40, width, 40, fill=1, stroke=0)
-                    c.setFillColor(HexColor("#ffffff"))
-                    c.setFont("Helvetica-Bold", 14)
-                    c.drawString(30, height - 25, f"Macro Report | {category}")
-
-                    # Chart Image
-                    img_w = width * 0.92
-                    img_h = img_w * (900 / 1600)
-                    x_pos = (width - img_w) / 2
-                    y_pos = 50
-                    c.drawImage(img_path, x_pos, y_pos, width=img_w, height=img_h)
-
-                    # Footer
-                    c.setFillColor(GREY_COLOR)
-                    c.setFont("Helvetica", 9)
-                    c.drawString(30, 20, "Confidential | Investment-X")
-                    c.drawRightString(width - 30, 20, f"Page {page_num}")
-
-                    c.showPage()
-                    page_num += 1
-                except Exception:
-                    continue
-
-            c.save()
-
-        # Read PDF into memory before temp dir is deleted
-        with open(pdf_path, "rb") as f:
-            pdf_content = f.read()
-
-    # Return as streaming response
-    filename = f"investment_x_charts_{datetime.now().strftime('%Y%m%d')}.pdf"
+    filename = f"Investment-X_Macro_Report_{datetime.now().strftime('%Y%m%d')}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_content),
         media_type="application/pdf",
