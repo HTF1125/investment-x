@@ -40,3 +40,14 @@ async def run_telegram_scrape_task(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(scrape_all_channels)
     return {"message": "Telegram scraping task triggered in background"}
+
+
+@router.post("/task/refresh-charts")
+async def run_refresh_charts_task(background_tasks: BackgroundTasks):
+    """
+    Manually trigger a refresh of all charts in the background.
+    """
+    from refresh_all_charts import refresh_all
+
+    background_tasks.add_task(refresh_all)
+    return {"message": "Chart refresh task triggered in background"}

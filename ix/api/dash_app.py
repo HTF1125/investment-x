@@ -160,10 +160,25 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                     "📥 Download PDF",
                                     color="info",
                                     size="sm",
-                                    className="me-3",
+                                    className="me-2",
                                 ),
                                 href="/api/charts/export/pdf",
                                 target="_blank",
+                            ),
+                            # Refresh All button
+                            dbc.Button(
+                                "🔄 Refresh All",
+                                id="refresh-all-btn",
+                                color="warning",
+                                size="sm",
+                                className="me-3",
+                            ),
+                            dbc.Tooltip(
+                                "Trigger a full background refresh of all chart data",
+                                target="refresh-all-btn",
+                            ),
+                            html.Div(
+                                id="refresh-all-status", className="d-inline-block"
                             ),
                             # Category quick links
                             html.Span(
@@ -670,6 +685,27 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                         font=dict(color="red", size=14),
                     )
                     return fig
+        return dash.no_update
+
+    # Callback to trigger background refresh of all charts
+    @app.callback(
+        Output("refresh-all-status", "children"),
+        Input("refresh-all-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def trigger_refresh_all(n_clicks):
+        import threading
+        from refresh_all_charts import refresh_all
+
+        if n_clicks:
+            # Run in a background thread to avoid blocking Dash
+            threading.Thread(target=refresh_all, daemon=True).start()
+            return dbc.Alert(
+                "Full refresh started in background...",
+                color="info",
+                duration=3000,
+                className="ms-2 mb-0 py-1 px-2 small",
+            )
         return dash.no_update
 
     # Clientside callback to copy chart to clipboard
