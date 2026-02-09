@@ -213,7 +213,6 @@ def UsGovNetOutlays_NationalDefense() -> go.Figure:
     if not df.empty:
         end_date = df.index[-1] + pd.Timedelta(days=200)
         fig.update_xaxes(range=[df.index[0], end_date])
-        add_zero_line(fig)
 
     return fig
 

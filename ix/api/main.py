@@ -93,91 +93,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount Dash app
-try:
-    from starlette.middleware.wsgi import WSGIMiddleware
-    from ix.api.dash_app import dash_app
+# Root endpoint removed as Dash handles "/"
 
-    app.mount("/dash", WSGIMiddleware(dash_app.server))
-    logger.info("Dash app mounted at /dash")
-except Exception as e:
-    logger.warning(f"Failed to mount Dash app: {e}")
-
-
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    """Root endpoint showing recent news in a table."""
-    from ix.db.conn import Session
-    from ix.db.models import TelegramMessage
-
-    from datetime import datetime, timedelta
-
-    # DB stores KST. We want last 24 hours relative to current KST time.
-    # Current KST = UTC + 9
-    now_kst = datetime.utcnow() + timedelta(hours=9)
-    since_date = now_kst - timedelta(hours=24)
-
-    with Session() as session:
-        messages = (
-            session.query(TelegramMessage)
-            .filter(TelegramMessage.date >= since_date)
-            .order_by(TelegramMessage.date.desc())
-            .limit(2000)
-            .all()
-        )
-
-    html_content = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Investment-X News</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            th { background-color: #f2f2f2; position: sticky; top: 0; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-            tr:hover { background-color: #f1f1f1; }
-            .date { white-space: nowrap; color: #666; font-size: 0.9em; }
-            .channel { font-weight: bold; color: #2c3e50; }
-            .message { white-space: pre-wrap; word-wrap: break-word; }
-        </style>
-    </head>
-    <body>
-        <h2>Latest Telegram News</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th width="150">Date (KST)</th>
-                    <th width="150">Channel</th>
-                    <th>Message</th>
-                </tr>
-            </thead>
-            <tbody>
-    """
-
-    for m in messages:
-        # DB is now KST, so just format directly
-        dt_str = m.date.strftime("%Y-%m-%d %H:%M") if m.date else ""
-        # Clean message text slightly if needed
-        msg_text = m.message or ""
-
-        row = f"""
-                <tr>
-                    <td class="date">{dt_str}</td>
-                    <td class="channel">{m.channel_name}</td>
-                    <td class="message">{msg_text}</td>
-                </tr>
-        """
-        html_content += row
-
-    html_content += """
-            </tbody>
-        </table>
-    </body>
-    </html>
-    """
-    return html_content
 
 
 @app.get("/api/health")
@@ -224,6 +141,17 @@ try:
     app.include_router(risk.router, prefix="/api", tags=["Risk"])
     app.include_router(charts.router, prefix="/api", tags=["Charts"])
     logger.info("Routers registered successfully")
+    
+    # Mount Dash app at root "/" AFTER all API routers
+    # This ensures /api/... routes take precedence over Dash's catch-all
+    try:
+        from starlette.middleware.wsgi import WSGIMiddleware
+        from ix.api.dash_app import dash_app
+
+        app.mount("/", WSGIMiddleware(dash_app.server))
+        logger.info("Dash app mounted at /")
+    except Exception as e:
+        logger.warning(f"Failed to mount Dash app: {e}")
 
 except Exception as e:
     import traceback

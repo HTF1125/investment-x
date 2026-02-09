@@ -130,28 +130,6 @@ def MultiSeries(**series: pd.Series) -> pd.DataFrame:
     data.index.name = "Date"
     return data
 
-
-def D_MultiSeries(
-    codes: str | list[str], field: str | None = None, freq: str | None = None
-) -> pd.DataFrame:
-    """Load multiple series and combine into DataFrame"""
-    if isinstance(codes, str):
-        codes = codes.split(",")
-    series_list = []
-    for code in codes:
-        if field:
-            s = Series(f"{code.strip()}:{field}", freq=freq)
-        else:
-            s = Series(code.strip(), freq=freq)
-        if not s.empty:
-            series_list.append(s)
-
-    if not series_list:
-        return pd.DataFrame()
-
-    return pd.concat(series_list, axis=1)
-
-
 @cached(cache)
 def Series(
     code: str,

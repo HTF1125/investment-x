@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries, StandardScalar, Cycle
-from .style import apply_academic_style, add_zero_line, get_value_label
+from ix.cht.style import apply_academic_style, add_zero_line, get_value_label
 
 
 def FinancialConditions() -> go.Figure:
@@ -249,11 +249,6 @@ def FinancialConditionsComponents() -> go.Figure:
                     ),
                     "Nasdaq": StandardScalar(
                         Series("CCMP Index:PX_LAST", freq="W-Fri").ffill(), 156
-                    ),
-                    "Small/Large": StandardScalar(
-                        Series("RTY INDEX:PX_LAST", freq="W-Fri").ffill()
-                        / Series("SPX INDEX:PX_LAST", freq="W-Fri").ffill(),
-                        156,
                     ),
                 }
             )

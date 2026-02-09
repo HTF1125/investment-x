@@ -12,7 +12,7 @@ import pandas as pd
 from datetime import datetime
 
 from ix.db.conn import ensure_connection
-from ix.db.query import Series, D_MultiSeries
+from ix.db.query import Series
 from ix.misc import get_logger
 
 logger = get_logger(__name__)

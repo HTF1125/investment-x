@@ -34,7 +34,7 @@ CATEGORY_ORDER = [
 ]
 
 
-def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
+def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
     """
     Creates and configures the Dash application.
 
@@ -135,6 +135,72 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
             )
         )
 
+        # Recent Telegram Messages (Last 24h)
+        from datetime import datetime, timedelta
+        from ix.db.models import TelegramMessage
+
+        try:
+            # Current KST = UTC + 9 (approx, assuming server is UTC)
+            # Adjust logic if server time is different
+            now_utc = datetime.utcnow()
+            since_date = now_utc + timedelta(hours=9) - timedelta(hours=24)
+
+            with Session() as s:
+                recent_msgs = (
+                    s.query(TelegramMessage)
+                    .filter(TelegramMessage.date >= since_date)
+                    .order_by(TelegramMessage.date.desc())
+                    .limit(50)  # Limit to avoid overcrowding
+                    .all()
+                )
+            
+            if recent_msgs:
+                msg_rows = []
+                for msg in recent_msgs:
+                    dt_str = msg.date.strftime("%Y-%m-%d %H:%M") if msg.date else ""
+                    msg_rows.append(
+                        html.Tr([
+                            html.Td(dt_str, className="text-muted small", style={"whiteSpace": "nowrap"}),
+                            html.Td(msg.channel_name, className="fw-bold small"),
+                            html.Td(msg.message, style={"whiteSpace": "pre-wrap", "wordBreak": "break-word", "fontSize": "0.9rem"}),
+                        ])
+                    )
+
+                content.append(
+                    dbc.Card(
+                        [
+                            dbc.CardHeader(
+                                html.H5("Recent Telegram News (24h)", className="mb-0 text-white"),
+                                className="bg-primary text-white"
+                            ),
+                            dbc.CardBody(
+                                dbc.Table(
+                                    [
+                                        html.Thead(
+                                            html.Tr([html.Th("Date (KST)"), html.Th("Channel"), html.Th("Message")])
+                                        ),
+                                        html.Tbody(msg_rows)
+                                    ],
+                                    bordered=True,
+                                    hover=True,
+                                    responsive=True,
+                                    striped=True,
+                                    dark=True, # Matches the slate theme better
+                                    className="mb-0"
+                                ),
+                                style={"maxHeight": "400px", "overflowY": "auto"}
+                            )
+                        ],
+                        className="mb-4 shadow-sm border-primary"
+                    )
+                )
+
+        except Exception as e:
+            content.append(
+                dbc.Alert(f"Failed to load recent messages: {str(e)}", color="warning", className="mb-4")
+            )
+
+
         # Charts by category
         for cat in sorted_cats:
             charts = charts_by_cat[cat]
@@ -221,14 +287,15 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                             html.Div(
                                                 [
                                                     html.Span("ℹ️ ", className="me-1"),
-                                                    html.Span(
+                                                    dcc.Markdown(
                                                         chart.description
                                                         or "No description available",
                                                         id={
                                                             "type": "desc-text",
                                                             "code": chart.code,
                                                         },
-                                                        className="text-light small",
+                                                        className="text-light small flex-grow-1",
+                                                        style={"marginBottom": "0"},
                                                     ),
                                                     dbc.Button(
                                                         "✎",
@@ -310,27 +377,37 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
                                     ),
                                     # Chart with loading spinner
                                     dcc.Loading(
-                                        dcc.Graph(
-                                            figure=go.Figure(),
-                                            id={
-                                                "type": "chart-graph",
-                                                "code": chart.code,
-                                            },
-                                            responsive=True,
-                                            style={
-                                                "width": "100%",
-                                                "minHeight": "500px",
-                                            },
-                                            config={
-                                                "displayModeBar": "hover",
-                                                "displaylogo": False,
-                                                "responsive": True,
-                                                "modeBarButtonsToRemove": [
-                                                    "lasso2d",
-                                                    "select2d",
-                                                ],
-                                            },
-                                        ),
+                                        [
+                                            dcc.Interval(
+                                                id={
+                                                    "type": "load-interval",
+                                                    "code": chart.code,
+                                                },
+                                                interval=100,
+                                                max_intervals=1,
+                                            ),
+                                            dcc.Graph(
+                                                figure=go.Figure(),
+                                                id={
+                                                    "type": "chart-graph",
+                                                    "code": chart.code,
+                                                },
+                                                responsive=True,
+                                                style={
+                                                    "width": "100%",
+                                                    "minHeight": "500px",
+                                                },
+                                                config={
+                                                    "displayModeBar": "hover",
+                                                    "displaylogo": False,
+                                                    "responsive": True,
+                                                    "modeBarButtonsToRemove": [
+                                                        "lasso2d",
+                                                        "select2d",
+                                                    ],
+                                                },
+                                            ),
+                                        ],
                                         type="circle",
                                         color="#0dcaf0",  # Info cyan color
                                     ),
@@ -349,7 +426,6 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
         return dbc.Container(
             [
                 dcc.Store(id="charts-loaded", data=[]),
-                dcc.Interval(id="load-trigger", interval=100, max_intervals=1),
                 *content,
             ],
             fluid=True,
@@ -360,72 +436,51 @@ def create_dash_app(requests_pathname_prefix: str = "/dash/") -> dash.Dash:
     # Use function-based layout for lazy loading
     app.layout = serve_layout
 
-    # Callback to load all charts on initial load
+    # Callback to load single chart
     @app.callback(
-        Output({"type": "chart-graph", "code": ALL}, "figure"),
-        Input("load-trigger", "n_intervals"),
-        prevent_initial_call=False,
+        Output({"type": "chart-graph", "code": MATCH}, "figure"),
+        Input({"type": "load-interval", "code": MATCH}, "n_intervals"),
+        State({"type": "load-interval", "code": MATCH}, "id"),
     )
-    def load_all_charts(_):
-        """Load all charts when the page loads."""
+    def load_single_chart(n, interval_id):
+        """Load a single chart."""
+        if not n:
+            return dash.no_update
+
+        code = interval_id["code"]
         from ix.db.conn import Session
         from ix.db.models import Chart
 
-        charts_by_cat = {}
         try:
             with Session() as s:
-                charts = s.query(Chart).all()
-                for chart in charts:
-                    s.expunge(chart)
-                    cat = chart.category or "Uncategorized"
-                    if cat not in charts_by_cat:
-                        charts_by_cat[cat] = []
-                    charts_by_cat[cat].append(chart)
-        except Exception:
-            return []
-
-        # Sort charts in the same order as layout
-        sorted_cats = sorted(
-            charts_by_cat.keys(),
-            key=lambda x: (
-                CATEGORY_ORDER.index(x) if x in CATEGORY_ORDER else len(CATEGORY_ORDER)
-            ),
-        )
-
-        figures = []
-        for cat in sorted_cats:
-            chart_list = sorted(charts_by_cat[cat], key=lambda c: c.code)
-            for chart in chart_list:
-                try:
-                    if chart.figure:
-                        fig = go.Figure(chart.figure)
-                        fig.update_layout(autosize=True, height=None, width=None)
-                        figures.append(fig)
-                    else:
-                        fig = go.Figure()
-                        fig.add_annotation(
-                            text="No figure data",
-                            xref="paper",
-                            yref="paper",
-                            x=0.5,
-                            y=0.5,
-                            showarrow=False,
-                        )
-                        figures.append(fig)
-                except Exception as e:
+                chart = s.query(Chart).filter(Chart.code == code).first()
+                if chart and chart.figure:
+                    fig = go.Figure(chart.figure)
+                    fig.update_layout(autosize=True, height=None, width=None)
+                    return fig
+                else:
                     fig = go.Figure()
                     fig.add_annotation(
-                        text=f"Error: {str(e)[:50]}",
+                        text="No figure data",
                         xref="paper",
                         yref="paper",
                         x=0.5,
                         y=0.5,
                         showarrow=False,
-                        font=dict(color="red"),
                     )
-                    figures.append(fig)
-
-        return figures
+                    return fig
+        except Exception as e:
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Error: {str(e)[:100]}",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(color="red"),
+            )
+            return fig
 
     # Callback to toggle description editor
     @app.callback(
