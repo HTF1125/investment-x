@@ -185,7 +185,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                     hover=True,
                                     responsive=True,
                                     striped=True,
-                                    dark=True, # Matches the slate theme better
+                                    color="dark", # Matches the slate theme better
                                     className="mb-0"
                                 ),
                                 style={"maxHeight": "400px", "overflowY": "auto"}
