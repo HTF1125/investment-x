@@ -390,5 +390,5 @@ def run_daily_tasks():
     logger.info("Starting daily tasks execution (daily update + reports)")
     daily()
     gc.collect()
-    send_data_reports()
+    # send_data_reports()
     logger.info("Daily tasks execution completed")

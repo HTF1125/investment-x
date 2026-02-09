@@ -10,6 +10,21 @@ import dash
 from dash import html, dcc, Input, Output, State, MATCH, ALL
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
+from sqlalchemy.orm import load_only
+from sqlalchemy import func
+from datetime import datetime, timedelta
+
+# Global caches for permanent storage until database update
+# Gallery Metadata Cache: stores (max_updated_at, charts_by_cat, sorted_cats)
+_GALLERY_CACHE = {"max_ts": None, "charts_by_cat": None, "sorted_cats": None}
+
+# Individual Figure Cache: maps code -> {"ts": updated_at, "fig": go.Figure}
+_FIGURE_CACHE = {}
+
+# Keep TTL news cache as it's not the main bottleneck and doesn't have updated_at
+from cachetools import TTLCache, cached
+
+news_cache = TTLCache(maxsize=1, ttl=300)
 
 
 # Define category order
@@ -55,17 +70,52 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
         from ix.db.conn import Session
         from ix.db.models import Chart
 
-        # Fetch charts
-        charts_by_cat = {}
+        # 1. Fetch Master Version (MAX updated_at)
         try:
             with Session() as s:
-                charts = s.query(Chart).all()
+                db_max_ts = s.query(func.max(Chart.updated_at)).scalar()
+
+            # If nothing changed, use cache
+            if db_max_ts and _GALLERY_CACHE["max_ts"] == db_max_ts:
+                charts_by_cat = _GALLERY_CACHE["charts_by_cat"]
+                sorted_cats = _GALLERY_CACHE["sorted_cats"]
+            else:
+                # Rebuild cache
+                charts_by_cat = {}
+                with Session() as s:
+                    charts = (
+                        s.query(Chart)
+                        .options(
+                            load_only(
+                                Chart.code,
+                                Chart.category,
+                                Chart.description,
+                                Chart.updated_at,
+                            )
+                        )
+                        .all()
+                    )
+
                 for chart in charts:
-                    s.expunge(chart)
                     cat = chart.category or "Uncategorized"
                     if cat not in charts_by_cat:
                         charts_by_cat[cat] = []
                     charts_by_cat[cat].append(chart)
+
+                # Sort categories by order
+                sorted_cats = sorted(
+                    charts_by_cat.keys(),
+                    key=lambda x: (
+                        CATEGORY_ORDER.index(x)
+                        if x in CATEGORY_ORDER
+                        else len(CATEGORY_ORDER)
+                    ),
+                )
+
+                # Update global cache
+                _GALLERY_CACHE["max_ts"] = db_max_ts
+                _GALLERY_CACHE["charts_by_cat"] = charts_by_cat
+                _GALLERY_CACHE["sorted_cats"] = sorted_cats
 
             # Sort charts within each category
             for cat in charts_by_cat:
@@ -140,66 +190,94 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
         from ix.db.models import TelegramMessage
 
         try:
-            # Current KST = UTC + 9 (approx, assuming server is UTC)
-            # Adjust logic if server time is different
-            now_utc = datetime.utcnow()
-            since_date = now_utc + timedelta(hours=9) - timedelta(hours=24)
 
-            with Session() as s:
-                recent_msgs = (
-                    s.query(TelegramMessage)
-                    .filter(TelegramMessage.date >= since_date)
-                    .order_by(TelegramMessage.date.desc())
-                    .limit(50)  # Limit to avoid overcrowding
-                    .all()
-                )
-            
+            @cached(news_cache)
+            def get_recent_news():
+                # Current KST = UTC + 9
+                now_utc = datetime.utcnow()
+                since_date = now_utc + timedelta(hours=9) - timedelta(hours=24)
+                with Session() as s:
+                    return (
+                        s.query(TelegramMessage)
+                        .filter(TelegramMessage.date >= since_date)
+                        .order_by(TelegramMessage.date.desc())
+                        .limit(50)
+                        .all()
+                    )
+
+            recent_msgs = get_recent_news()
+
             if recent_msgs:
                 msg_rows = []
                 for msg in recent_msgs:
                     dt_str = msg.date.strftime("%Y-%m-%d %H:%M") if msg.date else ""
                     msg_rows.append(
-                        html.Tr([
-                            html.Td(dt_str, className="text-muted small", style={"whiteSpace": "nowrap"}),
-                            html.Td(msg.channel_name, className="fw-bold small"),
-                            html.Td(msg.message, style={"whiteSpace": "pre-wrap", "wordBreak": "break-word", "fontSize": "0.9rem"}),
-                        ])
+                        html.Tr(
+                            [
+                                html.Td(
+                                    dt_str,
+                                    className="text-muted small",
+                                    style={"whiteSpace": "nowrap"},
+                                ),
+                                html.Td(msg.channel_name, className="fw-bold small"),
+                                html.Td(
+                                    msg.message,
+                                    style={
+                                        "whiteSpace": "pre-wrap",
+                                        "wordBreak": "break-word",
+                                        "fontSize": "0.9rem",
+                                    },
+                                ),
+                            ]
+                        )
                     )
 
                 content.append(
                     dbc.Card(
                         [
                             dbc.CardHeader(
-                                html.H5("Recent Telegram News (24h)", className="mb-0 text-white"),
-                                className="bg-primary text-white"
+                                html.H5(
+                                    "Recent Telegram News (24h)",
+                                    className="mb-0 text-white",
+                                ),
+                                className="bg-primary text-white",
                             ),
                             dbc.CardBody(
                                 dbc.Table(
                                     [
                                         html.Thead(
-                                            html.Tr([html.Th("Date (KST)"), html.Th("Channel"), html.Th("Message")])
+                                            html.Tr(
+                                                [
+                                                    html.Th("Date (KST)"),
+                                                    html.Th("Channel"),
+                                                    html.Th("Message"),
+                                                ]
+                                            )
                                         ),
-                                        html.Tbody(msg_rows)
+                                        html.Tbody(msg_rows),
                                     ],
                                     bordered=True,
                                     hover=True,
                                     responsive=True,
                                     striped=True,
-                                    color="dark", # Matches the slate theme better
-                                    className="mb-0"
+                                    color="dark",  # Matches the slate theme better
+                                    className="mb-0",
                                 ),
-                                style={"maxHeight": "400px", "overflowY": "auto"}
-                            )
+                                style={"maxHeight": "400px", "overflowY": "auto"},
+                            ),
                         ],
-                        className="mb-4 shadow-sm border-primary"
+                        className="mb-4 shadow-sm border-primary",
                     )
                 )
 
         except Exception as e:
             content.append(
-                dbc.Alert(f"Failed to load recent messages: {str(e)}", color="warning", className="mb-4")
+                dbc.Alert(
+                    f"Failed to load recent messages: {str(e)}",
+                    color="warning",
+                    className="mb-4",
+                )
             )
-
 
         # Charts by category
         for cat in sorted_cats:
@@ -453,10 +531,39 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
 
         try:
             with Session() as s:
+                # Check timestamp first
+                chart_meta = (
+                    s.query(Chart)
+                    .options(load_only(Chart.updated_at))
+                    .filter(Chart.code == code)
+                    .first()
+                )
+                if not chart_meta:
+                    return dash.no_update
+
+                # If cached and ts matches, return cached figure
+                if (
+                    code in _FIGURE_CACHE
+                    and _FIGURE_CACHE[code]["ts"] == chart_meta.updated_at
+                ):
+                    return _FIGURE_CACHE[code]["fig"]
+
+                # Otherwise, fetch the full figure
                 chart = s.query(Chart).filter(Chart.code == code).first()
                 if chart and chart.figure:
-                    fig = go.Figure(chart.figure)
+                    # Reuse dict directly if possible, or convert to Figure
+                    if isinstance(chart.figure, str):
+                        import json
+
+                        fig_dict = json.loads(chart.figure)
+                    else:
+                        fig_dict = chart.figure
+
+                    fig = go.Figure(fig_dict)
                     fig.update_layout(autosize=True, height=None, width=None)
+
+                    # Store in cache
+                    _FIGURE_CACHE[code] = {"ts": chart.updated_at, "fig": fig}
                     return fig
                 else:
                     fig = go.Figure()

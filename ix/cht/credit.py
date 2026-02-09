@@ -161,7 +161,7 @@ def US_CreditImpulseToGDP() -> go.Figure:
 def BankCreditOutlook() -> go.Figure:
     """Bank Credit Outlook"""
     try:
-        credit_yoy = Series("FRBBCABLBAYOY@US:PX_LAST").resample("W-Fri").ffill()
+        credit_yoy = Series("FRBBCABLBA@US:PX_LAST").resample("W-Fri").ffill().pct_change(52).mul(100)
         standards = Series("USSU0486263:PX_LAST").resample("W-Fri").ffill()
         # Shift 12 months forward
         standards_lead = Offset(standards, days=52 * 7)
