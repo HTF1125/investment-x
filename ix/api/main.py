@@ -96,7 +96,6 @@ app.add_middleware(
 # Root endpoint removed as Dash handles "/"
 
 
-
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
@@ -130,7 +129,16 @@ async def global_exception_handler(request, exc):
 
 # Include routers with error handling
 try:
-    from ix.api.routers import auth, timeseries, series, evaluation, task, risk, charts
+    from ix.api.routers import (
+        auth,
+        timeseries,
+        series,
+        evaluation,
+        task,
+        risk,
+        charts,
+        news,
+    )
 
     logger.info("Importing routers...")
     app.include_router(auth.router, prefix="/api", tags=["Authentication"])
@@ -140,8 +148,9 @@ try:
     app.include_router(task.router, prefix="/api", tags=["Tasks"])
     app.include_router(risk.router, prefix="/api", tags=["Risk"])
     app.include_router(charts.router, prefix="/api", tags=["Charts"])
+    app.include_router(news.router, prefix="/api", tags=["News"])
     logger.info("Routers registered successfully")
-    
+
     # Mount Dash app at root "/" AFTER all API routers
     # This ensures /api/... routes take precedence over Dash's catch-all
     try:

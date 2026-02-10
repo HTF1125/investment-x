@@ -10,6 +10,7 @@ import sys
 import tempfile
 import shutil
 import concurrent.futures
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +19,15 @@ import plotly.io as pio
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
 from reportlab.lib.colors import HexColor
+
+# Global Lock for Kaleido image export
+KALEIDO_LOCK = threading.Lock()
+
+# Disable MathJax to prevent serialization errors in Kaleido
+try:
+    pio.kaleido.scope.mathjax = None
+except Exception:
+    pass
 
 # Ensure ix is in path
 sys.path.append(os.getcwd())
@@ -312,9 +322,35 @@ def process_chart_image(chart, temp_dir, i):
 
         # Save to cache AND temp
         dest_path = Path(temp_dir) / f"chart_{i}.png"
-        pio.write_image(
-            fig, str(dest_path), format="png", width=1600, height=900, scale=2
-        )
+
+        # Use a lock to prevent concurrent serialization issues in Kaleido
+        with KALEIDO_LOCK:
+            try:
+                # Use to_image specifically as it sometimes handles serialization better than write_image
+                img_bytes = pio.to_image(
+                    fig, format="png", width=1600, height=900, scale=2, engine="kaleido"
+                )
+                with open(dest_path, "wb") as f:
+                    f.write(img_bytes)
+            except Exception as e:
+                # Fallback: try to export without custom layout scaling if it fails
+                if "serialize" in str(e).lower() or "uncaught" in str(e).lower():
+                    print(
+                        f"  Warning: Serialization failed for {chart.code}, retrying with basic layout..."
+                    )
+                    fig.update_layout(font=dict(size=12))  # Reset font
+                    img_bytes = pio.to_image(
+                        fig,
+                        format="png",
+                        width=1200,
+                        height=700,
+                        scale=1.5,
+                        engine="kaleido",
+                    )
+                    with open(dest_path, "wb") as f:
+                        f.write(img_bytes)
+                else:
+                    raise e
         # Prune old cache files for this chart
         for old_file in cache_dir.glob(f"{chart.code}_*.png"):
             try:
@@ -367,7 +403,8 @@ def export_charts_to_pdf(output_path: str = "investment_x_charts.pdf") -> bytes 
         # 2. Generate images in parallel
         processed_results = []
         with tempfile.TemporaryDirectory() as temp_dir:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            # Reduced concurrency to minimize resource contention
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 futures = [
                     executor.submit(process_chart_image, chart, temp_dir, i)
                     for i, chart in enumerate(charts)

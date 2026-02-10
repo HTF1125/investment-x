@@ -155,16 +155,27 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                     ),
                     dbc.Col(
                         [
-                            # PDF Download button
+                            # PDF Download button with loading state
+                            dcc.Loading(
+                                id="loading-pdf",
+                                children=[
+                                    dbc.Button(
+                                        "📥 Download PDF",
+                                        id="pdf-download-btn",
+                                        color="info",
+                                        size="sm",
+                                        className="me-2",
+                                    ),
+                                ],
+                                type="circle",
+                                className="d-inline-block",
+                            ),
+                            dcc.Download(id="download-pdf-data"),
+                            # Invisible link for opening in new tab
                             html.A(
-                                dbc.Button(
-                                    "📥 Download PDF",
-                                    color="info",
-                                    size="sm",
-                                    className="me-2",
-                                ),
-                                href="/api/charts/export/pdf",
+                                id="open-pdf-link",
                                 target="_blank",
+                                style={"display": "none"},
                             ),
                             # Refresh All button
                             dbc.Button(
@@ -708,6 +719,34 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                 className="ms-2 mb-0 py-1 px-2 small",
             )
         return dash.no_update
+
+    # Callback to handle PDF export via server-side generation
+    @app.callback(
+        Output("download-pdf-data", "data"),
+        Input("pdf-download-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def handle_pdf_download(n_clicks):
+        if not n_clicks:
+            return dash.no_update
+
+        from ix.misc.scripts import export_charts_to_pdf
+        from datetime import datetime
+
+        # Generate PDF bytes
+        try:
+            pdf_bytes = export_charts_to_pdf(output_path=None)
+            if not pdf_bytes:
+                return dash.no_update
+
+            filename = (
+                f"Investment-X_Macro_Report_{datetime.now().strftime('%Y%m%d')}.pdf"
+            )
+
+            return dcc.send_bytes(pdf_bytes, filename)
+        except Exception as e:
+            print(f"PDF Export Error in Dash: {e}")
+            return dash.no_update
 
     # Clientside callback to copy chart to clipboard
     app.clientside_callback(

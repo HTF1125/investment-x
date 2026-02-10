@@ -27,4 +27,4 @@ xlsxwriter
 dash
 dash-bootstrap-components
 reportlab
-kaleido
+kaleido==0.2.1
