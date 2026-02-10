@@ -160,24 +160,80 @@ def _create_rrg_chart(
 
         style = _get_quadrant_style(x_trail.iloc[-1], y_trail.iloc[-1])
 
-        # Gradient Trail
+        # 1. Trail Segments with Gradient
+        # We draw segments with increasing opacity
         for i in range(len(x_trail) - 1):
-            opacity = (i + 1) / len(x_trail) * 0.5
+            opacity = (i + 1) / len(x_trail) * 0.6
             fig.add_trace(
                 go.Scatter(
                     x=x_trail.iloc[i : i + 2],
                     y=y_trail.iloc[i : i + 2],
                     mode="lines",
-                    line=dict(width=2, color=style["color"]),
+                    line=dict(width=2.5, color=style["color"]),
                     opacity=opacity,
                     hoverinfo="skip",
                     showlegend=False,
+                    line_shape="spline",  # Smoother trails
+                    line_smoothing=1.3,
                 ),
                 row=1,
                 col=1,
             )
 
-        # Marker & Label logic
+        # 2. Add Directional Arrows
+        # Last segment arrow
+        dx_last = x_trail.iloc[-1] - x_trail.iloc[-2]
+        dy_last = y_trail.iloc[-1] - y_trail.iloc[-2]
+        norm_last = np.sqrt(dx_last**2 + dy_last**2)
+
+        if norm_last > 0:
+            # Main arrowhead at the tip
+            fig.add_annotation(
+                x=x_trail.iloc[-1],
+                y=y_trail.iloc[-1],
+                ax=x_trail.iloc[-1] - dx_last * 12 / norm_last,
+                ay=y_trail.iloc[-1] - dy_last * 12 / norm_last,
+                xref="x",
+                yref="y",
+                axref="x",
+                ayref="y",
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1.2,
+                arrowwidth=2.5,
+                arrowcolor=style["color"],
+                opacity=1.0,
+                row=1,
+                col=1,
+            )
+
+        # Intermediate arrow (at 1/2 of trail length)
+        mid_idx = len(x_trail) // 2
+        if mid_idx > 1:
+            dx_mid = x_trail.iloc[mid_idx] - x_trail.iloc[mid_idx - 1]
+            dy_mid = y_trail.iloc[mid_idx] - y_trail.iloc[mid_idx - 1]
+            norm_mid = np.sqrt(dx_mid**2 + dy_mid**2)
+            if norm_mid > 0:
+                fig.add_annotation(
+                    x=x_trail.iloc[mid_idx],
+                    y=y_trail.iloc[mid_idx],
+                    ax=x_trail.iloc[mid_idx] - dx_mid * 10 / norm_mid,
+                    ay=y_trail.iloc[mid_idx] - dy_mid * 10 / norm_mid,
+                    xref="x",
+                    yref="y",
+                    axref="x",
+                    ayref="y",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowsize=1.0,
+                    arrowwidth=1.5,
+                    arrowcolor=style["color"],
+                    opacity=0.3,
+                    row=1,
+                    col=1,
+                )
+
+        # 3. Label logic (Asset name)
         if "(" in asset:
             ticker_label = asset.split("(")[0].strip()
         else:
@@ -187,16 +243,11 @@ def _create_rrg_chart(
             go.Scatter(
                 x=[x_trail.iloc[-1]],
                 y=[y_trail.iloc[-1]],
-                mode="markers+text",
-                marker=dict(
-                    size=10,
-                    color=style["color"],
-                    line=dict(width=1.5, color="white"),
-                ),
+                mode="text",
                 text=[ticker_label],
                 textposition="top center",
                 textfont=dict(
-                    size=10, color=style["color"], family="Arial, sans-serif"
+                    size=10, color=style["color"], family="Inter, sans-serif"
                 ),
                 name=asset,
                 hovertemplate=f"{asset}<br>Ratio: %{{x:.2f}}<br>Mom: %{{y:.2f}}<extra></extra>",
@@ -205,50 +256,60 @@ def _create_rrg_chart(
             col=1,
         )
 
-    # Quadrant Design (0-centered)
+    # Updated Quadrant positions (towards corners for clarity)
+    offset = axis_limit * 0.8
     quad_config = [
-        (0, 0, axis_range[1], axis_range[1], "LEADING", "#22c55e"),
-        (0, axis_range[0], axis_range[1], 0, "WEAKENING", "#f59e0b"),
-        (axis_range[0], axis_range[0], 0, 0, "LAGGING", "#ef4444"),
-        (axis_range[0], 0, 0, axis_range[1], "IMPROVING", "#3b82f6"),
+        (offset, offset, "LEADING", "#22c55e"),
+        (offset, -offset, "WEAKENING", "#f59e0b"),
+        (-offset, -offset, "LAGGING", "#ef4444"),
+        (-offset, offset, "IMPROVING", "#3b82f6"),
     ]
 
-    for x0, y0, x1, y1, label, color in quad_config:
-        fig.add_shape(
-            type="rect",
-            x0=x0,
-            y0=y0,
-            x1=x1,
-            y1=y1,
-            fillcolor=color,
-            opacity=0.03,
-            line_width=0,
-            layer="below",
-            row=1,
-            col=1,
-        )
+    for x_pos, y_pos, label, color in quad_config:
         fig.add_annotation(
-            x=(x0 + x1) / 2,
-            y=(y0 + y1) / 2,
-            text=label,
+            x=x_pos,
+            y=y_pos,
+            text=f"<b>{label}</b>",
             showarrow=False,
-            font=dict(color=color, size=18, family="Arial, sans-serif"),
-            opacity=0.15,
+            font=dict(color=color, size=24, family="Outfit, sans-serif"),
+            opacity=0.08,  # Maintain subtle background feel
             row=1,
             col=1,
         )
 
-    # Summary Metrics Table
+    # Simplified Quadrant Dividers
+    fig.add_shape(
+        type="line",
+        x0=axis_range[0],
+        y0=0,
+        x1=axis_range[1],
+        y1=0,
+        line=dict(color="#cbd5e1", width=1, dash="dot"),
+        row=1,
+        col=1,
+    )
+    fig.add_shape(
+        type="line",
+        x0=0,
+        y0=axis_range[0],
+        x1=0,
+        y1=axis_range[1],
+        line=dict(color="#cbd5e1", width=1, dash="dot"),
+        row=1,
+        col=1,
+    )
+
+    # Summary Metrics Table (Sleeker design)
     if not summary_stats.empty:
         table_df = summary_stats.head(12)
         fig.add_trace(
             go.Table(
                 header=dict(
                     values=["<b>Asset</b>", "<b>Quad</b>", "<b>Vel</b>", "<b>Acc</b>"],
-                    fill_color="#f8fafc",
+                    fill_color="#1e293b",
                     align="left",
-                    font=dict(size=11, color="#1e293b"),
-                    line_color="#e2e8f0",
+                    font=dict(size=12, color="#f8fafc", family="Inter"),
+                    line_color="rgba(0,0,0,0)",
                 ),
                 cells=dict(
                     values=[
@@ -257,11 +318,14 @@ def _create_rrg_chart(
                         table_df["Velocity"].round(2),
                         table_df["Acceleration"].round(2),
                     ],
-                    fill_color=["white", table_df["BG"]],
+                    fill_color=[
+                        ["rgba(255,255,255,0.05)"] * len(table_df),
+                        table_df["BG"],
+                    ],
                     align="left",
-                    font=dict(size=10, color="#334155"),
-                    line_color="#e2e8f0",
-                    height=25,
+                    font=dict(size=11, color="#f1f5f9"),
+                    line_color="rgba(255,255,255,0.05)",
+                    height=28,
                 ),
             ),
             row=1,

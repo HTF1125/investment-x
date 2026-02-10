@@ -1,30 +1,40 @@
 import plotly.graph_objects as go
 
 
-def finalize_axis_colors(fig: go.Figure) -> go.Figure:
+def finalize_axis_colors(fig: go.Figure, color: str = None) -> go.Figure:
     """
-    Ensures all axis titles, ticks, and lines are black.
-    Call this AFTER all layout updates to guarantee styling is applied.
+    Ensures all axis titles, ticks, and lines have a consistent color.
+    If color is None, it attempts to detect based on paper_bgcolor.
     """
+    if color is None:
+        # Detect based on background
+        bg = fig.layout.paper_bgcolor
+        if (
+            bg
+            and isinstance(bg, str)
+            and (bg.startswith("rgb(0,0,0)") or bg == "black" or bg == "#000000")
+        ):
+            color = "#e2e8f0"
+        else:
+            color = "#000000"
+
     for attr in dir(fig.layout):
         if attr.startswith("yaxis") or attr.startswith("xaxis"):
             axis = getattr(fig.layout, attr)
             if axis and hasattr(axis, "update"):
-                # Force all colors to black
                 axis.update(
-                    title_font=dict(color="#000000"),
-                    tickfont=dict(color="#000000"),
-                    tickcolor="#000000",
-                    linecolor="#000000",
+                    title_font=dict(color=color),
+                    tickfont=dict(color=color),
+                    tickcolor=color,
+                    linecolor=color,
                 )
-                # Also set directly on title.font if it exists
                 if (
                     hasattr(axis, "title")
                     and axis.title
                     and hasattr(axis.title, "font")
                 ):
                     try:
-                        axis.title.font.color = "#000000"
+                        axis.title.font.color = color
                     except:
                         pass
     return fig

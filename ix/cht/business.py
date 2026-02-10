@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
-from ix.db.query import Series, MultiSeries, StandardScalar, MonthEndOffset
+from ix.db.query import Series, MultiSeries, StandardScalar, MonthEndOffset, Cycle
 from .style import apply_academic_style, add_zero_line, get_value_label
 
 
@@ -270,5 +270,129 @@ def EmpireStateManufacturing() -> go.Figure:
     if not df.empty:
         fig.update_xaxes(range=[df.index[0], df.index[-1]])
         add_zero_line(fig)
+
+    return fig
+
+
+def SemiconductorBillingsYoY() -> go.Figure:
+    """Semiconductor Billings YoY Chart (Business)"""
+    try:
+        df = (
+            MultiSeries(
+                **{
+                    "America": Series("WDIN8158464:PX_LAST", freq="ME")
+                    .pct_change(12)
+                    .mul(100),
+                    "Europe": Series("WDIN8158465:PX_LAST", freq="ME")
+                    .pct_change(12)
+                    .mul(100),
+                    "Japan": Series("WDIN8158466:PX_LAST", freq="ME")
+                    .pct_change(12)
+                    .mul(100),
+                    "Apac": Series("WDIN8158467:PX_LAST", freq="ME")
+                    .pct_change(12)
+                    .mul(100),
+                    "Cycle": Cycle(
+                        MultiSeries(
+                            **{
+                                "America": Series("WDIN8158464:PX_LAST", freq="ME"),
+                                "Europe": Series("WDIN8158465:PX_LAST", freq="ME"),
+                                "Japan": Series("WDIN8158466:PX_LAST", freq="ME"),
+                                "Apac": Series(
+                                    "WDIN8158467:PX_LAST", freq="ME"
+                                ),
+                            }
+                        )
+                        .dropna(how="all")
+                        .ffill()
+                        .sum(axis=1)
+                        .pct_change(12)
+                        .mul(100)
+                        .iloc[-12 * 10 :]
+                    ),
+                }
+            )
+            .dropna(how="all")
+            .ffill()
+            .iloc[-12 * 10 :]
+        )
+    except Exception as e:
+        raise Exception(f"Data error: {str(e)}")
+
+    fig = make_subplots(specs=[[{"secondary_y": False}]])
+
+    for col in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df[col],
+                name=get_value_label(df[col], col, ".2f"),
+                mode="lines",
+                line=dict(
+                    width=2.5 if col != "Cycle" else 3,
+                    dash=None if col != "Cycle" else "dash",
+                ),
+                hovertemplate=f"{col}: %{{y:.2f}}%<extra></extra>",
+                connectgaps=True,
+            )
+        )
+
+    apply_academic_style(fig)
+    fig.update_layout(
+        title=dict(text="<b>Semiconductor Billings YoY (%)</b>"),
+        yaxis_title="YoY Growth (%)",
+    )
+
+    if not df.empty:
+        fig.update_xaxes(range=[df.index[0], df.index[-1]])
+        add_zero_line(fig)
+
+    return fig
+
+
+def SemiconductorBillings() -> go.Figure:
+    """Semiconductor Billings (Billions) Chart (Business)"""
+    try:
+        df = (
+            MultiSeries(
+                **{
+                    "America": Series("WDIN8158464:PX_LAST", freq="ME"),
+                    "Europe": Series("WDIN8158465:PX_LAST", freq="ME"),
+                    "Japan": Series("WDIN8158466:PX_LAST", freq="ME"),
+                    "Apac": Series("WDIN8158467:PX_LAST", freq="ME"),
+                }
+            )
+            .rolling(12)
+            .sum()
+            .mul(1000)
+            .div(1_000_000_000)
+            .dropna(how="all")
+            .ffill()
+            .iloc[-12 * 10 :]
+        )
+    except Exception as e:
+        raise Exception(f"Data error: {str(e)}")
+
+    fig = make_subplots(specs=[[{"secondary_y": False}]])
+
+    for col in df.columns:
+        fig.add_trace(
+            go.Bar(
+                x=df.index,
+                y=df[col],
+                name=col,
+                hovertemplate=f"{col}: %{{y:.2f}}B<extra></extra>",
+            )
+        )
+
+    apply_academic_style(fig)
+    fig.update_layout(
+        title=dict(text="<b>Semiconductor Billings (LTM Sum, USD Billions)</b>"),
+        yaxis_title="Billings (USD Billions)",
+        barmode="stack",
+    )
+
+    if not df.empty:
+        fig.update_xaxes(range=[df.index[0], df.index[-1]])
 
     return fig

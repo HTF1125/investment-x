@@ -25,6 +25,8 @@ __all__ = [
     "IndustrialProductionLeadingIndicator",
     "HeavyTruckSalesUnemployment",
     "EmpireStateManufacturing",
+    "SemiconductorBillingsYoY",
+    "SemiconductorBillings",
     # Financial
     "FinancialConditions",
     "FinancialConditionsComponents",

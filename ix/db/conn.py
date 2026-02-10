@@ -23,18 +23,12 @@ class Connection:
         self._is_connected = False
 
     def connect(self, max_retries: int = 1, retry_delay: float = 1.0) -> bool:
-        """
-        Establishes a connection to PostgreSQL with retry logic.
+        if self.is_connected():
+            return True
 
-        Args:
-            max_retries: Maximum number of connection attempts
-            retry_delay: Delay between retry attempts in seconds
-
-        Returns:
-            bool: True if connection successful, False otherwise
-        """
         for attempt in range(max_retries):
             try:
+                # Reduced logging for repetitive attempts
                 logger.info(
                     f"Attempting to connect to PostgreSQL (attempt {attempt + 1}/{max_retries})..."
                 )
@@ -97,9 +91,6 @@ class Connection:
                 # Import models to ensure they're registered with Base
                 from ix.db import models
 
-                # Import models to ensure they're registered with Base
-                from ix.db import models
-
                 self._is_connected = True
                 logger.info(f"Successfully connected to PostgreSQL: {settings.db_name}")
                 return True
@@ -142,12 +133,16 @@ class Connection:
                 logger.error(f"Error closing PostgreSQL connection: {e}")
 
     def is_connected(self) -> bool:
-        """Check if the database connection is healthy."""
-        if not self._is_connected or not self.engine:
-            return False
+        """Check if the database connection is initialized.
+        SQLAlchemy's pool_pre_ping=True handles the actual network health.
+        """
+        return self._is_connected and self.engine is not None
 
+    def check_health(self) -> bool:
+        """Perform a rigorous health check via SELECT 1."""
+        if not self.engine:
+            return False
         try:
-            # Quick health check
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             return True

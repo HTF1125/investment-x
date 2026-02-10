@@ -50,17 +50,107 @@ CATEGORY_ORDER = [
 ]
 
 
+def apply_premium_style(fig: go.Figure) -> go.Figure:
+    """Applies consistent premium styling to all charts."""
+    text_color = "#e2e8f0"
+    accent_color = "rgba(255, 255, 255, 0.1)"
+    grid_color = "rgba(255, 255, 255, 0.05)"
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=text_color, family="'Inter', sans-serif"),
+        title_font=dict(color=text_color, family="'Outfit', sans-serif", size=18),
+        legend=dict(
+            font=dict(color=text_color, size=11),
+            bgcolor="rgba(0,0,0,0)",
+            bordercolor=accent_color,
+            borderwidth=0,
+        ),
+        margin=dict(t=80, b=50, l=60, r=40),
+        hovermode="x unified",
+        hoverlabel=dict(
+            bgcolor="#1e2126",
+            font_size=13,
+            font_family="'Inter', sans-serif",
+            font_color=text_color,
+            bordercolor=accent_color,
+        ),
+    )
+
+    # Force all axes to match the premium theme
+    axis_config = dict(
+        gridcolor=grid_color,
+        zerolinecolor=accent_color,
+        tickfont=dict(color=text_color, size=10),
+        title_font=dict(color=text_color, size=12),
+        linecolor=accent_color,
+        showgrid=True,
+    )
+
+    fig.update_xaxes(**axis_config)
+    fig.update_yaxes(**axis_config)
+
+    # Ensure title is properly positioned and colored
+    if fig.layout.title and fig.layout.title.text:
+        fig.update_layout(
+            title=dict(
+                x=0.02,
+                y=0.95,
+                xanchor="left",
+                yanchor="top",
+                font=dict(color=text_color),
+            )
+        )
+
+    return fig
+
+
+@cached(news_cache)
+def get_recent_news():
+    """Fetch recent news from database with caching."""
+    from ix.db.conn import Session
+    from ix.db.models import TelegramMessage
+    from datetime import datetime, timedelta
+
+    # Current KST = UTC + 9
+    now_utc = datetime.utcnow()
+    since_date = now_utc + timedelta(hours=9) - timedelta(hours=24)
+    try:
+        with Session() as s:
+            return (
+                s.query(TelegramMessage)
+                .filter(TelegramMessage.date >= since_date)
+                .order_by(TelegramMessage.date.desc())
+                .limit(50)
+                .all()
+            )
+    except Exception as e:
+        print(f"Error fetching news: {e}")
+        return []
+
+
 def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
     """
     Creates and configures the Dash application.
 
     Uses function-based layout to defer database queries until page is accessed.
     """
-    # Create Dash app with Bootstrap theme
+    import os
+
+    # Force absolute path for assets folder to ensure reliability in mounted FastAPI app
+    assets_folder = os.path.join(os.path.dirname(__file__), "assets")
+
+    # Create Dash app with Bootstrap theme and Icons
     app = dash.Dash(
         __name__,
         requests_pathname_prefix=requests_pathname_prefix,
-        external_stylesheets=[dbc.themes.SLATE],
+        assets_folder=assets_folder,
+        external_stylesheets=[
+            dbc.themes.SLATE,
+            "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css",
+        ],
         suppress_callback_exceptions=True,
         title="Investment-X Charts",
     )
@@ -125,10 +215,12 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
             # If DB fails, show error
             return dbc.Container(
                 [
-                    html.H2("Investment-X", className="text-primary"),
-                    dbc.Alert(f"Failed to load charts: {e}", color="danger"),
+                    html.H2("Investment-X", className="text-gradient"),
+                    dbc.Alert(
+                        f"Failed to load charts: {e}", color="danger", className="mt-4"
+                    ),
                 ],
-                className="py-3",
+                className="py-5 text-center",
             )
 
         # Sort categories by order
@@ -148,42 +240,58 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                 [
                     dbc.Col(
                         [
-                            html.H2("Investment-X", className="text-primary mb-0"),
-                            html.P("Research Library", className="text-muted"),
+                            html.H1(
+                                "Investment-X", className="text-gradient mb-0 fw-bold"
+                            ),
+                            html.P(
+                                "Real-time Macro Intelligence & Research Library",
+                                className="text-muted small",
+                            ),
                         ],
-                        width=6,
+                        md=6,
+                        xs=12,
+                        className="text-center text-md-start mb-3 mb-md-0",
                     ),
                     dbc.Col(
                         [
-                            # PDF Download button with loading state
-                            dcc.Loading(
-                                id="loading-pdf",
-                                children=[
+                            html.Div(
+                                [
+                                    # PDF Download button with loading state
+                                    dcc.Loading(
+                                        id="loading-pdf",
+                                        children=[
+                                            dbc.Button(
+                                                [
+                                                    html.I(
+                                                        className="bi bi-file-earmark-pdf me-2"
+                                                    ),
+                                                    "Export PDF",
+                                                ],
+                                                id="pdf-download-btn",
+                                                color="info",
+                                                size="sm",
+                                                className="px-3",
+                                            ),
+                                        ],
+                                        type="circle",
+                                        className="d-inline-block",
+                                    ),
+                                    dcc.Download(id="download-pdf-data"),
+                                    # Refresh All button
                                     dbc.Button(
-                                        "📥 Download PDF",
-                                        id="pdf-download-btn",
-                                        color="info",
+                                        [
+                                            html.I(
+                                                className="bi bi-arrow-clockwise me-2"
+                                            ),
+                                            "Refresh Data",
+                                        ],
+                                        id="refresh-all-btn",
+                                        color="warning",
                                         size="sm",
-                                        className="me-2",
+                                        className="px-3",
                                     ),
                                 ],
-                                type="circle",
-                                className="d-inline-block",
-                            ),
-                            dcc.Download(id="download-pdf-data"),
-                            # Invisible link for opening in new tab
-                            html.A(
-                                id="open-pdf-link",
-                                target="_blank",
-                                style={"display": "none"},
-                            ),
-                            # Refresh All button
-                            dbc.Button(
-                                "🔄 Refresh All",
-                                id="refresh-all-btn",
-                                color="warning",
-                                size="sm",
-                                className="me-3",
+                                className="d-flex align-items-center justify-content-center justify-content-md-end gap-3",
                             ),
                             dbc.Tooltip(
                                 "Trigger a full background refresh of all chart data",
@@ -192,23 +300,30 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                             html.Div(
                                 id="refresh-all-status", className="d-inline-block"
                             ),
+                        ],
+                        md=6,
+                        xs=12,
+                        className="text-center text-md-end",
+                    ),
+                    dbc.Col(
+                        [
                             # Category quick links
-                            html.Span(
+                            html.Div(
                                 [
                                     html.A(
                                         cat,
                                         href=f"#{cat.lower().replace(' ', '-')}",
-                                        className="badge bg-secondary me-1 text-decoration-none",
+                                        className="badge bg-secondary me-2 mb-2 text-decoration-none",
                                     )
                                     for cat in sorted_cats
-                                ]
+                                ],
+                                className="mt-3 d-flex flex-wrap justify-content-center justify-content-md-end",
                             ),
                         ],
-                        width=6,
-                        className="text-end",
+                        width=12,
                     ),
                 ],
-                className="py-3 border-bottom mb-4 sticky-top bg-dark align-items-center",
+                className="py-4 px-3 sticky-top shadow-sm align-items-center",
             )
         )
 
@@ -217,21 +332,6 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
         from ix.db.models import TelegramMessage
 
         try:
-
-            @cached(news_cache)
-            def get_recent_news():
-                # Current KST = UTC + 9
-                now_utc = datetime.utcnow()
-                since_date = now_utc + timedelta(hours=9) - timedelta(hours=24)
-                with Session() as s:
-                    return (
-                        s.query(TelegramMessage)
-                        .filter(TelegramMessage.date >= since_date)
-                        .order_by(TelegramMessage.date.desc())
-                        .limit(50)
-                        .all()
-                    )
-
             recent_msgs = get_recent_news()
 
             if recent_msgs:
@@ -264,10 +364,13 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                         [
                             dbc.CardHeader(
                                 html.H5(
-                                    "Recent Telegram News (24h)",
-                                    className="mb-0 text-white",
+                                    [
+                                        html.I(className="bi bi-cpu me-2"),
+                                        "Quant Intelligence Feed (24h)",
+                                    ],
+                                    className="mb-0 text-white fw-bold",
                                 ),
-                                className="bg-primary text-white",
+                                className="bg-primary",
                             ),
                             dbc.CardBody(
                                 dbc.Table(
@@ -275,25 +378,28 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                         html.Thead(
                                             html.Tr(
                                                 [
-                                                    html.Th("Date (KST)"),
-                                                    html.Th("Channel"),
-                                                    html.Th("Message"),
+                                                    html.Th("Timestamp"),
+                                                    html.Th("Source"),
+                                                    html.Th("Intelligence Content"),
                                                 ]
                                             )
                                         ),
                                         html.Tbody(msg_rows),
                                     ],
-                                    bordered=True,
-                                    hover=True,
+                                    borderless=True,
+                                    hover=False,
                                     responsive=True,
                                     striped=True,
-                                    color="dark",  # Matches the slate theme better
                                     className="mb-0",
                                 ),
-                                style={"maxHeight": "400px", "overflowY": "auto"},
+                                style={
+                                    "maxHeight": "350px",
+                                    "overflowY": "auto",
+                                    "padding": "0",
+                                },
                             ),
                         ],
-                        className="mb-4 shadow-sm border-primary",
+                        className="mb-5 shadow-lg border-primary border-opacity-25",
                     )
                 )
 
@@ -320,7 +426,8 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                 )
             )
 
-            # Chart cards
+            # Chart cards container
+            chart_cards = []
             for chart in charts:
                 last_updated = (
                     chart.updated_at.strftime("%Y-%m-%d %H:%M")
@@ -328,7 +435,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                     else "Never"
                 )
 
-                content.append(
+                chart_cards.append(
                     dbc.Card(
                         [
                             dbc.CardHeader(
@@ -338,16 +445,14 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                             [
                                                 html.H5(
                                                     chart.code,
-                                                    className="mb-0 text-white",
-                                                    style={"fontWeight": "600"},
+                                                    className="mb-0 fw-bold",
                                                 ),
                                                 html.Small(
-                                                    f"Last updated: {last_updated}",
+                                                    f"Updated: {last_updated}",
                                                     className="text-muted",
-                                                    style={"fontSize": "0.75rem"},
                                                 ),
                                             ],
-                                            width=9,
+                                            width=8,
                                         ),
                                         dbc.Col(
                                             [
@@ -360,7 +465,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                                     color="light",
                                                     outline=True,
                                                     size="sm",
-                                                    className="me-2 border-0",
+                                                    className="me-2 border-0 opacity-75 hover-opacity-100",
                                                     title="Refresh chart data",
                                                 ),
                                                 dbc.Button(
@@ -372,35 +477,67 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                                     color="light",
                                                     outline=True,
                                                     size="sm",
-                                                    className="border-0",
+                                                    className="border-0 opacity-75 hover-opacity-100",
                                                     title="Copy chart to clipboard",
                                                 ),
                                             ],
-                                            width=3,
+                                            width=4,
                                             className="text-end",
                                         ),
                                     ],
                                     align="center",
                                 ),
-                                className="bg-transparent border-bottom border-secondary",
                             ),
                             dbc.CardBody(
                                 [
-                                    # Description
+                                    # Lazy loading trigger (staggered to avoid connection storm)
+                                    dcc.Interval(
+                                        id={
+                                            "type": "load-interval",
+                                            "code": chart.code,
+                                        },
+                                        interval=300
+                                        + (len(chart_cards) * 50),  # Staggered
+                                        max_intervals=1,
+                                    ),
+                                    # Chart
+                                    dcc.Loading(
+                                        [
+                                            dcc.Graph(
+                                                figure=go.Figure(),
+                                                id={
+                                                    "type": "chart-graph",
+                                                    "code": chart.code,
+                                                },
+                                                responsive=True,
+                                                style={"minHeight": "450px"},
+                                                config={
+                                                    "displayModeBar": "hover",
+                                                    "displaylogo": False,
+                                                    "modeBarButtonsToRemove": [
+                                                        "lasso2d",
+                                                        "select2d",
+                                                    ],
+                                                },
+                                            ),
+                                        ],
+                                        type="circle",
+                                        color="#00f2fe",
+                                    ),
+                                    # Description (moved below chart)
                                     html.Div(
                                         [
                                             html.Div(
                                                 [
-                                                    html.Span("ℹ️ ", className="me-1"),
+                                                    html.Span("💡", className="me-2"),
                                                     dcc.Markdown(
                                                         chart.description
-                                                        or "No description available",
+                                                        or "No analysis available for this chart.",
                                                         id={
                                                             "type": "desc-text",
                                                             "code": chart.code,
                                                         },
-                                                        className="text-light small flex-grow-1",
-                                                        style={"marginBottom": "0"},
+                                                        className="small flex-grow-1 mb-0",
                                                     ),
                                                     dbc.Button(
                                                         "✎",
@@ -411,13 +548,9 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                                         color="link",
                                                         size="sm",
                                                         className="text-muted p-0 ms-2 text-decoration-none",
-                                                        title="Edit description",
                                                     ),
                                                 ],
-                                                className="d-flex align-items-center mb-2 p-2 rounded",
-                                                style={
-                                                    "backgroundColor": "rgba(255,255,255,0.05)"
-                                                },
+                                                className="description-box d-flex align-items-center mt-4",
                                             ),
                                             dbc.Collapse(
                                                 dbc.Card(
@@ -432,7 +565,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                                                 or "",
                                                                 className="mb-2 bg-dark text-light border-secondary",
                                                                 style={
-                                                                    "height": "100px"
+                                                                    "height": "120px"
                                                                 },
                                                             ),
                                                             dbc.ButtonGroup(
@@ -445,7 +578,6 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                                                         },
                                                                         color="success",
                                                                         size="sm",
-                                                                        outline=True,
                                                                     ),
                                                                     dbc.Button(
                                                                         "Cancel",
@@ -455,10 +587,9 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                                                         },
                                                                         color="secondary",
                                                                         size="sm",
-                                                                        outline=True,
                                                                     ),
                                                                 ],
-                                                                size="sm",
+                                                                className="w-100",
                                                             ),
                                                             html.Div(
                                                                 id={
@@ -467,9 +598,10 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                                                 },
                                                                 className="mt-2",
                                                             ),
-                                                        ]
+                                                        ],
+                                                        className="bg-dark p-2 border-0",
                                                     ),
-                                                    className="bg-transparent border-0",
+                                                    className="mb-3",
                                                 ),
                                                 id={
                                                     "type": "desc-collapse",
@@ -478,64 +610,26 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                                 is_open=False,
                                             ),
                                         ],
-                                        className="mb-3",
                                     ),
-                                    # Chart with loading spinner
-                                    dcc.Loading(
-                                        [
-                                            dcc.Interval(
-                                                id={
-                                                    "type": "load-interval",
-                                                    "code": chart.code,
-                                                },
-                                                interval=100,
-                                                max_intervals=1,
-                                            ),
-                                            dcc.Graph(
-                                                figure=go.Figure(),
-                                                id={
-                                                    "type": "chart-graph",
-                                                    "code": chart.code,
-                                                },
-                                                responsive=True,
-                                                style={
-                                                    "width": "100%",
-                                                    "minHeight": "500px",
-                                                },
-                                                config={
-                                                    "displayModeBar": "hover",
-                                                    "displaylogo": False,
-                                                    "responsive": True,
-                                                    "modeBarButtonsToRemove": [
-                                                        "lasso2d",
-                                                        "select2d",
-                                                    ],
-                                                },
-                                            ),
-                                        ],
-                                        type="circle",
-                                        color="#0dcaf0",  # Info cyan color
-                                    ),
-                                ]
+                                ],
+                                className="p-4",
                             ),
                         ],
-                        className="mb-5 shadow-sm border-secondary",
-                        style={
-                            "backgroundColor": "#1e2126",  # Slightly lighter than main bg
-                            "borderRadius": "10px",
-                            "overflow": "hidden",
-                        },
+                        className="h-100",
                     )
                 )
+
+            # Add categories and their charts in a grid
+            content.append(html.Div(chart_cards, className="chart-grid mb-5"))
 
         return dbc.Container(
             [
                 dcc.Store(id="charts-loaded", data=[]),
-                *content,
+                html.Div(content, className="pb-5"),
             ],
             fluid=True,
-            className="py-3",
-            style={"maxWidth": "800px", "margin": "0 auto"},
+            className="px-lg-5 px-md-3 px-2",
+            style={"maxWidth": "1600px", "margin": "0 auto"},
         )
 
     # Use function-based layout for lazy loading
@@ -588,6 +682,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
 
                     fig = go.Figure(fig_dict)
                     fig.update_layout(autosize=True, height=None, width=None)
+                    fig = apply_premium_style(fig)
 
                     # Store in cache
                     _FIGURE_CACHE[code] = {"ts": chart.updated_at, "fig": fig}
@@ -683,6 +778,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                     # Return the updated figure
                     fig = chart.render()
                     fig.update_layout(autosize=True, height=None, width=None)
+                    fig = apply_premium_style(fig)
                     return fig
                 except Exception as e:
                     s.rollback()
