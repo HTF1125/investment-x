@@ -15,8 +15,11 @@ from .surprise import *
 from .rrg import *
 from .inflation import *
 from .positions import *
+from .technical import *
 
 __all__ = [
+    # Technical
+    "ElliottWave",
     # Positions
     "PositionsCrowdedness",
     # Business
@@ -80,22 +83,18 @@ __all__ = [
     # OECD
     "OecdCliDiffusion",
     # Performance
-    "Performance_GlobalEquity_1W",
-    "Performance_GlobalEquity_1M",
-    "Performance_USSectors_1W",
-    "Performance_USSectors_1M",
+    "Performance_GlobalEquity",
+    "Performance_UsSectors",
+    "Performance_KrSectors",
     # Surprise
     "USSurpriseUST10YCycle",
     "USSurpriseDollarCycle",
     # RRG
     "RelativeRotation_UsSectors_Dynamic",
     "RelativeRotation_UsSectors_Tactical",
-    "RelativeRotation_UsSectors_Strategic",
     "RelativeRotation_GlobalEquities_Dynamic",
     "RelativeRotation_GlobalEquities_Tactical",
-    "RelativeRotation_GlobalEquities_Strategic",
     # RRG - KR
     "RelativeRotation_KrSectors_Dynamic",
     "RelativeRotation_KrSectors_Tactical",
-    "RelativeRotation_KrSectors_Strategic",
 ]

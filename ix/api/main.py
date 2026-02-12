@@ -42,17 +42,17 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Scheduled 'run_daily_tasks' for 07:00 KST")
 
-    # Schedule Telegram Scraping (e.g., Every 5 minutes)
-    from ix.misc.telegram import scrape_all_channels
-
-    scheduler.add_job(
-        scrape_all_channels,
-        CronTrigger(minute="*/30", timezone=KST),  # Run every 30 minutes
-        id="telegram_scrape_routine",
-        replace_existing=True,
-        misfire_grace_time=300,
-    )
-    logger.info("Scheduled 'scrape_all_channels' for every 30 minutes")
+    # Telegram Scraping is now triggered manually via the app button
+    # from ix.misc.telegram import scrape_all_channels
+    #
+    # scheduler.add_job(
+    #     scrape_all_channels,
+    #     CronTrigger(minute="*/30", timezone=KST),  # Run every 30 minutes
+    #     id="telegram_scrape_routine",
+    #     replace_existing=True,
+    #     misfire_grace_time=300,
+    # )
+    # logger.info("Scheduled 'scrape_all_channels' for every 30 minutes")
 
     # from ix.misc.task import send_daily_market_brief
 
@@ -155,7 +155,7 @@ try:
     # This ensures /api/... routes take precedence over Dash's catch-all
     try:
         from starlette.middleware.wsgi import WSGIMiddleware
-        from ix.api.dash_app import dash_app
+        from ix.web.app import dash_app
 
         app.mount("/", WSGIMiddleware(dash_app.server))
         logger.info("Dash app mounted at /")

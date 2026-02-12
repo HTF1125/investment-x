@@ -15,7 +15,7 @@ def MedianWageByQuartile() -> go.Figure:
                 "3rd Quartile": Series("USLM7851184:PX_LAST"),
                 "4th Quartile": Series("USLM7851185:PX_LAST"),
             }
-        ).iloc[-12 * 10 :]
+        )
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
 
@@ -41,6 +41,10 @@ def MedianWageByQuartile() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 10, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
+    return fig
 
     return fig

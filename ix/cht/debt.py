@@ -13,7 +13,7 @@ def USFederalDebt() -> go.Figure:
                 "Outstanding ($Tn)": Series("US.CGOVD:PX_LAST", scale=1).div(10**12),
                 "YoY (%)": Series("US.CGOVD:PX_LAST", scale=1).pct_change(12).mul(100),
             }
-        ).iloc[-12 * 5 :]
+        )
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
 
@@ -59,6 +59,8 @@ def USFederalDebt() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
-
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 10, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
     return fig

@@ -40,21 +40,32 @@ def finalize_axis_colors(fig: go.Figure, color: str = None) -> go.Figure:
     return fig
 
 
-def apply_academic_style(fig: go.Figure) -> go.Figure:
+def apply_academic_style(fig: go.Figure, force_dark: bool = True) -> go.Figure:
     """
     Applies a clean, academic/Goldman Sachs-style theme to the Plotly figure.
     Features:
-    - White background
+    - Adaptive background (defaults to Dark for premium look)
     - Boxed axes (mirror=True)
-    - Times New Roman / Arial fonts
+    - Modern Inter/Outfit fonts
     - Top-left align title and legend
     """
+    # Detect background theme or use force_dark
+    bg = fig.layout.paper_bgcolor
+    if bg in ["#0d0f12", "black", "#000000"] or force_dark:
+        is_dark = True
+    else:
+        is_dark = False
+
     # 1. Base Template
-    fig.update_layout(template="simple_white")
+    fig.update_layout(template="plotly_dark" if is_dark else "simple_white")
 
     # 2. Fonts & Colors
-    font_family = "Roboto, sans-serif"
-    font_color = "#000000"
+    font_family = "Inter, sans-serif"
+    header_font = "Outfit, sans-serif"
+    font_color = "#f8fafc" if is_dark else "#0f172a"
+    bg_color = "#0d0f12" if is_dark else "white"
+    grid_line_color = "rgba(255, 255, 255, 0.08)" if is_dark else "rgba(0,0,0,0.05)"
+    plot_bg = "rgba(255, 255, 255, 0.01)" if is_dark else "white"
 
     # 3. Layout General
     fig.update_layout(
@@ -62,13 +73,13 @@ def apply_academic_style(fig: go.Figure) -> go.Figure:
         width=800,
         height=500,
         margin=dict(l=50, r=20, t=60, b=40),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor=plot_bg,
+        paper_bgcolor=bg_color,
         hovermode="x unified",
         hoverlabel=dict(
-            bgcolor="white",
-            font_color="black",
-            bordercolor="#e2e8f0",
+            bgcolor="#1e293b" if is_dark else "white",
+            font_color=font_color,
+            bordercolor="rgba(255,255,255,0.1)" if is_dark else "#e2e8f0",
             font=dict(family=font_family, size=12),
         ),
     )
@@ -80,7 +91,7 @@ def apply_academic_style(fig: go.Figure) -> go.Figure:
             y=0.95,
             xanchor="left",
             yanchor="top",
-            font=dict(size=14, color=font_color, family=font_family),
+            font=dict(size=14, color=font_color, family=header_font),
         )
     )
 
@@ -91,8 +102,8 @@ def apply_academic_style(fig: go.Figure) -> go.Figure:
             x=0.01,
             xanchor="left",
             yanchor="top",
-            bgcolor="rgba(255,255,255,0.8)",
-            bordercolor="rgba(0,0,0,0.1)",
+            bgcolor="rgba(13, 15, 18, 0.8)" if is_dark else "rgba(255,255,255,0.8)",
+            bordercolor="rgba(255,255,255,0.1)" if is_dark else "rgba(0,0,0,0.1)",
             borderwidth=1,
             font=dict(size=10, color=font_color),
         )
@@ -102,13 +113,13 @@ def apply_academic_style(fig: go.Figure) -> go.Figure:
     axis_style = dict(
         showline=True,
         linewidth=1,
-        linecolor=font_color,
+        linecolor="rgba(255,255,255,0.2)" if is_dark else font_color,
         mirror=True,  # Boxed effect
         ticks="outside",
         ticklen=5,
         tickcolor=font_color,
-        tickfont=dict(color=font_color),
-        title_font=dict(color=font_color),
+        tickfont=dict(color=font_color, family=font_family),
+        title_font=dict(color=font_color, family=header_font),
         showgrid=False,
         zerolinecolor=font_color,
         zerolinewidth=1,
@@ -156,8 +167,11 @@ def apply_academic_style(fig: go.Figure) -> go.Figure:
 
 
 def add_zero_line(fig: go.Figure) -> go.Figure:
-    """Adds a simple black zero line."""
-    fig.add_hline(y=0, line_width=1, line_color="black", opacity=0.3, layer="below")
+    """Adds a zero line adaptive to the theme."""
+    bg = fig.layout.paper_bgcolor
+    is_dark = bg in ["#0d0f12", "black", "#000000"]
+    line_color = "rgba(255,255,255,0.4)" if is_dark else "rgba(0,0,0,0.3)"
+    fig.add_hline(y=0, line_width=1, line_color=line_color, layer="below")
     return fig
 
 

@@ -46,18 +46,37 @@ CATEGORY_ORDER = [
     "Gold",
     "OECD",
     "LongTerm",
+    "Technical",
     "Uncategorized",
 ]
 
 
 def apply_premium_style(fig: go.Figure) -> go.Figure:
-    """Applies consistent premium styling to all charts."""
-    text_color = "#e2e8f0"
-    accent_color = "rgba(255, 255, 255, 0.1)"
-    grid_color = "rgba(255, 255, 255, 0.05)"
+    """Applies consistent premium styling to all charts while respecting theme."""
+    # Default to dark for the premium Investment-X aesthetic
+    is_dark = True
+    bg = fig.layout.paper_bgcolor
+    if bg and isinstance(bg, str):
+        upper_bg = bg.upper()
+        # Only switch to light if explicitly set to white/light
+        if (
+            upper_bg in ["WHITE", "#FFFFFF", "#F8FAFC"]
+            or "RGBA(255, 255, 255" in upper_bg
+        ):
+            # Check if we should override it anyway (user feedback suggests they prefer dark)
+            # For now, let's keep it flexible but lean towards dark
+            pass
+
+    # Force dark theme for now to resolve user visibility issues on white backgrounds
+    is_dark = True
+
+    # Theme-adaptive colors
+    text_color = "#e2e8f0" if is_dark else "#0f172a"
+    accent_color = "rgba(255, 255, 255, 0.15)" if is_dark else "rgba(15, 23, 42, 0.1)"
+    grid_color = "rgba(255, 255, 255, 0.06)" if is_dark else "rgba(0, 0, 0, 0.05)"
 
     fig.update_layout(
-        template="plotly_dark",
+        template="plotly_dark" if is_dark else "plotly_white",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=text_color, family="'Inter', sans-serif"),
@@ -68,10 +87,11 @@ def apply_premium_style(fig: go.Figure) -> go.Figure:
             bordercolor=accent_color,
             borderwidth=0,
         ),
-        margin=dict(t=80, b=50, l=60, r=40),
+        # Increased margins to prevent label clipping
+        margin=dict(t=85, b=65, l=75, r=50),
         hovermode="x unified",
         hoverlabel=dict(
-            bgcolor="#1e2126",
+            bgcolor="#1e2126" if is_dark else "white",
             font_size=13,
             font_family="'Inter', sans-serif",
             font_color=text_color,
@@ -79,7 +99,7 @@ def apply_premium_style(fig: go.Figure) -> go.Figure:
         ),
     )
 
-    # Force all axes to match the premium theme
+    # Force all axes to match the theme
     axis_config = dict(
         gridcolor=grid_color,
         zerolinecolor=accent_color,
@@ -92,15 +112,15 @@ def apply_premium_style(fig: go.Figure) -> go.Figure:
     fig.update_xaxes(**axis_config)
     fig.update_yaxes(**axis_config)
 
-    # Ensure title is properly positioned and colored
+    # Ensure title is properly positioned
     if fig.layout.title and fig.layout.title.text:
         fig.update_layout(
             title=dict(
-                x=0.02,
-                y=0.95,
+                x=0.03,
+                y=0.96,
                 xanchor="left",
                 yanchor="top",
-                font=dict(color=text_color),
+                font=dict(color=text_color, size=16),
             )
         )
 
@@ -240,12 +260,20 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                 [
                     dbc.Col(
                         [
-                            html.H1(
-                                "Investment-X", className="text-gradient mb-0 fw-bold"
+                            html.Div(
+                                [
+                                    html.Img(
+                                        src=app.get_asset_url(
+                                            "investment-x-logo-light.svg"
+                                        ),
+                                        style={"height": "28px"},
+                                    ),
+                                ],
+                                className="d-flex align-items-center justify-content-center justify-content-md-start",
                             ),
                             html.P(
                                 "Real-time Macro Intelligence & Research Library",
-                                className="text-muted small",
+                                className="text-muted small mt-1",
                             ),
                         ],
                         md=6,
@@ -290,6 +318,25 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                         size="sm",
                                         className="px-3",
                                     ),
+                                    html.Div(
+                                        id="refresh-all-status",
+                                        className="d-inline-block",
+                                    ),
+                                    # Scrape Telegram button
+                                    dbc.Button(
+                                        [
+                                            html.I(className="bi bi-telegram me-2"),
+                                            "Scrape Telegram",
+                                        ],
+                                        id="scrape-telegram-btn",
+                                        color="primary",
+                                        size="sm",
+                                        className="px-3",
+                                    ),
+                                    html.Div(
+                                        id="scrape-telegram-status",
+                                        className="d-inline-block",
+                                    ),
                                 ],
                                 className="d-flex align-items-center justify-content-center justify-content-md-end gap-3",
                             ),
@@ -297,8 +344,9 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                 "Trigger a full background refresh of all chart data",
                                 target="refresh-all-btn",
                             ),
-                            html.Div(
-                                id="refresh-all-status", className="d-inline-block"
+                            dbc.Tooltip(
+                                "Scrape latest messages from Telegram channels",
+                                target="scrape-telegram-btn",
                             ),
                         ],
                         md=6,
@@ -443,10 +491,6 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                     [
                                         dbc.Col(
                                             [
-                                                html.H5(
-                                                    chart.code,
-                                                    className="mb-0 fw-bold",
-                                                ),
                                                 html.Small(
                                                     f"Updated: {last_updated}",
                                                     className="text-muted",
@@ -457,27 +501,31 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                                         dbc.Col(
                                             [
                                                 dbc.Button(
-                                                    "🔄",
+                                                    html.I(
+                                                        className="bi bi-arrow-repeat"
+                                                    ),
                                                     id={
                                                         "type": "refresh-btn",
                                                         "code": chart.code,
                                                     },
-                                                    color="light",
+                                                    color="secondary",
                                                     outline=True,
                                                     size="sm",
-                                                    className="me-2 border-0 opacity-75 hover-opacity-100",
+                                                    className="me-2 rounded-circle shadow-sm hover-lift",
                                                     title="Refresh chart data",
                                                 ),
                                                 dbc.Button(
-                                                    "📋",
+                                                    html.I(
+                                                        className="bi bi-clipboard-plus"
+                                                    ),
                                                     id={
                                                         "type": "copy-btn",
                                                         "code": chart.code,
                                                     },
-                                                    color="light",
+                                                    color="secondary",
                                                     outline=True,
                                                     size="sm",
-                                                    className="border-0 opacity-75 hover-opacity-100",
+                                                    className="rounded-circle shadow-sm hover-lift",
                                                     title="Copy chart to clipboard",
                                                 ),
                                             ],
@@ -816,6 +864,27 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
             )
         return dash.no_update
 
+    # Callback to trigger Telegram scraping
+    @app.callback(
+        Output("scrape-telegram-status", "children"),
+        Input("scrape-telegram-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def trigger_scrape_telegram(n_clicks):
+        import threading
+        from ix.misc.telegram import run_scrape_all
+
+        if n_clicks:
+            # Run in a background thread to avoid blocking Dash
+            threading.Thread(target=run_scrape_all, daemon=True).start()
+            return dbc.Alert(
+                "Telegram scraping started...",
+                color="primary",
+                duration=3000,
+                className="ms-2 mb-0 py-1 px-2 small",
+            )
+        return dash.no_update
+
     # Callback to handle PDF export via server-side generation
     @app.callback(
         Output("download-pdf-data", "data"),
@@ -878,9 +947,10 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> dash.Dash:
                     const allBtns = document.querySelectorAll('button');
                     allBtns.forEach(btn => {
                         if (btn.id && btn.id.includes(chartCode) && btn.id.includes('copy-btn')) {
-                            const original = btn.textContent;
-                            btn.textContent = '✅';
-                            setTimeout(() => { btn.textContent = original; }, 1500);
+                            const icon = btn.querySelector('i');
+                            const originalClass = icon.className;
+                            icon.className = 'bi bi-check-lg text-success';
+                            setTimeout(() => { icon.className = originalClass; }, 1500);
                         }
                     });
                 })

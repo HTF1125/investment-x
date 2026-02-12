@@ -137,6 +137,11 @@ def _create_rrg_chart(
         horizontal_spacing=0.04,
     )
 
+    apply_academic_style(fig)
+    is_dark = fig.layout.paper_bgcolor in ["#0d0f12", "black", "#000000"]
+    font_color = "#e2e8f0" if is_dark else "#000000"
+    grid_color = "rgba(255, 255, 255, 0.05)" if is_dark else "#f1f5f9"
+
     asset_names = [c.replace("_X", "") for c in df.columns if "_X" in c]
     active_data = df.tail(trail_len)
     all_vals = active_data.values.flatten()
@@ -151,100 +156,61 @@ def _create_rrg_chart(
     axis_limit = max_deviation * 1.2
     axis_range = [-axis_limit, axis_limit]
 
-    for asset in asset_names:
-        x_trail = df[f"{asset}_X"].tail(trail_len)
-        y_trail = df[f"{asset}_Y"].tail(trail_len)
+    from scipy.interpolate import interp1d
 
-        if x_trail.empty or y_trail.empty:
+    for asset in asset_names:
+        x_raw = df[f"{asset}_X"].tail(trail_len)
+        y_raw = df[f"{asset}_Y"].tail(trail_len)
+
+        if x_raw.empty or y_raw.empty or len(x_raw) < 3:
             continue
 
-        style = _get_quadrant_style(x_trail.iloc[-1], y_trail.iloc[-1])
+        # 1. Ultra-Smooth Interpolation (150 points for fluidity)
+        t_raw = np.linspace(0, 1, len(x_raw))
+        t_smooth = np.linspace(0, 1, 150)
 
-        # 1. Trail Segments with Gradient
-        # We draw segments with increasing opacity
-        for i in range(len(x_trail) - 1):
-            opacity = (i + 1) / len(x_trail) * 0.6
+        try:
+            f_x = interp1d(t_raw, x_raw.values, kind="cubic")
+            f_y = interp1d(t_raw, y_raw.values, kind="cubic")
+            x_smooth = f_x(t_smooth)
+            y_smooth = f_y(t_smooth)
+        except:
+            x_smooth, y_smooth = x_raw.values, y_raw.values
+
+        style = _get_quadrant_style(x_raw.iloc[-1], y_raw.iloc[-1])
+
+        # 2. Tapered Trail (20 segments for professional fade)
+        num_segments = 20
+        points_per_seg = len(x_smooth) // num_segments
+        for i in range(num_segments):
+            start = i * points_per_seg
+            end = (
+                (i + 1) * points_per_seg + 1 if i < num_segments - 1 else len(x_smooth)
+            )
+            # Quadratic opacity for a 'premium' visual fade
+            opacity = ((i + 1) / num_segments) ** 1.5 * 0.8
             fig.add_trace(
                 go.Scatter(
-                    x=x_trail.iloc[i : i + 2],
-                    y=y_trail.iloc[i : i + 2],
+                    x=x_smooth[start:end],
+                    y=y_smooth[start:end],
                     mode="lines",
                     line=dict(width=2.5, color=style["color"]),
                     opacity=opacity,
                     hoverinfo="skip",
                     showlegend=False,
-                    line_shape="spline",  # Smoother trails
-                    line_smoothing=1.3,
                 ),
                 row=1,
                 col=1,
             )
 
-        # 2. Add Directional Arrows
-        # Last segment arrow
-        dx_last = x_trail.iloc[-1] - x_trail.iloc[-2]
-        dy_last = y_trail.iloc[-1] - y_trail.iloc[-2]
-        norm_last = np.sqrt(dx_last**2 + dy_last**2)
-
-        if norm_last > 0:
-            # Main arrowhead at the tip
-            fig.add_annotation(
-                x=x_trail.iloc[-1],
-                y=y_trail.iloc[-1],
-                ax=x_trail.iloc[-1] - dx_last * 12 / norm_last,
-                ay=y_trail.iloc[-1] - dy_last * 12 / norm_last,
-                xref="x",
-                yref="y",
-                axref="x",
-                ayref="y",
-                showarrow=True,
-                arrowhead=2,
-                arrowsize=1.2,
-                arrowwidth=2.5,
-                arrowcolor=style["color"],
-                opacity=1.0,
-                row=1,
-                col=1,
-            )
-
-        # Intermediate arrow (at 1/2 of trail length)
-        mid_idx = len(x_trail) // 2
-        if mid_idx > 1:
-            dx_mid = x_trail.iloc[mid_idx] - x_trail.iloc[mid_idx - 1]
-            dy_mid = y_trail.iloc[mid_idx] - y_trail.iloc[mid_idx - 1]
-            norm_mid = np.sqrt(dx_mid**2 + dy_mid**2)
-            if norm_mid > 0:
-                fig.add_annotation(
-                    x=x_trail.iloc[mid_idx],
-                    y=y_trail.iloc[mid_idx],
-                    ax=x_trail.iloc[mid_idx] - dx_mid * 10 / norm_mid,
-                    ay=y_trail.iloc[mid_idx] - dy_mid * 10 / norm_mid,
-                    xref="x",
-                    yref="y",
-                    axref="x",
-                    ayref="y",
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowsize=1.0,
-                    arrowwidth=1.5,
-                    arrowcolor=style["color"],
-                    opacity=0.3,
-                    row=1,
-                    col=1,
-                )
-
-        # 3. Label logic (Asset name)
-        if "(" in asset:
-            ticker_label = asset.split("(")[0].strip()
-        else:
-            ticker_label = asset
-
+        # 5. Asset Label (Bold & Clear)
+        ticker_label = asset.split("(")[0].strip() if "(" in asset else asset
         fig.add_trace(
             go.Scatter(
-                x=[x_trail.iloc[-1]],
-                y=[y_trail.iloc[-1]],
+                x=[x_smooth[-1]],
+                y=[y_smooth[-1]],
                 mode="text",
-                text=[ticker_label],
+                text=[f"<b>{ticker_label}</b>"],
                 textposition="top center",
                 textfont=dict(
                     size=10, color=style["color"], family="Inter, sans-serif"
@@ -257,34 +223,42 @@ def _create_rrg_chart(
         )
 
     # Updated Quadrant positions (towards corners for clarity)
-    offset = axis_limit * 0.8
+    # Safe Quadrant positions - moved deeper to ensure they never clip in containers
     quad_config = [
-        (offset, offset, "LEADING", "#22c55e"),
-        (offset, -offset, "WEAKENING", "#f59e0b"),
-        (-offset, -offset, "LAGGING", "#ef4444"),
-        (-offset, offset, "IMPROVING", "#3b82f6"),
+        (0.88, 0.88, "LEADING", "#22c55e", "right", "top"),
+        (0.88, 0.12, "WEAKENING", "#f59e0b", "right", "bottom"),
+        (0.12, 0.12, "LAGGING", "#ef4444", "left", "bottom"),
+        (0.12, 0.88, "IMPROVING", "#3b82f6", "left", "top"),
     ]
 
-    for x_pos, y_pos, label, color in quad_config:
+    for x_dom, y_dom, label, color, x_anc, y_anc in quad_config:
         fig.add_annotation(
-            x=x_pos,
-            y=y_pos,
+            x=x_dom,
+            y=y_dom,
+            xref="x domain",
+            yref="y domain",
             text=f"<b>{label}</b>",
             showarrow=False,
-            font=dict(color=color, size=24, family="Outfit, sans-serif"),
-            opacity=0.08,  # Maintain subtle background feel
+            font=dict(color=color, size=18, family="Outfit, sans-serif"),
+            opacity=0.18,  # Slightly higher opacity for better visibility
+            xanchor=x_anc,
+            yanchor=y_anc,
             row=1,
             col=1,
         )
 
-    # Simplified Quadrant Dividers
+    # Robust margins for Dash app containers
+    fig.update_layout(margin=dict(l=80, r=50, t=70, b=70))
+
+    # Updated Quadrant Dividers
+    line_color = "#475569" if is_dark else "#cbd5e1"
     fig.add_shape(
         type="line",
         x0=axis_range[0],
         y0=0,
         x1=axis_range[1],
         y1=0,
-        line=dict(color="#cbd5e1", width=1, dash="dot"),
+        line=dict(color=line_color, width=1, dash="dot"),
         row=1,
         col=1,
     )
@@ -294,21 +268,23 @@ def _create_rrg_chart(
         y0=axis_range[0],
         x1=0,
         y1=axis_range[1],
-        line=dict(color="#cbd5e1", width=1, dash="dot"),
+        line=dict(color=line_color, width=1, dash="dot"),
         row=1,
         col=1,
     )
 
     # Summary Metrics Table (Sleeker design)
     if not summary_stats.empty:
+        header_bg = "#1e293b" if is_dark else "#1e40af"
+        cell_bg = "rgba(13, 15, 18, 0.7)" if is_dark else "#f8fafc"
         table_df = summary_stats.head(12)
         fig.add_trace(
             go.Table(
                 header=dict(
                     values=["<b>Asset</b>", "<b>Quad</b>", "<b>Vel</b>", "<b>Acc</b>"],
-                    fill_color="#1e293b",
+                    fill_color=header_bg,
                     align="left",
-                    font=dict(size=12, color="#f8fafc", family="Inter"),
+                    font=dict(size=12, color="white", family="Outfit"),
                     line_color="rgba(0,0,0,0)",
                 ),
                 cells=dict(
@@ -319,11 +295,11 @@ def _create_rrg_chart(
                         table_df["Acceleration"].round(2),
                     ],
                     fill_color=[
-                        ["rgba(255,255,255,0.05)"] * len(table_df),
+                        [cell_bg] * len(table_df),
                         table_df["BG"],
                     ],
                     align="left",
-                    font=dict(size=11, color="#f1f5f9"),
+                    font=dict(size=11, color=font_color, family="Inter"),
                     line_color="rgba(255,255,255,0.05)",
                     height=28,
                 ),
@@ -332,12 +308,13 @@ def _create_rrg_chart(
             col=2,
         )
 
-    # Apply Academic Style
-    apply_academic_style(fig)
     fig.update_layout(
-        title=dict(text=f"<b>{title}</b>"),
+        title=dict(
+            text=f"<b>{title}</b>",
+            font=dict(size=24, color=font_color, family="Outfit"),
+        ),
         showlegend=False,
-        hovermode="closest",  # Override x unified for scatter plots
+        hovermode="closest",
     )
 
     # Add Metadata Subtitle
@@ -360,14 +337,28 @@ def _create_rrg_chart(
     grid_params = dict(
         showgrid=True,
         gridwidth=1,
-        gridcolor="#f1f5f9",
+        gridcolor=grid_color,
         zeroline=True,
         zerolinewidth=2,
         zerolinecolor="#94a3b8",
         range=axis_range,
     )
-    fig.update_xaxes(title="Relative Strength (RS-Ratio)", **grid_params, row=1, col=1)
-    fig.update_yaxes(title="Momentum (RS-Momentum)", **grid_params, row=1, col=1)
+    fig.update_xaxes(
+        title="Relative Strength (RS-Ratio)",
+        **grid_params,
+        title_font=dict(color=font_color, family="Outfit"),
+        tickfont=dict(color=font_color),
+        row=1,
+        col=1,
+    )
+    fig.update_yaxes(
+        title="Momentum (RS-Momentum)",
+        **grid_params,
+        title_font=dict(color=font_color, family="Outfit"),
+        tickfont=dict(color=font_color),
+        row=1,
+        col=1,
+    )
 
     return fig
 
@@ -557,6 +548,101 @@ def RelativeRotation_KrSectors_Tactical() -> go.Figure:
         freq="W-Fri",
         window=14,
         trail_len=12,
+        tickers=tickers,
+        benchmark_ticker="KOSPI INDEX:PX_LAST",
+    )
+
+
+def RelativeRotation_UsSectors_Strategic() -> go.Figure:
+    """Strategic RRG for US Sectors (Long-term 52-week window)."""
+    tickers = {
+        "SPY": "SPY US EQUITY:PX_LAST",
+        "Tech (XLK)": "XLK US EQUITY:PX_LAST",
+        "Energy (XLE)": "XLE US EQUITY:PX_LAST",
+        "Health (XLV)": "XLV US EQUITY:PX_LAST",
+        "Financials (XLF)": "XLF US EQUITY:PX_LAST",
+        "Cons Disc (XLY)": "XLY US EQUITY:PX_LAST",
+        "Cons Staples (XLP)": "XLP US EQUITY:PX_LAST",
+        "Industrials (XLI)": "XLI US EQUITY:PX_LAST",
+        "Utilities (XLU)": "XLU US EQUITY:PX_LAST",
+        "Materials (XLB)": "XLB US EQUITY:PX_LAST",
+        "Real Estate (XLRE)": "XLRE US EQUITY:PX_LAST",
+        "Comm Svcs (XLC)": "XLC US EQUITY:PX_LAST",
+    }
+    return _create_rrg_chart(
+        title="Relative Rotation - US Sectors (Strategic)",
+        freq="W-Fri",
+        window=52,
+        trail_len=26,
+        tickers=tickers,
+        benchmark_ticker="SPY US EQUITY:PX_LAST",
+    )
+
+
+def RelativeRotation_GlobalEquities_Strategic() -> go.Figure:
+    """Strategic RRG for Global Equities (Long-term 52-week window)."""
+    tickers = {
+        "ACWI": "ACWI US EQUITY:PX_LAST",
+        "US": "SPY US EQUITY:PX_LAST",
+        "DM ex US": "IDEV US EQUITY:PX_LAST",
+        "U.K.": "EWU US EQUITY:PX_LAST",
+        "EAFE": "EFA US EQUITY:PX_LAST",
+        "Europe": "FEZ US EQUITY:PX_LAST",
+        "Germany": "EWG US EQUITY:PX_LAST",
+        "Japan": "EWJ US EQUITY:PX_LAST",
+        "Korea": "EWY US EQUITY:PX_LAST",
+        "Australia": "EWA US EQUITY:PX_LAST",
+        "Emerging": "VWO US EQUITY:PX_LAST",
+        "China": "MCHI US EQUITY:PX_LAST",
+        "India": "INDA US EQUITY:PX_LAST",
+        "Brazil": "EWZ US EQUITY:PX_LAST",
+        "Taiwan": "EWT US EQUITY:PX_LAST",
+        "Vietnam": "VNM US EQUITY:PX_LAST",
+    }
+    return _create_rrg_chart(
+        title="Relative Rotation - Global Equities (Strategic)",
+        freq="W-Fri",
+        window=52,
+        trail_len=26,
+        tickers=tickers,
+        benchmark_ticker="ACWI US EQUITY:PX_LAST",
+    )
+
+
+def RelativeRotation_KrSectors_Strategic() -> go.Figure:
+    """Strategic RRG for KR Sectors (Long-term 52-week window)."""
+    tickers = {
+        "KOSPI": "KOSPI INDEX:PX_LAST",
+        "IT Service": "A046:PX_LAST",
+        "Construction": "A018:PX_LAST",
+        "Finance": "A021:PX_LAST",
+        "Insurance": "A025:PX_LAST",
+        "Securities": "A024:PX_LAST",
+        "Real Estate": "A045:PX_LAST",
+        "Ent & Culture": "A047:PX_LAST",
+        "Transp & Storage": "A019:PX_LAST",
+        "Distribution": "A016:PX_LAST",
+        "Gen Services": "A026:PX_LAST",
+        "Utils (Elec/Gas)": "A017:PX_LAST",
+        "Manufacturing": "A027:PX_LAST",
+        "Metals": "A011:PX_LAST",
+        "Machinery": "A012:PX_LAST",
+        "Non-Metallic": "A010:PX_LAST",
+        "Textile": "A006:PX_LAST",
+        "Transp Equip": "A015:PX_LAST",
+        "Food & Bev": "A005:PX_LAST",
+        "Med & Precision": "A014:PX_LAST",
+        "Elec & Electronics": "A013:PX_LAST",
+        "Pharma": "A009:PX_LAST",
+        "Paper & Wood": "A007:PX_LAST",
+        "Chemicals": "A008:PX_LAST",
+        "Telecom": "A020:PX_LAST",
+    }
+    return _create_rrg_chart(
+        title="Relative Rotation - KR Sectors (Strategic)",
+        freq="W-Fri",
+        window=52,
+        trail_len=26,
         tickers=tickers,
         benchmark_ticker="KOSPI INDEX:PX_LAST",
     )

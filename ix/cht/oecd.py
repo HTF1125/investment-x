@@ -60,7 +60,8 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
 
         # 4. Fetch ACWI YoY for comparison
         acwi_yoy = (
-            Series("892400:FG_TOTAL_RET_IDX").resample("W-Fri")
+            Series("892400:FG_TOTAL_RET_IDX")
+            .resample("W-Fri")
             .ffill()
             .pct_change(52)
             .mul(100)
@@ -77,7 +78,6 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
                 }
             )
             .dropna(how="all")
-            .iloc[-12 * 52 :]
         )
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
@@ -92,7 +92,7 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
             y=df[col1],
             name=get_value_label(df[col1], "Diffusion (3M Lead)", ".2f"),
             mode="lines",
-            line=dict(width=3, color="black"),
+            line=dict(width=3, color="#f8fafc"),
             hovertemplate="Diffusion (3M Lead): %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -107,7 +107,7 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
             y=df[col2],
             name=get_value_label(df[col2], "Cycle", ".2f"),
             mode="lines",
-            line=dict(width=3, color="red"),
+            line=dict(width=3, color="#ef4444"),
             hovertemplate="Cycle: %{y:.2f}<extra></extra>",
             connectgaps=True,
         ),
@@ -122,7 +122,7 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
             y=df[col3],
             name=get_value_label(df[col3], "ACWI YoY", ".2f"),
             mode="lines",
-            line=dict(width=2, color="orange"),
+            line=dict(width=2, color="#f59e0b"),
             hovertemplate="ACWI YoY: %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -141,13 +141,16 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 12, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
         # Add 50 line for diffusion
         fig.add_hline(
             y=50,
             line_dash="dash",
-            line_color="black",
-            opacity=0.3,
+            line_color="#94a3b8",
+            opacity=0.5,
             annotation_text="50",
             annotation_position="bottom right",
         )
@@ -171,23 +174,24 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
 
     try:
         # 1. Calculate Diffusion Index
-        data = MultiSeries(
-            **{
-                k.replace(".LOLITOAA.STSA:PX_LAST", ""): Series(k)
-                for k in OECD_CLI_EM_CODES
-            }
-        ).resample("ME").ffill()
+        data = (
+            MultiSeries(
+                **{
+                    k.replace(".LOLITOAA.STSA:PX_LAST", ""): Series(k)
+                    for k in OECD_CLI_EM_CODES
+                }
+            )
+            .resample("ME")
+            .ffill()
+        )
 
         ff = data.diff().dropna()
         ff = (ff > 0) * 1
         # Multiply by 100 to make it comparable to YoY % and standard diffusion index
         diffusion = ff.sum(axis=1).div(ff.count(axis=1)) * 100
-        
+
         diffusion = (
-            MonthEndOffset(diffusion.to_frame(), 3)
-            .iloc[:, 0]
-            .resample("W-Fri")
-            .ffill()
+            MonthEndOffset(diffusion.to_frame(), 3).iloc[:, 0].resample("W-Fri").ffill()
         )
         diffusion.name = "OECD CLI Diffusion Index Emerging (3M Lead)"
 
@@ -214,7 +218,7 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
                 "Cycle": diffusion_cycle,
                 "MSCI EM YoY": msci,
             }
-        ).iloc[-52 * 12 :]
+        )
 
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
@@ -229,7 +233,7 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
             y=df[col1],
             name=get_value_label(df[col1], "Diffusion (3M Lead)", ".2f"),
             mode="lines",
-            line=dict(width=3, color="black"),
+            line=dict(width=3, color="#f8fafc"),
             hovertemplate="Diffusion (3M Lead): %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -244,7 +248,7 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
             y=df[col_cycle],
             name=get_value_label(df[col_cycle], "Cycle", ".2f"),
             mode="lines",
-            line=dict(width=3, color="red"), # Cycle usually bold
+            line=dict(width=3, color="#ef4444"),  # Cycle usually bold
             hovertemplate="Cycle: %{y:.2f}<extra></extra>",
             connectgaps=True,
         ),
@@ -259,7 +263,7 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
             y=df[col2],
             name=get_value_label(df[col2], "MSCI Emerging Market YoY (%)", ".2f"),
             mode="lines",
-            line=dict(width=2, color="orange"), # Different color usually helps
+            line=dict(width=2, color="#f59e0b"),  # Different color usually helps
             hovertemplate="MSCI EM YoY: %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -278,12 +282,16 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 12, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
+        # Add 50 line for diffusion
         fig.add_hline(
             y=50,
             line_dash="dash",
-            line_color="black",
-            opacity=0.3,
+            line_color="#94a3b8",
+            opacity=0.5,
             annotation_text="50",
             annotation_position="bottom right",
         )
@@ -305,23 +313,24 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
 
     try:
         # 1. Calculate Diffusion Index
-        data = MultiSeries(
-            **{
-                k.replace(".LOLITOAA.STSA:PX_LAST", ""): Series(k)
-                for k in OECD_CLI_DM_CODES
-            }
-        ).resample("ME").ffill()
+        data = (
+            MultiSeries(
+                **{
+                    k.replace(".LOLITOAA.STSA:PX_LAST", ""): Series(k)
+                    for k in OECD_CLI_DM_CODES
+                }
+            )
+            .resample("ME")
+            .ffill()
+        )
 
         ff = data.diff().dropna()
         ff = (ff > 0) * 1
         # Multiply by 100 to make it comparable to YoY % and standard diffusion index
         diffusion = ff.sum(axis=1).div(ff.count(axis=1)) * 100
-        
+
         diffusion = (
-            MonthEndOffset(diffusion.to_frame(), 3)
-            .iloc[:, 0]
-            .resample("W-Fri")
-            .ffill()
+            MonthEndOffset(diffusion.to_frame(), 3).iloc[:, 0].resample("W-Fri").ffill()
         )
         diffusion.name = "OECD CLI Diffusion Index Developed (3M Lead)"
 
@@ -348,7 +357,7 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
                 "Cycle": diffusion_cycle,
                 "MSCI World YoY": msci,
             }
-        ).iloc[-52 * 12 :]
+        )
 
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
@@ -363,7 +372,7 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
             y=df[col1],
             name=get_value_label(df[col1], "Diffusion (3M Lead)", ".2f"),
             mode="lines",
-            line=dict(width=3, color="black"),
+            line=dict(width=3, color="#f8fafc"),
             hovertemplate="Diffusion (3M Lead): %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -378,7 +387,7 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
             y=df[col_cycle],
             name=get_value_label(df[col_cycle], "Cycle", ".2f"),
             mode="lines",
-            line=dict(width=3, color="red"), # Cycle usually bold
+            line=dict(width=3, color="#ef4444"),  # Cycle usually bold
             hovertemplate="Cycle: %{y:.2f}<extra></extra>",
             connectgaps=True,
         ),
@@ -393,7 +402,7 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
             y=df[col2],
             name=get_value_label(df[col2], "MSCI World YoY (%)", ".2f"),
             mode="lines",
-            line=dict(width=2, color="orange"), # Different color usually helps
+            line=dict(width=2, color="#f59e0b"),  # Different color usually helps
             hovertemplate="MSCI World YoY: %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -412,12 +421,16 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 12, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
+        # Add 50 line for diffusion
         fig.add_hline(
             y=50,
             line_dash="dash",
-            line_color="black",
-            opacity=0.3,
+            line_color="#94a3b8",
+            opacity=0.5,
             annotation_text="50",
             annotation_position="bottom right",
         )

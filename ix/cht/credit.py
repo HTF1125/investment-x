@@ -112,7 +112,7 @@ def US_CreditImpulseToGDP() -> go.Figure:
         gdp = Series("US.GDPN:PX_LAST", freq="W-Fri", scale=10**9).ffill()
         gdp = gdp.reindex(raw_impulse.index).ffill()
 
-        df = raw_impulse.div(gdp, axis=0).mul(100).iloc[-52 * 5 :]
+        df = raw_impulse.div(gdp, axis=0).mul(100)
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
 
@@ -152,9 +152,10 @@ def US_CreditImpulseToGDP() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
-        add_zero_line(fig)
-
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 10, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
     return fig
 
 
@@ -171,7 +172,7 @@ def BankCreditOutlook() -> go.Figure:
                 "Bank Credit YoY (%)": credit_yoy,
                 "Bank Lending Standards (12M Lead)": standards_lead,
             }
-        ).iloc[-52 * 10 :]
+        )
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
 
@@ -219,7 +220,8 @@ def BankCreditOutlook() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
-        add_zero_line(fig)
-
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 10, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
     return fig

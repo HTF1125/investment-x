@@ -141,7 +141,7 @@ def IsmSwedenPmi() -> go.Figure:
                 "ISM(US)": Series("ISMPMI@M:PX_LAST"),
                 "Sweden": Series("SE.PMIM:PX_LAST"),
             }
-        ).iloc[-240:]
+        )
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
 
@@ -167,8 +167,10 @@ def IsmSwedenPmi() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
-        # Threshold line at 50
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 10, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
         fig.add_hline(
             y=50,
             line_dash="dash",
@@ -231,7 +233,7 @@ def MarketCompositeViews() -> go.Figure:
                 "Market Implied Growth (13W Lead)": market_implied_growth,
                 "S&P500 YoY (%)": spx_yoy,
             }
-        ).iloc[-52 * 10 - 13 :]
+        )
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
 
@@ -273,7 +275,10 @@ def MarketCompositeViews() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 20, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
         add_zero_line(fig)
 
     return fig
@@ -300,7 +305,7 @@ def CompositeLeadingIndicators() -> go.Figure:
                 .pct_change(12)
                 .mul(100),
             }
-        ).iloc[-12 * 20 :]
+        )
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
 
@@ -334,7 +339,10 @@ def CompositeLeadingIndicators() -> go.Figure:
     )
 
     if not df.empty:
-        fig.update_xaxes(range=[df.index[0], df.index[-1]])
+        from datetime import datetime
+        latest_date = df.index.max()
+        start_date = datetime(latest_date.year - 20, 1, 1)
+        fig.update_xaxes(range=[start_date, latest_date])
         add_zero_line(fig)
 
     return fig

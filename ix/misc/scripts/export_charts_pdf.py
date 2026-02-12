@@ -67,9 +67,9 @@ CATEGORY_ORDER = [
 CHART_CATEGORY_MAP = {
     # Performance
     "Performance_GlobalEquity_1W": "Performance",
-    "Performance_GlobalEquity_1M": "Performance",
-    "Performance_USSectors_1W": "Performance",
-    "Performance_USSectors_1M": "Performance",
+    "Performance_GlobalEquity": "Performance",
+    "Performance_USSectors": "Performance",
+    "Performance_KrSectors": "Performance",
     # RRG
     "RelativeRotation_UsSectors_Dynamic": "RRG",
     "RelativeRotation_UsSectors_Tactical": "RRG",

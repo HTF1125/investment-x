@@ -69,6 +69,16 @@ async def scrape_all_channels():
         await asyncio.sleep(2)
 
 
+def run_scrape_all():
+    """Entry point to run all scraping synchronously."""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(scrape_all_channels())
+    finally:
+        loop.close()
+
+
 def create_telegram_table():
     """Create the TelegramMessage table if it doesn't exist."""
     if not conn.is_connected():
