@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries, Offset
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def US_CreditImpulse() -> go.Figure:
@@ -59,7 +59,7 @@ def US_CreditImpulse() -> go.Figure:
             y=total,
             name=get_value_label(total, "Total Impulse", ".2f"),
             mode="lines",
-            line=dict(color="black", width=2, dash="dot"),
+            line=dict(color=get_color("Neutral"), width=2, dash="dot"),
             hovertemplate="Total Impulse: %{y:.2f}B<extra></extra>",
             connectgaps=True,
         )
@@ -138,7 +138,7 @@ def US_CreditImpulseToGDP() -> go.Figure:
             y=total,
             name=get_value_label(total, "Total Impulse", ".2f"),
             mode="lines",
-            line=dict(color="black", width=2, dash="dot"),
+            line=dict(color=get_color("Neutral"), width=2, dash="dot"),
             hovertemplate="Total Impulse: %{y:.2f}%<extra></extra>",
             connectgaps=True,
         )
@@ -153,6 +153,7 @@ def US_CreditImpulseToGDP() -> go.Figure:
 
     if not df.empty:
         from datetime import datetime
+
         latest_date = df.index.max()
         start_date = datetime(latest_date.year - 10, 1, 1)
         fig.update_xaxes(range=[start_date, latest_date])
@@ -162,7 +163,13 @@ def US_CreditImpulseToGDP() -> go.Figure:
 def BankCreditOutlook() -> go.Figure:
     """Bank Credit Outlook"""
     try:
-        credit_yoy = Series("FRBBCABLBA@US:PX_LAST").resample("W-Fri").ffill().pct_change(52).mul(100)
+        credit_yoy = (
+            Series("FRBBCABLBA@US:PX_LAST")
+            .resample("W-Fri")
+            .ffill()
+            .pct_change(52)
+            .mul(100)
+        )
         standards = Series("USSU0486263:PX_LAST").resample("W-Fri").ffill()
         # Shift 12 months forward
         standards_lead = Offset(standards, days=52 * 7)
@@ -221,6 +228,7 @@ def BankCreditOutlook() -> go.Figure:
 
     if not df.empty:
         from datetime import datetime
+
         latest_date = df.index.max()
         start_date = datetime(latest_date.year - 10, 1, 1)
         fig.update_xaxes(range=[start_date, latest_date])

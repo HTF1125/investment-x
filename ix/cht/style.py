@@ -1,5 +1,51 @@
 import plotly.graph_objects as go
 
+# Investment-X / Antigravity Premium Palette
+ANTIGRAVITY_PALETTE = [
+    "#38bdf8",  # Sky (Primary)
+    "#a855f7",  # Purple (Secondary)
+    "#f472b6",  # Pink
+    "#10b981",  # Emerald
+    "#fbbf24",  # Amber
+    "#6366f1",  # Indigo
+    "#f43f5e",  # Rose
+    "#2dd4bf",  # Teal
+    "#f97316",  # Orange
+]
+
+
+def get_color(name: str, index: int = 0) -> str:
+    """Returns a consistent color for common names, or from palette by index."""
+    fixed = {
+        "America": ANTIGRAVITY_PALETTE[0],
+        "US": ANTIGRAVITY_PALETTE[0],
+        "Primary": ANTIGRAVITY_PALETTE[0],
+        "S&P 500": ANTIGRAVITY_PALETTE[0],
+        "SPY": ANTIGRAVITY_PALETTE[0],
+        "Europe": ANTIGRAVITY_PALETTE[1],
+        "EU": ANTIGRAVITY_PALETTE[1],
+        "Japan": ANTIGRAVITY_PALETTE[2],
+        "JP": ANTIGRAVITY_PALETTE[2],
+        "Apac": ANTIGRAVITY_PALETTE[3],
+        "Emerald": ANTIGRAVITY_PALETTE[3],
+        "China": ANTIGRAVITY_PALETTE[3],
+        "CN": ANTIGRAVITY_PALETTE[3],
+        "KR": ANTIGRAVITY_PALETTE[4],  # Korea
+        "Korea": ANTIGRAVITY_PALETTE[4],
+        "UK": ANTIGRAVITY_PALETTE[5],
+        "GB": ANTIGRAVITY_PALETTE[5],
+        "World": "#f8fafc",
+        "Aggregate": "#f8fafc",
+        "Total": "#f8fafc",
+        "Neutral": "#94a3b8",
+        "Secondary": ANTIGRAVITY_PALETTE[6],  # Rose
+    }
+    # Clean name for matching
+    cleaned = name.split("(")[0].strip()
+    if cleaned in fixed:
+        return fixed[cleaned]
+    return ANTIGRAVITY_PALETTE[index % len(ANTIGRAVITY_PALETTE)]
+
 
 def finalize_axis_colors(fig: go.Figure, color: str = None) -> go.Figure:
     """
@@ -9,14 +55,12 @@ def finalize_axis_colors(fig: go.Figure, color: str = None) -> go.Figure:
     if color is None:
         # Detect based on background
         bg = fig.layout.paper_bgcolor
-        if (
+        is_dark = (
             bg
             and isinstance(bg, str)
-            and (bg.startswith("rgb(0,0,0)") or bg == "black" or bg == "#000000")
-        ):
-            color = "#e2e8f0"
-        else:
-            color = "#000000"
+            and (bg.startswith("rgb(0,0,0)") or bg in ["black", "#000000", "#0d0f12"])
+        )
+        color = "#f8fafc" if is_dark else "#000000"
 
     for attr in dir(fig.layout):
         if attr.startswith("yaxis") or attr.startswith("xaxis"):
@@ -162,6 +206,28 @@ def apply_academic_style(fig: go.Figure, force_dark: bool = True) -> go.Figure:
                         pass
 
                 axis.update(**update_dict)
+
+    # 7. Apply Standard Palette to traces for consistency
+    for i, trace in enumerate(fig.data):
+        color = ANTIGRAVITY_PALETTE[i % len(ANTIGRAVITY_PALETTE)]
+
+        # Determine if we should override the color
+        # We generally do, unless it's specifically a multi-color trace like a heatmap
+        if trace.type in ["scatter", "bar"]:
+            if hasattr(trace, "marker") and trace.marker.color is None:
+                trace.marker.color = color
+            if hasattr(trace, "line") and trace.line.color is None:
+                trace.line.color = color
+
+            # For Bar charts, we often want to force the color if it's the standard categorical view
+            if trace.type == "bar" and (
+                not hasattr(trace, "marker") or trace.marker.color is None
+            ):
+                trace.update(marker=dict(color=color))
+            elif trace.type == "scatter" and (
+                not hasattr(trace, "line") or trace.line.color is None
+            ):
+                trace.update(line=dict(color=color))
 
     return fig
 

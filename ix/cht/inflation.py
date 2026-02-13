@@ -3,7 +3,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from ix.db.query import Series, MultiSeries, MonthEndOffset
-from .style import apply_academic_style, get_value_label
+from .style import apply_academic_style, get_value_label, get_color
 
 
 def CpiIsmPriceIndicators() -> go.Figure:
@@ -37,7 +37,7 @@ def CpiIsmPriceIndicators() -> go.Figure:
             y=df[col1],
             name=get_value_label(df[col1], col1, ".2f"),
             mode="lines",
-            line=dict(color="black", width=3),
+            line=dict(color=get_color("Primary", 0), width=3),
             hovertemplate=f"{col1}: %{{y:.2f}}%<extra></extra>",
             connectgaps=True,
         ),

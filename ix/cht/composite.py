@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries, StandardScalar, Offset, Cycle
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def CompositeLeadingIndicator() -> go.Figure:
@@ -100,7 +100,7 @@ def CompositeLeadingIndicator() -> go.Figure:
             y=df["Cycle"],
             name=get_value_label(df["Cycle"], "Cycle"),
             mode="lines",
-            line=dict(width=2.0),
+            line=dict(color=get_color("Purple", 1), width=2.0),
             hovertemplate="Cycle: %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
@@ -168,13 +168,14 @@ def IsmSwedenPmi() -> go.Figure:
 
     if not df.empty:
         from datetime import datetime
+
         latest_date = df.index.max()
         start_date = datetime(latest_date.year - 10, 1, 1)
         fig.update_xaxes(range=[start_date, latest_date])
         fig.add_hline(
             y=50,
             line_dash="dash",
-            line_color="black",
+            line_color=get_color("Neutral"),
             annotation_text="50",
             annotation_position="bottom right",
             opacity=0.5,
@@ -276,6 +277,7 @@ def MarketCompositeViews() -> go.Figure:
 
     if not df.empty:
         from datetime import datetime
+
         latest_date = df.index.max()
         start_date = datetime(latest_date.year - 20, 1, 1)
         fig.update_xaxes(range=[start_date, latest_date])
@@ -340,6 +342,7 @@ def CompositeLeadingIndicators() -> go.Figure:
 
     if not df.empty:
         from datetime import datetime
+
         latest_date = df.index.max()
         start_date = datetime(latest_date.year - 20, 1, 1)
         fig.update_xaxes(range=[start_date, latest_date])

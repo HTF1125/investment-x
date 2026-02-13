@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def EarningsRevisionBreadth() -> go.Figure:
@@ -205,7 +205,7 @@ def SPX_EqualWeight_SectorEarningsContribution() -> go.Figure:
             y=total,
             name=get_value_label(total, "Total EW Growth", ".2f"),
             mode="lines",
-            line=dict(color="black", width=2, dash="dot"),
+            line=dict(color=get_color("Neutral"), width=2, dash="dot"),
             connectgaps=True,
         )
     )
@@ -273,7 +273,7 @@ def SPX_EqualWeight_SectorEarningsImpulse() -> go.Figure:
             y=total,
             name=get_value_label(total, "Total Impulse", ".2f"),
             mode="lines",
-            line=dict(color="black", width=2, dash="dot"),
+            line=dict(color=get_color("Neutral"), width=2, dash="dot"),
             connectgaps=True,
             hovertemplate=f"Total Impulse: %{{y:.2f}}%<extra></extra>",
         )

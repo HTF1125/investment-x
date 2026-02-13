@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def USFederalDebt() -> go.Figure:
@@ -53,13 +53,14 @@ def USFederalDebt() -> go.Figure:
             title="YoY (%)",
             showgrid=False,
             zeroline=True,
-            zerolinecolor="black",
+            zerolinecolor=get_color("Neutral"),
             zerolinewidth=1,
         ),
     )
 
     if not df.empty:
         from datetime import datetime
+
         latest_date = df.index.max()
         start_date = datetime(latest_date.year - 10, 1, 1)
         fig.update_xaxes(range=[start_date, latest_date])

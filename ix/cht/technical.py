@@ -144,16 +144,22 @@ def ElliottWave(ticker: str = "IAU US EQUITY:PX_LAST") -> go.Figure:
     )
 
     configs = [
-        {"color": "#ef4444", "name": "Minor", "size": 11, "width": 1.5, "dash": "dot"},
         {
-            "color": "#3b82f6",
+            "color": ANTIGRAVITY_PALETTE[0],
+            "name": "Minor",
+            "size": 11,
+            "width": 1.5,
+            "dash": "dot",
+        },
+        {
+            "color": ANTIGRAVITY_PALETTE[1],
             "name": "Intermediate",
             "size": 13,
             "width": 2,
             "dash": "solid",
         },
         {
-            "color": "#ffffff",
+            "color": ANTIGRAVITY_PALETTE[4],
             "name": "Major",
             "size": 15,
             "width": 2.5,

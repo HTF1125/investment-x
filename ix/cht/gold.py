@@ -3,7 +3,7 @@ from plotly.subplots import make_subplots
 import pandas as pd
 from datetime import timedelta
 from ix.db.query import Series, MultiSeries, Offset, Rebase
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def GoldBullMarkets() -> go.Figure:
@@ -91,6 +91,6 @@ def GoldBullMarkets() -> go.Figure:
     fig.update_xaxes(range=[start_date, view_end_date], tickformat="%Y.%m")
 
     # Rebase baseline (1.00)
-    fig.add_hline(y=1, line_color="black", opacity=0.3)
+    fig.add_hline(y=1, line_color=get_color("Neutral"), opacity=0.3)
 
     return fig

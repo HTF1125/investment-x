@@ -71,7 +71,7 @@ def apply_premium_style(fig: go.Figure) -> go.Figure:
     is_dark = True
 
     # Theme-adaptive colors
-    text_color = "#e2e8f0" if is_dark else "#0f172a"
+    text_color = "#f8fafc" if is_dark else "#0f172a"
     accent_color = "rgba(255, 255, 255, 0.15)" if is_dark else "rgba(15, 23, 42, 0.1)"
     grid_color = "rgba(255, 255, 255, 0.06)" if is_dark else "rgba(0, 0, 0, 0.05)"
 
@@ -104,6 +104,7 @@ def apply_premium_style(fig: go.Figure) -> go.Figure:
         gridcolor=grid_color,
         zerolinecolor=accent_color,
         tickfont=dict(color=text_color, size=10),
+        tickcolor=text_color,
         title_font=dict(color=text_color, size=12),
         linecolor=accent_color,
         showgrid=True,

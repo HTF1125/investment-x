@@ -3,7 +3,13 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import (
+    apply_academic_style,
+    add_zero_line,
+    get_value_label,
+    get_color,
+    ANTIGRAVITY_PALETTE,
+)
 
 
 def _create_error_fig(msg: str) -> go.Figure:
@@ -146,7 +152,11 @@ def _create_multi_performance_bar_chart(
 
     # Distinct colors for periods
     # 20D (Cyan), 5D (Orange), 1D (Emerald)
-    colors = {"20D": "#38bdf8", "5D": "#fb923c", "1D": "#34d399"}
+    colors = {
+        "20D": get_color("Sky", 0),
+        "5D": get_color("Amber", 4),
+        "1D": get_color("Emerald", 3),
+    }
 
     for period_label in periods.keys():
         perf_values = df_perf[period_label]
@@ -276,11 +286,11 @@ def _create_performance_heatmap(
 
     fig.update_traces(
         colorscale=[
-            [0, "#f43f5e"],  # Rose 500 (Red)
-            [0.45, "#fb7185"],  # Rose 400 (Light Red)
+            [0, "#f43f5e"],  # Rose (Negative)
+            [0.45, "#fda4af"],  # Light Rose
             [0.5, neutral_bg],  # Adaptive Neutral
-            [0.55, "#4ade80"],  # Green 400 (Light Green)
-            [1, "#22c55e"],  # Green 500 (Green)
+            [0.55, "#6ee7b7"],  # Light Emerald
+            [1, "#10b981"],  # Emerald (Positive)
         ],
         textfont={"size": 14, "family": "Inter, sans-serif", "color": text_color},
         colorbar=dict(

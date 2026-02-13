@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries, MonthEndOffset, Cycle
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 OECD_CLI_CODES = [
@@ -78,6 +78,7 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
                 }
             )
             .dropna(how="all")
+            .iloc[-12 * 52 :]
         )
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
@@ -92,7 +93,7 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
             y=df[col1],
             name=get_value_label(df[col1], "Diffusion (3M Lead)", ".2f"),
             mode="lines",
-            line=dict(width=3, color="#f8fafc"),
+            line=dict(width=3, color=get_color("OECD", 2)),
             hovertemplate="Diffusion (3M Lead): %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -107,7 +108,7 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
             y=df[col2],
             name=get_value_label(df[col2], "Cycle", ".2f"),
             mode="lines",
-            line=dict(width=3, color="#ef4444"),
+            line=dict(width=3, color=get_color("Secondary")),
             hovertemplate="Cycle: %{y:.2f}<extra></extra>",
             connectgaps=True,
         ),
@@ -122,7 +123,7 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
             y=df[col3],
             name=get_value_label(df[col3], "ACWI YoY", ".2f"),
             mode="lines",
-            line=dict(width=2, color="#f59e0b"),
+            line=dict(width=3, color=get_color("Primary")),
             hovertemplate="ACWI YoY: %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -141,15 +142,12 @@ def OecdCliDiffusionIndex_Composite() -> go.Figure:
     )
 
     if not df.empty:
-        from datetime import datetime
-        latest_date = df.index.max()
-        start_date = datetime(latest_date.year - 12, 1, 1)
-        fig.update_xaxes(range=[start_date, latest_date])
+
         # Add 50 line for diffusion
         fig.add_hline(
             y=50,
             line_dash="dash",
-            line_color="#94a3b8",
+            line_color=get_color("Neutral"),
             opacity=0.5,
             annotation_text="50",
             annotation_position="bottom right",
@@ -218,7 +216,7 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
                 "Cycle": diffusion_cycle,
                 "MSCI EM YoY": msci,
             }
-        )
+        ).iloc[-12 * 52 :]
 
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
@@ -233,7 +231,7 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
             y=df[col1],
             name=get_value_label(df[col1], "Diffusion (3M Lead)", ".2f"),
             mode="lines",
-            line=dict(width=3, color="#f8fafc"),
+            line=dict(width=3, color=get_color("OECD", 2)),
             hovertemplate="Diffusion (3M Lead): %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -248,7 +246,7 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
             y=df[col_cycle],
             name=get_value_label(df[col_cycle], "Cycle", ".2f"),
             mode="lines",
-            line=dict(width=3, color="#ef4444"),  # Cycle usually bold
+            line=dict(width=3, color=get_color("Secondary")),  # Cycle usually bold
             hovertemplate="Cycle: %{y:.2f}<extra></extra>",
             connectgaps=True,
         ),
@@ -263,7 +261,9 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
             y=df[col2],
             name=get_value_label(df[col2], "MSCI Emerging Market YoY (%)", ".2f"),
             mode="lines",
-            line=dict(width=2, color="#f59e0b"),  # Different color usually helps
+            line=dict(
+                width=3, color=get_color("Primary")
+            ),  # Different color usually helps
             hovertemplate="MSCI EM YoY: %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -282,15 +282,11 @@ def OecdCliDiffusionIndex_Emerging() -> go.Figure:
     )
 
     if not df.empty:
-        from datetime import datetime
-        latest_date = df.index.max()
-        start_date = datetime(latest_date.year - 12, 1, 1)
-        fig.update_xaxes(range=[start_date, latest_date])
         # Add 50 line for diffusion
         fig.add_hline(
             y=50,
             line_dash="dash",
-            line_color="#94a3b8",
+            line_color=get_color("Neutral"),
             opacity=0.5,
             annotation_text="50",
             annotation_position="bottom right",
@@ -357,7 +353,7 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
                 "Cycle": diffusion_cycle,
                 "MSCI World YoY": msci,
             }
-        )
+        ).iloc[-12 * 52 :]
 
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
@@ -372,7 +368,7 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
             y=df[col1],
             name=get_value_label(df[col1], "Diffusion (3M Lead)", ".2f"),
             mode="lines",
-            line=dict(width=3, color="#f8fafc"),
+            line=dict(width=3, color=get_color("OECD", 2)),
             hovertemplate="Diffusion (3M Lead): %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -387,7 +383,7 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
             y=df[col_cycle],
             name=get_value_label(df[col_cycle], "Cycle", ".2f"),
             mode="lines",
-            line=dict(width=3, color="#ef4444"),  # Cycle usually bold
+            line=dict(width=3, color=get_color("Secondary")),  # Cycle usually bold
             hovertemplate="Cycle: %{y:.2f}<extra></extra>",
             connectgaps=True,
         ),
@@ -402,7 +398,9 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
             y=df[col2],
             name=get_value_label(df[col2], "MSCI World YoY (%)", ".2f"),
             mode="lines",
-            line=dict(width=2, color="#f59e0b"),  # Different color usually helps
+            line=dict(
+                width=3, color=get_color("Primary")
+            ),  # Different color usually helps
             hovertemplate="MSCI World YoY: %{y:.2f}%<extra></extra>",
             connectgaps=True,
         ),
@@ -421,15 +419,11 @@ def OecdCliDiffusionIndex_Developed() -> go.Figure:
     )
 
     if not df.empty:
-        from datetime import datetime
-        latest_date = df.index.max()
-        start_date = datetime(latest_date.year - 12, 1, 1)
-        fig.update_xaxes(range=[start_date, latest_date])
         # Add 50 line for diffusion
         fig.add_hline(
             y=50,
             line_dash="dash",
-            line_color="#94a3b8",
+            line_color=get_color("Neutral"),
             opacity=0.5,
             annotation_text="50",
             annotation_position="bottom right",

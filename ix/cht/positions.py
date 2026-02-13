@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 import pandas as pd
 from ix.db.query import Series, MultiSeries, StandardScalar
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def PositionsCrowdedness() -> go.Figure:
@@ -79,7 +79,7 @@ def PositionsCrowdedness() -> go.Figure:
     fig.add_hline(
         y=2.0,
         line_dash="dash",
-        line_color="red",
+        line_color=get_color("Secondary"),
         line_width=2,
         annotation_text="Threshold (+2.0): Crowded Long",
         annotation_position="top left",
@@ -90,7 +90,7 @@ def PositionsCrowdedness() -> go.Figure:
     fig.add_hline(
         y=-2.0,
         line_dash="dash",
-        line_color="red",
+        line_color=get_color("Secondary"),
         line_width=2,
         annotation_text="Threshold (-2.0): Crowded Short",
         annotation_position="bottom left",

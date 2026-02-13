@@ -12,26 +12,26 @@ def _get_quadrant_style(x: float, y: float) -> Dict[str, str]:
     if x >= 0 and y >= 0:
         return {
             "name": "Leading",
-            "color": "#22c55e",
-            "bg": "rgba(34, 197, 94, 0.05)",
+            "color": "#10b981",  # Emerald
+            "bg": "rgba(16, 185, 129, 0.05)",
         }
     elif x >= 0 and y < 0:
         return {
             "name": "Weakening",
-            "color": "#f59e0b",
-            "bg": "rgba(245, 158, 11, 0.05)",
+            "color": "#fbbf24",  # Amber
+            "bg": "rgba(251, 191, 36, 0.05)",
         }
     elif x < 0 and y < 0:
         return {
             "name": "Lagging",
-            "color": "#ef4444",
-            "bg": "rgba(239, 68, 68, 0.05)",
+            "color": "#f43f5e",  # Rose
+            "bg": "rgba(244, 63, 94, 0.05)",
         }
     else:
         return {
             "name": "Improving",
-            "color": "#3b82f6",
-            "bg": "rgba(59, 130, 246, 0.05)",
+            "color": "#38bdf8",  # Sky
+            "bg": "rgba(56, 189, 248, 0.05)",
         }
 
 
@@ -225,10 +225,10 @@ def _create_rrg_chart(
     # Updated Quadrant positions (towards corners for clarity)
     # Safe Quadrant positions - moved deeper to ensure they never clip in containers
     quad_config = [
-        (0.88, 0.88, "LEADING", "#22c55e", "right", "top"),
-        (0.88, 0.12, "WEAKENING", "#f59e0b", "right", "bottom"),
-        (0.12, 0.12, "LAGGING", "#ef4444", "left", "bottom"),
-        (0.12, 0.88, "IMPROVING", "#3b82f6", "left", "top"),
+        (0.88, 0.88, "LEADING", "#10b981", "right", "top"),
+        (0.88, 0.12, "WEAKENING", "#fbbf24", "right", "bottom"),
+        (0.12, 0.12, "LAGGING", "#f43f5e", "left", "bottom"),
+        (0.12, 0.88, "IMPROVING", "#38bdf8", "left", "top"),
     ]
 
     for x_dom, y_dom, label, color, x_anc, y_anc in quad_config:

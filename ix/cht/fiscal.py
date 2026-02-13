@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries, Offset
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def USFederalDeficitYieldCurve() -> go.Figure:
@@ -119,7 +119,7 @@ def UsGovNetOutlays_InterestPayments() -> go.Figure:
             line=dict(width=2.5),
             hovertemplate=f"{col1}: %{{y:.2f}}B<extra></extra>",
             connectgaps=True,
-            fillcolor="rgba(255, 0, 184, 0.1)",
+            fillcolor="rgba(168, 85, 247, 0.1)",
         ),
         secondary_y=False,
     )
@@ -256,7 +256,7 @@ def UsGovNetOutlays_SocialCredit() -> go.Figure:
             y=total,
             name=get_value_label(total, "Total Outlays", ".1f"),
             mode="lines",
-            line=dict(color="black", width=2, dash="dot"),
+            line=dict(color=get_color("Total"), width=2, dash="dot"),
             hovertemplate="Total Outlays: %{y:.2f}B<extra></extra>",
             connectgaps=True,
         )

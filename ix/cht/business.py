@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries, StandardScalar, MonthEndOffset, Cycle
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def AsianExportsYoY() -> go.Figure:
@@ -298,27 +298,21 @@ def SemiconductorBillingsYoY() -> go.Figure:
         world_yoy = world_level.pct_change(12).mul(100)
 
         # Combine for plotting
-        df = pd.concat([contributions, world_yoy.rename("World YoY")], axis=1)
+        df = pd.concat([contributions, world_yoy.rename("World YoY")], axis=1).iloc[-12*10:]
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
 
     fig = make_subplots(specs=[[{"secondary_y": False}]])
 
     # Plot Regional Contributions as Bars
-    colors = {
-        "America": "#3b82f6",  # Blue
-        "Europe": "#8b5cf6",  # Purple
-        "Japan": "#ec4899",  # Pink
-        "Apac": "#10b981",  # Emerald
-    }
-    for col in ["America", "Europe", "Japan", "Apac"]:
+    for idx, col in enumerate(["America", "Europe", "Japan", "Apac"]):
         if col in df.columns:
             fig.add_trace(
                 go.Bar(
                     x=df.index,
                     y=df[col],
                     name=col,
-                    marker=dict(color=colors.get(col)),
+                    marker=dict(color=get_color(col, idx)),
                     hovertemplate=f"{col}: %{{y:.2f}}%<extra></extra>",
                 )
             )
@@ -331,7 +325,7 @@ def SemiconductorBillingsYoY() -> go.Figure:
                 y=df["World YoY"],
                 name=get_value_label(df["World YoY"], "World YoY", ".2f"),
                 mode="lines",
-                line=dict(width=3, color="#f8fafc"),
+                line=dict(width=3, color=get_color("World")),
                 hovertemplate="World YoY: %{y:.2f}%<extra></extra>",
                 connectgaps=True,
             )
@@ -374,20 +368,13 @@ def SemiconductorBillings() -> go.Figure:
             .div(1_000_000_000)
             .dropna(how="all")
             .ffill()
-        )
+        ).iloc[-12*10:]
     except Exception as e:
         raise Exception(f"Data error: {str(e)}")
 
     fig = make_subplots(specs=[[{"secondary_y": False}]])
 
-    colors = {
-        "America": "#3b82f6",
-        "Europe": "#8b5cf6",
-        "Japan": "#ec4899",
-        "Apac": "#10b981",
-        "World": "#f8fafc",
-    }
-    for col in ["America", "Europe", "Japan", "Apac", "World"]:
+    for idx, col in enumerate(["America", "Europe", "Japan", "Apac", "World"]):
         if col not in df.columns:
             continue
 
@@ -398,7 +385,7 @@ def SemiconductorBillings() -> go.Figure:
                     y=df[col],
                     name=get_value_label(df[col], col, ".2f"),
                     mode="lines",
-                    line=dict(width=3, color=colors["World"]),
+                    line=dict(width=3, color=get_color(col)),
                     hovertemplate=f"{col}: %{{y:.2f}}B<extra></extra>",
                     connectgaps=True,
                 )
@@ -409,7 +396,7 @@ def SemiconductorBillings() -> go.Figure:
                     x=df.index,
                     y=df[col],
                     name=col,
-                    marker=dict(color=colors.get(col)),
+                    marker=dict(color=get_color(col, idx)),
                     hovertemplate=f"{col}: %{{y:.2f}}B<extra></extra>",
                 )
             )
@@ -421,9 +408,5 @@ def SemiconductorBillings() -> go.Figure:
         barmode="stack",
     )
 
-    if not df.empty:
-        # Default view to last 10 years, but all data is available
-        start_date = df.index[-1] - pd.DateOffset(years=10)
-        fig.update_xaxes(range=[start_date, df.index[-1]])
 
     return fig

@@ -10,7 +10,7 @@ import pandas as pd
 from ix.db.query import Series, MultiSeries
 
 
-from .style import apply_academic_style, add_zero_line, get_value_label
+from .style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def GlobalLiquidity() -> go.Figure:
@@ -105,8 +105,8 @@ def GlobalLiquidity() -> go.Figure:
             y=df[col1],
             name=get_value_label(df[col1], "CB Assets ($Tr)", ".2f"),
             mode="lines",
-            line=dict(width=3),
-            hovertemplate="CB Assets ($Tr): %{y:.2f}T<extra></extra>",
+            line=dict(color=get_color("Primary", 0), width=3),
+            hovertemplate="Composite (3M Lead): %{y:.2f}<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -490,7 +490,7 @@ def FedNetLiquidity() -> go.Figure:
             y=net_impulse,
             name=get_value_label(net_impulse, "Net Liquidity", "+.2f"),
             mode="lines",
-            line=dict(width=3),
+            line=dict(color=get_color("World"), width=3),
             opacity=0.8,
             hovertemplate="Net Liquidity: %{y:.2f}B<extra></extra>",
         )
@@ -563,7 +563,7 @@ def FedNetLiquidityImpulse() -> go.Figure:
             y=net_impulse,
             name=get_value_label(net_impulse, "Net Liquidity Impulse", "+.2f"),
             mode="lines",
-            line=dict(width=3),
+            line=dict(color=get_color("World"), width=3),
             opacity=0.8,
             hovertemplate="Net Liquidity Impulse: %{y:.2f}B<extra></extra>",
         )
