@@ -1,11 +1,10 @@
-services:
-  # Managed Database
-  - type: psql
-    name: investment-x-db
-    env: docker
+databases:
+  - name: investment-x-db
     plan: free
-    ipAllowList: [] # Allow all for simplicity, or restrict if needed
+    databaseName: investmentx
+    user: investmentx_user
 
+services:
   # Backend Service
   - type: web
     name: investment-x-backend
@@ -28,15 +27,6 @@ services:
     name: investment-x-frontend
     env: docker
     dockerfilePath: ui/Dockerfile
-    rootDir: .     # Use root as context so ui/Dockerfile can access files if needed (though it only needs ui context really)
-    # Wait, ui/Dockerfile copies relative to context. If rootDir is ., then context is ., so COPY package*.json inside ui/Dockerfile would fail if it expects them at .
-    # Let's check ui/Dockerfile again. It says COPY package*.json ./
-    # If context is ., package.json is at ./ui/package.json
-    # So ui/Dockerfile should be run with context ./ui
-    # Render rootDir sets the build context? 
-    # Docs say: "rootDir Optional. Differs from buildContext. Defaults to repo root."
-    # If I set rootDir to ui, then build calls docker build inside ui folder.
-    # That matches local dev.
     rootDir: ui
     plan: free
     envVars:
