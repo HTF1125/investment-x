@@ -10,6 +10,7 @@ import { useState } from 'react';
 export default function IntelPage() {
   const { user, token } = useAuth();
   const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   const flash = (msg: string, type: 'success' | 'error') => {
@@ -18,20 +19,56 @@ export default function IntelPage() {
   };
 
   const handleScrape = async () => {
+    if (syncing) return;
     setSyncing(true);
+    setSyncMsg('Starting sync...');
+    
     try {
       const res = await fetch('/api/task/telegram', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
+      
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.detail || 'Scrape failed');
+        // If already running, just start polling
+        if (res.status !== 400 || err.detail !== "Telegram sync is already running") {
+             throw new Error(err.detail || 'Scrape failed');
+        }
       }
-      flash('Telegram scrape triggered — data will refresh shortly.', 'success');
+      
+      // Poll for status
+      const poll = setInterval(async () => {
+         try {
+             const sRes = await fetch('/api/task/status');
+             if (!sRes.ok) return;
+             const status = await sRes.json();
+             
+             if (status.telegram) {
+                 if (status.telegram.running) {
+                     setSyncMsg(status.telegram.message || 'Syncing...');
+                 } else {
+                     setSyncMsg(status.telegram.message || 'Idle');
+                     if (status.telegram.message?.includes('Completed')) {
+                         flash('Channel sync completed!', 'success');
+                         // Trigger refresh of news feed if possible? 
+                         // NewsFeed component likely manages its own query.
+                         // Maybe invalidate query if I had access to queryClient.
+                         window.location.reload(); // Simple way to refresh feed
+                     } else if (status.telegram.message?.startsWith('Failed')) {
+                         flash(status.telegram.message, 'error');
+                     }
+                     setSyncing(false);
+                     clearInterval(poll);
+                 }
+             }
+         } catch (e) {
+             console.error(e);
+         }
+      }, 2000);
+
     } catch (err: any) {
       flash(err.message, 'error');
-    } finally {
       setSyncing(false);
     }
   };
@@ -60,7 +97,7 @@ export default function IntelPage() {
                 className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-sky-500/20 hover:shadow-sky-500/30 disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Update Channels'}
+                {syncing ? (syncMsg || 'Syncing...') : 'Update Channels'}
               </button>
             )}
           </div>

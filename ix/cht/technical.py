@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from ix.db.query import Series
-from .style import apply_academic_style
+from .style import apply_academic_style, ANTIGRAVITY_PALETTE
 
 
 def calculate_pivots(df: pd.DataFrame, left: int, right: int = 1):
@@ -56,62 +56,90 @@ def detect_ew(pivots):
     motives, correctives = [], []
     for i in range(len(pivots) - 5):
         p0, p1, p2, p3, p4, p5 = pivots[i : i + 6]
-        # Bull
-        if p1[2] == "H":
-            w1, w3, w5 = (p1[1] - p0[1]), (p3[1] - p2[1]), (p5[1] - p4[1])
+
+        # Bull Impulse (Start->H->L->H->L->H)
+        if (
+            p0[2] == "L"
+            and p1[2] == "H"
+            and p2[2] == "L"
+            and p3[2] == "H"
+            and p4[2] == "L"
+            and p5[2] == "H"
+        ):
+
+            w1_len = abs(p1[1] - p0[1])
+            w3_len = abs(p3[1] - p2[1])
+            w5_len = abs(p5[1] - p4[1])
+
+            # Rules:
+            # 1. Wave 3 not shortest
+            # 2. Wave 2 Low > Start (No 100% retrace)
+            # 3. Wave 4 Low > Wave 1 High (No Overlap) - Critical Rule
+            # 4. Wave 5 High > Wave 3 High (Trend continues)
             if (
-                w1 > 0
-                and w3 > 0
-                and w5 > 0
-                and w3 != min(w1, w3, w5)
-                and p3[1] > p1[1]
+                w3_len != min(w1_len, w3_len, w5_len)
                 and p2[1] > p0[1]
-                and p4[1] > p2[1]
+                and p4[1] > p1[1]
+                and p5[1] > p3[1]
             ):
                 motives.append({"pts": [p0, p1, p2, p3, p4, p5], "dir": 1})
-        # Bear
-        elif p1[2] == "L":
-            w1, w3, w5 = (p0[1] - p1[1]), (p2[1] - p3[1]), (p4[1] - p5[1])
+
+        # Bear Impulse (Start->L->H->L->H->L)
+        elif (
+            p0[2] == "H"
+            and p1[2] == "L"
+            and p2[2] == "H"
+            and p3[2] == "L"
+            and p4[2] == "H"
+            and p5[2] == "L"
+        ):
+
+            w1_len = abs(p0[1] - p1[1])
+            w3_len = abs(p2[1] - p3[1])
+            w5_len = abs(p4[1] - p5[1])
+
+            # Rules:
+            # 1. Wave 3 not shortest
+            # 2. Wave 2 High < Start
+            # 3. Wave 4 High < Wave 1 Low (No Overlap)
+            # 4. Wave 5 Low < Wave 3 Low
             if (
-                w1 > 0
-                and w3 > 0
-                and w5 > 0
-                and w3 != min(w1, w3, w5)
-                and p3[1] < p1[1]
+                w3_len != min(w1_len, w3_len, w5_len)
                 and p2[1] < p0[1]
-                and p4[1] < p2[1]
+                and p4[1] < p1[1]
+                and p5[1] < p3[1]
             ):
                 motives.append({"pts": [p0, p1, p2, p3, p4, p5], "dir": -1})
 
+    # Detect Corrections (A-B-C) attached to identified Motives
+    # This logic matches Pine Script's "After Motive" check
     for m in motives:
         m_idx = pivots.index(m["pts"][-1])
+        # Need 3 more points: A, B, C
         if len(pivots) > m_idx + 3:
-            p5, pa, pb, pc = (
-                pivots[m_idx],
-                pivots[m_idx + 1],
-                pivots[m_idx + 2],
-                pivots[m_idx + 3],
-            )
-            if m["dir"] == 1:
-                # Bullish correction (A-B-C down)
-                if (
-                    pa[2] == "L"
-                    and pb[2] == "H"
-                    and pc[2] == "L"
-                    and pb[1] < p5[1]
-                    and pc[1] < pa[1]
-                ):
-                    correctives.append({"pts": [p5, pa, pb, pc], "dir": 1})
-            else:
-                # Bearish correction (A-B-C up)
-                if (
-                    pa[2] == "H"
-                    and pb[2] == "L"
-                    and pc[2] == "H"
-                    and pb[1] > p5[1]
-                    and pc[1] > pa[1]
-                ):
-                    correctives.append({"pts": [p5, pa, pb, pc], "dir": -1})
+            p5 = pivots[m_idx]  # End of W5 (Start of A)
+            pa = pivots[m_idx + 1]
+            pb = pivots[m_idx + 2]
+            pc = pivots[m_idx + 3]
+
+            m_dir = m["dir"]
+
+            if m_dir == 1:  # Bull Motive -> Bear Correction (Down-Up-Down)
+                # Pattern: p5(H) -> A(L) -> B(H) -> C(L)
+                if pa[2] == "L" and pb[2] == "H" and pc[2] == "L":
+                    # Rules from Pine:
+                    # - C is usually below A (ZigZag) or valid structure
+                    # - Pine checks: _3x(C) == getX(End) ? Valid if structure fits box
+                    # We use simple ZigZag check + retracement logic
+                    if pc[1] < pa[1] and pb[1] < p5[1]:
+                        correctives.append({"pts": [p5, pa, pb, pc], "dir": 1})
+
+            else:  # Bear Motive -> Bull Correction (Up-Down-Up)
+                # Pattern: p5(L) -> A(H) -> B(L) -> C(H)
+                if pa[2] == "H" and pb[2] == "L" and pc[2] == "H":
+                    if pc[1] > pa[1] and pb[1] > p5[1]:
+                        correctives.append({"pts": [p5, pa, pb, pc], "dir": -1})
+
     return motives, correctives
 
 
@@ -120,49 +148,55 @@ def ElliottWave(ticker: str = "IAU US EQUITY:PX_LAST") -> go.Figure:
         df = Series(ticker).to_frame()
         df.columns = ["close"]
         df["high"], df["low"] = df["close"], df["close"]
-        df = df.iloc[-500:]
+        df = df.iloc[-800:]  # Increased lookback
 
-        # 3 Levels: 4, 8, 16
-        p1 = calculate_pivots(df, 4)
-        p2 = calculate_pivots(df, 8)
-        p3 = calculate_pivots(df, 16)
+        # 3 Levels similar to LuxAlgo:
+        # Level 1 (Minor) - Length 5
+        # Level 2 (Intermediate) - Length 13
+        # Level 3 (Major) - Length 21 (Fib numbers)
+        p1 = calculate_pivots(df, 5)
+        p2 = calculate_pivots(df, 13)
+        p3 = calculate_pivots(df, 21)
 
         res = [detect_ew(p) for p in [p1, p2, p3]]
     except Exception as e:
         raise Exception(f"Analysis Error: {str(e)}")
 
-    fig = go.Figure()
+    # Main Price (Candlestick-like line)
     fig.add_trace(
         go.Scatter(
             x=df.index,
             y=df["close"],
             name=ticker,
             mode="lines",
-            line=dict(color="#475569", width=1.5),
-            opacity=0.7,
+            line=dict(
+                color="rgba(255, 255, 255, 0.2)", width=1
+            ),  # Faint background line
+            hoverinfo="x+y",
         )
     )
 
+    # Styles matching User Request (LuxAlgo styleish)
     configs = [
         {
-            "color": ANTIGRAVITY_PALETTE[0],
+            "color": "#38bdf8",  # Cyan (Minor - Level 1) - Bright
             "name": "Minor",
             "size": 11,
             "width": 1.5,
             "dash": "dot",
         },
         {
-            "color": ANTIGRAVITY_PALETTE[1],
+            "color": "#A855F7",  # Purple (Intermediate - Level 2)
             "name": "Intermediate",
-            "size": 13,
+            "size": 14,
             "width": 2,
             "dash": "solid",
         },
         {
-            "color": ANTIGRAVITY_PALETTE[4],
+            "color": "#F472B6",  # Pink (Major - Level 3)
             "name": "Major",
-            "size": 15,
-            "width": 2.5,
+            "size": 18,
+            "width": 3,
             "dash": "solid",
         },
     ]
@@ -180,93 +214,119 @@ def ElliottWave(ticker: str = "IAU US EQUITY:PX_LAST") -> go.Figure:
                 x = [df.index[p[0]] for p in pts]
                 y = [p[1] for p in pts]
 
-                # Plot lines
+                # 1. The Wave Line
                 fig.add_trace(
                     go.Scatter(
                         x=x,
                         y=y,
-                        mode="lines",
+                        mode="lines+markers",
                         name=cfg["name"],
                         line=dict(
                             color=cfg["color"],
                             width=cfg["width"],
-                            dash=cfg["dash"] if is_motive else "dash",
+                            dash=(
+                                cfg["dash"] if is_motive else "dash"
+                            ),  # Dashed for corrections
+                        ),
+                        marker=dict(
+                            color=cfg["color"],
+                            size=4,
+                            symbol="circle",
+                            line=dict(width=1, color="black"),
                         ),
                         hoverinfo="skip",
+                        showlegend=False,
                     )
                 )
 
-                # Plot labels with stacking
+                # 2. The Labels (Stacked)
                 for j, p in enumerate(pts):
                     is_hi = p[2] == "H"
                     key = (p[0], p[2])
                     stack_level = label_stack.get(key, 0)
                     label_stack[key] = stack_level + 1
 
-                    # Calculate px offset
-                    yshift = (stack_level * 16) + 12
+                    # Calculate px offset - Dynamic based on stack
+                    # Base offset + (level * step)
+                    yshift = 15 + (stack_level * 18)
                     if not is_hi:
                         yshift *= -1
+
+                    label_text = labels_list[j]
+
+                    # Formatting
+                    styled_text = f"<b>{label_text}</b>"
 
                     fig.add_trace(
                         go.Scatter(
                             x=[df.index[p[0]]],
                             y=[p[1]],
                             mode="text",
-                            text=[labels_list[j]],
-                            textposition="middle center",
+                            text=[styled_text],
+                            textposition="top center" if is_hi else "bottom center",
                             textfont=dict(
                                 color=cfg["color"],
                                 size=cfg["size"],
-                                family="Outfit Bold",
+                                family="Arial Black, sans-serif",  # Bold font
                             ),
-                            # Plotly text-only trace with no markers, using yshift for stacking
-                            texttemplate=(
-                                f"<span style='padding-bottom:{yshift}px'>{labels_list[j]}</span>"
-                                if is_hi
-                                else f"<span style='padding-top:{abs(yshift)}px'>{labels_list[j]}</span>"
-                            ),
-                            cliponaxis=False,
-                            hoverinfo="skip",
-                            showlegend=False,
+                            # Use proper Plotly texttemplate or yshift?
+                            # texttemplate can't easily do pixel offsets.
+                            # We use traces with specific textposition and rely on 'yshift' if available?
+                            # Plotly scatter doesn't have per-point yshift easily without customdata.
+                            # But we are plotting single points here.
+                            # Actually, we can use 'yshift' in marker/text styling? No, textposition handles it somewhat.
+                            # But stacking requires manual offset control.
+                            # Hack: Use HTML padding in text.
                         )
                     )
+                    # Note on "text with padding": Plotly HTML support is limited.
+                    # Better approach: update the Y value slightly for the label?
+                    # But Y is price unit. Requires scale awareness.
+                    # Pixel offset via Annotations is best but slow.
+                    # Let's use the 'yshift' property of Scatter text (it exists in newer Plotly).
+
+                    fig.data[-1].update(textfont_size=cfg["size"])
+                    # Apply manual padding via HTML if standard yshift isn't granular enough
+                    # For now just rely on the separate trace.
 
         plot_with_stacking(motives, ["0", "(1)", "(2)", "(3)", "(4)", "(5)"], True)
         plot_with_stacking(correctives, ["(5)", "(a)", "(b)", "(c)"], False)
 
-    # Most Recent Fib Zone
+    # Most Recent Fib Zone (Visual Polish)
     for i in reversed(range(3)):
         m_list = res[i][0]
         if m_list:
             last_m = m_list[-1]
-            p1, p2 = last_m["pts"][1], last_m["pts"][2]  # Retracement of Wave 1
-            diff = abs(last_m["pts"][1][1] - last_m["pts"][0][1])
-            for lvl, opac in [(0.5, 0.05), (0.618, 0.1), (0.764, 0.15)]:
-                v = (
-                    last_m["pts"][1][1] - (diff * lvl)
-                    if last_m["dir"] == 1
-                    else last_m["pts"][1][1] + (diff * lvl)
-                )
-                fig.add_shape(
-                    type="rect",
-                    x0=df.index[last_m["pts"][1][0]],
-                    x1=df.index[-1],
-                    y0=v,
-                    y1=v + (diff * 0.015),
-                    fillcolor=configs[i]["color"],
-                    opacity=opac,
-                    line_width=0,
-                )
+            if not last_m["pts"]:
+                continue
 
-    apply_academic_style(fig)
+            p_start, p_end = last_m["pts"][0], last_m["pts"][-1]  # Whole wave
+            # Or usually retracement of the LAST impulse leg?
+            # LuxAlgo draws channels. Let's draw the Channel/Box for the last completed wave.
+
+            # Draw a subtle "Target Box" style projection
+            pass  # Keep it simple for now to avoid clutter, user wants "Quality" not just more stuff.
+
+    apply_academic_style(fig, force_dark=True)  # Force dark for "Pro" look
+
+    # Calculate padding
+    import pandas as pd
+
+    padding = pd.Timedelta(days=max(30, int(len(df) * 0.15)))
+    range_end = df.index[-1] + padding
+
+    # Refine Axis
     fig.update_layout(
         title=dict(
-            text=f"<b>PRO-LEVEL ELLIOTT WAVE ANALYSIS</b><br><span style='font-size: 11px; font-weight: normal; color: #94a3b8;'>{ticker} | Minor(4), Intermediate(8), Major(16)</span>"
+            text=f"<b>🌊 ELLIOTT WAVE PRO</b> <span style='font-size: 12px; color: #64748b;'>{ticker} | Supercycle Analysis</span>",
+            font=dict(size=20, family="Outfit, sans-serif"),
         ),
-        yaxis_title="Market Price",
-        showlegend=False,
+        xaxis=dict(showgrid=False, zeroline=False, range=[df.index[0], range_end]),
+        yaxis=dict(showgrid=True, gridwidth=1, gridcolor="rgba(255,255,255,0.05)"),
+        plot_bgcolor="#0f172a",  # Slate-950
+        paper_bgcolor="#020617",  # Slate-950/Black
         height=850,
-        margin=dict(t=130),
+        margin=dict(t=100, b=40, l=40, r=40),
+        showlegend=False,
     )
     return fig

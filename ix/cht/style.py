@@ -114,8 +114,8 @@ def apply_academic_style(fig: go.Figure, force_dark: bool = True) -> go.Figure:
     # 3. Layout General
     fig.update_layout(
         font=dict(family=font_family, color=font_color, size=12),
-        width=800,
-        height=500,
+        # width=800,
+        # height=500,
         margin=dict(l=50, r=20, t=60, b=40),
         plot_bgcolor=plot_bg,
         paper_bgcolor=bg_color,

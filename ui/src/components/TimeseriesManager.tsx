@@ -57,6 +57,10 @@ export default function TimeseriesManager() {
   // Form state
   const [form, setForm] = useState(EMPTY_FORM);
 
+  // Update Task State
+  const [updating, setUpdating] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState('');
+
   // ───── Toast helper
   const flash = (msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
@@ -162,6 +166,59 @@ export default function TimeseriesManager() {
     onError: (err: any) => flash(err.message, 'error'),
   });
 
+  // ───── Update Trigger
+  const handleTriggerUpdate = async () => {
+    if (updating || !token) return;
+    try {
+        setUpdating(true);
+        setUpdateMsg('Starting update...');
+        const res = await fetch('/api/task/daily', { 
+            method: 'POST', 
+            headers: { Authorization: `Bearer ${token}` } 
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            if (res.status === 400 && err.detail === "Daily task is already running") {
+                // Should just start polling
+            } else {
+                throw new Error(err.detail || 'Failed to start');
+            }
+        }
+        
+        // Start polling
+        const poll = setInterval(async () => {
+             try {
+                 const sRes = await fetch('/api/task/status');
+                 if (!sRes.ok) return;
+                 const status = await sRes.json();
+                 
+                 if (status.daily) {
+                     if (status.daily.running) {
+                         setUpdateMsg(status.daily.message || 'Running...');
+                     } else {
+                         setUpdateMsg(status.daily.message || 'Idle');
+                         if (status.daily.message?.includes('Completed')) {
+                             flash('Daily update completed!', 'success');
+                             queryClient.invalidateQueries({ queryKey: ['timeseries'] });
+                         } else if (status.daily.message?.startsWith('Failed')) {
+                             flash(status.daily.message, 'error');
+                         }
+                         setUpdating(false);
+                         clearInterval(poll);
+                     }
+                 }
+             } catch (e) {
+                 console.error(e);
+                 // Don't stop polling on transient network error
+             }
+        }, 2000);
+    } catch (e: any) {
+        flash(e.message, 'error');
+        setUpdating(false);
+    }
+  };
+
   // ───── Handlers
   const handleCreate = () => {
       if (!form.code.trim()) { flash('Code is required', 'error'); return; }
@@ -211,6 +268,23 @@ export default function TimeseriesManager() {
         </div>
 
         <div className="flex items-center gap-3">
+          {updating && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-sky-500/10 text-sky-400 rounded-lg border border-sky-500/20 text-xs font-mono animate-pulse">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  {updateMsg || 'Updating...'}
+              </div>
+          )}
+          <button
+            onClick={handleTriggerUpdate}
+            disabled={updating}
+            className={`flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-white/10 ${updating ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
+            {updating ? 'Running...' : 'Update Data'}
+          </button>
+          
+          <div className="w-px h-8 bg-white/10 mx-1" />
+
           <button
             onClick={() => { setShowCreate(true); setForm({ ...EMPTY_FORM }); }}
             className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-sky-500/20 hover:shadow-sky-500/30"
@@ -250,7 +324,7 @@ export default function TimeseriesManager() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/8 bg-white/[0.03]">
-                {['Code', 'Name', 'Provider', 'Asset Class', 'Category', 'Source', 'Freq', 'Start', 'End', '#', ''].map((h) => (
+                {['Code', 'Name', 'Provider', 'Asset Class', 'Category', 'Source', 'Source Code', 'Freq', 'Start', 'End', '#', ''].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] font-bold tracking-[2px] text-slate-500 uppercase whitespace-nowrap">
                     {h}
                   </th>
@@ -260,13 +334,13 @@ export default function TimeseriesManager() {
             <tbody className={isPlaceholderData ? 'opacity-50 pointer-events-none transition-opacity' : 'transition-opacity'}>
               {loading && items.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-20 text-center">
+                  <td colSpan={12} className="px-4 py-20 text-center">
                     <Loader2 className="w-6 h-6 animate-spin text-sky-500 mx-auto" />
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-20 text-center text-slate-600 text-sm">
+                  <td colSpan={12} className="px-4 py-20 text-center text-slate-600 text-sm">
                     No timeseries found.
                   </td>
                 </tr>
@@ -282,7 +356,7 @@ export default function TimeseriesManager() {
                         {ts.code}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-300 text-xs max-w-[180px] truncate">{ts.name || '—'}</td>
+                    <td className="px-4 py-3 text-slate-300 text-xs min-w-[200px] whitespace-normal">{ts.name || '—'}</td>
                     <td className="px-4 py-3 text-slate-400 text-xs">{ts.provider || '—'}</td>
                     <td className="px-4 py-3">
                       {ts.asset_class ? (
@@ -293,6 +367,7 @@ export default function TimeseriesManager() {
                     </td>
                     <td className="px-4 py-3 text-slate-400 text-xs">{ts.category || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs max-w-[120px] truncate">{ts.source || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs font-mono">{ts.source_code || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs font-mono">{ts.frequency || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs font-mono whitespace-nowrap">{ts.start || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs font-mono whitespace-nowrap">{ts.end || '—'}</td>

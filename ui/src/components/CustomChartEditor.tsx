@@ -53,6 +53,8 @@ fig = px.bar(df, x='Year', y='Value', title='New Analysis')
   const [orderedCharts, setOrderedCharts] = useState<any[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [graphDiv, setGraphDiv] = useState<HTMLElement | null>(null);
+  const [copying, setCopying] = useState(false);
 
   // Fetch Saved Charts
   const { data: savedCharts = [] } = useQuery({
@@ -158,6 +160,28 @@ fig = px.bar(df, x='Year', y='Value', title='New Analysis')
       setPreviewError(null);
       saveMutation.mutate();
   };
+
+  const handleCopyChart = async () => {
+    if (!graphDiv || copying) return;
+    setCopying(true);
+    try {
+        const Plotly = (await import('plotly.js-dist-min')).default;
+        const url = await Plotly.toImage(graphDiv as any, { format: 'png', width: 1200, height: 800, scale: 2 });
+        
+        const res = await fetch(url);
+        const blob = await res.blob();
+        
+        await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+        ]);
+        
+        setSuccessMsg('Chart copied to clipboard!');
+        setTimeout(() => setCopying(false), 1000);
+    } catch (err) {
+        setPreviewError('Failed to copy chart: ' + String(err));
+        setCopying(false);
+    }
+  };
   
   const handleExportPDF = async () => {
     setExporting(true);
@@ -237,221 +261,215 @@ fig = px.bar(df, x='Year', y='Value', title='New Analysis')
   const error = previewError || (saveMutation.isError ? saveMutation.error?.message : null) || null;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[55%_45%] gap-8 h-full">
-      {/* Left Column: Preview & Library (Swapped & Resized) */}
-      <div className="flex flex-col gap-6 h-full order-1 lg:order-1 min-w-0">
-          {/* Preview Panel */}
-          <div className="flex flex-col bg-white/[0.02] rounded-2xl border border-white/5 overflow-hidden min-h-[500px]">
-             <div className="p-4 border-b border-white/5 font-medium text-slate-400 flex items-center justify-between">
-                 <span>Result Preview</span>
-                 {previewFigure && <span className="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">Rendered</span>}
-             </div>
-             
-             <div className="flex-grow relative p-4 bg-black/20">
-             {previewFigure ? (
-                 <Plot
-                     data={previewFigure.data}
-                     layout={{
-                         ...previewFigure.layout,
-                         autosize: true,
-                         width: undefined,
-                         height: undefined,
-                         paper_bgcolor: 'rgba(0,0,0,0)',
-                         plot_bgcolor: 'rgba(0,0,0,0)',
-                         font: { color: '#94a3b8' }
-                     }}
-                     config={{ responsive: true, displayModeBar: 'hover' }}
-                     style={{ width: '100%', height: '100%' }}
-                     useResizeHandler={true}
-                 />
-             ) : (
-                 <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600">
-                     <Play className="w-12 h-12 mb-4 opacity-20" />
-                     <p>Run code to generate preview</p>
-                 </div>
-             )}
-             </div>
-           </div>
-
-           {/* Library Panel with Drag and Drop */}
-           <div className="flex flex-col bg-white/[0.02] rounded-2xl border border-white/5 overflow-hidden flex-grow max-h-[300px]">
-              <div className="p-4 border-b border-white/5 font-medium text-slate-400 flex items-center justify-between">
-                 <div className="flex items-center gap-2">
-                     <Save className="w-4 h-4" /> Saved Analyses
-                 </div>
-                 <button 
-                    onClick={handleExportPDF}
-                    disabled={exporting || orderedCharts.length === 0}
-                    className="flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-sky-500/20 text-xs text-slate-400 hover:text-sky-400 border border-white/5 hover:border-sky-500/30 rounded-full transition-all disabled:opacity-50"
-                 >
-                    {exporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                    {exporting ? 'Generating...' : 'Export PDF'}
-                 </button>
-              </div>
-              <div className="overflow-y-auto p-2 no-scrollbar">
-                 {orderedCharts.length === 0 ? (
-                     <div className="text-center py-8 text-slate-600 text-sm">No saved charts yet.</div>
-                 ) : (
-                     <Reorder.Group 
-                        axis="y" 
-                        values={orderedCharts} 
-                        onReorder={setOrderedCharts}
-                        className="space-y-2"
-                     >
-                         {orderedCharts.map((chart: any) => (
-                             <Reorder.Item 
-                                key={chart.id} 
-                                value={chart}
-                                className={`p-3 rounded-lg border cursor-pointer flex justify-between items-center group transition-colors relative select-none ${
-                                    currentChartId === chart.id 
-                                    ? 'bg-indigo-500/10 border-indigo-500/30' 
-                                    : 'bg-white/5 hover:bg-white/10 border-white/5'
-                                }`}
-                             >
-                                 <div className="flex items-center gap-3 flex-grow min-w-0" onClick={() => loadChart(chart)}>
-                                     <GripVertical className="w-4 h-4 text-slate-600 cursor-grab active:cursor-grabbing" />
-                                     <div className="min-w-0">
-                                         <div className={`text-sm font-medium truncate ${currentChartId === chart.id ? 'text-indigo-400' : 'text-slate-200'}`}>
-                                             {chart.name || chart.category || 'Untitled'}
-                                         </div>
-                                         {chart.name && (
-                                             <div className="text-xs text-slate-500 truncate">{chart.category}</div>
-                                         )}
-                                     </div>
+    <div className="flex flex-col lg:flex-row h-auto lg:h-full gap-6 pb-20 lg:pb-0">
+      
+      {/* Column 1: Library (Sidebar) */}
+      <div className="w-full lg:w-[220px] h-[300px] lg:h-auto flex flex-col shrink-0 bg-slate-900/40 backdrop-blur-md rounded-2xl border border-white/10 overflow-hidden shadow-xl order-3 lg:order-1">
+          <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center">
+              <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                  <Save className="w-4 h-4 text-indigo-400" /> Library
+              </h3>
+              <button 
+                  onClick={clearEditor}
+                  className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors"
+                  title="New Analysis"
+              >
+                  <Pencil className="w-4 h-4" />
+              </button>
+          </div>
+          
+          <div className="flex-grow overflow-y-auto p-2 space-y-1 custom-scrollbar">
+              {orderedCharts.length === 0 ? (
+                  <div className="text-center py-10 text-slate-600 text-sm">No saved items.</div>
+              ) : (
+                <Reorder.Group axis="y" values={orderedCharts} onReorder={setOrderedCharts} className="space-y-2">
+                  {orderedCharts.map((chart: any) => (
+                      <Reorder.Item 
+                          key={chart.id} 
+                          value={chart}
+                          className={`p-2 rounded-lg border cursor-pointer group transition-all duration-200 select-none ${
+                              currentChartId === chart.id 
+                              ? 'bg-indigo-500/20 border-indigo-500/40 shadow-lg shadow-indigo-900/20' 
+                              : 'bg-white/[0.02] hover:bg-white/[0.05] border-transparent hover:border-white/5'
+                          }`}
+                      >
+                          <div className="flex items-center gap-3" onClick={() => loadChart(chart)}>
+                             <div className={`p-2 rounded-lg ${currentChartId === chart.id ? 'bg-indigo-500/20 text-indigo-300' : 'bg-white/5 text-slate-500'}`}>
+                                <FileText className="w-4 h-4" />
+                             </div>
+                             <div className="min-w-0 flex-grow">
+                                 <div className={`text-sm font-medium truncate ${currentChartId === chart.id ? 'text-indigo-200' : 'text-slate-300'}`}>
+                                     {chart.name || 'Untitled'}
                                  </div>
-                                 <div className="text-[10px] text-slate-600 font-mono group-hover:text-slate-400" onClick={() => loadChart(chart)}>
-                                     {new Date(chart.updated_at || Date.now()).toLocaleDateString()}
-                                 </div>
-                             </Reorder.Item>
-                         ))}
-                     </Reorder.Group>
-                 )}
-              </div>
-           </div>
+                                 <div className="text-[10px] text-slate-500 truncate">{chart.category}</div>
+                             </div>
+                             <GripVertical className="w-4 h-4 text-slate-700 opacity-0 group-hover:opacity-100 cursor-grab" />
+                          </div>
+                      </Reorder.Item>
+                  ))}
+                </Reorder.Group>
+              )}
+          </div>
+          
+          <div className="p-4 border-t border-white/10 bg-white/5">
+              <button 
+                onClick={handleExportPDF}
+                disabled={exporting || orderedCharts.length === 0}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition-colors border border-white/10"
+              >
+                  {exporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                  Export PDF Report
+              </button>
+          </div>
       </div>
 
-      {/* Right Column: Editor & Metadata (Swapped) */}
-      <div className="flex flex-col gap-6 h-full order-2 lg:order-2 min-w-0">
-        
-        {/* Toolbar */}
-        <div className="flex justify-between items-center pb-2 border-b border-white/5">
-             <div className="flex items-center gap-2 flex-grow mr-4">
-                <Pencil className="w-4 h-4 text-slate-500" />
-                <input 
-                    type="text" 
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="bg-transparent text-slate-200 font-semibold focus:outline-none focus:border-b border-sky-500/50 w-full"
-                    placeholder="Untitled Analysis"
-                />
+      {/* Column 2: Editor (Center) */}
+      <div className="flex-1 w-full lg:w-auto min-w-0 flex flex-col gap-4 min-h-[600px] lg:min-h-0 order-1 lg:order-2">
+      {/* Metadata & Actions Bar */}
+          <div className="relative z-20 flex flex-col gap-2 bg-slate-900/40 backdrop-blur-md p-3 rounded-2xl border border-white/10 shadow-lg">
+             <div className="flex justify-between items-start gap-4">
+                 <div className="flex-1 min-w-0 flex flex-col gap-2">
+                     <input 
+                        type="text" 
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="bg-transparent text-base lg:text-lg font-bold text-white placeholder-slate-600 focus:outline-none w-full border-b border-dashed border-white/20 hover:border-white/40 focus:border-indigo-500 transition-colors pb-1 truncate"
+                        placeholder="Untitled Analysis"
+                     />
+                     <div className="flex gap-2">
+                         <input 
+                            type="text" 
+                            value={category}
+                            onChange={(e) => setCategory(e.target.value)}
+                            className="w-24 lg:w-32 bg-black/20 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-300 focus:border-indigo-500/50 outline-none"
+                            placeholder="Category"
+                         />
+                         <input 
+                            type="text" 
+                            value={tags}
+                            onChange={(e) => setTags(e.target.value)}
+                            className="flex-1 min-w-0 bg-black/20 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-300 focus:border-indigo-500/50 outline-none"
+                            placeholder="Tags (comma separated)"
+                         />
+                     </div>
+                 </div>
+
+                 {/* Action Buttons (Top Right) */}
+                 <div className="flex gap-1.5 shrink-0 pt-0.5">
+                     <button
+                        onClick={handlePreview}
+                        disabled={loading}
+                        className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-900/20 active:scale-[0.98] transition-all flex items-center justify-center border border-white/10"
+                        title="Run Analysis"
+                     >
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
+                     </button>
+                     <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="p-2 bg-emerald-600/20 hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 rounded-lg border border-emerald-500/30 transition-all flex items-center justify-center"
+                        title="Save Changes"
+                     >
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                     </button>
+                 </div>
              </div>
-             <button 
-                onClick={clearEditor}
-                className="text-xs px-3 py-1 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 transition-colors whitespace-nowrap"
-             >
-                + New Analysis
-             </button>
-        </div>
-
-        {/* Code Editor (Monaco) */}
-        <div className="flex flex-col gap-2 flex-grow min-h-[300px]">
-          <div className="relative flex-grow border border-white/10 rounded-xl overflow-hidden bg-[#1e1e1e]">
-             <Editor
-                height="100%"
-                defaultLanguage="python"
-                value={code}
-                theme="vs-dark"
-                onChange={(value) => setCode(value || "")}
-                loading={<div className="flex items-center justify-center h-full text-slate-500 gap-2"><Loader2 className="animate-spin w-5 h-5" /> Loading IDE...</div>}
-                options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    lineNumbers: 'on',
-                    roundedSelection: false,
-                    scrollBeyondLastLine: false,
-                    readOnly: false,
-                    automaticLayout: true,
-                    padding: { top: 16, bottom: 16 },
-                    fontFamily: 'JetBrains Mono, monospace',
-                }}
-             />
           </div>
-          <p className="text-xs text-slate-500">
-            Environment includes: <code>pandas (pd)</code>, <code>plotly.express (px)</code>, <code>df_plot</code> helper.
-          </p>
-        </div>
 
-        {/* Metadata Controls */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="text-xs text-slate-400 font-medium">Category</label>
-            <input 
-              type="text" 
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-sky-500/50 outline-none"
-              placeholder="e.g. Personal"
-            />
+          {/* Monaco Editor */}
+          <div className="flex-grow flex flex-col bg-slate-900/40 backdrop-blur-md rounded-2xl border border-white/10 overflow-hidden shadow-lg relative group">
+              <div className="absolute top-0 left-0 right-0 h-8 bg-[#1e1e1e] border-b border-white/5 flex items-center px-4 justify-between z-10">
+                  <span className="text-xs font-mono text-slate-500 flex items-center gap-2">
+                      <Code className="w-3 h-3" /> logic.py
+                  </span>
+                  <span className="text-xs text-slate-600">Python 3.10 Runtime</span>
+              </div>
+              <div className="pt-8 h-full bg-[#1e1e1e]">
+                  <Editor
+                     height="100%"
+                     defaultLanguage="python"
+                     value={code}
+                     theme="vs-dark"
+                     onChange={(value) => setCode(value || "")}
+                     options={{
+                         minimap: { enabled: false },
+                         fontSize: 13,
+                         lineNumbers: 'on',
+                         scrollBeyondLastLine: false,
+                         padding: { top: 16, bottom: 16 },
+                         fontFamily: 'JetBrains Mono, monospace',
+                         renderLineHighlight: 'all',
+                     }}
+                  />
+              </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs text-slate-400 font-medium flex items-center gap-1">
-              <Tag className="w-3 h-3" /> Tags
-            </label>
-            <input 
-              type="text" 
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-sky-500/50 outline-none"
-              placeholder="comma, separated"
-            />
+
+
+      </div>
+
+      {/* Column 3: Preview (Right) */}
+      <div className="w-full lg:w-[40%] lg:min-w-[450px] flex flex-col gap-4 h-[600px] lg:h-full order-2 lg:order-3">
+          <div className="flex-grow bg-slate-900/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col relative">
+             <div className="p-3 border-b border-white/5 bg-white/[0.02] flex justify-between items-center">
+                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Output Visualization</span>
+                 <div className="flex items-center gap-2">
+                    {previewFigure && (
+                        <button
+                            onClick={handleCopyChart}
+                            disabled={copying}
+                            className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors border border-transparent hover:border-white/5"
+                            title="Copy Chart"
+                        >
+                            {copying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                            )}
+                        </button>
+                    )}
+                    {previewFigure && <span className="text-[10px] px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">Live</span>}
+                 </div>
+             </div>
+             
+             <div className="flex-grow relative bg-gradient-to-br from-black/20 to-black/40">
+                {previewFigure ? (
+                    <Plot
+                        data={previewFigure.data}
+                        layout={{
+                            ...previewFigure.layout,
+                            autosize: true,
+                            paper_bgcolor: 'rgba(0,0,0,0)',
+                            plot_bgcolor: 'rgba(0,0,0,0)',
+                            font: { color: '#94a3b8', family: 'Inter, sans-serif' },
+                            margin: { t: 40, r: 80, l: 40, b: 40 },
+                        }}
+                        config={{ responsive: true, displayModeBar: 'hover', displaylogo: false }}
+                        style={{ width: '100%', height: '100%' }}
+                        useResizeHandler={true}
+                        className="w-full h-full"
+                        onInitialized={(_, gd) => setGraphDiv(gd)}
+                    />
+                ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600/50">
+                        <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4 backdrop-blur-sm">
+                           <Play className="w-8 h-8 ml-1 opacity-50" />
+                        </div>
+                        <p className="font-medium">Ready to run</p>
+                        <p className="text-xs text-slate-600 mt-2">Execute code to render chart</p>
+                    </div>
+                )}
+             </div>
           </div>
-        </div>
-        
-        <div className="space-y-2">
-            <label className="text-xs text-slate-400 font-medium flex items-center gap-1">
-              <FileText className="w-3 h-3" /> Description
-            </label>
-            <textarea 
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-sky-500/50 outline-none h-16 resize-none"
-              placeholder="Describe your analysis..."
-            />
-        </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-4 pt-2">
-          <button
-            onClick={handlePreview}
-            disabled={loading}
-            className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            Run Logic
-          </button>
-          
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {currentChartId ? 'Update Analysis' : 'Save Analysis'}
-          </button>
-        </div>
-        
-        {/* Status Messages */}
-        {error && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-mono whitespace-pre-wrap">
-                ERROR: {String(error)}
-            </div>
-        )}
-        {successMsg && (
-            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-sm font-medium">
-                {successMsg}
-            </div>
-        )}
-
+          {/* Console / Status */}
+          <div className="h-[150px] bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 p-4 overflow-y-auto font-mono text-xs shadow-inner">
+              <div className="text-slate-500 mb-2 font-semibold">Console Output:</div>
+              {error ? (
+                  <div className="text-rose-400 whitespace-pre-wrap">{String(error)}</div>
+              ) : successMsg ? (
+                  <div className="text-emerald-400">&gt; {successMsg}</div>
+              ) : (
+                  <div className="text-slate-600 italic">&gt; Waiting for execution...</div>
+              )}
+          </div>
       </div>
     </div>
   );

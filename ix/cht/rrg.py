@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Optional
 from ix.db.query import Series, MultiSeries
-from .style import apply_academic_style
+from ix.cht.style import apply_academic_style
 
 
 def _get_quadrant_style(x: float, y: float) -> Dict[str, str]:
