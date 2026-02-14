@@ -118,7 +118,7 @@ export default function Chart({ code }: ChartProps) {
           }}
           style={{ width: '100%', height: '100%' }}
           useResizeHandler={true}
-          onInitialized={(_, gd) => setGraphDiv(gd)}
+          onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
         />
       )}
     </div>

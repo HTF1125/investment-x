@@ -445,7 +445,7 @@ fig = px.bar(df, x='Year', y='Value', title='New Analysis')
                         style={{ width: '100%', height: '100%' }}
                         useResizeHandler={true}
                         className="w-full h-full"
-                        onInitialized={(_, gd) => setGraphDiv(gd)}
+                        onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
                     />
                 ) : (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600/50">

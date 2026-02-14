@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   Search, Plus, Trash2, Edit3, Save, X, ChevronLeft, ChevronRight,
-  Database, RefreshCw, Loader2, AlertTriangle, Check, Star
+  Database, RefreshCw, Loader2, AlertTriangle, Check, Star, Mail
 } from 'lucide-react';
 
 // ────────────────────────────────────────────────── Types
@@ -59,6 +59,7 @@ export default function TimeseriesManager() {
 
   // Update Task State
   const [updating, setUpdating] = useState(false);
+  const [emailing, setEmailing] = useState(false);
   const [updateMsg, setUpdateMsg] = useState('');
 
   // ───── Toast helper
@@ -219,6 +220,28 @@ export default function TimeseriesManager() {
     }
   };
 
+  const handleSendEmail = async () => {
+    if (emailing || !token) return;
+    try {
+        setEmailing(true);
+        flash('Triggering email report...', 'success');
+        const res = await fetch('/api/task/report', { 
+            method: 'POST', 
+            headers: { Authorization: `Bearer ${token}` } 
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to send email');
+        }
+        flash('Email report task started!', 'success');
+    } catch (e: any) {
+        flash(e.message, 'error');
+    } finally {
+        setTimeout(() => setEmailing(false), 2000);
+    }
+  };
+
   // ───── Handlers
   const handleCreate = () => {
       if (!form.code.trim()) { flash('Code is required', 'error'); return; }
@@ -282,6 +305,16 @@ export default function TimeseriesManager() {
             <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
             {updating ? 'Running...' : 'Update Data'}
           </button>
+
+          <button
+            onClick={handleSendEmail}
+            disabled={emailing}
+            className={`flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-white/10 ${emailing ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {emailing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+            {emailing ? 'Sending...' : 'Email Report'}
+          </button>
+          
           
           <div className="w-px h-8 bg-white/10 mx-1" />
 
