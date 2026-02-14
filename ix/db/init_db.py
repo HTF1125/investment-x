@@ -1,7 +1,6 @@
 from ix.db.conn import conn, Base
 from ix.db.models import *  # Import all models to ensure they are registered
 from ix.db.models.user import User
-from ix.misc.auth import get_password_hash
 import logging
 
 # Configure logging
@@ -29,7 +28,7 @@ def init_db():
             logger.info("Creating default admin user...")
             admin_user = User(
                 email=admin_email,
-                hashed_password=get_password_hash("admin"),
+                password=User.hash_password("admin"),
                 is_admin=True,
                 first_name="Admin",
                 last_name="User",
