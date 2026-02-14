@@ -26,7 +26,7 @@ services:
   - type: web
     name: investment-x-frontend
     env: docker
-    dockerfilePath: ui/Dockerfile
+    dockerfilePath: Dockerfile
     rootDir: ui
     plan: free
     envVars:
