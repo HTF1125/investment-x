@@ -34,11 +34,8 @@ services:
         fromService:
           type: web
           name: investment-x-backend
-          property: url
+          property: hostport
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: investment-x-backend
-          property: url
+        value: "/" # Use relative path so requests go through Next.js proxy to backend
       - key: PORT
         value: 3000
