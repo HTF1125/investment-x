@@ -3,7 +3,7 @@ from plotly.subplots import make_subplots
 import pandas as pd
 from datetime import timedelta
 from ix.db.query import Series, MultiSeries, Offset, Rebase
-from .style import apply_academic_style, add_zero_line, get_value_label, get_color
+from ix.cht.style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def GoldBullMarkets() -> go.Figure:

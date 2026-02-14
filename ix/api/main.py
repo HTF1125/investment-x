@@ -10,11 +10,14 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from ix.db.conn import ensure_connection
+from ix.db.conn import ensure_connection, conn
 from ix.misc import get_logger
+from ix.utils.logger import setup_antigravity_logging
 from ix.misc.task import run_daily_tasks
 
-logger = get_logger(__name__)
+# Initialize Mandatory Antigravity Logger
+logger = setup_antigravity_logging(service_name="backend")
+# logger = get_logger(__name__)
 
 # Timezone config
 KST = pytz.timezone("Asia/Seoul")
@@ -93,6 +96,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def db_session_middleware(request, call_next):
+    """Ensure scoped session is removed after each request."""
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        if conn.Session:
+            conn.Session.remove()
+
+
 # Root endpoint removed as Dash handles "/"
 
 
@@ -138,6 +153,7 @@ try:
         risk,
         charts,
         news,
+        custom,
     )
 
     logger.info("Importing routers...")
@@ -149,6 +165,10 @@ try:
     app.include_router(risk.router, prefix="/api", tags=["Risk"])
     app.include_router(charts.router, prefix="/api", tags=["Charts"])
     app.include_router(news.router, prefix="/api", tags=["News"])
+    app.include_router(custom.router, prefix="/api", tags=["Custom"])
+    from ix.api.routers import dashboard
+
+    app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
     logger.info("Routers registered successfully")
 
     # Mount Dash app at root "/" AFTER all API routers

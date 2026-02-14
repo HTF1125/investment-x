@@ -4,6 +4,7 @@ from sqlalchemy.pool import QueuePool
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from ix.misc import Settings, get_logger
 import time
+import os
 from typing import Optional
 from contextlib import contextmanager
 from urllib.parse import urlparse, urlunparse
@@ -35,9 +36,17 @@ class Connection:
 
                 # Get database URL from settings
                 settings = Settings()
-                db_url = settings.db_url
+                # Prioritize standard cloud env var DATABASE_URL, then DB_URL
+                db_url = (
+                    os.environ.get("DATABASE_URL")
+                    or os.environ.get("DB_URL")
+                    or settings.db_url
+                )
+
                 if not db_url:
-                    raise ValueError("DB_URL environment variable is not set")
+                    raise ValueError(
+                        "DATABASE_URL or DB_URL environment variable is not set"
+                    )
 
                 # Convert MongoDB URL format to PostgreSQL if needed
                 # If it's already a PostgreSQL URL, use it as is
@@ -63,13 +72,13 @@ class Connection:
                 self.engine = create_engine(
                     db_url,
                     poolclass=QueuePool,
-                    pool_size=3,
-                    max_overflow=6,
+                    pool_size=40,  # Doubled to 40
+                    max_overflow=80,  # Doubled to 80
                     pool_pre_ping=True,  # Verify connections before using them
                     pool_recycle=3600,  # Recycle connections after 1 hour
                     echo=False,  # Set to True for SQL query logging
                     connect_args={
-                        "connect_timeout": 5,  # 5 second timeout for connection attempts
+                        "connect_timeout": 10,  # Increased timeout for connection attempts
                     },
                 )
 
@@ -200,7 +209,14 @@ def get_session():
     if not conn.is_connected():
         if not conn.connect():
             raise ConnectionError("Failed to establish database connection")
-    return conn.get_session()
+
+    # Use SessionLocal to create a fresh session for each request
+    # avoiding scoped_session concurrency issues in async/threaded contexts
+    session = conn.SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 @contextmanager
@@ -210,10 +226,11 @@ def Session():
         if not conn.connect():
             raise ConnectionError("Failed to establish database connection")
 
-    if conn.Session is None:
-        raise ConnectionError("Session not initialized. Please connect first.")
+    if conn.SessionLocal is None:
+        raise ConnectionError("Session factory not initialized. Please connect first.")
 
-    session = conn.Session()
+    # Use SessionLocal for context manager too to ensure isolation
+    session = conn.SessionLocal()
     try:
         yield session
         session.commit()
@@ -222,7 +239,6 @@ def Session():
         raise
     finally:
         session.close()
-        conn.Session.remove()  # Remove the scoped session from registry
 
 
 def ensure_connection():

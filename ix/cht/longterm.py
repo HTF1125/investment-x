@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries, Cycle
-from .style import apply_academic_style, add_zero_line, get_value_label
+from ix.cht.style import apply_academic_style, add_zero_line, get_value_label
 
 
 def _create_long_term_cycle_chart(

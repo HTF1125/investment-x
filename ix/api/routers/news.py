@@ -22,8 +22,15 @@ class TelegramMessageSchema(BaseModel):
         from_attributes = True
 
 
+from ix.api.dependencies import get_current_user
+from ix.db.models.user import User
+
+
 @router.get("/news/telegram", response_model=List[TelegramMessageSchema])
-def get_recent_telegram_messages(hours: int = 24, db: Session = Depends(get_session)):
+def get_recent_telegram_messages(
+    hours: int = 24,
+    db: Session = Depends(get_session),
+):
     """
     Returns Telegram messages from the last X hours (default 24).
     """

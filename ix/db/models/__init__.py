@@ -19,6 +19,8 @@ from ix.db.conn import Base
 from .user import User
 from .telegram import TelegramMessage
 from .chart import Chart
+from .custom_chart import CustomChart
+from .financial_news import FinancialNews
 
 # Re-export Base for convenience
 __all__ = [
@@ -32,7 +34,22 @@ __all__ = [
     "TelegramMessage",
     "Insights",
     "Chart",
+    "CustomChart",
+    "FinancialNews",
 ]
+
+
+def all():
+    """Return all model classes."""
+    return [
+        EconomicCalendar,
+        Universe,
+        Timeseries,
+        TacticalView,
+        Insights,
+        CustomChart,
+        FinancialNews,
+    ]
 
 
 class Timeseries(Base):
@@ -640,14 +657,3 @@ class Insights(Base):
     pdf_content = Column(LargeBinary, nullable=True)
     hash = Column(String, nullable=True)
     created = Column(DateTime, default=datetime.now, nullable=False)
-
-
-def all():
-    """Return all model classes."""
-    return [
-        EconomicCalendar,
-        Universe,
-        Timeseries,
-        TacticalView,
-        Insights,
-    ]

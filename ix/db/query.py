@@ -130,7 +130,7 @@ def MultiSeries(**series: pd.Series) -> pd.DataFrame:
     data.index.name = "Date"
     return data
 
-@cached(cache)
+# @cached(cache)
 def Series(
     code: str,
     freq: str | None = None,

@@ -2,7 +2,7 @@
 Timeseries router for timeseries data management.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from typing import Optional, List, Dict, Any
 from collections import OrderedDict
@@ -19,7 +19,7 @@ from ix.api.schemas import (
     TimeseriesColumnarUpload,
     TimeseriesUpdate,
 )
-from ix.api.dependencies import get_db
+from ix.api.dependencies import get_db, get_current_admin_user
 from ix.db.models import Timeseries
 from ix.db.conn import ensure_connection, Session
 from ix.db.models.user import User
@@ -84,6 +84,9 @@ def _apply_timeseries_updates(ts: Timeseries, data: dict) -> None:
 async def get_timeseries(
     limit: Optional[int] = Query(None, description="Limit number of results"),
     offset: int = Query(0, description="Offset for pagination"),
+    search: Optional[str] = Query(
+        None, description="Search by code, name, source, or category"
+    ),
     category: Optional[str] = Query(None, description="Filter by category"),
     asset_class: Optional[str] = Query(None, description="Filter by asset class"),
     provider: Optional[str] = Query(None, description="Filter by provider"),
@@ -93,8 +96,22 @@ async def get_timeseries(
     GET /api/timeseries - List all timeseries with optional filtering and pagination.
     """
     ensure_connection()
+    from sqlalchemy import or_
 
     timeseries_query = db.query(Timeseries)
+
+    # Full-text search across multiple fields
+    if search:
+        pattern = f"%{search}%"
+        timeseries_query = timeseries_query.filter(
+            or_(
+                Timeseries.code.ilike(pattern),
+                Timeseries.name.ilike(pattern),
+                Timeseries.source.ilike(pattern),
+                Timeseries.category.ilike(pattern),
+                Timeseries.source_code.ilike(pattern),
+            )
+        )
 
     # Apply filters
     if category:
@@ -387,6 +404,38 @@ async def create_timeseries(
         logger.error(f"Failed to create timeseries {code}: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to create timeseries '{code}'"
+        )
+
+
+@router.delete("/timeseries/{code}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_timeseries(
+    code: str,
+    db: SessionType = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+):
+    """
+    DELETE /api/timeseries/{code} - Delete a timeseries by code.
+
+    Admin-only endpoint.
+    """
+    ensure_connection()
+
+    ts = db.query(Timeseries).filter(Timeseries.code == code).first()
+    if not ts:
+        raise HTTPException(
+            status_code=404, detail=f"Timeseries with code '{code}' not found"
+        )
+
+    try:
+        db.delete(ts)
+        db.commit()
+        logger.info(f"Admin {current_user.email} deleted timeseries: {code}")
+        return
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to delete timeseries {code}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete timeseries '{code}'"
         )
 
 

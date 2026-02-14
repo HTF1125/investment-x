@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 import pandas as pd
 from ix.db.query import Series, MultiSeries, StandardScalar
-from .style import apply_academic_style, add_zero_line, get_value_label, get_color
+from ix.cht.style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def PositionsCrowdedness() -> go.Figure:
