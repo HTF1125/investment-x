@@ -16,7 +16,7 @@ const Plot = dynamic(() => import('react-plotly.js'), {
       <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
     </div>
   ),
-});
+}) as any;
 
 export default function CustomChartEditor() {
   const { token } = useAuth();
