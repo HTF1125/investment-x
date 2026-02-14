@@ -3,7 +3,16 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  output: process.env.NEXT_BUILD_MODE === 'export' ? 'export' : undefined,
+  images: {
+      unoptimized: true,
+  },
   async rewrites() {
+    // If exporting, no rewrites needed (handled by backend server)
+    if (process.env.NEXT_BUILD_MODE === 'export') {
+        return [];
+    }
+    
     // Use environment variable for backend URL, fallback to 127.0.0.1 for dev to avoid IPv6 issues
     let apiUrl = process.env.INTERNAL_API_URL || process.env.API_URL || 'http://127.0.0.1:8000';
     

@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 import pytz
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -177,8 +178,8 @@ try:
         from starlette.middleware.wsgi import WSGIMiddleware
         from ix.web.app import dash_app
 
-        app.mount("/", WSGIMiddleware(dash_app.server))
-        logger.info("Dash app mounted at /")
+        app.mount("/dash", WSGIMiddleware(dash_app.server))
+        logger.info("Dash app mounted at /dash")
     except Exception as e:
         logger.warning(f"Failed to mount Dash app: {e}")
 
@@ -190,6 +191,39 @@ except Exception as e:
     # Re-raise so the app fails to start if routers are broken
     raise e
 
+
+# Serve SPA - Static Files
+import os
+
+static_dir = os.path.join(os.getcwd(), "static")
+if os.path.exists(static_dir):
+    logger.info(f"Serve static frontend from {static_dir}")
+
+    # Mount /_next first
+    if os.path.exists(os.path.join(static_dir, "_next")):
+        app.mount(
+            "/_next",
+            StaticFiles(directory=os.path.join(static_dir, "_next")),
+            name="next_assets",
+        )
+
+    # Catch-all for other static files or SPA index.html
+    # NOTE: This must be below all API routes
+    @app.get("/")
+    async def serve_root():
+        return FileResponse(os.path.join(static_dir, "index.html"))
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Prevent path traversal? StaticFiles handles it, but here we do manual check
+        file_path = os.path.join(static_dir, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # Fallback to index.html
+        return FileResponse(os.path.join(static_dir, "index.html"))
+
+else:
+    logger.info("Static directory not found, running API only mode")
 
 if __name__ == "__main__":
     import uvicorn

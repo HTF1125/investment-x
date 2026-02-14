@@ -1,0 +1,44 @@
+# Stage 1: Build the Next.js Frontend
+FROM node:18-alpine AS frontend-builder
+WORKDIR /app/ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm install
+COPY ui/ ./
+# Environment variable for static export build usually not strictly needed if relative paths are correct, 
+# but consistent with previous config is good.
+# However, NEXT_PUBLIC_API_URL should be relative for same-origin requests in a combined container.
+
+ENV NEXT_PUBLIC_API_URL=/api
+ENV NEXT_BUILD_MODE=export
+RUN npm run build
+# Ensure "out" directory exists (requires "output: 'export'" in next.config.mjs)
+
+# Stage 2: Build the FastAPI Backend
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy Backend Code
+COPY . .
+
+# Copy Frontend Build Artifacts from Stage 1
+# We'll place them in a 'static' directory to be served by FastAPI
+COPY --from=frontend-builder /app/ui/out /app/static
+
+# Expose port (Render uses $PORT, defaults to 10000, we use 8000 internally)
+ENV PORT=8000
+EXPOSE 8000
+
+# Run Command
+CMD ["/bin/bash", "-c", "python ix/db/init_db.py && uvicorn ix.api.main:app --host 0.0.0.0 --port $PORT"]

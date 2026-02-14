@@ -5,11 +5,11 @@ databases:
     user: investmentx_user
 
 services:
-  # Backend Service
+  # Combined Service (Backend + Frontend)
   - type: web
     name: investment-x-backend
     env: docker
-    dockerfilePath: Dockerfile.backend
+    dockerfilePath: Dockerfile.combined
     rootDir: .
     plan: free
     envVars:
@@ -21,21 +21,5 @@ services:
         value: 8000
       - key: PYTHONUNBUFFERED
         value: 1
-
-  # Frontend Service
-  - type: web
-    name: investment-x-frontend
-    env: docker
-    dockerfilePath: Dockerfile
-    rootDir: ui
-    plan: free
-    envVars:
-      - key: INTERNAL_API_URL
-        fromService:
-          type: web
-          name: investment-x-backend
-          property: hostport
-      - key: NEXT_PUBLIC_API_URL
-        value: "/" # Use relative path so requests go through Next.js proxy to backend
-      - key: PORT
-        value: 3000
+      # Frontend build env vars are handled inside Dockerfile.combined, 
+      # but we can override here if needed.
