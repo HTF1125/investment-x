@@ -195,8 +195,21 @@ except Exception as e:
 # Serve SPA - Static Files
 import os
 
-static_dir = os.path.join(os.getcwd(), "static")
-if os.path.exists(static_dir):
+
+# Try to find static directory
+cwd_static = os.path.join(os.getcwd(), "static")
+root_static = "/app/static"
+api_relative_static = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "../../static"
+)
+
+static_dir = None
+for p in [cwd_static, root_static, api_relative_static]:
+    if os.path.exists(p):
+        static_dir = p
+        break
+
+if static_dir:
     logger.info(f"Serve static frontend from {static_dir}")
 
     # Mount /_next first
@@ -213,6 +226,25 @@ if os.path.exists(static_dir):
     async def serve_root():
         return FileResponse(os.path.join(static_dir, "index.html"))
 
+    @app.get("/api/debug-fs")
+    async def debug_fs():
+        import subprocess
+
+        try:
+            # Safe ls listing
+            files = os.listdir(os.getcwd())
+            static_exists = os.path.exists(static_dir)
+            static_content = os.listdir(static_dir) if static_exists else []
+            return {
+                "cwd": os.getcwd(),
+                "static_dir": static_dir,
+                "exists": static_exists,
+                "root_files": files,
+                "static_files": static_content,
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         # Prevent path traversal? StaticFiles handles it, but here we do manual check
@@ -224,6 +256,28 @@ if os.path.exists(static_dir):
 
 else:
     logger.info("Static directory not found, running API only mode")
+
+
+# Debug Endpoint - Keep GLOBAL so it always works
+@app.get("/api/debug-fs")
+async def debug_fs():
+    import os
+
+    try:
+        # Safe ls listing
+        files = os.listdir(os.getcwd())
+        static_exists = static_dir and os.path.exists(static_dir)
+        static_content = os.listdir(static_dir) if static_exists else []
+        return {
+            "cwd": os.getcwd(),
+            "static_dir": static_dir,
+            "exists": static_exists,
+            "root_files": files,
+            "static_files": static_content,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 
 if __name__ == "__main__":
     import uvicorn
