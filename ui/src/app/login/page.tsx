@@ -9,6 +9,7 @@ import { Mail, Lock, LogIn, ArrowRight } from 'lucide-react';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const { login, loading } = useAuth();
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function LoginPage() {
     }
 
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
       // Redirect handled in AuthContext after successful login
     } catch (err: any) {
       setError(err.message || 'Failed to login');
@@ -79,6 +80,19 @@ export default function LoginPage() {
                 placeholder="••••••••"
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+             <input 
+               type="checkbox" 
+               id="remember-me"
+               checked={rememberMe}
+               onChange={(e) => setRememberMe(e.target.checked)}
+               className="w-4 h-4 rounded border-slate-600 bg-black/40 text-sky-500 focus:ring-sky-500/50 focus:ring-offset-0 transition-colors accent-sky-500 cursor-pointer"
+             />
+             <label htmlFor="remember-me" className="text-sm text-slate-400 select-none cursor-pointer hover:text-slate-300 transition-colors">
+               Remember me
+             </label>
           </div>
 
           <button

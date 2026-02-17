@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
 // Types
@@ -17,7 +17,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string, firstName?: string, lastName?: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -29,39 +29,46 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // Store token in state to avoid direct localStorage reads during render (SSR hydration safety)
+  const [token, setToken] = useState<string | null>(null);
   const router = useRouter();
 
-  // Helper to get token
-  const getToken = () => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('token');
+  // Sync token from localStorage on mount only (client-side)
+  useEffect(() => {
+    const stored = localStorage.getItem('token');
+    if (stored) setToken(stored);
+  }, []);
+
+  // Persist token changes to localStorage
+  const updateToken = useCallback((newToken: string | null) => {
+    setToken(newToken);
+    if (newToken) {
+      localStorage.setItem('token', newToken);
+    } else {
+      localStorage.removeItem('token');
     }
-    return null;
-  };
+  }, []);
 
   useEffect(() => {
-    // Check for existing token on mount
     const initAuth = async () => {
-      const token = getToken();
-      if (token) {
+      const storedToken = localStorage.getItem('token');
+      if (storedToken) {
         try {
           const res = await fetch('/api/auth/me', {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
+            headers: { 'Authorization': `Bearer ${storedToken}` },
           });
           
           if (res.ok) {
             const userData = await res.json();
             setUser(userData);
+            setToken(storedToken);
           } else {
-            // Invalid token
-            localStorage.removeItem('token');
+            // Invalid token — clear it
+            updateToken(null);
             setUser(null);
           }
-        } catch (err) {
-          console.error('Auth initialization error:', err);
-          localStorage.removeItem('token');
+        } catch {
+          updateToken(null);
           setUser(null);
         }
       }
@@ -69,17 +76,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     initAuth();
-  }, []);
+  }, [updateToken]);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, rememberMe: boolean = false) => {
     setLoading(true);
     try {
       const res = await fetch('/api/auth/login/json', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, remember_me: rememberMe }),
       });
 
       if (!res.ok) {
@@ -88,41 +93,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await res.json();
-      localStorage.setItem('token', data.access_token);
+      updateToken(data.access_token);
       
       // Fetch user details immediately
       const meRes = await fetch('/api/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${data.access_token}`
-        }
+        headers: { 'Authorization': `Bearer ${data.access_token}` },
       });
       
       if (meRes.ok) {
         const userData = await meRes.json();
         setUser(userData);
-        router.push('/'); // Redirect to dashboard
+        router.push('/');
       }
     } catch (err) {
-      console.error('Login error:', err);
       throw err;
     } finally {
       setLoading(false);
     }
-  };
+  }, [router, updateToken]);
 
-  const register = async (email: string, password: string, firstName?: string, lastName?: string) => {
+  const register = useCallback(async (email: string, password: string, firstName?: string, lastName?: string) => {
     setLoading(true);
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           email, 
           password,
           first_name: firstName,
-          last_name: lastName
+          last_name: lastName,
         }),
       });
 
@@ -131,22 +131,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(errorData.detail || 'Registration failed');
       }
 
-      // Automatically login after register? Or redirect to login?
-      // Let's auto-login for better UX
+      // Auto-login after successful registration
       await login(email, password);
     } catch (err) {
-      console.error('Registration error:', err);
       throw err;
     } finally {
       setLoading(false);
     }
-  };
+  }, [login]);
 
-  const logout = () => {
-    localStorage.removeItem('token');
+  const logout = useCallback(() => {
+    updateToken(null);
     setUser(null);
     router.push('/login');
-  };
+  }, [router, updateToken]);
 
   return (
     <AuthContext.Provider value={{ 
@@ -156,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register, 
       logout,
       isAuthenticated: !!user,
-      token: typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      token,
     }}>
       {children}
     </AuthContext.Provider>

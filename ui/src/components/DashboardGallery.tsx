@@ -85,7 +85,7 @@ export default function DashboardGallery({ categories, chartsByCategory }: Dashb
   return (
     <div className="space-y-8 min-h-[800px]">
       {/* 🧭 Filter & Search Command Bar */}
-      <div className="flex flex-col lg:flex-row gap-6 items-center justify-between sticky top-6 z-40 px-6 py-4 glass-card bg-slate-900/60 backdrop-blur-2xl border-white/10 shadow-2xl">
+      <div className="flex flex-col lg:flex-row gap-6 items-center justify-between sticky top-20 z-40 px-6 py-4 glass-card bg-slate-900/60 backdrop-blur-2xl border-white/10 shadow-2xl">
         <div className="flex flex-wrap items-center gap-2 pb-2 lg:pb-0 w-full lg:w-[75%]">
           {!searchQuery && (
             <div className="flex flex-wrap gap-2">

@@ -21,6 +21,7 @@ from .telegram import TelegramMessage
 from .chart import Chart
 from .custom_chart import CustomChart
 from .financial_news import FinancialNews
+import pandas as pd
 
 # Re-export Base for convenience
 __all__ = [
@@ -143,30 +144,43 @@ class Timeseries(Base):
     def data(self):
         """Return timeseries data as pandas Series."""
         import pandas as pd
-        from ix.db.conn import Session
+        from ix.db.conn import Session, custom_chart_session
 
-        # Reload the object from the database within session context
-        with Session() as session:
-            # Reload the object by querying with the same ID
-            ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
-            if ts is None:
-                # If not found, return empty series
-                return pd.Series(
-                    name=self.code if hasattr(self, "code") else "", dtype=float
-                )
+        # 1. Check for a shared session in the context (optimization)
+        session = custom_chart_session.get()
+        is_shared = session is not None
 
-            # Increment num_data_queried
-            ts.num_data_queried = (ts.num_data_queried or 0) + 1
-            data_record = ts._get_or_create_data_record(session)
-            column_data = data_record.data if data_record and data_record.data else {}
-            code = ts.code
-            frequency = ts.frequency
+        if is_shared:
+            # Use the shared session without a 'with' block (caller manages it)
+            return self._fetch_data_logic(session)
+        else:
+            # Fallback to creating a new scoped session
+            with Session() as session:
+                return self._fetch_data_logic(session)
+
+    def _fetch_data_logic(self, session) -> pd.Series:
+        """Core logic for fetching and processing timeseries data from a session."""
+        import pandas as pd
+
+        # Reload the object to ensure it's attached to the current session
+        ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
+        if ts is None:
+            return pd.Series(
+                name=self.code if hasattr(self, "code") else "", dtype=float
+            )
+
+        # Increment num_data_queried (tracked even in shared session)
+        ts.num_data_queried = (ts.num_data_queried or 0) + 1
+
+        data_record = ts._get_or_create_data_record(session)
+        column_data = data_record.data if data_record and data_record.data else {}
+        code = ts.code
+        frequency = ts.frequency
 
         if not column_data or len(column_data) == 0:
             return pd.Series(name=code, dtype=float)
 
         # Convert JSONB dict to pandas Series
-        # JSONB stores dates as strings, convert them back
         data_dict = column_data if isinstance(column_data, dict) else {}
         series = pd.Series(data_dict)
 
@@ -176,30 +190,21 @@ class Timeseries(Base):
             valid_dates = pd.to_datetime(series.index, errors="coerce")
             series = series[valid_dates.notna()]
             series.index = pd.to_datetime(series.index)
-            # Update the stored data
+            # Update the stored data if we found corrupted dates
             if len(series) > 0:
-                from ix.db.conn import Session
-
-                with Session() as session:
-                    ts = (
-                        session.query(Timeseries)
-                        .filter(Timeseries.id == self.id)
-                        .first()
-                    )
-                    if ts is not None:
-                        data_record = ts._get_or_create_data_record(session)
-                        cleaned = {}
-                        for k, v in series.to_dict().items():
-                            try:
-                                if hasattr(k, "date"):
-                                    key = str(k.date())
-                                else:
-                                    key = str(pd.to_datetime(k).date())
-                                cleaned[key] = float(v)
-                            except Exception:
-                                continue
-                        data_record.data = cleaned
-                        data_record.updated = datetime.now()
+                data_record = ts._get_or_create_data_record(session)
+                cleaned = {}
+                for k, v in series.to_dict().items():
+                    try:
+                        if hasattr(k, "date"):
+                            key = str(k.date())
+                        else:
+                            key = str(pd.to_datetime(k).date())
+                        cleaned[key] = float(v)
+                    except Exception:
+                        continue
+                data_record.data = cleaned
+                data_record.updated = datetime.now()
 
         series = series.map(lambda x: pd.to_numeric(x, errors="coerce")).dropna()
         series.name = code
@@ -215,7 +220,7 @@ class Timeseries(Base):
     def data(self, data):
         """Set timeseries data from pandas Series or dict."""
         import pandas as pd
-        from ix.db.conn import Session
+        from ix.db.conn import Session, custom_chart_session
 
         if isinstance(data, dict):
             data = pd.Series(data)
@@ -228,39 +233,134 @@ class Timeseries(Base):
         if data.empty:
             return
 
-        with Session() as session:
-            ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
-            if ts is None:
-                return
+        # Optimization: use shared session if available
+        session_ctx = custom_chart_session.get()
+        if session_ctx:
+            self._save_data_logic(data, session_ctx)
+        else:
+            with Session() as session:
+                self._save_data_logic(data, session)
 
-            data_record = ts._get_or_create_data_record(session)
-            current_data = (
-                data_record.data.copy() if data_record and data_record.data else {}
+    def _save_data_logic(self, data, session) -> None:
+        """Core logic for saving timeseries data to a session."""
+        import pandas as pd
+
+        ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
+        if ts is None:
+            return
+
+        data_record = ts._get_or_create_data_record(session)
+        current_data = (
+            data_record.data.copy() if data_record and data_record.data else {}
+        )
+
+        # Convert dates to strings for storage
+        new_data = {}
+        for k, v in data.to_dict().items():
+            if hasattr(k, "date"):
+                date_str = str(k.date())
+            elif isinstance(k, str):
+                date_str = k
+            else:
+                date_str = str(pd.to_datetime(k).date())
+            new_data[date_str] = float(v)
+
+        current_data.update(new_data)
+        data_record.data = current_data
+        data_record.updated = datetime.now()
+
+        # Compute latest_value from the complete dataset
+        if current_data:
+            # Sort by date to find the latest
+            sorted_items = sorted(
+                current_data.items(),
+                key=lambda item: pd.to_datetime(item[0], errors="coerce"),
             )
+            # Filter valid dates just in case
+            sorted_items = [
+                item
+                for item in sorted_items
+                if pd.notna(pd.to_datetime(item[0], errors="coerce"))
+            ]
 
-            # Convert dates to strings for storage
-            new_data = {}
-            for k, v in data.to_dict().items():
-                if hasattr(k, "date"):
-                    date_str = str(k.date())
-                elif isinstance(k, str):
-                    date_str = k
-                else:
-                    date_str = str(pd.to_datetime(k).date())
-                new_data[date_str] = float(v)
+            if sorted_items:
+                latest_date_str, latest_val = sorted_items[-1]
+                ts.latest_value = float(latest_val)
+                ts.end = pd.to_datetime(latest_date_str).date()
+                ts.start = pd.to_datetime(sorted_items[0][0]).date()
+                ts.num_data = len(sorted_items)
+            else:
+                ts.latest_value = None
+                ts.start = None
+                ts.end = None
+                ts.num_data = 0
+        else:
+            ts.latest_value = None
+            ts.start = None
+            ts.end = None
+            ts.num_data = 0
 
-            current_data.update(new_data)
-            data_record.data = current_data
-            data_record.updated = datetime.now()
+        ts.updated = datetime.now()
 
-            # Compute latest_value from the complete dataset
-            if current_data:
-                # Sort by date to find the latest
+        # Feed to parent if exists
+        self._feed_to_parent_with_session(data, session)
+
+    def _feed_to_parent_with_session(self, new_data, session):
+        """Feed data to parent timeseries using an existing session."""
+        ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
+        if not ts or not ts.parent_id:
+            return
+
+        parent_ts = (
+            session.query(Timeseries).filter(Timeseries.id == ts.parent_id).first()
+        )
+        if parent_ts is None:
+            return
+
+        import pandas as pd
+
+        data_record = parent_ts._get_or_create_data_record(session)
+        parent_data = (
+            data_record.data.copy() if data_record and data_record.data else {}
+        )
+
+        # Convert new_data to dict format with date strings
+        new_data_dict = {}
+        for k, v in new_data.to_dict().items():
+            if hasattr(k, "date"):
+                date_str = str(k.date())
+            elif isinstance(k, str):
+                date_str = k
+            else:
+                date_str = str(pd.to_datetime(k).date())
+            new_data_dict[date_str] = float(v)
+
+        parent_data.update(new_data_dict)
+
+        # Clean invalid dates
+        parent_data_clean = {}
+        for k, v in parent_data.items():
+            try:
+                pd.to_datetime(k)
+                parent_data_clean[k] = v
+            except Exception:
+                continue
+
+        data_record.data = parent_data_clean
+        data_record.updated = datetime.now()
+        if len(parent_data_clean) > 0:
+            dates = pd.to_datetime(list(parent_data_clean.keys()), errors="coerce")
+            valid_dates = dates[~pd.isna(dates)]
+            if len(valid_dates) > 0:
+                parent_ts.start = valid_dates.min().date()
+                parent_ts.end = valid_dates.max().date()
+                parent_ts.num_data = len(parent_data_clean)
+
+                # Compute latest date and value
                 sorted_items = sorted(
-                    current_data.items(),
+                    parent_data_clean.items(),
                     key=lambda item: pd.to_datetime(item[0], errors="coerce"),
                 )
-                # Filter valid dates
                 sorted_items = [
                     item
                     for item in sorted_items
@@ -268,26 +368,16 @@ class Timeseries(Base):
                 ]
 
                 if sorted_items:
-                    latest_date_str, latest_val = sorted_items[-1]
-                    ts.latest_value = float(latest_val)
-                    ts.end = pd.to_datetime(latest_date_str).date()
-                    ts.start = pd.to_datetime(sorted_items[0][0]).date()
-                    ts.num_data = len(sorted_items)
+                    latest_item = sorted_items[-1]
+                    parent_ts.latest_value = float(latest_item[1])
                 else:
-                    ts.latest_value = None
-                    ts.start = None
-                    ts.end = None
-                    ts.num_data = 0
-            else:
-                ts.latest_value = None
-                ts.start = None
-                ts.end = None
-                ts.num_data = 0
-
-            ts.updated = datetime.now()
-
-        # Feed to parent if exists
-        self._feed_to_parent(data)
+                    parent_ts.latest_value = None
+        else:
+            parent_ts.start = None
+            parent_ts.end = None
+            parent_ts.num_data = 0
+            parent_ts.latest_value = None
+        parent_ts.updated = datetime.now()
 
     def _get_parent(self):
         """Get parent timeseries."""

@@ -77,11 +77,18 @@ def authenticate_user(email: str, password: str):
         user = User.get_by_email(email)
         if not user:
             # Optional bootstrap path: create admin user on first successful login attempt
-            BOOTSTRAP_EMAIL = "robertashan1125@gmail.com"
-            BOOTSTRAP_PASSWORD = "investmentx1125A!"
+            # Use environment variables
+            import os
+
+            BOOTSTRAP_EMAIL = os.environ.get("IX_ADMIN_EMAIL")
+            BOOTSTRAP_PASSWORD = os.environ.get("IX_ADMIN_PASSWORD")
+
             if (
-                email or ""
-            ).strip().lower() == BOOTSTRAP_EMAIL and password == BOOTSTRAP_PASSWORD:
+                BOOTSTRAP_EMAIL
+                and BOOTSTRAP_PASSWORD
+                and (email or "").strip().lower() == BOOTSTRAP_EMAIL.lower()
+                and password == BOOTSTRAP_PASSWORD
+            ):
                 try:
                     user = User.new_user(
                         email=email,
@@ -101,7 +108,7 @@ def authenticate_user(email: str, password: str):
             return None
         if not user.verify_password(password):
             # If this is the bootstrap admin credential, force-reset the stored hash
-            BOOTSTRAP_EMAIL = "robertashan1125@gmail.com"
+            BOOTSTRAP_EMAIL = "roberthan1125@gmail.com"
             BOOTSTRAP_PASSWORD = "investmentx1125A!"
             if (
                 email or ""
@@ -166,17 +173,20 @@ def get_current_user(token: str):
         return None
 
 
-def create_user_token(email: str, is_admin: bool = False) -> str:
+def create_user_token(
+    email: str, is_admin: bool = False, expires_delta: Optional[timedelta] = None
+) -> str:
     """
     Create a JWT token for a user
 
     Args:
         email: User email
         is_admin: Whether the user is an admin
+        expires_delta: Optional timedelta for token expiration
 
     Returns:
         JWT token string
     """
     token_data = {"sub": email, "is_admin": is_admin, "iat": datetime.utcnow()}
 
-    return create_access_token(token_data)
+    return create_access_token(token_data, expires_delta=expires_delta)

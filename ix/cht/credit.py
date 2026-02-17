@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from ix.db.query import Series, MultiSeries, Offset
-from .style import apply_academic_style, add_zero_line, get_value_label, get_color
+from ix.cht.style import apply_academic_style, add_zero_line, get_value_label, get_color
 
 
 def US_CreditImpulse() -> go.Figure:

@@ -63,7 +63,10 @@ async def login_json(credentials: UserLogin):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_user_token(str(user.email), bool(user.is_admin))
+    expires_delta = timedelta(days=30) if credentials.remember_me else None
+    access_token = create_user_token(
+        str(user.email), bool(user.is_admin), expires_delta=expires_delta
+    )
     return {"access_token": access_token, "token_type": "bearer"}
 
 

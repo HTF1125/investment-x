@@ -4,6 +4,7 @@ import pandas as pd
 
 from scipy.optimize import curve_fit
 from pandas.tseries.offsets import MonthEnd
+from sqlalchemy.orm import Session as SessionType
 from ix.db.models import Timeseries
 from cachetools import TTLCache, cached
 from ix import core
@@ -130,6 +131,7 @@ def MultiSeries(**series: pd.Series) -> pd.DataFrame:
     data.index.name = "Date"
     return data
 
+
 # @cached(cache)
 def Series(
     code: str,
@@ -137,6 +139,7 @@ def Series(
     name: str | None = None,
     ccy: str | None = None,
     scale: int | None = None,
+    session: Optional[SessionType] = None,
 ) -> pd.Series:
     """
     Return a pandas Series for `code`, resampled to `freq` if provided,
@@ -155,21 +158,47 @@ def Series(
         # Query using SQLAlchemy
         from ix.db.conn import Session
 
-        with Session() as session:
-            ts = session.query(Timeseries).filter(Timeseries.code == code).first()
+        ts_code = None
+        ts_start = None
+        ts_frequency = None
+        s = pd.Series(name=code, dtype=float)  # Initialize s to avoid UnboundLocalError
 
-            if ts is None:
-                # Extract code and check for alias pattern after session closes
-                ts_code = None
-                ts_start = None
-                ts_frequency = None
-            else:
-                # Extract all needed attributes while still in session
+        if session:
+            ts = session.query(Timeseries).filter(Timeseries.code == code).first()
+            if ts:
                 ts_code = ts.code
                 ts_start = ts.start
                 ts_frequency = ts.frequency
-                # Get data while still in session
                 s = ts.data.copy()
+        else:
+            # Check for context session (for Custom Chart execution optimization)
+            from ix.db.conn import custom_chart_session
+
+            ctx_session = custom_chart_session.get()
+
+            if ctx_session:
+                ts = (
+                    ctx_session.query(Timeseries)
+                    .filter(Timeseries.code == code)
+                    .first()
+                )
+                if ts:
+                    ts_code = ts.code
+                    ts_start = ts.start
+                    ts_frequency = ts.frequency
+                    s = ts.data.copy()
+            else:
+                with Session() as session_local:
+                    ts = (
+                        session_local.query(Timeseries)
+                        .filter(Timeseries.code == code)
+                        .first()
+                    )
+                    if ts:
+                        ts_code = ts.code
+                        ts_start = ts.start
+                        ts_frequency = ts.frequency
+                        s = ts.data.copy()
         # Session is now closed, ts is detached
 
         if ts is None and "=" in code:

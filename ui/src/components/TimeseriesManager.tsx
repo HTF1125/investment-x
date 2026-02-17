@@ -3,10 +3,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, Trash2, Edit3, Save, X, ChevronLeft, ChevronRight,
-  Database, RefreshCw, Loader2, AlertTriangle, Check, Star, Mail
+  Database, RefreshCw, Loader2, AlertTriangle, Check, Star, Mail,
+  LineChart
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+const Plot = dynamic(() => import('react-plotly.js'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full w-full">
+      <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+    </div>
+  ),
+}) as any;
 
 // ────────────────────────────────────────────────── Types
 interface Timeseries {
@@ -62,6 +74,9 @@ export default function TimeseriesManager() {
   const [emailing, setEmailing] = useState(false);
   const [updateMsg, setUpdateMsg] = useState('');
 
+  // Chart Viewer State
+  const [viewChartItem, setViewChartItem] = useState<Timeseries | null>(null);
+
   // ───── Toast helper
   const flash = (msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
@@ -102,6 +117,25 @@ export default function TimeseriesManager() {
   });
 
   const loading = isLoading; // Alias for UI compatibility
+
+  // ───── Fetch Chart Data
+  const { data: chartData, isLoading: chartLoading } = useQuery({
+    queryKey: ['series-data', viewChartItem?.code],
+    queryFn: async () => {
+      if (!viewChartItem?.code || !token) return null;
+      // Fetch using the advanced series API to get processed data
+      const params = new URLSearchParams();
+      // Use Series('CODE') to fetch
+      params.set('series', `Series('${viewChartItem.code}')`);
+      
+      const res = await fetch(`/api/series?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch data');
+      return res.json();
+    },
+    enabled: !!viewChartItem && !!token,
+  });
 
   // ───── Mutations
   const createMutation = useMutation({
@@ -210,7 +244,7 @@ export default function TimeseriesManager() {
                      }
                  }
              } catch (e) {
-                 console.error(e);
+                 // Silently handled
                  // Don't stop polling on transient network error
              }
         }, 2000);
@@ -328,6 +362,7 @@ export default function TimeseriesManager() {
             onClick={() => queryClient.invalidateQueries({ queryKey: ['timeseries'] })}
             disabled={loading}
             className="p-2.5 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl border border-white/5 transition-all"
+            aria-label="Refresh timeseries list"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -342,6 +377,7 @@ export default function TimeseriesManager() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by code, name, source, category..."
+          aria-label="Search timeseries"
           className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-2xl text-white placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 transition-all text-sm"
         />
         {search && (
@@ -408,6 +444,13 @@ export default function TimeseriesManager() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
+                          onClick={() => setViewChartItem(ts)}
+                          className="p-1.5 text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                          title="View Chart"
+                        >
+                          <LineChart className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => openEdit(ts)}
                           className="p-1.5 text-slate-500 hover:text-sky-400 hover:bg-sky-500/10 rounded-lg transition-colors"
                           title="Edit"
@@ -456,7 +499,7 @@ export default function TimeseriesManager() {
 
       {/* ═══════════════ Create / Edit Modal ═══════════════ */}
       {(showCreate || editItem) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { setShowCreate(false); setEditItem(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={editItem ? `Edit ${editItem.code}` : 'Create new timeseries'} onClick={() => { setShowCreate(false); setEditItem(null); }}>
           <div
             className="bg-[#0d0f14] border border-white/10 rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl shadow-black/50 mx-4"
             onClick={(e) => e.stopPropagation()}
@@ -528,7 +571,7 @@ export default function TimeseriesManager() {
 
       {/* ═══════════════ Delete Confirmation ═══════════════ */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDeleteTarget(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Delete confirmation" onClick={() => setDeleteTarget(null)}>
           <div
             className="bg-[#0d0f14] border border-rose-500/20 rounded-2xl w-full max-w-md shadow-2xl shadow-black/50 p-6 mx-4"
             onClick={(e) => e.stopPropagation()}
@@ -567,14 +610,117 @@ export default function TimeseriesManager() {
       )}
 
       {/* ═══════════════ Toast ═══════════════ */}
-      {toast && (
-        <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border transition-all animate-in slide-in-from-bottom-4 ${
-          toast.type === 'success'
-            ? 'bg-emerald-500/15 border-emerald-500/20 text-emerald-300'
-            : 'bg-rose-500/15 border-rose-500/20 text-rose-300'
-        }`}>
-          {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-          <span className="text-sm font-medium">{toast.msg}</span>
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border ${
+              toast.type === 'success'
+                ? 'bg-emerald-500/15 border-emerald-500/20 text-emerald-300'
+                : 'bg-rose-500/15 border-rose-500/20 text-rose-300'
+            }`}
+            role="alert"
+          >
+            {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            <span className="text-sm font-medium">{toast.msg}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════ Chart Modal ═══════════════ */}
+      {viewChartItem && (
+        <div 
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" 
+          role="dialog" 
+          onClick={() => setViewChartItem(null)}
+        >
+          <div 
+             className="bg-[#0d0f14] border border-white/10 rounded-3xl w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl overflow-hidden"
+             onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#12141a]">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                   <LineChart className="w-5 h-5 text-indigo-400" />
+                   {viewChartItem.name || viewChartItem.code}
+                </h2>
+                <p className="text-xs text-slate-500 font-mono mt-0.5 tracking-wide">
+                  {viewChartItem.code} • {viewChartItem.frequency || 'N/A'} • {viewChartItem.provider || 'Unknown Provider'}
+                </p>
+              </div>
+              <button 
+                onClick={() => setViewChartItem(null)} 
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="flex-grow relative bg-[#0a0c10]">
+               {/* Loading State */}
+               {chartLoading && (
+                 <div className="absolute inset-0 z-10 flex items-center justify-center flex-col gap-3 bg-[#0a0c10]/80">
+                   <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+                   <p className="text-sm text-slate-500 font-medium">Loading timeseries data...</p>
+                 </div>
+               )}
+
+               {/* Chart */}
+               {chartData && (
+                 <div className="w-full h-full p-4">
+                  <Plot
+                      data={[
+                        {
+                          x: chartData.Date || [],
+                          y: chartData[Object.keys(chartData).find(k => k !== 'Date') || ''] || [],
+                          type: 'scatter',
+                          mode: 'lines',
+                          line: { color: '#6366f1', width: 2 },
+                          fill: 'tozeroy',
+                          fillcolor: 'rgba(99, 102, 241, 0.1)',
+                          name: viewChartItem.code
+                        }
+                      ]}
+                      layout={{
+                        autosize: true,
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        plot_bgcolor: 'rgba(0,0,0,0)',
+                        font: { color: '#94a3b8', family: 'Inter, sans-serif' },
+                        margin: { l: 50, r: 20, t: 30, b: 40 },
+                        xaxis: { 
+                          gridcolor: 'rgba(255,255,255,0.05)', 
+                          zerolinecolor: 'rgba(255,255,255,0.1)',
+                          showgrid: true,
+                          tickfont: { size: 11 }
+                        },
+                        yaxis: { 
+                          gridcolor: 'rgba(255,255,255,0.05)', 
+                          zerolinecolor: 'rgba(255,255,255,0.1)',
+                          showgrid: true,
+                          tickfont: { size: 11 }
+                        },
+                        hovermode: 'x unified',
+                        showlegend: false
+                      }}
+                      config={{ responsive: true, displayModeBar: true, displaylogo: false }}
+                      style={{ width: '100%', height: '100%' }}
+                      useResizeHandler={true}
+                  />
+                 </div>
+               )}
+               
+               {/* Empty State */}
+               {!chartLoading && (!chartData || Object.keys(chartData).length <= 1) && (
+                 <div className="absolute inset-0 flex items-center justify-center text-slate-500 flex-col gap-2">
+                    <AlertTriangle className="w-8 h-8 opacity-50" />
+                    <p>No data available for this series.</p>
+                 </div>
+               )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,22 +1,25 @@
 'use client';
 
-import AuthGuard from '@/components/AuthGuard';
 import AppShell from '@/components/AppShell';
 import NewsFeed from '@/components/NewsFeed';
 import { useAuth } from '@/context/AuthContext';
+import { apiFetch } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 import { Radio, RefreshCw, Check, AlertTriangle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function IntelPage() {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
-  const flash = (msg: string, type: 'success' | 'error') => {
+  const flash = useCallback((msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   const handleScrape = async () => {
     if (syncing) return;
@@ -24,20 +27,16 @@ export default function IntelPage() {
     setSyncMsg('Starting sync...');
     
     try {
-      const res = await fetch('/api/task/telegram', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await apiFetch('/api/task/telegram', { method: 'POST' });
       
       if (!res.ok) {
         const err = await res.json();
-        // If already running, just start polling
         if (res.status !== 400 || err.detail !== "Telegram sync is already running") {
              throw new Error(err.detail || 'Scrape failed');
         }
       }
       
-      // Poll for status
+      // Poll for status — invalidate query on completion instead of full page reload
       const poll = setInterval(async () => {
          try {
              const sRes = await fetch('/api/task/status');
@@ -51,10 +50,7 @@ export default function IntelPage() {
                      setSyncMsg(status.telegram.message || 'Idle');
                      if (status.telegram.message?.includes('Completed')) {
                          flash('Channel sync completed!', 'success');
-                         // Trigger refresh of news feed if possible? 
-                         // NewsFeed component likely manages its own query.
-                         // Maybe invalidate query if I had access to queryClient.
-                         window.location.reload(); // Simple way to refresh feed
+                         queryClient.invalidateQueries({ queryKey: ['telegram-news'] });
                      } else if (status.telegram.message?.startsWith('Failed')) {
                          flash(status.telegram.message, 'error');
                      }
@@ -62,8 +58,8 @@ export default function IntelPage() {
                      clearInterval(poll);
                  }
              }
-         } catch (e) {
-             console.error(e);
+         } catch {
+             // Polling error — silently handled by UI state
          }
       }, 2000);
 
@@ -107,17 +103,25 @@ export default function IntelPage() {
 
         </div>
 
-        {/* Toast */}
-        {toast && (
-          <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border transition-all ${
-            toast.type === 'success'
-              ? 'bg-emerald-500/15 border-emerald-500/20 text-emerald-300'
-              : 'bg-rose-500/15 border-rose-500/20 text-rose-300'
-          }`}>
-            {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-            <span className="text-sm font-medium">{toast.msg}</span>
-          </div>
-        )}
+        {/* Animated Toast */}
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border ${
+                toast.type === 'success'
+                  ? 'bg-emerald-500/15 border-emerald-500/20 text-emerald-300'
+                  : 'bg-rose-500/15 border-rose-500/20 text-rose-300'
+              }`}
+            >
+              {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+              <span className="text-sm font-medium">{toast.msg}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </AppShell>
   );
 }

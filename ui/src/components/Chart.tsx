@@ -2,7 +2,7 @@
 
 import React from 'react';
 import dynamic from 'next/dynamic';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Copy, Check } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
@@ -20,12 +20,11 @@ interface ChartProps {
 
 export default function Chart({ code }: ChartProps) {
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
-  const [copying, setCopying] = React.useState(false);
+  const [copyState, setCopyState] = React.useState<'idle' | 'copying' | 'done'>('idle');
   
   const { data: figure, isLoading, error } = useQuery({
     queryKey: ['chart-figure', code],
     queryFn: async () => {
-      // Optional token for public access - sanitize
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const headers: Record<string, string> = {};
       
@@ -41,14 +40,14 @@ export default function Chart({ code }: ChartProps) {
       
       const data = await res.json();
         
-      // Clean up layout for nextjs container
+      // Clean up layout for Next.js container
       if (data.layout) {
         data.layout.autosize = true;
         data.layout.width = undefined;
         data.layout.height = undefined;
         data.layout.paper_bgcolor = 'rgba(0,0,0,0)';
         data.layout.plot_bgcolor = 'rgba(0,0,0,0)';
-        data.layout.margin = {l: 40, r: 20, t: 30, b: 40}; // Ensure margin for title if any
+        data.layout.margin = {l: 40, r: 20, t: 30, b: 40};
       }
       return data;
     },
@@ -57,8 +56,8 @@ export default function Chart({ code }: ChartProps) {
   });
 
   const handleCopy = async () => {
-    if (!graphDiv || copying) return;
-    setCopying(true);
+    if (!graphDiv || copyState !== 'idle') return;
+    setCopyState('copying');
     try {
         const Plotly = (await import('plotly.js-dist-min')).default;
         const url = await Plotly.toImage(graphDiv as any, { format: 'png', width: 1200, height: 800, scale: 2 });
@@ -70,11 +69,11 @@ export default function Chart({ code }: ChartProps) {
             new ClipboardItem({ 'image/png': blob })
         ]);
         
-        // Show temporary success state?
-        setTimeout(() => setCopying(false), 1000);
-    } catch (err) {
-        console.error('Failed to copy chart:', err);
-        setCopying(false);
+        setCopyState('done');
+        setTimeout(() => setCopyState('idle'), 1500);
+    } catch {
+        // Clipboard write may fail in insecure contexts — degrade silently
+        setCopyState('idle');
     }
   };
 
@@ -98,12 +97,16 @@ export default function Chart({ code }: ChartProps) {
     <div className="w-full min-h-[450px] relative group">
       <button
         onClick={handleCopy}
-        disabled={copying}
+        disabled={copyState !== 'idle'}
         className="absolute top-2 right-2 z-10 p-2 bg-black/60 hover:bg-black/80 text-slate-300 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-lg border border-white/10"
         title="Copy Chart to Clipboard"
       >
-        {copying ? <Loader2 className="w-4 h-4 animate-spin text-sky-400" /> : (
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        {copyState === 'copying' ? (
+          <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
+        ) : copyState === 'done' ? (
+          <Check className="w-4 h-4 text-emerald-400" />
+        ) : (
+          <Copy className="w-4 h-4" />
         )}
       </button>
       

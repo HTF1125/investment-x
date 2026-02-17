@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, JSON, Boolean
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 from ix.db.conn import Base
@@ -24,6 +24,7 @@ class CustomChart(Base):
     tags = Column(JSONB, default=list)
 
     figure = Column(JSONB, nullable=True)  # Cached execution result
+    export_pdf = Column(Boolean, default=True, nullable=False)  # Include in PDF export
 
     # "order" is a reserved keyword in SQL, so we quote it or use a different name in DB.
     # Since we added column "order", we map it here.

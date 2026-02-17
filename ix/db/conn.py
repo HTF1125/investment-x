@@ -8,6 +8,10 @@ import os
 from typing import Optional
 from contextlib import contextmanager
 from urllib.parse import urlparse, urlunparse
+import contextvars
+
+# ContextVar to hold the shared session for custom chart Code execution
+custom_chart_session = contextvars.ContextVar("custom_chart_session", default=None)
 
 logger = get_logger(__name__)
 

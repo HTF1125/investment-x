@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Cpu, Clock } from 'lucide-react';
+import { apiFetchJson } from '@/lib/api';
+import { Cpu, Clock, WifiOff } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -18,21 +19,33 @@ export default function NewsFeed() {
     setMounted(true);
   }, []);
 
-  const { data: messages = [], isLoading } = useQuery<Message[]>({
+  const { data: messages = [], isLoading, isError } = useQuery<Message[]>({
     queryKey: ['telegram-news', { hours: 24 }],
-    queryFn: async () => {
-      const token = localStorage.getItem('token');
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await fetch('/api/news/telegram?hours=24', { headers });
-      if (!res.ok) throw new Error('Failed to fetch news');
-      return res.json();
-    }
+    queryFn: () => apiFetchJson<Message[]>('/api/news/telegram?hours=24'),
   });
 
-  if (isLoading) return <div className="h-48 glass-card animate-pulse flex items-center justify-center">Loading Intelligence Feed...</div>;
+  if (isLoading) {
+    return (
+      <div className="h-48 glass-card animate-pulse flex items-center justify-center text-slate-500 text-sm">
+        Loading Intelligence Feed...
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="glass-card overflow-hidden border-rose-500/20 mb-12">
+        <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
+          <WifiOff className="w-8 h-8 text-rose-400/50" />
+          <div>
+            <p className="text-sm font-medium text-slate-400">Unable to load intelligence feed</p>
+            <p className="text-xs text-slate-600 mt-1">Check your connection and try again.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (messages.length === 0) return null;
 
   return (
@@ -70,9 +83,8 @@ export default function NewsFeed() {
                 {msg.channel_name}
               </div>
 
-              {/* Content — wraps properly */}
+              {/* Content */}
               <div className="text-sm text-slate-400 leading-relaxed font-light break-words whitespace-pre-wrap overflow-hidden min-w-0">
-                {/* Source label inline on mobile */}
                 <span className="md:hidden text-[10px] font-semibold text-slate-500 uppercase tracking-wider mr-2">{msg.channel_name}</span>
                 {msg.message}
               </div>

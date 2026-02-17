@@ -118,6 +118,12 @@ async def health_check():
     return {"status": "healthy", "service": "Investment-X API"}
 
 
+@app.get("/api/test-error")
+async def test_error():
+    """Endpoint to test error handling."""
+    raise Exception("Critical test failure")
+
+
 @app.get("/api/jobs")
 async def get_jobs():
     """List currently scheduled jobs"""
@@ -133,10 +139,37 @@ async def get_jobs():
     return {"jobs": jobs}
 
 
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc):
+    """Handle FastAPI/Starlette HTTPExceptions."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": "Client Error" if exc.status_code < 500 else "Server Error",
+            "detail": exc.detail,
+        },
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """Global exception handler."""
-    logger.exception(f"Unhandled exception: {exc}")
+    """Global catch-all for unhandled exceptions."""
+    try:
+        logger.exception(f"Unhandled exception: {exc}")
+    except Exception as log_err:
+        import sys
+
+        print(
+            f"CRITICAL: Logger failed inside exception handler: {log_err}",
+            file=sys.stderr,
+        )
+        import traceback
+
+        traceback.print_exc()
+
     return JSONResponse(
         status_code=500,
         content={"error": "Internal server error", "detail": str(exc)},
