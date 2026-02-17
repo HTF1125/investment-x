@@ -280,11 +280,22 @@ if static_dir:
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        # Prevent path traversal? StaticFiles handles it, but here we do manual check
+        # 1. Check if the file exists as is
         file_path = os.path.join(static_dir, full_path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
-        # Fallback to index.html
+
+        # 2. Check if appending .html works (for Next.js static export)
+        html_path = f"{file_path}.html"
+        if os.path.isfile(html_path):
+            return FileResponse(html_path)
+
+        # 3. Check if it's a directory with index.html (trailingSlash: true)
+        dir_index_path = os.path.join(file_path, "index.html")
+        if os.path.isfile(dir_index_path):
+            return FileResponse(dir_index_path)
+
+        # Fallback to root index.html
         return FileResponse(os.path.join(static_dir, "index.html"))
 
 else:
