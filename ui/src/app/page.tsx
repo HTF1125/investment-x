@@ -1,26 +1,27 @@
 import DashboardContainer from '@/components/DashboardContainer';
 import { cookies } from 'next/headers';
+import { Suspense } from 'react';
 
 export const dynamic = process.env.NEXT_BUILD_MODE === 'export' ? 'auto' : 'force-dynamic';
 
 export default async function Home() {
   // 🚀 For static export mode, we skip SSR to allow prerendering
+  // This must be a clean return without calling any dynamic functions like cookies()
   if (process.env.NEXT_BUILD_MODE === 'export') {
-    return <DashboardContainer />;
+    return (
+      <DashboardContainer />
+    );
   }
 
+  // --- Dynamic SSR Logic (Only for non-export builds) ---
   let token = null;
+  let initialData = null;
+
   try {
+    // Dynamic access to cookies forces dynamic rendering in dev/prod-ssr
     const cookieStore = await cookies();
     token = cookieStore.get('access_token')?.value;
-  } catch (e) {
-    // cookies() might throw if called in a context where headers aren't available
-    console.warn('[SSR] Could not access cookies');
-  }
 
-  let initialData = null;
-  try {
-    // 🛡️ SSR Fetch with defensive timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
 
@@ -34,17 +35,15 @@ export default async function Home() {
 
     if (res.ok) {
         initialData = await res.json();
-    } else {
-        const errorText = await res.text().catch(() => 'No error body');
-        console.warn(`[SSR] Dashboard fetch failed | Status: ${res.status} | Error: ${errorText.substring(0, 100)}`);
     }
   } catch (err: any) {
-    if (err.name === 'AbortError') {
-        console.error('[SSR] Dashboard fetch timed out after 3.0s | Backend at 127.0.0.1:8000 is too slow or unreachable');
-    } else {
-        console.error('[SSR] Dashboard fetch critical error:', err.message);
-    }
+    // Silent fail for SSR fetch - the client-side useQuery will handle the fallback
+    console.warn('[SSR] Dashboard pre-fetch skipped or failed');
   }
 
-  return <DashboardContainer initialData={initialData} />;
+  return (
+    <Suspense fallback={null}>
+      <DashboardContainer initialData={initialData} />
+    </Suspense>
+  );
 }
