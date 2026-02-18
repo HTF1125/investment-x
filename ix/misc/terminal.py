@@ -62,7 +62,7 @@ def get_logger(
     if isinstance(level, str):
         level = getattr(logging, level.upper())
     logger.setLevel(level)
-    logger.propagate = False
+    logger.propagate = True
 
     formatter = logging.Formatter(fmt=fmt)
 

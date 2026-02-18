@@ -243,6 +243,11 @@ def _create_performance_bar_chart(
     # Color logic: Emerald for > 0, Rose for < 0
     colors = ["#10b981" if x >= 0 else "#f43f5e" for x in latest.values]
 
+    apply_academic_style(fig)
+    is_dark = fig.layout.paper_bgcolor in ["#0d0f12", "black", "#000000"]
+    font_color = "#e2e8f0" if is_dark else "#000000"
+    as_of_color = "#94a3b8" if is_dark else "#475569"
+
     fig.add_trace(
         go.Bar(
             x=latest.values,
@@ -255,11 +260,6 @@ def _create_performance_bar_chart(
             hovertemplate="%{y}: %{x:.2f}%<extra></extra>",
         )
     )
-
-    apply_academic_style(fig)
-    is_dark = fig.layout.paper_bgcolor in ["#0d0f12", "black", "#000000"]
-    font_color = "#e2e8f0" if is_dark else "#000000"
-    as_of_color = "#94a3b8" if is_dark else "#475569"
 
     fig.update_layout(
         title=dict(
@@ -345,6 +345,11 @@ def _create_multi_performance_bar_chart(
         "1D": get_color("Emerald", 3),
     }
 
+    apply_academic_style(fig)
+    is_dark = fig.layout.paper_bgcolor in ["#0d0f12", "black", "#000000"]
+    font_color = "#e2e8f0" if is_dark else "#000000"
+    as_of_color = "#94a3b8" if is_dark else "#475569"
+
     for period_label in periods.keys():
         perf_values = df_perf[period_label]
         # Hide 1D and 5D by default, keep 20D visible
@@ -364,11 +369,6 @@ def _create_multi_performance_bar_chart(
                 hovertemplate=f"{period_label} - %{{y}}: %{{x:.2f}}%<extra></extra>",
             )
         )
-
-    apply_academic_style(fig)
-    is_dark = fig.layout.paper_bgcolor in ["#0d0f12", "black", "#000000"]
-    font_color = "#e2e8f0" if is_dark else "#000000"
-    as_of_color = "#94a3b8" if is_dark else "#475569"
 
     fig.update_layout(
         title=dict(

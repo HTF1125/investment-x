@@ -3,7 +3,8 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2, Copy, Check } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -14,45 +15,54 @@ const Plot = dynamic(() => import('react-plotly.js'), {
   ),
 }) as any;
 
+const cleanFigure = (data: any) => {
+    if (!data) return data;
+    const cleaned = { ...data };
+    if (cleaned.layout) {
+      cleaned.layout.autosize = true;
+      cleaned.layout.width = undefined;
+      cleaned.layout.height = undefined;
+      cleaned.layout.paper_bgcolor = 'rgba(0,0,0,0)';
+      cleaned.layout.plot_bgcolor = 'rgba(0,0,0,0)';
+      cleaned.layout.margin = {l: 40, r: 20, t: 30, b: 40};
+    }
+    return cleaned;
+};
+
 interface ChartProps {
-  code: string;
+  id: string;
+  initialFigure?: any;
 }
 
-export default function Chart({ code }: ChartProps) {
+export default function Chart({ id, initialFigure }: ChartProps) {
+  const queryClient = useQueryClient();
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
   const [copyState, setCopyState] = React.useState<'idle' | 'copying' | 'done'>('idle');
+  const [isVisible, setIsVisible] = React.useState(true);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // Sync internal cache when initialFigure prop changes
+  React.useEffect(() => {
+    if (initialFigure && id) {
+      queryClient.setQueryData(['chart-figure', id], cleanFigure(initialFigure));
+    }
+  }, [id, initialFigure, queryClient]);
   
   const { data: figure, isLoading, error } = useQuery({
-    queryKey: ['chart-figure', code],
+    queryKey: ['chart-figure', id],
     queryFn: async () => {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const headers: Record<string, string> = {};
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`/api/v1/dashboard/charts/${code}/figure`, { headers });
+      const res = await apiFetch(`/api/v1/dashboard/charts/${id}/figure`);
       
       if (!res.ok) {
         throw new Error('Failed to load chart data');
       }
       
       const data = await res.json();
-        
-      // Clean up layout for Next.js container
-      if (data.layout) {
-        data.layout.autosize = true;
-        data.layout.width = undefined;
-        data.layout.height = undefined;
-        data.layout.paper_bgcolor = 'rgba(0,0,0,0)';
-        data.layout.plot_bgcolor = 'rgba(0,0,0,0)';
-        data.layout.margin = {l: 40, r: 20, t: 30, b: 40};
-      }
-      return data;
+      return cleanFigure(data);
     },
+    initialData: () => cleanFigure(initialFigure),
     staleTime: 1000 * 60 * 10, // 10 minutes cache
-    enabled: !!code,
+    enabled: !!id && isVisible,
   });
 
   const handleCopy = async () => {
@@ -77,24 +87,32 @@ export default function Chart({ code }: ChartProps) {
     }
   };
 
+  if (!isVisible) {
+    return (
+      <div ref={containerRef} className="flex items-center justify-center h-[350px] w-full bg-white/5 rounded-xl animate-pulse">
+        <Loader2 className="w-8 h-8 text-sky-400/10 animate-spin" />
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[450px] w-full bg-white/5 rounded-xl animate-pulse">
-        <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+      <div className="flex items-center justify-center h-[350px] w-full bg-white/5 rounded-xl animate-pulse">
+        <Loader2 className="w-8 h-8 text-sky-400/20 animate-spin" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[450px] text-rose-500 bg-rose-500/10 rounded-xl p-4 text-center">
-        <p>Error: {(error as Error).message}</p>
+      <div className="flex items-center justify-center h-[350px] w-full bg-rose-500/5 rounded-xl border border-rose-500/10 text-rose-500 text-xs font-mono">
+        EXECUTION_ERROR: {id}
       </div>
     );
   }
 
   return (
-    <div className="w-full min-h-[450px] relative group">
+    <div ref={containerRef} className="w-full h-full min-h-0 relative group">
       <button
         onClick={handleCopy}
         disabled={copyState !== 'idle'}
@@ -110,13 +128,16 @@ export default function Chart({ code }: ChartProps) {
         )}
       </button>
       
-      {figure && (
+      {figure && isVisible && (
         <Plot
           data={figure.data}
-          layout={figure.layout}
+          layout={{
+            ...figure.layout,
+            autosize: true
+          }}
           config={{
             responsive: true,
-            displayModeBar: 'hover',
+            displayModeBar: false, // Cleaner display
             displaylogo: false,
           }}
           style={{ width: '100%', height: '100%' }}

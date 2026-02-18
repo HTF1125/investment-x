@@ -19,15 +19,27 @@ def get_db():
         yield session
 
 
+from fastapi import Request
+
+
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
 ) -> User:
     """
     Dependency to get current authenticated user.
-
-    Raises:
-        HTTPException: If token is invalid or user not found
+    Supports both Header (Authorization: Bearer X) and Cookie (access_token=X).
     """
+    # 1. Check Cookie if Header is missing
+    if not token:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     payload = verify_token(token)
     if not payload:
         raise HTTPException(

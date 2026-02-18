@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
@@ -6,6 +6,7 @@ from typing import List, Optional, Any, Dict
 from pydantic import BaseModel
 from datetime import datetime
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.io as pio
 import plotly.graph_objects as go
@@ -18,6 +19,7 @@ from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib import utils
 import textwrap
 import sys
+import threading
 
 from ix.db.conn import get_session
 from ix.db.models import CustomChart, User
@@ -228,10 +230,12 @@ def execute_custom_code(code: str):
         # Wrap in a function to allow 'return' statements
         # or just exec.
         # Use single scope for globals/locals to ensure function closures work as expected
-        logger.info("Starting exec() for custom chart code...")
-
         # Enable shared session context for imports
         from ix.db.conn import custom_chart_session
+
+        # Log snippet for debugging
+        code_snippet = (code[:100] + "...") if len(code) > 100 else code
+        logger.info(f"Executing custom chart code. Snippet: {code_snippet}")
 
         token = custom_chart_session.set(db_session)
         try:
@@ -288,18 +292,101 @@ def execute_custom_code(code: str):
             logger.info("Custom chart DB session closed.")
 
 
-def render_chart_image(figure_data: Dict[str, Any]) -> Optional[bytes]:
-    """Helper to render a signle chart figure to PNG bytes."""
+# Global Kaleido scope to be reused for performance
+_KALEIDO_SCOPE = None
+_KALEIDO_LOCK = threading.Lock()
+
+
+def get_kaleido_scope():
+    """Returns a singleton PlotlyScope for image rendering."""
+    global _KALEIDO_SCOPE
+    if _KALEIDO_SCOPE is None:
+        with _KALEIDO_LOCK:
+            if _KALEIDO_SCOPE is None:
+                try:
+                    from kaleido.scopes.plotly import PlotlyScope
+
+                    _KALEIDO_SCOPE = PlotlyScope()
+                    logger.info("Initialized new Kaleido PlotlyScope.")
+                except Exception as e:
+                    logger.error(f"Failed to initialize Kaleido scope: {e}")
+    return _KALEIDO_SCOPE
+
+
+def simplify_figure(figure_data: Any) -> Any:
+    """
+    Recursively converts figure data to standard JSON-safe types.
+    """
+    import numpy as np
+
+    if isinstance(figure_data, dict):
+        return {k: simplify_figure(v) for k, v in figure_data.items()}
+    elif isinstance(figure_data, list):
+        return [simplify_figure(v) for v in figure_data]
+    elif isinstance(figure_data, (np.ndarray, np.generic)):
+        return figure_data.tolist()
+    elif hasattr(figure_data, "to_dict"):
+        return simplify_figure(figure_data.to_dict())
+    return figure_data
+
+
+def get_clean_figure_json(fig: Any) -> Any:
+    """
+    Serializes a Plotly figure to a dictionary, ensuring dates are strings and no binary data exists.
+    Uses pio.to_json as the primary engine because it handles pandas/numpy dates significantly
+    better (as ISO strings) than the raw fig.to_dict() approach.
+    """
+
+    class NumpyEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, (np.ndarray, np.generic)):
+                return obj.tolist()
+            if hasattr(obj, "isoformat"):
+                return obj.isoformat()
+            return super().default(obj)
+
     try:
-        # Optimization: Create Figure directly from dict instead of round-tripping JSON
+        # pio.to_json correctly converts pandas/numpy Timestamps to ISO strings
+        json_str = pio.to_json(fig, engine="json")
+        return json.loads(json_str)
+    except Exception as e:
+        logger.warning(
+            f"pio.to_json failed in get_clean_figure_json, falling back: {e}"
+        )
+        # Fallback to dictionary conversion and manual encoding
+        fig_dict = fig.to_dict()
+        clean_json_str = json.dumps(fig_dict, cls=NumpyEncoder)
+        return json.loads(clean_json_str)
+
+
+def render_chart_image(figure_data: Dict[str, Any]) -> Optional[bytes]:
+    """Helper to render a single chart figure to PNG bytes using Kaleido PlotlyScope."""
+    try:
+        scope = get_kaleido_scope()
+        if not scope:
+            logger.error("Kaleido scope not available. Falling back to fig.to_image().")
+            fig = go.Figure(figure_data)
+            return fig.to_image(format="png", width=1000, height=550, scale=2)
+
+        # Create Figure
         fig = go.Figure(figure_data)
 
-        # Convert to image bytes (CPU intensive)
-        img_bytes = fig.to_image(format="png", width=1000, height=550, scale=2)
+        # Convert to image bytes using scope directly (more robust than fig.to_image)
+        # Use a lock to prevent concurrent access to the same scope instance
+        with _KALEIDO_LOCK:
+            img_bytes = scope.transform(
+                fig, format="png", width=1000, height=550, scale=2
+            )
         return img_bytes
     except Exception as e:
-        logger.error(f"Error rendering chart image: {e}")
-        return None
+        logger.error(f"Error rendering chart image with PlotlyScope: {e}")
+        # Try one last fallback
+        try:
+            fig = go.Figure(figure_data)
+            return fig.to_image(format="png", width=1000, height=550, scale=2)
+        except Exception as fallback_e:
+            logger.error(f"Final fallback failed: {fallback_e}")
+            return None
 
 
 def generate_pdf_buffer(charts: List[CustomChart]) -> BytesIO:
@@ -321,6 +408,7 @@ def generate_pdf_buffer(charts: List[CustomChart]) -> BytesIO:
     # Use ThreadPoolExecutor to run IO/C-extension bound tasks in parallel
     # Kaleido (if used) runs in a separate process, so threads work well here.
     chart_images = []
+    logger.info(f"Starting parallel rendering for {len(valid_charts)} charts...")
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         # Submit all render tasks
         future_to_index = {
@@ -331,16 +419,29 @@ def generate_pdf_buffer(charts: List[CustomChart]) -> BytesIO:
         # Initialize results array with None
         results = [None] * len(valid_charts)
 
-        # Collect results as they complete
-        for future in concurrent.futures.as_completed(future_to_index):
-            index = future_to_index[future]
-            try:
-                data = future.result()
-                results[index] = data
-            except Exception as e:
-                logger.error(
-                    f"Parallel rendering failed for chart at index {index}: {e}"
-                )
+        # Collect results with a timeout to prevent hanging the whole process
+        try:
+            for future in concurrent.futures.as_completed(future_to_index, timeout=30):
+                index = future_to_index[future]
+                chart_name = valid_charts[index].name
+                try:
+                    data = future.result()
+                    if data:
+                        logger.info(
+                            f"Successfully rendered png for index {index}: {chart_name}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Render returned None for index {index}: {chart_name}"
+                        )
+                    results[index] = data
+                except Exception as e:
+                    logger.error(
+                        f"Parallel rendering failed for chart at index {index} ({chart_name}): {e}"
+                    )
+        except concurrent.futures.TimeoutError:
+            logger.error("PDF generation timed out waiting for chart renders.")
+            # We continue with whatever results we have (None for others)
 
     # 3. Construct PDF page by page
     for i, chart in enumerate(valid_charts):
@@ -467,7 +568,7 @@ def create_custom_chart(
     # Let's render it to get the initial figure cache
     try:
         fig = execute_custom_code(chart_data.code)
-        figure_json = json.loads(pio.to_json(fig))
+        figure_json = get_clean_figure_json(fig)
     except Exception:
         figure_json = None
 
@@ -495,9 +596,14 @@ def create_custom_chart(
 
 @router.get("/custom", response_model=List[CustomChartResponse])
 def list_custom_charts(
-    db: Session = Depends(get_session), current_user: User = Depends(get_current_user)
+    response: Response,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     """List all custom charts (shared across admins)."""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     return (
         db.query(CustomChart)
         .order_by(CustomChart.rank.asc(), CustomChart.created_at.desc())
@@ -596,13 +702,167 @@ def export_custom_charts_pdf(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/custom/html")
+def export_custom_charts_html(
+    request: PDFExportRequest,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a standalone HTML portfolio of charts marked for export."""
+    from fastapi.responses import Response
+
+    user_identifier = getattr(current_user, "email", "unknown")
+    pid = start_process("Export Interactive Portfolio", user_id=user_identifier)
+
+    try:
+        if request.items:
+            charts = (
+                db.query(CustomChart).filter(CustomChart.id.in_(request.items)).all()
+            )
+            chart_map = {str(c.id): c for c in charts}
+            ordered_charts = [
+                chart_map[cid] for cid in request.items if cid in chart_map
+            ]
+        else:
+            ordered_charts = (
+                db.query(CustomChart)
+                .filter(CustomChart.export_pdf == True)
+                .order_by(CustomChart.rank.asc())
+                .all()
+            )
+
+        if not ordered_charts:
+            update_process(pid, ProcessStatus.FAILED, "No charts found")
+            raise HTTPException(status_code=404, detail="No charts marked for export")
+
+        # Build premium HTML bundle
+        html_parts = []
+        html_parts.append(
+            """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8" />
+            <title>Investment-X Research Portfolio</title>
+            <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+            <style>
+                body {
+                    background-color: #02040a;
+                    color: #94a3b8;
+                    font-family: 'Inter', sans-serif;
+                    margin: 0;
+                    padding: 40px 20px;
+                    line-height: 1.6;
+                }
+                .container { max-width: 1200px; margin: 0 auto; }
+                header { margin-bottom: 60px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 30px; }
+                h1 { color: #f8fafc; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+                .subtitle { font-family: 'JetBrains Mono'; font-size: 11px; text-transform: uppercase; letter-spacing: 0.2em; color: #6366f1; margin-top: 8px; }
+                .chart-card {
+                    background: rgba(255, 255, 255, 0.02);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    border-radius: 20px;
+                    margin-bottom: 40px;
+                    overflow: hidden;
+                    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+                }
+                .chart-header { padding: 24px 30px; border-bottom: 1px solid rgba(255,255,255,0.03); background: rgba(0,0,0,0.2); }
+                .chart-title { font-size: 18px; font-weight: 600; color: #e2e8f0; margin: 0; }
+                .chart-meta { font-size: 11px; color: #64748b; margin-top: 4px; font-mono; }
+                .chart-body { padding: 20px; min-height: 500px; }
+                .chart-desc { padding: 0 30px 30px 30px; font-size: 14px; font-weight: 300; color: #64748b; }
+                footer { text-align: center; margin-top: 100px; font-size: 10px; opacity: 0.4; font-family: 'JetBrains Mono'; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <header>
+                    <h1>Research Intelligence Portfolio</h1>
+                    <div class="subtitle">Proprietary Models • Investment-X Engine</div>
+                </header>
+        """
+        )
+
+        for i, chart in enumerate(ordered_charts):
+            clean_name = (chart.name or "Untitled").replace('"', "&quot;")
+            category = (chart.category or "General").upper()
+            date_str = chart.updated_at.strftime("%Y-%m-%d %H:%M")
+            desc = chart.description or "Analysis pending."
+
+            # Create a unique ID for Plotly div
+            div_id = f"chart_{i}"
+
+            # Get Plotly JSON
+            fig_json = json.dumps(chart.figure)
+
+            html_parts.append(
+                f"""
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2 class="chart-title">{clean_name}</h2>
+                        <div class="chart-meta">{category} • UPDATED {date_str}</div>
+                    </div>
+                    <div id="{div_id}" class="chart-body"></div>
+                    <div class="chart-desc">{desc}</div>
+                    <script type="text/javascript">
+                        (function() {{
+                            var fig = {fig_json};
+                            fig.layout.paper_bgcolor = 'rgba(0,0,0,0)';
+                            fig.layout.plot_bgcolor = 'rgba(0,0,0,0)';
+                            fig.layout.font = {{ color: '#94a3b8', family: 'Inter' }};
+                            fig.layout.autosize = true;
+                            Plotly.newPlot('{div_id}', fig.data, fig.layout, {{ 
+                                responsive: true, 
+                                displayModeBar: 'hover',
+                                displaylogo: false 
+                            }});
+                        }})();
+                    </script>
+                </div>
+            """
+            )
+
+        html_parts.append(
+            f"""
+                <footer>
+                    &copy; {datetime.now().year} INVESTMENT-X. ALL RIGHTS RESERVED. BUNDLED AT {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                </footer>
+            </div>
+        </body>
+        </html>
+        """
+        )
+
+        full_html = "".join(html_parts)
+        filename = (
+            f"InvestmentX_Portfolio_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
+        )
+
+        update_process(pid, ProcessStatus.COMPLETED, "Interactive Portfolio Generated")
+
+        return Response(
+            content=full_html,
+            media_type="text/html",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    except Exception as e:
+        logger.error(f"HTML Export failed: {e}")
+        update_process(pid, ProcessStatus.FAILED, str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/custom/{chart_id}", response_model=CustomChartResponse)
 def get_custom_chart(
     chart_id: str,
+    response: Response,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
     """Get a specific custom chart."""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     chart = db.query(CustomChart).filter(CustomChart.id == chart_id).first()
 
     if not chart:
@@ -618,8 +878,15 @@ def update_custom_chart(
     current_user: User = Depends(get_current_user),
 ):
     """Update a custom chart."""
-    logger.info(f"Updating chart {chart_id}. Received name: '{update_data.name}'")
     chart = db.query(CustomChart).filter(CustomChart.id == chart_id).first()
+    if not chart:
+        raise HTTPException(status_code=404, detail="Chart not found")
+
+    old_code_len = len(chart.code) if chart.code else 0
+    code_len = len(update_data.code) if update_data.code is not None else "N/A"
+    logger.info(
+        f"PUT /custom/{chart_id} - New Code Len: {code_len}, Old Code Len: {old_code_len}"
+    )
 
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
@@ -641,15 +908,31 @@ def update_custom_chart(
     if update_data.code is not None:
         chart.code = update_data.code
         try:
+            logger.info(f"Re-executing code for chart {chart_id}...")
             fig = execute_custom_code(update_data.code)
-            chart.figure = json.loads(pio.to_json(fig))
-        except Exception:
-            pass
+            figure_json = get_clean_figure_json(fig)
+            chart.figure = figure_json
+
+            # Log a snippet of the figure to verify change
+            fig_str = json.dumps(figure_json)[:200]
+            logger.info(f"Generated new figure for {chart_id}. Snippet: {fig_str}...")
+        except Exception as e:
+            logger.error(f"Failed to update figure for chart {chart_id}: {e}")
+            if isinstance(e, HTTPException):
+                raise e
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Execution Error",
+                    "message": f"Code saved but figure generation failed: {str(e)}",
+                    "traceback": traceback.format_exc(),
+                },
+            )
 
     db.commit()
     db.refresh(chart)
     logger.info(
-        f"Chart {chart.id} updated successfully. Final name in DB: '{chart.name}'"
+        f"Chart {chart.id} updated successfully. Figure updated: {update_data.code is not None}"
     )
     return chart
 

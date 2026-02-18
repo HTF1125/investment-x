@@ -2,7 +2,7 @@
 Authentication router for login, registration, and token management.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Annotated
 from datetime import timedelta
@@ -23,14 +23,33 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def set_auth_cookie(
+    response: Response, token: str, expires_delta: timedelta | None = None
+):
+    """Utility to set the JWT cookie."""
+    max_age = (
+        int(expires_delta.total_seconds()) if expires_delta else 60 * 60 * 24 * 30
+    )  # 30 days default
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        max_age=max_age,
+        expires=max_age,
+        samesite="lax",
+        secure=False,  # Set to True in production with HTTPS
+        path="/",
+    )
+
+
 @router.post("/auth/login", response_model=Token)
-async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
+def login(
+    response: Response, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+):
     """
     Login endpoint - OAuth2 compatible.
-
-    Can also accept JSON body with username (as email) and password.
+    Sets HttpOnly cookie for SSR support.
     """
-    # form_data.username contains the email
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -39,21 +58,16 @@ async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Use email as the identifier in the token
     access_token = create_user_token(str(user.email), bool(user.is_admin))
+    set_auth_cookie(response, access_token)
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/auth/login/json", response_model=Token)
-async def login_json(credentials: UserLogin):
+def login_json(response: Response, credentials: UserLogin):
     """
     Login endpoint - JSON body format.
-
-    Request body:
-    {
-        "email": "user@example.com",
-        "password": "password123"
-    }
+    Sets HttpOnly cookie for SSR support.
     """
     user = authenticate_user(credentials.email, credentials.password)
     if not user:
@@ -67,23 +81,24 @@ async def login_json(credentials: UserLogin):
     access_token = create_user_token(
         str(user.email), bool(user.is_admin), expires_delta=expires_delta
     )
+    set_auth_cookie(response, access_token, expires_delta=expires_delta)
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/auth/logout")
+async def logout(response: Response):
+    """
+    Logout endpoint - clears the HttpOnly cookie.
+    """
+    response.delete_cookie(key="access_token", path="/", samesite="lax")
+    return {"message": "Successfully logged out"}
 
 
 @router.post("/auth/register", response_model=UserResponse)
 async def register(user_data: UserRegister):
     """
     Register a new user.
-
-    Request body:
-    {
-        "email": "user@example.com",
-        "password": "password123",
-        "first_name": "First", # optional
-        "last_name": "Last"   # optional
-    }
     """
-    # Check if user already exists
     if User.exists(user_data.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -135,11 +150,14 @@ async def get_current_user_info(
 
 
 @router.post("/auth/refresh", response_model=Token)
-async def refresh_token(current_user: User = Depends(get_current_user)):
+async def refresh_token(
+    response: Response, current_user: User = Depends(get_current_user)
+):
     """
-    Refresh access token.
+    Refresh access token and update cookie.
     """
     access_token = create_user_token(
         str(current_user.email), bool(current_user.is_admin)
     )
+    set_auth_cookie(response, access_token)
     return {"access_token": access_token, "token_type": "bearer"}

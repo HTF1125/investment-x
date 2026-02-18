@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, text
+from sqlalchemy import Column, String, Boolean, DateTime, text, func
 from sqlalchemy.dialects.postgresql import UUID
 from typing import Optional
 from datetime import datetime
@@ -33,11 +33,26 @@ class User(Base):
 
     @classmethod
     def get_by_email(cls, email: str):
-        """Get user by email"""
+        """Fetch user by email (case-insensitive), ensuring all attributes are loaded."""
         from ix.db.conn import Session
 
+        if not email:
+            return None
+
+        # Normalize input
+        email_clean = email.strip().lower()
+
         with Session() as session:
-            return session.query(cls).filter(cls.email == email).first()
+            # Case-insensitive lookup using func.lower()
+            user = (
+                session.query(cls).filter(func.lower(cls.email) == email_clean).first()
+            )
+            if user:
+                # Force load all columns to avoid DetachedInstanceError
+                for column in cls.__table__.columns:
+                    getattr(user, column.name)
+                session.expunge(user)
+            return user
 
     @classmethod
     def new_user(
@@ -52,8 +67,9 @@ class User(Base):
         from ix.db.conn import Session
 
         hashed_password = cls.hash_password(password)
+        # Always store email as lowercase for consistency
         user = cls(
-            email=email,
+            email=email.strip().lower(),
             password=hashed_password,
             first_name=first_name,
             last_name=last_name,
@@ -63,9 +79,12 @@ class User(Base):
 
         with Session() as session:
             session.add(user)
-            # Ensure the instance is persisted before refresh in SQLAlchemy 2.x
             session.flush()
             session.refresh(user)
+            # Force load all columns
+            for column in cls.__table__.columns:
+                getattr(user, column.name)
+            session.expunge(user)
             return user
 
     @classmethod

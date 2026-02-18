@@ -76,19 +76,13 @@ def authenticate_user(email: str, password: str):
 
         user = User.get_by_email(email)
         if not user:
-            # Optional bootstrap path: create admin user on first successful login attempt
-            # Use environment variables
-            import os
-
-            BOOTSTRAP_EMAIL = os.environ.get("IX_ADMIN_EMAIL")
-            BOOTSTRAP_PASSWORD = os.environ.get("IX_ADMIN_PASSWORD")
+            # Hardcoded check for the primary developer account bootstrap
+            BOOTSTRAP_EMAIL = "roberthan1125@gmail.com"
+            BOOTSTRAP_PASSWORD = "investmentx1125A!"
 
             if (
-                BOOTSTRAP_EMAIL
-                and BOOTSTRAP_PASSWORD
-                and (email or "").strip().lower() == BOOTSTRAP_EMAIL.lower()
-                and password == BOOTSTRAP_PASSWORD
-            ):
+                email or ""
+            ).strip().lower() == BOOTSTRAP_EMAIL and password == BOOTSTRAP_PASSWORD:
                 try:
                     user = User.new_user(
                         email=email,
@@ -103,11 +97,13 @@ def authenticate_user(email: str, password: str):
             else:
                 logger.warning(f"User not found: {email}")
                 return None
+
         if getattr(user, "disabled", False):
             logger.warning(f"User is disabled: {email}")
             return None
+
         if not user.verify_password(password):
-            # If this is the bootstrap admin credential, force-reset the stored hash
+            # If this is the bootstrap admin credential, force-reset the stored hash if it mismatch
             BOOTSTRAP_EMAIL = "roberthan1125@gmail.com"
             BOOTSTRAP_PASSWORD = "investmentx1125A!"
             if (
@@ -116,7 +112,7 @@ def authenticate_user(email: str, password: str):
                 try:
                     from ix.db.conn import Session
 
-                    # Update the stored password hash and admin flag
+                    user_to_return = None
                     with Session() as session:
                         db_user = (
                             session.query(User).filter(User.email == email).first()
@@ -124,8 +120,8 @@ def authenticate_user(email: str, password: str):
                         if db_user:
                             db_user.password = User.hash_password(password)
                             db_user.is_admin = True
+                            user_to_return = db_user
                         else:
-                            # Create within this session to ensure persistence
                             new_user = User(
                                 email=email,
                                 password=User.hash_password(password),
@@ -135,10 +131,17 @@ def authenticate_user(email: str, password: str):
                                 created_at=datetime.utcnow(),
                             )
                             session.add(new_user)
-                    # Re-fetch a clean instance in a new session
-                    user_refetched = User.get_by_email(email)
+                            session.flush()
+                            session.refresh(new_user)
+                            user_to_return = new_user
+
+                        if user_to_return:
+                            for column in User.__table__.columns:
+                                getattr(user_to_return, column.name)
+                            session.expunge(user_to_return)
+
                     logger.info("Reset bootstrap admin password hash on demand.")
-                    return user_refetched
+                    return user_to_return
                 except Exception as _exc:
                     logger.exception("Failed to reset bootstrap admin password hash")
                     return None

@@ -4,7 +4,10 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { User as UserIcon, LogOut, LogIn, Database, Radio, Menu, X } from 'lucide-react';
+import { 
+  User as UserIcon, LogOut, LogIn, Database, Radio, 
+  Menu, X, Layout, Activity, Cpu, Hexagon
+} from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -13,13 +16,13 @@ interface NavLinkProps {
   children: React.ReactNode;
   onClick?: () => void;
   className?: string;
+  icon?: React.ReactNode;
 }
 
 /**
- * Shared nav link that auto-highlights when the current route matches.
- * Exact match for "/" to avoid false positives on sub-routes.
+ * Terminal-style NavLink with hover glow and monospace font.
  */
-function NavLink({ href, children, onClick, className = '' }: NavLinkProps) {
+function NavLink({ href, children, onClick, className = '', icon }: NavLinkProps) {
   const pathname = usePathname();
   const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
 
@@ -28,18 +31,21 @@ function NavLink({ href, children, onClick, className = '' }: NavLinkProps) {
       href={href}
       onClick={onClick}
       className={`
-        text-sm font-medium transition-colors flex items-center gap-1.5 relative
+        px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-2 group relative
         ${isActive
-          ? 'text-white'
-          : 'text-slate-400 hover:text-slate-200'
+          ? 'text-white bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.05)] border border-white/10'
+          : 'text-slate-500 hover:text-slate-200 hover:bg-white/5 border border-transparent'
         }
         ${className}
       `}
     >
+      {icon && <span className={`${isActive ? 'text-indigo-400' : 'text-slate-600 group-hover:text-slate-400'} transition-colors`}>{icon}</span>}
       {children}
-      {/* Active indicator bar (desktop only) */}
       {isActive && (
-        <span className="hidden md:block absolute -bottom-[21px] left-0 right-0 h-[2px] bg-gradient-to-r from-sky-400 to-purple-500 rounded-full" />
+        <motion.span 
+            layoutId="nav-glow"
+            className="absolute -bottom-1 left-3 right-3 h-[1px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50"
+        />
       )}
     </Link>
   );
@@ -50,133 +56,124 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const pathname = usePathname();
 
-  // Auto-close mobile menu on route change
   React.useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-black/50 backdrop-blur-xl border-b border-white/5">
-      <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
+    <nav className="fixed top-0 left-0 right-0 z-[100] h-14 bg-[#05070c]/80 backdrop-blur-2xl border-b border-white/[0.05]">
+      <div className="max-w-[1920px] mx-auto px-6 h-full flex items-center justify-between">
         
-        <Link href="/" className="flex items-center gap-3 group">
-          <img src="/logo.svg" alt="Investment-X" className="h-8 w-auto rounded-sm group-hover:opacity-80 transition-opacity" />
-        </Link>
-        
-        {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-6">
-            <NavLink href="/">Dashboard</NavLink>
-            <NavLink href="/intel">
-                <Radio className="w-3.5 h-3.5" />
-                Intel Feed
-            </NavLink>
-            <NavLink href="/studio">
-                Analysis Studio
-                <span className="px-1.5 py-0.5 text-[10px] bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/20">BETA</span>
-            </NavLink>
-            {user?.is_admin && (
-              <NavLink href="/admin/timeseries">
-                <Database className="w-3.5 h-3.5" />
-                Timeseries
-                <span className="px-1.5 py-0.5 text-[10px] bg-rose-500/20 text-rose-300 rounded border border-rose-500/20">ADMIN</span>
-              </NavLink>
-            )}
+        {/* LOGO AREA */}
+        <div className="flex items-center gap-8">
+            <Link href="/" className="flex items-center gap-2.5 group">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-sky-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
+                    <Hexagon className="w-4 h-4 text-white fill-white/20" />
+                </div>
+                <div className="flex flex-col leading-none">
+                    <span className="text-sm font-black text-white tracking-tighter uppercase">Investment<span className="text-indigo-400">X</span></span>
+                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-[0.3em] mt-0.5">Core.Nexus</span>
+                </div>
+            </Link>
+
+            {/* Desktop Navigation */}
+            <div className="hidden lg:flex items-center gap-1 p-1 bg-black/20 rounded-xl border border-white/5">
+                <NavLink href="/" icon={<Layout className="w-3.5 h-3.5" />}>Dashboard</NavLink>
+                <NavLink href="/intel" icon={<Radio className="w-3.5 h-3.5" />}>Intel</NavLink>
+                {user?.is_admin && (
+                  <NavLink href="/admin/timeseries" icon={<Database className="w-3.5 h-3.5" />}>System</NavLink>
+                )}
+            </div>
         </div>
 
-        {/* User Actions (Desktop) */}
-        <div className="hidden md:flex items-center gap-4">
-          <TaskNotifications />
-          {isAuthenticated ? (
-             <>
-                <div className="flex items-center gap-3 px-3 py-1.5 bg-white/5 rounded-full border border-white/5">
-                    <div className="w-6 h-6 rounded-full bg-sky-500/20 flex items-center justify-center text-sky-400">
-                        <UserIcon className="w-3 h-3" />
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-slate-200 leading-none">{user?.first_name || 'User'}</span>
-                        <span className="text-[10px] text-slate-500 font-mono leading-none mt-0.5">{user?.email}</span>
-                    </div>
-                </div>
+        {/* SYSTEM STATUS (Center) */}
+        <div className="hidden xl:flex items-center gap-6 px-4 py-1.5 rounded-full bg-white/[0.02] border border-white/[0.05]">
+            <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <span className="text-[10px] font-mono text-emerald-500/80 uppercase">Node: Active</span>
+            </div>
+            <div className="w-px h-3 bg-white/10" />
+            <div className="flex items-center gap-2">
+                <Cpu className="w-3 h-3 text-slate-600" />
+                <span className="text-[10px] font-mono text-slate-500 uppercase">Quant Kernel: 1.2.0</span>
+            </div>
+        </div>
 
-                <button 
-                  onClick={logout}
-                  className="p-2 text-slate-400 hover:text-rose-400 hover:bg-white/5 rounded-lg transition-colors"
-                  title="Logout"
-                >
-                  <LogOut className="w-5 h-5" />
-                </button>
-             </>
+        {/* ACTIONS AREA */}
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center">
+             <TaskNotifications />
+          </div>
+
+          <div className="h-4 w-px bg-white/10 mx-1 hidden md:block" />
+
+          {isAuthenticated ? (
+             <div className="flex items-center gap-3">
+                <div className="hidden sm:flex flex-col items-end leading-none">
+                    <span className="text-[11px] font-bold text-slate-200">{user?.first_name || 'Operator'}</span>
+                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">{user?.email?.split('@')[0]}</span>
+                </div>
+                
+                <div className="group relative">
+                    <button 
+                        onClick={logout}
+                        className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all"
+                    >
+                        <UserIcon className="w-4 h-4" />
+                    </button>
+                    {/* Logout toolitp on hover could go here */}
+                </div>
+             </div>
           ) : (
             <Link 
               href="/login"
-              className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-sky-500/20"
+              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 uppercase tracking-wider"
             >
-              <LogIn className="w-4 h-4" />
-              Sign In
+              Initialize Session
             </Link>
           )}
-        </div>
 
-        {/* Mobile Menu Button */}
-        <button 
-            className="md:hidden p-2 text-slate-300 hover:text-white transition-colors"
-            onClick={() => setMenuOpen(!menuOpen)}
-        >
-            {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
+          {/* Mobile Menu Button */}
+          <button 
+              className="lg:hidden p-2 text-slate-400 hover:text-white transition-colors"
+              onClick={() => setMenuOpen(!menuOpen)}
+          >
+              {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
       </div>
 
-      {/* Mobile Menu Overlay — animated with framer-motion */}
+      {/* Mobile Menu Overlay */}
       <AnimatePresence>
         {menuOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
+            initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="md:hidden absolute top-16 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-b border-white/10 p-6 flex flex-col gap-6 shadow-2xl"
+            exit={{ opacity: 0, y: -10 }}
+            className="lg:hidden absolute top-14 left-0 right-0 bg-[#05070c] border-b border-white/10 p-6 flex flex-col gap-4 shadow-2xl z-[90]"
           >
-               <div className="flex flex-col gap-4">
-                  <MobileNavLink href="/" pathname={pathname}>Dashboard</MobileNavLink>
-                  <MobileNavLink href="/intel" pathname={pathname}>
-                      <Radio className="w-4 h-4" /> Intel Feed
-                  </MobileNavLink>
-                  <MobileNavLink href="/studio" pathname={pathname}>
-                      Analysis Studio <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded">BETA</span>
-                  </MobileNavLink>
+               <div className="flex flex-col gap-2">
+                  <MobileNavLink href="/" icon={<Layout className="w-4 h-4" />}>Dashboard</MobileNavLink>
+                  <MobileNavLink href="/intel" icon={<Radio className="w-4 h-4" />}>Intel Feed</MobileNavLink>
                   {user?.is_admin && (
-                    <MobileNavLink href="/admin/timeseries" pathname={pathname}>
-                      <Database className="w-4 h-4" /> Timeseries (Admin)
-                    </MobileNavLink>
+                    <MobileNavLink href="/admin/timeseries" icon={<Database className="w-4 h-4" />}>System Admin</MobileNavLink>
                   )}
                </div>
 
-               {/* Mobile User Actions */}
-               <div className="flex flex-col gap-4 pt-2">
+               <div className="flex flex-col gap-4 pt-4 border-t border-white/5">
                   {isAuthenticated ? (
-                    <>
-                      <div className="flex items-center gap-3 px-3 py-3 bg-white/5 rounded-xl border border-white/5">
-                          <div className="w-10 h-10 rounded-full bg-sky-500/20 flex items-center justify-center text-sky-400">
-                              <UserIcon className="w-5 h-5" />
-                          </div>
-                          <div className="flex flex-col">
-                              <span className="text-sm font-semibold text-slate-200">{user?.first_name || 'User'}</span>
-                              <span className="text-xs text-slate-500 font-mono">{user?.email}</span>
-                          </div>
-                      </div>
-                      <button 
+                    <button 
                         onClick={logout}
-                        className="flex items-center justify-center gap-2 w-full py-3 text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 rounded-xl border border-rose-500/20 transition-colors font-medium"
-                      >
-                        <LogOut className="w-4 h-4" /> Logout
-                      </button>
-                    </>
+                        className="flex items-center justify-center gap-2 w-full py-3 text-rose-400 bg-rose-500/10 rounded-xl border border-rose-500/20 font-mono text-xs font-bold uppercase"
+                    >
+                        <LogOut className="w-4 h-4" /> Terminate Session
+                    </button>
                   ) : (
                       <Link 
                         href="/login"
-                        className="flex items-center justify-center gap-2 w-full py-3 bg-sky-500 hover:bg-sky-400 text-white rounded-xl font-medium transition-colors shadow-lg shadow-sky-500/20"
+                        className="flex items-center justify-center gap-2 w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase"
                       >
-                        <LogIn className="w-4 h-4" /> Sign In
+                        <LogIn className="w-4 h-4" /> Login
                       </Link>
                   )}
                </div>
@@ -187,21 +184,22 @@ export default function Navbar() {
   );
 }
 
-/** Mobile nav link with left-border active indicator. */
-function MobileNavLink({ href, pathname, children }: { href: string; pathname: string; children: React.ReactNode }) {
+function MobileNavLink({ href, children, icon }: { href: string; children: React.ReactNode; icon: React.ReactNode }) {
+  const pathname = usePathname();
   const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
 
   return (
     <Link
       href={href}
       className={`
-        text-lg font-medium transition-colors py-2 border-b border-white/5 flex items-center gap-2
+        flex items-center gap-3 px-4 py-3 rounded-xl font-mono text-sm transition-all
         ${isActive
-          ? 'text-white border-l-2 border-l-sky-400 pl-3'
-          : 'text-slate-300 hover:text-white'
+          ? 'bg-indigo-500/10 text-white border border-indigo-500/20'
+          : 'text-slate-400 hover:text-slate-200'
         }
       `}
     >
+      <span className={isActive ? 'text-indigo-400' : 'text-slate-600'}>{icon}</span>
       {children}
     </Link>
   );

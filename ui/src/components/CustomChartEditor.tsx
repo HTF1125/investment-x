@@ -3,13 +3,15 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/context/AuthContext';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, apiFetchJson } from '@/lib/api';
 import {
   Loader2, Play, Save, Code, FileText, 
   Download, Copy, Trash2, Plus, Terminal, Search,
   Maximize2, Minimize2, AlertCircle, CheckCircle2,
   Eye, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, FileDown, ChevronDown,
-  GripVertical,
+  GripVertical, RotateCcw, Layout, Settings, Database, Activity, Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import Editor from '@monaco-editor/react';
@@ -40,9 +42,17 @@ fig = px.bar(df, x='Year', y='Value', title='New Analysis')
 apply_theme(fig)
 `;
 
-export default function CustomChartEditor() {
+interface CustomChartEditorProps {
+  mode?: 'standalone' | 'integrated';
+  initialChartId?: string | null;
+  onClose?: () => void;
+}
+
+export default function CustomChartEditor({ mode = 'standalone', initialChartId, onClose }: CustomChartEditorProps) {
   const { token } = useAuth();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const chartIdFromUrl = searchParams.get('id');
 
   // --- State ---
   const [code, setCode] = useState<string>(DEFAULT_CODE);
@@ -50,7 +60,7 @@ export default function CustomChartEditor() {
   const [category, setCategory] = useState('Personal');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
-  const [currentChartId, setCurrentChartId] = useState<string | null>(null);
+  const [currentChartId, setCurrentChartId] = useState<string | null>(initialChartId || null);
   const [exportPdf, setExportPdf] = useState(true);
 
   const [previewFigure, setPreviewFigure] = useState<any>(null);
@@ -64,10 +74,14 @@ export default function CustomChartEditor() {
   const [graphDiv, setGraphDiv] = useState<HTMLElement | null>(null);
   const [copying, setCopying] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [consoleExpanded, setConsoleExpanded] = useState(false);
+  const [consoleExpanded, setConsoleExpanded] = useState(true);
+  const [userManuallyCollapsed, setUserManuallyCollapsed] = useState(false);
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState({ current: 0, total: 0, name: '' });
 
-  // Library panel state
+  // Default library to open
   const [libraryOpen, setLibraryOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState<'library' | 'data' | 'settings'>('library');
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
 
@@ -76,6 +90,9 @@ export default function CustomChartEditor() {
 
   const [editorWidth, setEditorWidth] = useState(440);
   const [showCodePanel, setShowCodePanel] = useState(false);
+  const [showMeta, setShowMeta] = useState(true);
+  const [editorFontSize, setEditorFontSize] = useState(13);
+  const [editorFontFamily, setEditorFontFamily] = useState("'JetBrains Mono', monospace");
   const [isMounted, setIsMounted] = useState(false);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -137,15 +154,9 @@ export default function CustomChartEditor() {
   }, [editorWidth]);
 
   // --- Queries & Mutations ---
-  const { data: savedCharts = [] } = useQuery({
+  const { data: savedCharts = [], refetch: refetchCharts } = useQuery({
     queryKey: ['custom-charts'],
-    queryFn: async () => {
-      const res = await fetch('/api/custom', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('Failed to load charts');
-      return res.json();
-    },
+    queryFn: () => apiFetchJson('/api/custom'),
     enabled: !!token,
   });
 
@@ -155,6 +166,16 @@ export default function CustomChartEditor() {
       if (!isLoaded) setIsLoaded(true);
     }
   }, [savedCharts, isLoaded]);
+
+  // Handle loading chart from URL ID on mount/refresh
+  useEffect(() => {
+    if (chartIdFromUrl && savedCharts.length > 0) {
+      const target = savedCharts.find((c: any) => c.id === chartIdFromUrl);
+      if (target) {
+        loadChart(target);
+      }
+    }
+  }, [chartIdFromUrl, savedCharts]);
 
   // Derive unique categories for the filter dropdown
   const categories = useMemo(() => {
@@ -182,19 +203,20 @@ export default function CustomChartEditor() {
     return list;
   }, [orderedCharts, categoryFilter, searchQuery]);
 
+  const isFiltering = useMemo(() => {
+    return searchQuery.trim() !== '' || categoryFilter !== 'All';
+  }, [searchQuery, categoryFilter]);
+
   // Count of charts flagged for PDF export
   const pdfCount = useMemo(() => orderedCharts.filter((c: any) => c.export_pdf).length, [orderedCharts]);
 
   const reorderMutation = useMutation({
-    mutationFn: async (items: any[]) => {
+    mutationFn: (items: any[]) => {
       const payload = { items: items.map((c: any) => ({ id: c.id })) };
-      const res = await fetch('/api/custom/reorder', {
+      return apiFetchJson('/api/custom/reorder', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error('Reorder failed');
-      return res.json();
     },
   });
 
@@ -206,30 +228,24 @@ export default function CustomChartEditor() {
 
   const previewMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/custom/preview', {
+      const res = await apiFetch('/api/custom/preview', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       });
       
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const data = await res.json();
-        if (!res.ok) {
-           const errorObj = typeof data.detail === 'object' ? data.detail : data;
-           throw errorObj;
-        }
-        return data;
-      } else {
-        const text = await res.text();
-        if (!res.ok) throw new Error(text || `Server Error: ${res.status}`);
-        return text;
+      const data = await res.json();
+      if (!res.ok) {
+         const errorObj = typeof data.detail === 'object' ? data.detail : data;
+         throw errorObj;
       }
+      return data;
     },
     onSuccess: (data: any) => {
       setPreviewFigure(data);
       setPreviewError(null);
       setSuccessMsg('Execution completed.');
+      if (!userManuallyCollapsed) setConsoleExpanded(true);
     },
     onError: (err: any) => {
       setPreviewError(err);
@@ -244,32 +260,43 @@ export default function CustomChartEditor() {
       const payload = { name, code, category, description, tags: tagList, export_pdf: exportPdf };
       const url = currentChartId ? `/api/custom/${currentChartId}` : '/api/custom';
       const method = currentChartId ? 'PUT' : 'POST';
-      const res = await fetch(url, {
+      
+      const res = await apiFetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const data = await res.json();
-        if (!res.ok) {
-           const errorObj = typeof data.detail === 'object' ? data.detail : data;
-           throw errorObj;
-        }
-        return { data, method };
-      } else {
-        const text = await res.text();
-        if (!res.ok) throw new Error(text || `Server Error: ${res.status}`);
-        return { data: null, method }; // Should not happen
+      const data = await res.json();
+      if (!res.ok) {
+         const errorObj = typeof data.detail === 'object' ? data.detail : data;
+         throw errorObj;
       }
+      return { data, method };
     },
     onSuccess: ({ data, method }: any) => {
+      const savedId = method === 'POST' ? data.id : currentChartId;
       if (method === 'POST') setCurrentChartId(data.id);
       setSuccessMsg(method === 'POST' ? 'Analysis created.' : 'Analysis saved.');
       setPreviewError(null);
+      if (!userManuallyCollapsed) setConsoleExpanded(true);
+
+      // CRITICAL: Update the preview figure immediately with the one from the server
+      if (data && data.figure) {
+        setPreviewFigure(data.figure);
+      }
+
+      // Invalidate both lists and the specific chart figure to ensure dashboard stays in sync
       queryClient.invalidateQueries({ queryKey: ['custom-charts'] });
-      if (!previewFigure) previewMutation.mutate();
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      
+      if (savedId) {
+        // Use refetchQueries for more aggressive update of the visible chart in background
+        queryClient.refetchQueries({ queryKey: ['chart-figure', savedId] });
+      }
+
+      // If we don't have a figure yet, run preview
+      if (!previewFigure && !data?.figure) previewMutation.mutate();
     },
     onError: (err: any) => {
       setPreviewError(err);
@@ -280,11 +307,9 @@ export default function CustomChartEditor() {
 
   const deleteMutation = useMutation({
     mutationFn: async (chartId: string) => {
-      const res = await fetch(`/api/custom/${chartId}`, {
+      await apiFetchJson(`/api/custom/${chartId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error('Delete failed');
       return chartId;
     },
     onSuccess: (chartId: string) => {
@@ -301,9 +326,9 @@ export default function CustomChartEditor() {
     setOrderedCharts(prev => prev.map(c => c.id === chartId ? { ...c, export_pdf: newValue } : c));
     if (currentChartId === chartId) setExportPdf(newValue);
     try {
-      await fetch('/api/custom/export-pdf', {
+      await apiFetchJson('/api/custom/export-pdf', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: [chartId], export_pdf: newValue }),
       });
     } catch {
@@ -355,9 +380,9 @@ export default function CustomChartEditor() {
     setPreviewError(null);
     try {
       // Send empty items array — backend will auto-select export_pdf=true charts
-      const res = await fetch('/api/custom/pdf', {
+      const res = await apiFetch('/api/custom/pdf', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: [] }),
       });
       if (!res.ok) {
@@ -383,6 +408,43 @@ export default function CustomChartEditor() {
       setTimeout(() => setPdfStatus('idle'), 4000);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleRefreshAll = async () => {
+    if (refreshingAll || orderedCharts.length === 0) return;
+    
+    setRefreshingAll(true);
+    setSuccessMsg(null);
+    setPreviewError(null);
+    setRefreshProgress({ current: 0, total: orderedCharts.length, name: '' });
+
+    let errorCount = 0;
+    
+    for (let i = 0; i < orderedCharts.length; i++) {
+      const chart = orderedCharts[i];
+      setRefreshProgress(prev => ({ ...prev, current: i + 1, name: chart.name || 'Untitled' }));
+      
+      try {
+        const res = await fetch('/api/custom/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ code: chart.code }),
+        });
+        
+        if (!res.ok) errorCount++;
+      } catch (err) {
+        errorCount++;
+        console.error(`Error refreshing ${chart.name}:`, err);
+      }
+    }
+
+    setRefreshingAll(false);
+    if (errorCount > 0) {
+      setPreviewError({ error: 'Refresh Complete', message: `Finished with ${errorCount} errors.` });
+    } else {
+      setSuccessMsg(`Successfully refreshed ${orderedCharts.length} charts.`);
+      queryClient.invalidateQueries({ queryKey: ['custom-charts'] });
     }
   };
 
@@ -439,7 +501,38 @@ export default function CustomChartEditor() {
   // RENDER — 3-panel: [Library sidebar] | [Preview] | [Editor]
   // ─────────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen w-screen overflow-hidden pt-16 bg-[#0a0c10]">
+    <div className={`flex w-full overflow-hidden bg-[#02040a] ${mode === 'standalone' ? 'h-full' : 'h-full border-l border-white/10 shadow-2xl z-50'}`}>
+      {/* ═══════════════ ACTIVITY BAR (VS Code Style) ═══════════════ */}
+      {mode === 'standalone' && (
+        <aside className="hidden lg:flex w-14 shrink-0 flex-col items-center py-4 gap-4 bg-[#05070c] border-r border-white/5 z-20">
+          <button 
+            onClick={() => { setActiveTab('library'); setLibraryOpen(true); }}
+            className={`p-2 rounded-xl transition-all ${activeTab === 'library' && libraryOpen ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
+            title="Library"
+          >
+            <Layout className="w-6 h-6" />
+          </button>
+          <button 
+            onClick={() => { setActiveTab('data'); setLibraryOpen(true); }}
+            className={`p-2 rounded-xl transition-all ${activeTab === 'data' && libraryOpen ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
+            title="Variables & Data"
+          >
+            <Database className="w-6 h-6" />
+          </button>
+          <div className="mt-auto flex flex-col gap-4 items-center">
+              <button 
+                onClick={() => { setActiveTab('settings'); setLibraryOpen(true); }}
+                className={`p-2 rounded-xl transition-all ${activeTab === 'settings' && libraryOpen ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
+                title="Studio Settings"
+              >
+                <Settings className="w-6 h-6" />
+              </button>
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-sky-600 flex items-center justify-center text-[10px] font-bold text-white mb-4">
+                {name.charAt(0)}
+              </div>
+          </div>
+        </aside>
+      )}
 
       {/* ═══════════════ MOBILE TAB BAR ═══════════════ */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-12 bg-[#0d0f14] border-t border-white/[0.08] flex items-center justify-around px-2">
@@ -459,534 +552,626 @@ export default function CustomChartEditor() {
         </button>
       </div>
 
-      {/* ═══════════════ LEFT SIDEBAR — Library ═══════════════ */}
-      <aside className={`
-        ${libraryOpen ? 'w-72' : 'w-12'} shrink-0 flex-col border-r border-white/[0.06] bg-[#0d0f14] transition-all duration-300
-        ${libraryOpen ? 'flex' : 'flex'}
-        lg:flex
-      `}>
+      {/* ═══════════════ SIDEBAR PANEL ═══════════════ */}
+      {mode === 'standalone' && (
+        <aside className={`
+          ${libraryOpen ? 'w-80' : 'w-0'} shrink-0 flex flex-col border-r border-white/5 bg-[#080a0f]/40 backdrop-blur-xl transition-all duration-300 overflow-hidden relative z-10
+        `}>
         {/* Sidebar Header */}
-        <div className="h-11 shrink-0 flex items-center justify-between px-3 border-b border-white/[0.06]">
-          {libraryOpen && (
+        <div className="h-12 shrink-0 flex items-center justify-between px-4 border-b border-white/5 bg-white/[0.02]">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Library</span>
-              <span className="text-[9px] tabular-nums px-1.5 py-0.5 rounded-full bg-white/[0.06] text-slate-500 font-mono">
-                {orderedCharts.length}
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                {activeTab === 'library' ? 'Research Library' : activeTab === 'data' ? 'Data Pipeline' : 'Preferences'}
               </span>
-            </div>
-          )}
-          <button
-            onClick={() => setLibraryOpen(!libraryOpen)}
-            className="p-1 text-slate-500 hover:text-white hover:bg-white/5 rounded transition-colors"
-            aria-label={libraryOpen ? 'Collapse library' : 'Expand library'}
-          >
-            {libraryOpen ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
-          </button>
-        </div>
-
-        {libraryOpen && (
-          <>
-            {/* New + Export */}
-            <div className="p-2 border-b border-white/[0.04] flex gap-1.5">
-              <button
-                onClick={clearEditor}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-500/30 rounded-lg transition-all"
-              >
-                <Plus className="w-3.5 h-3.5" /> New
-              </button>
-              {pdfCount > 0 && (
-                <button
-                  onClick={handleExportPDF}
-                  disabled={exporting}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-all disabled:opacity-40"
-                  aria-label="Export PDF"
-                >
-                  {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                  <span className="tabular-nums">{pdfCount}</span>
-                </button>
+              {activeTab === 'library' && (
+                <span className="text-[9px] tabular-nums px-1.5 py-0.5 rounded-full bg-white/[0.06] text-slate-500 font-mono">
+                    {orderedCharts.length}
+                </span>
               )}
             </div>
+            <button
+                onClick={() => setLibraryOpen(false)}
+                className="p-1 text-slate-500 hover:text-white hover:bg-white/5 rounded transition-colors lg:hidden"
+            >
+                <PanelLeftClose className="w-4 h-4" />
+            </button>
+        </div>
+
+        {activeTab === 'library' && (
+          <>
+            {/* New + Export */}
+            <div className="p-3 border-b border-white/5 flex gap-2">
+              <button
+                onClick={clearEditor}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-indigo-600/90 hover:bg-indigo-500 rounded-xl shadow-lg shadow-indigo-500/10 transition-all"
+              >
+                <Plus className="w-4 h-4" /> New Analysis
+              </button>
+              <button
+                onClick={handleRefreshAll}
+                disabled={refreshingAll}
+                className={`p-2 rounded-xl transition-all border ${
+                  refreshingAll 
+                    ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' 
+                    : 'text-slate-500 hover:text-white bg-white/[0.03] border-white/10'
+                }`}
+                title="Refresh all data"
+              >
+                {refreshingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+              </button>
+            </div>
+
+            {/* Refresh All Progress Bar */}
+            <AnimatePresence>
+              {refreshingAll && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="px-3 pb-3 overflow-hidden"
+                >
+                  <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[10px] font-mono text-amber-500/80 uppercase tracking-tight truncate max-w-[150px]">
+                        {refreshProgress.name}
+                      </span>
+                      <span className="text-[10px] font-mono text-amber-500/60">
+                        {Math.round((refreshProgress.current / refreshProgress.total) * 100)}%
+                      </span>
+                    </div>
+                    <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                      <motion.div 
+                        className="h-full bg-gradient-to-r from-amber-600 to-amber-400"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(refreshProgress.current / refreshProgress.total) * 100}%` }}
+                        transition={{ duration: 0.3 }}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Search */}
-            <div className="p-2 border-b border-white/[0.04]">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
+            <div className="px-3 py-3 border-b border-white/5 bg-white/[0.01]">
+              <div className="relative group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search charts..."
-                  className="w-full pl-8 pr-3 py-2 bg-white/[0.04] border border-white/[0.06] rounded-lg text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/40 transition-colors"
-                  aria-label="Search charts"
+                  placeholder="Filter charts..."
+                  className="w-full pl-9 pr-3 py-2 bg-white/[0.03] border border-white/5 rounded-xl text-xs text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/30 transition-all"
                 />
               </div>
-              {/* Category filter pills */}
-              {categories.length > 2 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setCategoryFilter(cat)}
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
-                        categoryFilter === cat
-                          ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                          : 'text-slate-500 hover:text-slate-300 bg-white/[0.03] border border-transparent hover:border-white/[0.08]'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Chart list */}
-            <div className="flex-grow overflow-y-auto pb-14 lg:pb-0">
-              {filteredCharts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                  <p className="text-xs text-slate-600">
-                    {searchQuery || categoryFilter !== 'All'
-                      ? 'No charts match your filter.'
-                      : 'No saved analyses yet.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="py-1">
-                  {categoryFilter === 'All' && !searchQuery.trim() ? (
-                    <Reorder.Group axis="y" values={orderedCharts} onReorder={setOrderedCharts}>
-                      {orderedCharts.map((chart: any) => (
-                        <Reorder.Item
-                          key={chart.id}
-                          value={chart}
-                          className={`group flex items-center gap-2 px-2.5 py-2 mx-1 mb-0.5 rounded-lg cursor-grab active:cursor-grabbing select-none transition-colors duration-150 ${
-                            currentChartId === chart.id
-                              ? 'bg-indigo-500/15 border border-indigo-500/25'
-                              : 'border border-transparent hover:bg-white/[0.04] hover:border-white/[0.06]'
-                          }`}
-                        >
-                          {/* Drag Handle (Visual only, whole item is draggable) */}
-                          <div className="shrink-0 text-slate-700 group-hover:text-slate-500 mr-1">
-                            <GripVertical className="w-3.5 h-3.5" />
-                          </div>
-
-                          {/* PDF toggle */}
-                          <button
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => { e.stopPropagation(); toggleExportPdf(chart.id, !chart.export_pdf); }}
-                            className={`shrink-0 p-0.5 rounded transition-colors ${
-                              chart.export_pdf
-                                ? 'text-emerald-400 hover:text-emerald-300'
-                                : 'text-slate-700 hover:text-slate-500'
-                            }`}
-                            title={chart.export_pdf ? 'Included in PDF — click to exclude' : 'Excluded from PDF — click to include'}
-                            aria-label={chart.export_pdf ? 'Remove from PDF export' : 'Add to PDF export'}
-                          >
-                            <FileDown className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Chart info */}
-                          <div 
-                             onPointerDown={(e) => e.stopPropagation()}
-                             onClick={() => loadChart(chart)} 
-                             className="flex-grow min-w-0 cursor-pointer pl-1"
-                          >
-                            <div className={`text-[11px] font-medium truncate leading-tight ${
-                              currentChartId === chart.id ? 'text-indigo-200' : 'text-slate-300'
-                            }`}>
-                              {chart.name || 'Untitled'}
+            <div className="flex-grow overflow-y-auto custom-scrollbar">
+              <Reorder.Group 
+                axis="y" 
+                values={filteredCharts} 
+                onReorder={(newItems) => {
+                    // Update the global orderedCharts. 
+                    // If filtering is on, reordering is disabled by isFiltering hook anyway,
+                    // but we ensure here that we only update the full list.
+                    if (!isFiltering) {
+                        setOrderedCharts(newItems);
+                    }
+                }}
+                className="py-2 space-y-0.5 px-2"
+              >
+                {filteredCharts.map((chart: any) => (
+                  <Reorder.Item
+                    key={chart.id}
+                    value={chart}
+                    onClick={() => loadChart(chart)}
+                    className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 ${
+                      currentChartId === chart.id
+                        ? 'bg-indigo-500/10 border border-indigo-500/20 shadow-inner'
+                        : 'border border-transparent hover:bg-white/[0.03] hover:border-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                        {!isFiltering && (
+                            <div className="flex flex-col items-center gap-1">
+                                <GripVertical className="w-3 h-3 text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing" />
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); toggleExportPdf(chart.id, !chart.export_pdf); }}
+                                    className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${chart.export_pdf ? 'bg-indigo-500 border-indigo-400 text-white' : 'border-white/10 hover:border-white/30 text-transparent'}`}
+                                    title={chart.export_pdf ? "Included in PDF" : "Excluded from PDF"}
+                                >
+                                    <CheckCircle2 className="w-2.5 h-2.5" />
+                                </button>
                             </div>
-                            <div className="text-[10px] text-slate-600 truncate leading-tight mt-0.5">
-                              {chart.category}
-                              {chart.tags?.length > 0 && (
-                                <span className="text-slate-700"> · {chart.tags.slice(0, 2).join(', ')}</span>
-                              )}
-                            </div>
-                          </div>
+                        )}
+                        <div className={`p-1.5 rounded-lg ${currentChartId === chart.id ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 text-slate-500'} group-hover:scale-110 transition-transform`}>
+                          <Activity className="w-3.5 h-3.5" />
+                        </div>
+                    </div>
+                    
+                    <div className="flex-grow min-w-0">
+                        <div className={`text-[11px] font-semibold truncate ${currentChartId === chart.id ? 'text-indigo-200' : 'text-slate-300 group-hover:text-white'}`}>
+                          {chart.name || 'Untitled Analysis'}
+                        </div>
+                        <div className="text-[9px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5">
+                            <span className="px-1 py-0.5 bg-white/5 rounded uppercase tracking-tighter">{chart.category}</span>
+                            {chart.export_pdf && <span className="text-emerald-500/80">• PDF</span>}
+                        </div>
+                    </div>
 
-                          {/* Delete button */}
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                            {deleteConfirm === chart.id ? (
-                              <button
-                                onPointerDown={(e) => e.stopPropagation()}
-                                onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(chart.id); }}
-                                className="p-1 text-rose-400 hover:bg-rose-500/20 rounded transition-colors"
-                                title="Confirm Delete"
-                              >
-                                <CheckCircle2 className="w-3 h-3" />
-                              </button>
-                            ) : (
-                              <button
-                                onPointerDown={(e) => e.stopPropagation()}
-                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm(chart.id); setTimeout(() => setDeleteConfirm(null), 3000); }}
-                                className="p-1 text-slate-700 hover:text-rose-400 hover:bg-white/5 rounded transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </Reorder.Item>
-                      ))}
-                    </Reorder.Group>
-                  ) : (
-                    // Non-reorderable filtered list
-                    filteredCharts.map((chart: any) => (
-                      <div
-                        key={chart.id}
-                        className={`group flex items-center gap-2 px-2.5 py-2 mx-1 mb-0.5 rounded-lg cursor-pointer select-none transition-all duration-150 ${
-                          currentChartId === chart.id
-                            ? 'bg-indigo-500/15 border border-indigo-500/25'
-                            : 'border border-transparent hover:bg-white/[0.04] hover:border-white/[0.06]'
-                        }`}
-                      >
-                         {/* Spacer for alignment with drag handle */}
-                         <div className="w-4 mr-1"></div>
-
-                        {/* PDF toggle */}
+                    <div className="flex items-center gap-1">
                         <button
-                          onClick={(e) => { e.stopPropagation(); toggleExportPdf(chart.id, !chart.export_pdf); }}
-                          className={`shrink-0 p-0.5 rounded transition-colors ${
-                            chart.export_pdf
-                              ? 'text-emerald-400 hover:text-emerald-300'
-                              : 'text-slate-700 hover:text-slate-500'
-                          }`}
-                          title={chart.export_pdf ? 'Included in PDF — click to exclude' : 'Excluded from PDF — click to include'}
-                          aria-label={chart.export_pdf ? 'Remove from PDF export' : 'Add to PDF export'}
+                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm(chart.id); }}
+                            className="p-1.5 text-slate-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all"
+                            title="Delete Analysis"
                         >
-                          <FileDown className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3 h-3" />
                         </button>
-
-                        {/* Chart info */}
-                        <div onClick={() => loadChart(chart)} className="flex-grow min-w-0 pl-1">
-                          <div className={`text-[11px] font-medium truncate leading-tight ${
-                            currentChartId === chart.id ? 'text-indigo-200' : 'text-slate-300'
-                          }`}>
-                            {chart.name || 'Untitled'}
-                          </div>
-                          <div className="text-[10px] text-slate-600 truncate leading-tight mt-0.5">
-                            {chart.category}
-                            {chart.tags?.length > 0 && (
-                              <span className="text-slate-700"> · {chart.tags.slice(0, 2).join(', ')}</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Delete button */}
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          {deleteConfirm === chart.id ? (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(chart.id); }}
-                              className="p-1 text-rose-400 hover:bg-rose-500/20 rounded transition-colors"
-                              title="Confirm Delete"
-                            >
-                              <CheckCircle2 className="w-3 h-3" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm(chart.id); setTimeout(() => setDeleteConfirm(null), 3000); }}
-                              className="p-1 text-slate-700 hover:text-rose-400 hover:bg-white/5 rounded transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
+                        {currentChartId === chart.id && (
+                          <motion.div layoutId="active-indicator" className="absolute left-0 w-1 h-5 bg-indigo-500 rounded-r-full" />
+                        )}
+                    </div>
+                  </Reorder.Item>
+                ))}
+              </Reorder.Group>
             </div>
-
-            {/* Summary footer */}
-            <div className="shrink-0 px-3 py-2 border-t border-white/[0.06] text-[10px] text-slate-600 font-mono hidden lg:block">
-              {filteredCharts.length !== orderedCharts.length
-                ? `${filteredCharts.length} of ${orderedCharts.length} shown`
-                : `${orderedCharts.length} analyses`
-              }
-              {pdfCount > 0 && <span className="text-emerald-600"> · {pdfCount} in PDF</span>}
+            
+            <div className="p-3 bg-white/[0.02] border-t border-white/5">
+                <button
+                    onClick={handleExportPDF}
+                    disabled={exporting || pdfCount === 0}
+                    className="w-full flex items-center justify-between px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-semibold text-slate-300 disabled:opacity-30 transition-all"
+                >
+                    <div className="flex items-center gap-2">
+                        <FileDown className="w-4 h-4" />
+                        Generate Report
+                    </div>
+                <span className="bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded-md text-[9px] font-mono tabular-nums">{pdfCount}</span>
+              </button>
             </div>
           </>
         )}
 
-        {/* Collapsed sidebar — icon-only view */}
-        {!libraryOpen && (
-          <div className="py-2 space-y-1">
-            <button onClick={clearEditor} className="w-full flex items-center justify-center p-2 text-indigo-400 hover:bg-indigo-500/15 rounded-lg transition-colors" title="New Analysis">
-              <Plus className="w-4 h-4" />
-            </button>
-            {pdfCount > 0 && (
-              <button onClick={handleExportPDF} disabled={exporting} className="w-full flex items-center justify-center p-2 text-slate-500 hover:text-white hover:bg-white/5 rounded-lg transition-colors disabled:opacity-40" title={`Export PDF (${pdfCount})`}>
-                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              </button>
-            )}
-          </div>
+        {activeTab === 'data' && (
+           <div className="flex flex-col h-full bg-[#05070c]/20">
+              <div className="p-4 border-b border-white/5">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
+                    <input
+                        type="text"
+                        placeholder="Search symbols..."
+                        className="w-full pl-9 pr-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
+                    />
+                </div>
+              </div>
+              <div className="flex-grow overflow-y-auto px-2 py-3 space-y-1 custom-scrollbar">
+                  <div className="px-3 py-1 text-[9px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-2">Primary Streams</div>
+                  {['SPX_INDEX', 'NDX_INDEX', 'EUR_USD', 'GOLD_CMD', 'UST_10Y', 'BTC_USD'].map(symbol => (
+                      <div key={symbol} className="group flex items-center justify-between px-3 py-2 rounded-lg hover:bg-white/[0.03] transition-colors border border-transparent hover:border-white/5 cursor-pointer">
+                          <div className="flex items-center gap-2.5">
+                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                              <span className="text-[11px] font-mono font-bold text-slate-400 group-hover:text-white uppercase">{symbol}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-600 font-mono tracking-tighter">Live</span>
+                      </div>
+                  ))}
+                  <div className="mt-8 px-3 py-6 rounded-xl border border-dashed border-white/10 bg-white/[0.01] text-center mx-2">
+                      <Database className="w-5 h-5 text-slate-700 mx-auto mb-2" />
+                      <p className="text-[10px] text-slate-600 leading-relaxed italic">External API links can be mapped here via variables plugin.</p>
+                  </div>
+              </div>
+           </div>
+        )}
+
+        {activeTab === 'settings' && (
+           <div className="flex flex-col h-full bg-[#05070c]/20">
+              <div className="px-6 py-8 space-y-8">
+                  <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                          <Settings className="w-3.5 h-3.5 text-indigo-400" />
+                          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Editor Preferences</h3>
+                      </div>
+                      
+                      <div className="space-y-3">
+                          <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
+                              <span>Font Size</span>
+                              <span>{editorFontSize}px</span>
+                          </div>
+                          <input 
+                              type="range" 
+                              min="10" 
+                              max="20" 
+                              value={editorFontSize}
+                              onChange={(e) => setEditorFontSize(parseInt(e.target.value))}
+                              className="w-full accent-indigo-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                          />
+                      </div>
+
+                      <div className="space-y-2">
+                           <span className="text-[10px] text-slate-500 font-mono">Font Family</span>
+                           <div className="grid grid-cols-1 gap-2">
+                               {["'JetBrains Mono', monospace", "'Fira Code', monospace", "'Ubuntu Mono', monospace"].map(font => (
+                                   <button 
+                                       key={font}
+                                       onClick={() => setEditorFontFamily(font)}
+                                       className={`px-3 py-2 text-left text-[10px] font-mono rounded-lg border transition-all ${editorFontFamily === font ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-white/5 border-white/5 text-slate-600 hover:text-slate-400'}`}
+                                   >
+                                       {font.split(',')[0].replace(/'/g, '')}
+                                   </button>
+                               ))}
+                           </div>
+                      </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-white/5">
+                      <button 
+                        onClick={() => { if(confirm('Clear current analysis?')) clearEditor(); }}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-rose-500 text-[10px] font-bold transition-all"
+                      >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Purge Buffer
+                      </button>
+                  </div>
+              </div>
+           </div>
         )}
       </aside>
+    )}
 
-      {/* ═══════════════ CENTER — Chart Preview ═══════════════ */}
-      <div className={`
-        flex-grow flex-col min-w-0 border-r border-white/[0.06]
-        flex lg:flex
-      `}>
-        {/* Chart Toolbar (Center Panel) */}
-        <div className="h-11 shrink-0 flex items-center justify-between px-4 border-b border-white/[0.06] bg-[#0d0f14]/80">
-          {/* Left: Name Input */}
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="bg-transparent text-[13px] font-semibold text-white placeholder-slate-600 focus:outline-none flex-grow min-w-0 truncate mr-4"
-            placeholder="Untitled Analysis"
-            aria-label="Analysis name"
-          />
-
-          {/* Right: Actions */}
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-md transition-all disabled:opacity-50"
-              title="Save Analysis (Ctrl+S)"
-            >
-              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-              <span className="hidden sm:inline">Save</span>
-            </button>
-            <button
-              onClick={handlePreview}
-              disabled={loading}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-md shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
-              title="Run Analysis (Ctrl+Enter)"
-            >
-              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 fill-current" />}
-              Run
-            </button>
-            {previewFigure && (
-              <button
-                onClick={handleCopyChart}
-                disabled={copying}
-                className="p-1.5 text-slate-500 hover:text-white hover:bg-white/5 rounded-md transition-colors"
-                title="Copy Chart Image"
-              >
-                {copying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-            )}
-            <button
-              onClick={toggleCodePanel}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold border rounded-md transition-all hidden lg:flex ${
-                showCodePanel 
-                  ? 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20 shadow-sm shadow-indigo-500/10' 
-                  : 'text-slate-500 border-transparent hover:text-indigo-300 hover:bg-white/5'
-              }`}
-              title={showCodePanel ? 'Close Code Editor' : 'Open Code Editor'}
-            >
-              <Code className="w-3.5 h-3.5" />
-              <span>Edit</span>
-            </button>
-          </div>
-        </div>
-        
-        {/* Metadata Bar (Category, Tags, PDF) */}
-        <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-white/[0.04] bg-[#0d0f14]/40">
-           <input
-              type="text"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-32 bg-white/[0.04] border border-white/[0.08] rounded-md px-2 py-1 text-[11px] text-slate-400 focus:border-indigo-500/40 outline-none transition-colors"
-              placeholder="Category"
-           />
-           <input
-              type="text"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              className="flex-1 min-w-0 bg-white/[0.04] border border-white/[0.08] rounded-md px-2 py-1 text-[11px] text-slate-400 focus:border-indigo-500/40 outline-none transition-colors"
-              placeholder="Tags (comma separated)"
-           />
-           <button
-              onClick={() => currentChartId ? toggleExportPdf(currentChartId, !exportPdf) : setExportPdf(!exportPdf)}
-              className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-md border text-[10px] font-medium transition-all ${
-                exportPdf
-                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                  : 'bg-white/[0.02] border-white/[0.08] text-slate-600'
-              }`}
-              title={exportPdf ? 'Will be included in PDF export' : 'Will NOT be included in PDF export'}
-           >
-              <FileDown className="w-3 h-3" />
-              PDF
-           </button>
-        </div>
-
-        {/* Chart Canvas */}
-        <div className="flex-grow relative min-h-0 bg-gradient-to-br from-[#0a0c10] to-[#0f1318] pb-12 lg:pb-0">
-          {previewFigure ? (
-            <Plot
-              data={previewFigure.data}
-              layout={{ ...previewFigure.layout, autosize: true }}
-              config={{ responsive: true, displayModeBar: 'hover', displaylogo: false }}
-              style={{ width: '100%', height: '100%' }}
-              useResizeHandler={true}
-              className="w-full h-full"
-              onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
-            />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
-                <Play className="w-7 h-7 text-slate-600 ml-0.5" />
-              </div>
-              <p className="text-sm font-medium text-slate-600">Ready to run</p>
-              <p className="text-[11px] text-slate-700 mt-1">
-                Press <kbd className="px-1.5 py-0.5 bg-white/[0.06] rounded text-[10px] font-mono border border-white/[0.08]">Ctrl+Enter</kbd> to execute
-              </p>
+      {/* ═══════════════ CENTER — Workspace ═══════════════ */}
+      <main className="flex-grow flex flex-col min-w-0 bg-[#02040a] relative">
+        {/* Workspace Header / Breadcrumbs */}
+        <header className="h-12 shrink-0 flex items-center justify-between px-6 border-b border-white/5 bg-[#05070c]/50 backdrop-blur-md relative z-20">
+            <div className="flex items-center gap-3 min-w-0">
+                <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
+                    <Activity className="w-4 h-4" />
+                </div>
+                <div className="flex flex-col min-w-0">
+                    <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="bg-transparent text-[13px] font-bold text-white placeholder-slate-700 focus:outline-none truncate w-full"
+                        placeholder="Untitled Analysis"
+                    />
+                    <div className="flex items-center gap-2 text-[9px] font-mono text-slate-500 uppercase tracking-tighter">
+                        <span>{category || 'Uncategorized'}</span>
+                        <span>/</span>
+                        <span className="truncate">{tags || 'No Tags'}</span>
+                    </div>
+                </div>
             </div>
-          )}
+
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={handlePreview}
+                    disabled={loading}
+                    className="group relative flex items-center gap-2 px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50"
+                >
+                    {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current group-hover:scale-110 transition-transform" />}
+                    <span>Run</span>
+                </button>
+                <div className="w-px h-5 bg-white/10 mx-1" />
+                <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all active:scale-95 disabled:opacity-30"
+                >
+                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    <span>Save</span>
+                </button>
+                <div className="w-px h-5 bg-white/10 mx-1" />
+                <button
+                    onClick={() => setShowMeta(!showMeta)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${showMeta ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-slate-500 hover:text-white bg-white/5 border border-transparent hover:border-white/10'}`}
+                >
+                    <Settings className={`w-4 h-4 ${showMeta ? 'animate-spin-slow' : ''}`} />
+                    <span className="text-xs font-bold">Properties</span>
+                </button>
+                <button
+                    onClick={toggleCodePanel}
+                    className={`p-2.5 rounded-xl transition-all ${showCodePanel ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-slate-500 hover:text-white bg-white/5 border border-transparent hover:border-white/10'}`}
+                >
+                    <Code className="w-4 h-4" />
+                </button>
+            </div>
+        </header>
+
+        {/* ═══════════════ PROPERTIES DRAWER ═══════════════ */}
+        <AnimatePresence>
+            {showMeta && (
+                <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="shrink-0 bg-[#0d0f14] border-b border-white/5 overflow-hidden z-10"
+                >
+                    <div className="flex flex-col gap-5 px-8 py-6 max-w-7xl mx-auto">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                            <div className="lg:col-span-3 space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <Layers className="w-3 h-3 text-indigo-500" /> Category
+                                </label>
+                                <input
+                                    type="text"
+                                    value={category}
+                                    onChange={(e) => setCategory(e.target.value)}
+                                    className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 outline-none focus:border-indigo-500/50 transition-all font-semibold"
+                                    placeholder="Enter category..."
+                                />
+                            </div>
+                            
+                            <div className="lg:col-span-4 space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <Search className="w-3 h-3 text-indigo-500" /> Metadata Tags
+                                </label>
+                                <input
+                                    type="text"
+                                    value={tags}
+                                    onChange={(e) => setTags(e.target.value)}
+                                    className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 outline-none focus:border-indigo-500/50 transition-all font-mono placeholder:text-slate-700"
+                                    placeholder="Volatility, Strategy, 2025..."
+                                />
+                            </div>
+
+                            <div className="lg:col-span-5 space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <FileText className="w-3 h-3 text-indigo-500" /> Description
+                                </label>
+                                <textarea
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    rows={1}
+                                    className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 outline-none focus:border-indigo-500/50 transition-all resize-none font-medium custom-scrollbar min-h-[42px]"
+                                    placeholder="Briefly describe the analytical protocol..."
+                                />
+                            </div>
+                        </div>
+
+                        {mode === 'standalone' && (
+                            <div className="flex items-center justify-between p-3 bg-indigo-500/[0.02] border border-indigo-500/10 rounded-xl">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-2 h-2 rounded-full ${exportPdf ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`} />
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global Report Sync</span>
+                                </div>
+                                <button
+                                    onClick={() => currentChartId ? toggleExportPdf(currentChartId, !exportPdf) : setExportPdf(!exportPdf)}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold ${exportPdf ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-slate-600 border-white/10 bg-white/5'}`}
+                                >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    {exportPdf ? 'ACTIVE' : 'DISABLED'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
+        {/* Workspace Canvas Area */}
+        <div className="flex-grow flex flex-col relative min-h-0 overflow-hidden">
+
+            {/* Main Visualizer */}
+            <div className="flex-grow relative bg-[#010205] flex flex-col min-h-0">
+                <div className="flex-grow relative overflow-hidden">
+                    {previewFigure ? (
+                        <Plot
+                        data={previewFigure.data}
+                        layout={{ 
+                            ...previewFigure.layout, 
+                            autosize: true,
+                            paper_bgcolor: 'rgba(0,0,0,0)',
+                            plot_bgcolor: 'rgba(0,0,0,0)',
+                            font: { color: '#94a3b8', family: 'Inter' },
+                        }}
+                        config={{ responsive: true, displayModeBar: 'hover', displaylogo: false }}
+                        style={{ width: '100%', height: '100%' }}
+                        useResizeHandler={true}
+                        className="w-full h-full"
+                        onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
+                        />
+                    ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <div className="relative">
+                                <div className="absolute inset-0 blur-3xl bg-indigo-500/20 rounded-full" />
+                                <div className="relative w-24 h-24 rounded-3xl bg-white/[0.03] border border-white/10 flex items-center justify-center backdrop-blur-sm">
+                                    <Activity className="w-10 h-10 text-slate-700" />
+                                </div>
+                            </div>
+                            <h3 className="text-sm font-bold text-slate-400 mt-6 uppercase tracking-[0.2em]">IDE Forge Ready</h3>
+                            <p className="text-[10px] text-slate-600 font-mono mt-2">Initialize analysis or select from library</p>
+                        </div>
+                    )}
+
+                    {/* Quick Floating Actions */}
+                    {previewFigure && (
+                        <div className="absolute top-4 right-4 flex gap-2">
+                            <button
+                                onClick={handleCopyChart}
+                                className="p-2 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all"
+                                title="Copy Image"
+                            >
+                                {copying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Console Drawer (Bottom) */}
+                <div className={`shrink-0 border-t border-white/5 bg-[#05070c]/80 backdrop-blur-xl transition-all duration-300 ${consoleExpanded ? 'h-[250px]' : 'h-10'}`}>
+                    <div className="h-10 shrink-0 flex items-center justify-between px-6 cursor-pointer hover:bg-white/[0.02]" onClick={() => {
+                        const next = !consoleExpanded;
+                        setConsoleExpanded(next);
+                        setUserManuallyCollapsed(!next); // If we are closing it, mark as manual collapse
+                    }}>
+                        <div className="flex items-center gap-3">
+                            <Terminal className={`w-4 h-4 ${error ? 'text-rose-400' : 'text-slate-500'}`} />
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Execution Log</span>
+                            {loading && <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" />}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {error && <span className="text-[9px] font-mono text-rose-500 px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20">ERROR</span>}
+                            {successMsg && !error && <span className="text-[9px] font-mono text-emerald-500 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">SUCCESS</span>}
+                            <button className="text-slate-600 hover:text-white">
+                                {consoleExpanded ? <ChevronDown className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                        </div>
+                    </div>
+                    {consoleExpanded && (
+                        <div className="flex-grow h-[210px] overflow-y-auto px-6 py-4 font-mono text-[11px] leading-relaxed custom-scrollbar">
+                           <AnimatePresence mode="wait">
+                                {error ? (
+                                    <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-3">
+                                        <div className="flex items-center gap-2 text-rose-400">
+                                            <AlertCircle className="w-4 h-4" />
+                                            <span className="font-bold underline uppercase tracking-tighter">System Interrupt / Fault</span>
+                                        </div>
+                                        <div className="p-4 bg-rose-500/5 border border-rose-500/10 rounded-xl text-rose-200/90 whitespace-pre-wrap font-mono text-[10px] leading-relaxed">
+                                            {typeof error === 'object' ? error.message : String(error)}
+                                        </div>
+                                        {typeof error === 'object' && error.traceback && (
+                                            <pre className="p-4 bg-black/40 rounded-xl border border-white/5 text-[10px] text-slate-500 overflow-x-auto whitespace-pre-wrap">
+                                                {error.traceback}
+                                            </pre>
+                                        )}
+                                    </motion.div>
+                                ) : successMsg ? (
+                                    <motion.div key="success" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 text-emerald-400/80">
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        <span>{successMsg}</span>
+                                    </motion.div>
+                                ) : (
+                                    <div className="text-slate-700 italic">&gt; Kernel idle. Ready for instruction.</div>
+                                )}
+                           </AnimatePresence>
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
-      </div>
+      </main>
 
       {/* ═══════════════ RESIZE HANDLE ═══════════════ */}
       {showCodePanel && (
         <div
           onMouseDown={startResize}
-          className="hidden lg:flex w-2 shrink-0 cursor-col-resize items-center justify-center group hover:bg-white/[0.02] active:bg-indigo-500/20 transition-colors relative z-10 -ml-1 border-l border-white/5"
-          title="Drag to resize"
-          role="separator"
-          aria-orientation="vertical"
-        >
-          <div className="w-1 h-8 rounded-full bg-white/10 group-hover:bg-indigo-500/50 group-active:bg-indigo-500/80 transition-colors" />
-        </div>
+          className="hidden lg:flex w-1 shrink-0 cursor-col-resize hover:bg-indigo-500/50 transition-colors z-30"
+        />
       )}
 
-      {/* ═══════════════ RIGHT — Code Editor + Console ═══════════════ */}
+      {/* ═══════════════ RIGHT — Editor ═══════════════ */}
       <div
         className={`
-          w-full lg:w-[440px] shrink-0 flex-col bg-[#0d0f14]
-          lg:static lg:h-auto
-          ${mobilePanel === 'editor' ? 'fixed top-16 bottom-12 right-0 w-full md:w-[600px] z-50 flex border-l border-white/10 shadow-2xl' : 'hidden'}
+          flex-col bg-[#0d0f14] relative z-20 border-l border-white/5
+          ${mobilePanel === 'editor' ? 'fixed inset-0 pt-16 z-50 flex shadow-2xl' : 'hidden lg:flex'}
           ${showCodePanel ? 'lg:flex' : 'lg:hidden'}
         `}
-        style={{ width: isMounted && showCodePanel && window.innerWidth >= 1024 ? editorWidth : undefined }}
+        style={{ width: isMounted && showCodePanel && window.innerWidth >= 1024 ? editorWidth : '100%' }}
       >
-        {/* Code Header (Mobile only) */}
-        <div className="h-11 shrink-0 flex items-center justify-between px-3 border-b border-white/[0.06] lg:hidden">
-            <button
-                onClick={() => setMobilePanel('workspace')}
-                className="mr-2 p-1 text-slate-400 hover:text-white"
-            >
-                <ChevronDown className="w-5 h-5" />
-            </button>
-            <span className="text-xs font-medium text-slate-500">Code Editor</span>
+        <div className="h-12 shrink-0 flex items-center justify-between px-4 bg-[#0d0f14] border-b border-white/5">
+            <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest opacity-50">analysis.py</span>
+            </div>
+            <div className="flex items-center gap-3">
+                <span className="text-[9px] text-slate-600 font-mono">Kernel: Python 3.12</span>
+            </div>
         </div>
-
-        {/* Monaco Code Editor */}
-        <div className="flex-grow flex flex-col min-h-0 relative">
-          <div className="h-8 shrink-0 bg-[#1e1e1e] border-b border-[#2a2a2a] flex items-center px-3 justify-between">
-            <span className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5">
-              <Code className="w-3 h-3" /> analysis.py
-            </span>
-            <span className="text-[10px] text-slate-700 font-mono">Python</span>
-          </div>
-          <div className="flex-grow min-h-0 bg-[#1e1e1e]">
+        
+        <div className="flex-grow flex flex-col min-h-0 bg-[#1e1e1e]">
             <Editor
-              height="100%"
-              defaultLanguage="python"
-              value={code}
-              theme="vs-dark"
-              onChange={(value: string | undefined) => setCode(value || '')}
-              options={{
+                height="100%"
+                defaultLanguage="python"
+                value={code}
+                theme="vs-dark"
+                onChange={(value: string | undefined) => setCode(value || '')}
+                options={{
                 minimap: { enabled: false },
-                fontSize: 13,
+                fontSize: editorFontSize,
                 lineNumbers: 'on',
                 scrollBeyondLastLine: false,
                 padding: { top: 12, bottom: 12 },
-                fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+                fontFamily: editorFontFamily,
                 renderLineHighlight: 'gutter',
-                lineDecorationsWidth: 0,
-                lineNumbersMinChars: 3,
-                glyphMargin: false,
-                folding: true,
                 bracketPairColorization: { enabled: true },
-                guides: { indentation: true, bracketPairs: true },
                 smoothScrolling: true,
                 cursorBlinking: 'smooth',
-                cursorSmoothCaretAnimation: 'on',
                 wordWrap: 'on',
-              }}
+                }}
             />
-          </div>
-        </div>
-
-        {/* Console */}
-        <div className={`shrink-0 flex flex-col border-t border-white/[0.06] transition-all duration-300 ${consoleExpanded ? 'h-[200px]' : 'h-[80px]'} mb-12 lg:mb-0`}>
-          <div className="h-7 shrink-0 flex items-center justify-between px-3 bg-[#0a0c10]">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <Terminal className="w-3 h-3" /> Console
-            </span>
-            <button
-              onClick={() => setConsoleExpanded(!consoleExpanded)}
-              className="p-0.5 text-slate-600 hover:text-white transition-colors"
-              aria-label={consoleExpanded ? 'Collapse console' : 'Expand console'}
-            >
-              {consoleExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
-            </button>
-          </div>
-          <div className="flex-grow overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed bg-[#0a0c10]">
-            <AnimatePresence mode="wait">
-              {error ? (
-                <motion.div key="error" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex items-start gap-2 text-rose-400">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <div className="flex flex-col gap-1 min-w-0 flex-1">
-                    <span className="font-bold underline">{typeof error === 'object' && (error as any).error ? (error as any).error : 'Error'}:</span>
-                    <pre className="whitespace-pre-wrap break-words text-[10px] bg-rose-500/5 p-1.5 rounded">{typeof error === 'object' && (error as any).message ? (error as any).message : String(error)}</pre>
-                    {typeof error === 'object' && (error as any).traceback && (
-                      <div className="mt-1">
-                        <div className="text-[9px] uppercase tracking-wider text-rose-300/80">Traceback</div>
-                        <pre className="mt-1 p-2 bg-black/40 rounded border border-rose-500/10 text-[9px] overflow-x-auto whitespace-pre-wrap">
-                          {(error as any).traceback}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              ) : successMsg ? (
-                <motion.div key="success" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex items-start gap-2 text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>{successMsg}</span>
-                </motion.div>
-              ) : (
-                <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-slate-700 italic">
-                  &gt; Waiting for execution...
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
         </div>
       </div>
 
-      {/* PDF Export Notification */}
+
+      {/* Notification Layer */}
       <AnimatePresence>
         {pdfStatus !== 'idle' && (
           <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-4 py-3 bg-zinc-900 border border-white/10 rounded-lg shadow-2xl min-w-[300px]"
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed bottom-8 right-8 z-[100] flex items-center gap-4 px-6 py-4 bg-[#0d0f14]/80 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl shadow-black"
           >
-            {pdfStatus === 'exporting' && <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />}
-            {pdfStatus === 'complete' && <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
-            {pdfStatus === 'error' && <AlertCircle className="w-5 h-5 text-rose-400" />}
-            
+            <div className={`p-2 rounded-xl ${pdfStatus === 'exporting' ? 'bg-indigo-500/20 text-indigo-400' : pdfStatus === 'complete' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                {pdfStatus === 'exporting' ? <Loader2 className="w-5 h-5 animate-spin" /> : pdfStatus === 'complete' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            </div>
             <div className="flex flex-col">
-              <span className="text-sm font-medium text-white">
-                {pdfStatus === 'exporting' && 'Generating PDF Report...'}
-                {pdfStatus === 'complete' && 'Download Ready'}
-                {pdfStatus === 'error' && 'Export Failed'}
+              <span className="text-sm font-bold text-white uppercase tracking-tight">
+                {pdfStatus === 'exporting' ? 'Synthesizing PDF...' : pdfStatus === 'complete' ? 'Synthesis Complete' : 'Process Failed'}
               </span>
-              <span className="text-xs text-slate-400">
-                {pdfStatus === 'exporting' ? `Processing ${pdfCount} charts` : 
-                 pdfStatus === 'complete' ? 'Check your downloads folder' : 
-                 'Please try again'}
+              <span className="text-[10px] text-slate-500 font-mono mt-0.5">
+                {pdfStatus === 'exporting' ? `Building ${pdfCount} chart definitions` : pdfStatus === 'complete' ? 'File ready for archival' : 'System error encountered'}
               </span>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+      
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+               initial={{ opacity: 0 }} 
+               animate={{ opacity: 1 }} 
+               exit={{ opacity: 0 }}
+               onClick={() => setDeleteConfirm(null)}
+               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+               initial={{ scale: 0.9, opacity: 0, y: 20 }}
+               animate={{ scale: 1, opacity: 1, y: 0 }}
+               exit={{ scale: 0.9, opacity: 0, y: 20 }}
+               className="relative w-full max-w-sm bg-[#0d0f14] border border-white/10 rounded-2xl shadow-2xl p-6"
+            >
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-500">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Delete Analysis?</h3>
+                  <p className="text-xs text-slate-500 mt-1">This action is permanent and cannot be undone.</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white text-xs font-bold rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)}
+                  disabled={deleteMutation.isPending}
+                  className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-rose-600/20 transition-all disabled:opacity-50"
+                >
+                  {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

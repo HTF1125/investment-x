@@ -13,7 +13,12 @@ export async function apiFetch(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  return fetch(url, { ...options, headers });
+  return fetch(url, { 
+    ...options, 
+    headers,
+    credentials: 'include', // CRITICAL: Send HttpOnly cookies to the server
+    cache: 'no-store'
+  });
 }
 
 /**

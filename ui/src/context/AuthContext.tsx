@@ -51,26 +51,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initAuth = async () => {
+      // With cookies, we don't strictly need to check localStorage, 
+      // but we do it for cross-tab session persistence if cookies are volatile
       const storedToken = localStorage.getItem('token');
-      if (storedToken) {
-        try {
-          const res = await fetch('/api/auth/me', {
-            headers: { 'Authorization': `Bearer ${storedToken}` },
-          });
-          
-          if (res.ok) {
-            const userData = await res.json();
-            setUser(userData);
-            setToken(storedToken);
-          } else {
-            // Invalid token — clear it
-            updateToken(null);
-            setUser(null);
-          }
-        } catch {
+      
+      try {
+        const res = await fetch('/api/auth/me', {
+          credentials: 'include', // Use browser cookies
+          headers: storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {},
+        });
+        
+        if (res.ok) {
+          const userData = await res.json();
+          setUser(userData);
+          if (storedToken) setToken(storedToken);
+        } else {
           updateToken(null);
           setUser(null);
         }
+      } catch {
+        updateToken(null);
+        setUser(null);
       }
       setLoading(false);
     };
@@ -84,20 +85,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch('/api/auth/login/json', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Ensure cookies are received
         body: JSON.stringify({ email, password, remember_me: rememberMe }),
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || 'Login failed');
+        let errorMessage = 'Login failed';
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.detail || errorData.error || errorMessage;
+        } catch (e) {
+          const text = await res.text().catch(() => '');
+          errorMessage = text || `Request failed with status ${res.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
+      // Token is now set in cookie, but we still update localStorage for legacy CSR components
       updateToken(data.access_token);
       
-      // Fetch user details immediately
+      // Fetch user details immediately (now with cookies automatically included)
       const meRes = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${data.access_token}` },
+        credentials: 'include',
       });
       
       if (meRes.ok) {
@@ -118,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ 
           email, 
           password,
@@ -140,10 +151,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [login]);
 
-  const logout = useCallback(() => {
-    updateToken(null);
-    setUser(null);
-    router.push('/login');
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', { 
+        method: 'POST',
+        credentials: 'include' 
+      });
+    } catch (err) {
+      console.warn('Logout request failed', err);
+    } finally {
+      updateToken(null);
+      setUser(null);
+      router.push('/login');
+    }
   }, [router, updateToken]);
 
   return (

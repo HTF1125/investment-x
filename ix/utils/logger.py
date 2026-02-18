@@ -19,7 +19,7 @@ def setup_antigravity_logging(service_name: str = "core"):
     log_file = log_dir / f"{service_name}_{timestamp}.jsonl"
 
     # 3. Configure Structured JSON Logger
-    logger = logging.getLogger(service_name)
+    logger = logging.getLogger()  # Use root logger to capture everything
     logger.setLevel(logging.INFO)
 
     # Avoid duplicate handlers if re-initialized
@@ -40,9 +40,12 @@ def setup_antigravity_logging(service_name: str = "core"):
             return json.dumps(log_record)
 
     # File Handler (Persistent)
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setFormatter(JsonFormatter())
-    logger.addHandler(file_handler)
+    try:
+        file_handler = logging.FileHandler(log_file, delay=True)
+        file_handler.setFormatter(JsonFormatter())
+        logger.addHandler(file_handler)
+    except Exception as e:
+        print(f"Warning: Could not initialize file logger: {e}")
 
     # Stream Handler (Visual/Rich capability could be added here)
     stream_handler = logging.StreamHandler()
