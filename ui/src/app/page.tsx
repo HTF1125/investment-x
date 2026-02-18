@@ -1,11 +1,22 @@
 import DashboardContainer from '@/components/DashboardContainer';
 import { cookies } from 'next/headers';
 
-export const dynamic = 'force-dynamic';
+export const dynamic = process.env.NEXT_BUILD_MODE === 'export' ? 'auto' : 'force-dynamic';
 
 export default async function Home() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('access_token')?.value;
+  // 🚀 For static export mode, we skip SSR to allow prerendering
+  if (process.env.NEXT_BUILD_MODE === 'export') {
+    return <DashboardContainer />;
+  }
+
+  let token = null;
+  try {
+    const cookieStore = await cookies();
+    token = cookieStore.get('access_token')?.value;
+  } catch (e) {
+    // cookies() might throw if called in a context where headers aren't available
+    console.warn('[SSR] Could not access cookies');
+  }
 
   let initialData = null;
   try {
