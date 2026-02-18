@@ -9,7 +9,9 @@ export default async function Home() {
   // This must be a clean return without calling any dynamic functions like cookies()
   if (process.env.NEXT_BUILD_MODE === 'export') {
     return (
-      <DashboardContainer />
+      <Suspense fallback={null}>
+        <DashboardContainer />
+      </Suspense>
     );
   }
 
