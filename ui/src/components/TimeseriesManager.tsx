@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, Trash2, Edit3, Save, X, ChevronLeft, ChevronRight,
   Database, RefreshCw, Loader2, AlertTriangle, Check, Star, Mail,
-  LineChart
+  LineChart, Download, Upload
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -76,6 +76,40 @@ export default function TimeseriesManager() {
 
   // Chart Viewer State
   const [viewChartItem, setViewChartItem] = useState<Timeseries | null>(null);
+
+  // Download State
+  const [downloading, setDownloading] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [availableSources, setAvailableSources] = useState<string[]>([]);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close download menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(e.target as Node)) {
+        setShowDownloadMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Fetch available sources when menu opens
+  useEffect(() => {
+    if (!showDownloadMenu || !token || availableSources.length > 0) return;
+    (async () => {
+      try {
+        const res = await fetch('/api/timeseries/sources', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAvailableSources(data);
+        }
+      } catch { /* silent */ }
+    })();
+  }, [showDownloadMenu, token]);
 
   // ───── Toast helper
   const flash = (msg: string, type: 'success' | 'error') => {
@@ -296,6 +330,79 @@ export default function TimeseriesManager() {
   const deleting = deleteMutation.isPending;
   const hasMore = items.length === PAGE_SIZE; // Approximation
 
+  // ───── Upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const isDev = window.location.port === '3000';
+    const base = isDev ? `${window.location.protocol}//${window.location.hostname}:8000` : '';
+    const url = `${base}/api/timeseries/upload_template_data`;
+
+    try {
+      flash('Initializing background upload...', 'success');
+      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Upload request failed' }));
+        throw new Error(err.detail);
+      }
+
+      const data = await res.json();
+      flash(`Task started: ${file.name}. Monitor progress in the task center.`, 'success');
+      
+    } catch (err: any) {
+      flash(err.message, 'error');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // ───── Download Template (multi-source)
+  const handleDownloadTemplate = (sources: string[]) => {
+    if (downloading || sources.length === 0) return;
+    setDownloading(true);
+    setShowDownloadMenu(false);
+    const label = sources.length === 1 ? sources[0] : `${sources.length} sources`;
+    flash(`Downloading ${label} template...`, 'success');
+    
+    // Build URL — bypass Next.js proxy (can't handle large binary).
+    // In dev, hit backend directly on :8000. In prod, same origin serves both.
+    const params = new URLSearchParams();
+    sources.forEach((s) => params.append('source', s));
+    const isDev = window.location.port === '3000';
+    const base = isDev ? `${window.location.protocol}//${window.location.hostname}:8000` : '';
+    const url = `${base}/api/timeseries/download_template?${params}`;
+    
+    // Hidden anchor for clean download (no new tab)
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    
+    setTimeout(() => setDownloading(false), 3000);
+  };
+
+  const toggleSource = (src: string) => {
+    setSelectedSources((prev) =>
+      prev.includes(src) ? prev.filter((s) => s !== src) : [...prev, src]
+    );
+  };
+
+
   // ───── Open edit
   const openEdit = (ts: Timeseries) => {
     setEditItem(ts);
@@ -351,6 +458,92 @@ export default function TimeseriesManager() {
           
           
           <div className="w-px h-8 bg-white/10 mx-1" />
+
+          {/* Download Dropdown */}
+          <div className="relative" ref={downloadMenuRef}>
+            <button
+              onClick={() => setShowDownloadMenu((p) => !p)}
+              disabled={downloading}
+              className={`flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-white/10 ${downloading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {downloading ? 'Preparing...' : 'Download Data'}
+              <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showDownloadMenu ? 'rotate-90' : ''}`} />
+            </button>
+
+            {showDownloadMenu && (
+              <div className="absolute right-0 top-full mt-2 w-60 bg-[#12141a] border border-white/10 rounded-xl shadow-2xl shadow-black/60 overflow-hidden z-50">
+                <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between">
+                  <span className="text-[10px] font-bold tracking-[2px] text-slate-500 uppercase">Select Sources</span>
+                  {availableSources.length > 0 && (
+                    <button
+                      onClick={() =>
+                        setSelectedSources((prev) =>
+                          prev.length === availableSources.length ? [] : [...availableSources]
+                        )
+                      }
+                      className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold uppercase tracking-wider"
+                    >
+                      {selectedSources.length === availableSources.length ? 'None' : 'All'}
+                    </button>
+                  )}
+                </div>
+                {availableSources.length === 0 ? (
+                  <div className="px-4 py-4 flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="py-1">
+                      {availableSources.map((src) => (
+                        <label
+                          key={src}
+                          onClick={() => toggleSource(src)}
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer select-none"
+                        >
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                            selectedSources.includes(src)
+                              ? 'bg-sky-500 border-sky-500'
+                              : 'border-white/20 bg-white/5'
+                          }`}>
+                            {selectedSources.includes(src) && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          {src}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="px-3 py-2.5 border-t border-white/5">
+                      <button
+                        onClick={() => handleDownloadTemplate(selectedSources)}
+                        disabled={selectedSources.length === 0}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-sky-200 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Download {selectedSources.length > 0 ? `(${selectedSources.length})` : ''}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="w-px h-8 bg-white/10 mx-1" />
+
+          {/* Upload */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleUpload}
+            accept=".xlsx"
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-white/10"
+          >
+            <Upload className="w-4 h-4" /> Upload Data
+          </button>
 
           <button
             onClick={() => { setShowCreate(true); setForm({ ...EMPTY_FORM }); }}

@@ -83,14 +83,15 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
   }, [processes]);
 
   const activeCount = processes.filter((p) => p.status === "running").length;
-  const badgeCount = processes.length;
+  const completedCount = processes.filter((p) => p.status === "completed").length;
+  const totalCount = processes.length;
 
   // Shared process list renderer
   const renderProcessList = () => (
     <div className={`${embedded ? 'max-h-[200px]' : 'max-h-[360px]'} overflow-y-auto p-2 space-y-1.5`}>
       {processes.length === 0 ? (
-        <div className="text-center py-4 text-slate-600 text-xs italic">
-          No active tasks
+        <div className="text-center py-6 text-slate-600 text-xs italic">
+          No active tasks in registry
         </div>
       ) : (
         processes.map((process) => (
@@ -100,10 +101,10 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
               relative flex items-start gap-3 p-2.5 rounded-lg border transition-all
               ${
                 process.status === "running"
-                  ? "bg-slate-800/50 border-sky-500/20"
+                  ? "bg-sky-500/5 border-sky-500/20"
                   : process.status === "completed"
-                  ? "bg-emerald-900/10 border-emerald-500/15"
-                  : "bg-rose-900/10 border-rose-500/15"
+                  ? "bg-emerald-500/5 border-emerald-500/15"
+                  : "bg-rose-500/5 border-rose-500/15"
               }
             `}
           >
@@ -123,7 +124,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
             {/* Content */}
             <div className="flex-grow min-w-0">
               <div className="flex justify-between items-start">
-                <span className="text-xs font-medium text-slate-200 truncate pr-2">
+                <span className="text-xs font-bold text-slate-200 truncate pr-2">
                   {process.name}
                 </span>
                 <button
@@ -137,36 +138,38 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                 </button>
               </div>
 
-              <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+              <div className="text-[10px] text-slate-500 mt-0.5 truncate font-mono">
                 {process.message || (process.status === "running" ? "Processing..." : process.status)}
               </div>
 
               {process.status === "running" && process.progress && (
-                <div className="mt-1.5 flex items-center gap-2">
-                  <div className="flex-grow h-1 bg-slate-700/50 rounded-full overflow-hidden">
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="flex-grow h-1 bg-white/5 rounded-full overflow-hidden">
                     <motion.div
-                      className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full"
+                      className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full"
                       initial={{ width: "0%" }}
                       animate={{ width: getProgressPercent(process.progress) }}
                       transition={{ duration: 0.5, ease: "easeOut" }}
                     />
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                  <span className="text-[9px] text-slate-500 font-mono font-bold shrink-0">
                     {process.progress}
                   </span>
                 </div>
               )}
 
-              {process.end_time && (
-                <div className="text-[10px] text-slate-600 mt-1">
-                  {formatRelativeTime(process.end_time)}
-                </div>
-              )}
-              {process.status === "running" && (
-                <div className="text-[10px] text-slate-700 mt-0.5">
-                  Started {formatRelativeTime(process.start_time)}
-                </div>
-              )}
+              <div className="flex items-center gap-2 mt-1.5 opacity-50">
+                 {process.end_time ? (
+                  <span className="text-[9px] font-mono text-slate-500">
+                    {formatRelativeTime(process.end_time)}
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-mono text-slate-500 flex items-center gap-1.5">
+                    <div className="w-1 h-1 rounded-full bg-sky-500 animate-pulse" />
+                    Started {formatRelativeTime(process.start_time)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         ))
@@ -174,9 +177,9 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
       {processes.length > 0 && (
         <button
           onClick={handleClearAll}
-          className="w-full text-center text-[10px] text-slate-600 hover:text-rose-400 py-1.5 transition-colors flex items-center justify-center gap-1"
+          className="w-full text-center text-[10px] font-bold text-slate-500 hover:text-rose-400 py-2 transition-colors flex items-center justify-center gap-2 border-t border-white/5 mt-2 pt-3"
         >
-          <Trash2 className="w-3 h-3" /> Clear All
+          <Trash2 className="w-3 h-3" /> CLEAR COMPLETED TASKS
         </button>
       )}
     </div>
@@ -192,21 +195,37 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors relative"
-        title="Tasks & Notifications"
+        className={`
+          flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all h-8
+          ${isOpen 
+            ? 'bg-white/10 border-white/20' 
+            : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/15'
+          }
+        `}
+        title="System Tasks & Processes"
       >
-        <Bell className="w-5 h-5" />
-        {badgeCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-            {activeCount > 0 ? (
-              <>
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500" />
-              </>
-            ) : (
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-500" />
-            )}
-          </span>
+        <div className="relative">
+          <Bell className={`w-4 h-4 ${activeCount > 0 ? 'text-sky-400 pulse-sky' : 'text-slate-400'}`} />
+          {activeCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" />
+            </span>
+          )}
+        </div>
+        
+        {totalCount > 0 && (
+          <div className="flex items-center gap-2 font-mono text-[10px] font-bold tracking-tighter">
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500">R:</span>
+              <span className={activeCount > 0 ? 'text-sky-400' : 'text-slate-600'}>{activeCount}</span>
+            </div>
+            <div className="w-px h-2.5 bg-white/10" />
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500">D:</span>
+              <span className={completedCount > 0 ? 'text-emerald-500' : 'text-slate-600'}>{completedCount}</span>
+            </div>
+          </div>
         )}
       </button>
 

@@ -2,8 +2,18 @@
 Timeseries router for timeseries data management.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    status,
+    UploadFile,
+    File,
+    BackgroundTasks,
+)
+from fastapi.responses import Response, StreamingResponse
 from typing import Optional, List, Dict, Any
 from collections import OrderedDict
 import json
@@ -157,6 +167,360 @@ async def get_timeseries(
 
     logger.info(f"Retrieved {len(formatted_timeseries)} timeseries records")
     return formatted_timeseries
+
+
+@router.get("/timeseries/sources")
+async def get_timeseries_sources(
+    db: SessionType = Depends(get_db),
+):
+    """Return distinct source names for timeseries that have source_code set."""
+    from sqlalchemy import distinct
+
+    ensure_connection()
+    rows = (
+        db.query(distinct(Timeseries.source))
+        .filter(Timeseries.source_code.isnot(None))
+        .filter(Timeseries.source.isnot(None))
+        .all()
+    )
+    return sorted([r[0] for r in rows])
+
+
+# Universal Excel formula template for the download endpoint.
+# Matches user's EXACT formatted string (including spaces).
+# __C__ is replaced with the actual column letter (B, C, D, ...) per timeseries.
+_DOWNLOAD_FORMULA_TEMPLATE = (
+    """=IF(__C__6="FactSet",IF(ISNUMBER(SEARCH(__C__3, "FDS_ECON_DATA; FDS_COM_DATA",1)),"""
+    """FDSC("","","PSETCAL(SEVENDAY);"&__C__3&"('" & __C__2 & "'," & $D$1+2 & "," & $C$1 & ", D, NONE, NONE)"),\n"""
+    """FDSC("","","PSETCAL(SEVENDAY);NO_REPEAT_F(SPEC_ID_DATA('" & __C__2 & ":" & __C__3 & "','" & $D$1+2 & "','" & $C$1 & "', D, NONE, NONE,2))")),\n"""
+    """IF(__C__6="Bloomberg",BDH(__C__2,__C__3,$C$1,$D$1+2,"SORT", "TRUE","DTS", "FALSE","DAYS", "C","FILL", "B"),\n"""
+    """IF(__C__6="Infomax",IMDH(__C__5,__C__2&"",__C__3,$C$1,$D$1,9999,"Per=일,sort=D,real=false,Bizday=12,Quote=종가,ROUND=9,Pos=20,Orient=V,Title="&__C__7&",DtFmt=1,TmFmt=1,unit=true"),\n"""
+    """NA())))"""
+)
+
+
+@router.get("/timeseries/download_template")
+async def download_template(
+    source: Optional[List[str]] = Query(
+        None,
+        description="Filter by source(s): Bloomberg, FactSet, Infomax (repeatable)",
+    ),
+    start_date: Optional[str] = Query(
+        None, description="Start date (ISO-8601), default ~2 years ago"
+    ),
+    end_date: Optional[str] = Query(
+        None, description="End date (ISO-8601), default today"
+    ),
+    db: SessionType = Depends(get_db),
+):
+    """Generate an Excel template for data download/upload workflow.
+
+    Produces a .xlsx file with metadata rows and pre-built formulas
+    matching the Google Sheets Bloomberg/FactSet/Infomax workflow.
+    Accepts multiple source values via repeated query params.
+    """
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Border, Side
+
+    ensure_connection()
+
+    # Date range
+    end_dt = pd.to_datetime(end_date) if end_date else pd.Timestamp.now()
+    start_dt = (
+        pd.to_datetime(start_date) if start_date else end_dt - pd.DateOffset(years=2)
+    )
+    start_str = start_dt.strftime("%Y-%m-%d")
+    end_str = end_dt.strftime("%Y-%m-%d")
+
+    # Query timeseries that have source_code set
+    query = db.query(Timeseries).filter(Timeseries.source_code.isnot(None))
+    if source:
+        query = query.filter(Timeseries.source.in_(source))
+    all_ts = query.order_by(Timeseries.source, Timeseries.code).all()
+
+    if not all_ts:
+        raise HTTPException(
+            status_code=404, detail="No timeseries with source_code found."
+        )
+
+    # Group by source
+    grouped: Dict[str, list] = {}
+    for ts in all_ts:
+        src = ts.source or "Unknown"
+        grouped.setdefault(src, []).append(ts)
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    # Styles
+    header_font = Font(name="Consolas", size=9, color="AAAAAA")
+    value_font = Font(name="Consolas", size=9, color="FFFFFF")
+    code_font = Font(name="Consolas", size=9, color="00BFFF", bold=True)
+    formula_font = Font(name="Consolas", size=8, color="808080", italic=True)
+    date_font = Font(name="Consolas", size=9, color="CCCCCC")
+    dark_fill = PatternFill(start_color="0D0F14", end_color="0D0F14", fill_type="solid")
+    header_fill = PatternFill(
+        start_color="1A1D25", end_color="1A1D25", fill_type="solid"
+    )
+
+    # Generate dates: start from end_date + 2, descending to start_date
+    date_top = end_dt + pd.DateOffset(days=2)
+    dates = pd.date_range(start=start_dt, end=date_top, freq="D").sort_values(
+        ascending=False
+    )
+
+    for sheet_source, ts_list in grouped.items():
+        ws = wb.create_sheet(title=sheet_source[:31])
+
+        # Row 1: Header info
+        ws.cell(row=1, column=1, value=sheet_source).font = Font(
+            name="Consolas", size=10, color="00BFFF", bold=True
+        )
+        ws.cell(row=1, column=3, value=start_str).font = value_font
+        ws.cell(row=1, column=4, value=end_str).font = value_font
+
+        # Metadata row labels (col A)
+        row_labels = {
+            2: "source_ticker",
+            3: "source_field",
+            4: "source_code",
+            5: "asset_class",
+            6: "source",
+            7: "name",
+            8: "code",
+        }
+        for r, label in row_labels.items():
+            cell = ws.cell(row=r, column=1, value=label)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        # Fill columns B+ with timeseries metadata
+        for col_idx, ts in enumerate(ts_list, start=2):
+            sc = str(ts.source_code) if ts.source_code else ":"
+            parts = sc.rsplit(":", 1) if ":" in sc else [sc, ""]
+            ticker = parts[0] if len(parts) > 0 else ""
+            field = parts[1] if len(parts) > 1 else ""
+
+            ws.cell(row=2, column=col_idx, value=ticker).font = value_font
+            ws.cell(row=3, column=col_idx, value=field).font = value_font
+            ws.cell(row=4, column=col_idx, value=sc).font = value_font
+            ws.cell(row=5, column=col_idx, value=ts.asset_class or "").font = value_font
+            ws.cell(row=6, column=col_idx, value=ts.source or "").font = value_font
+            ws.cell(row=7, column=col_idx, value=ts.name or "").font = value_font
+            ws.cell(row=8, column=col_idx, value=ts.code or "").font = code_font
+
+            # Universal formula — column letter swapped via template
+            from openpyxl.utils import get_column_letter
+
+            col = get_column_letter(col_idx)
+            formula_text = _DOWNLOAD_FORMULA_TEMPLATE.replace("__C__", col)
+
+            ws.cell(row=9, column=col_idx, value=formula_text).font = formula_font
+
+        # Date column (A9+) — descending from end_date + 2
+        for i, d in enumerate(dates):
+            ws.cell(row=9 + i, column=1, value=d.strftime("%Y-%m-%d")).font = date_font
+
+        # Column widths
+        ws.column_dimensions["A"].width = 16
+        for col_idx in range(2, len(ts_list) + 2):
+            ws.column_dimensions[ws.cell(row=2, column=col_idx).column_letter].width = (
+                14
+            )
+
+        # Apply dark fill
+        for row in ws.iter_rows(
+            min_row=1, max_row=9 + len(dates), max_col=len(ts_list) + 1
+        ):
+            for cell in row:
+                if cell.fill == PatternFill():
+                    cell.fill = dark_fill
+
+    # Save to buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"timeseries_template_{end_dt.strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/timeseries/upload_template_data")
+async def upload_template_data(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db: SessionType = Depends(get_db),
+):
+    """Upload Excel file with timeseries data in the background."""
+    from ix.api.routers.task import start_process
+
+    # Check for admin (optional but recommended since this updates DB)
+    # current_user = Depends(get_current_admin_user)
+
+    contents = await file.read()
+    pid = start_process(f"Timeseries Upload: {file.filename}")
+
+    background_tasks.add_task(_run_upload_background_task, pid, contents)
+
+    return {"message": "Process started in background.", "task_id": pid}
+
+
+def _run_upload_background_task(pid: str, contents: bytes):
+    """Actual worker for timeseries data upload."""
+    import io
+    import math
+    import pandas as pd
+    from datetime import datetime, date
+    from openpyxl import load_workbook
+    from ix.db.models import Timeseries, TimeseriesData
+    from ix.db.conn import Session
+    from ix.api.routers.task import update_process, ProcessStatus
+
+    logger.info(f"[Task:{pid}] Starting background timeseries upload.")
+    try:
+        with Session() as db:
+            logger.info(f"[Task:{pid}] Parsing workbook contents...")
+            update_process(pid, message="Parsing Excel file...")
+            try:
+                wb = load_workbook(io.BytesIO(contents), data_only=True)
+            except Exception as e:
+                logger.error(f"[Task:{pid}] Failed to load workbook: {e}")
+                update_process(
+                    pid,
+                    status=ProcessStatus.FAILED,
+                    message=f"Invalid Excel format: {str(e)}",
+                )
+                return
+
+            # Fetch mappings and prepare
+            ts_map = {
+                ts.code: ts.id for ts in db.query(Timeseries.code, Timeseries.id).all()
+            }
+            logger.info(
+                f"[Task:{pid}] Loaded mapping for {len(ts_map)} timeseries codes."
+            )
+            updated_count = 0
+            total_points = 0
+            sheets = wb.sheetnames
+
+            for s_idx, sheet_name in enumerate(sheets):
+                ws = wb[sheet_name]
+                sheet_progress = f"{s_idx + 1}/{len(sheets)}"
+                logger.info(
+                    f"[Task:{pid}] Processing sheet: {sheet_name} ({sheet_progress})"
+                )
+
+                total_cols = ws.max_column - 1
+                for col_idx in range(2, ws.max_column + 1):
+                    col_num = col_idx - 1
+                    code_cell = ws.cell(row=8, column=col_idx).value
+
+                    if not code_cell:
+                        continue
+
+                    ts_code = str(code_cell).strip()
+                    ts_id = ts_map.get(ts_code)
+
+                    # Log every column to show activity
+                    logger.info(
+                        f"[Task:{pid}]   → Scanning '{ts_code}' (Col {col_num}/{total_cols})"
+                    )
+                    update_process(
+                        pid,
+                        message=f"Processing {sheet_name}: '{ts_code}' ({col_num}/{total_cols})",
+                        progress=sheet_progress,
+                    )
+
+                    if not ts_id:
+                        logger.warning(
+                            f"[Task:{pid}]     ! Code '{ts_code}' not found in database. Skipping."
+                        )
+                        continue
+
+                    # Fetch/Create data record
+                    ts_data = (
+                        db.query(TimeseriesData)
+                        .filter(TimeseriesData.timeseries_id == ts_id)
+                        .first()
+                    )
+                    if not ts_data:
+                        ts_data = TimeseriesData(timeseries_id=ts_id, data={})
+                        db.add(ts_data)
+                        db.flush()
+
+                    current_data = dict(ts_data.data) if ts_data.data else {}
+                    has_changes = False
+                    col_points = 0
+
+                    # Iterate rows
+                    for row_idx in range(9, ws.max_row + 1):
+                        date_cell = ws.cell(row=row_idx, column=1).value
+                        val_cell = ws.cell(row=row_idx, column=col_idx).value
+
+                        if val_cell is None:
+                            continue
+
+                        date_str = None
+                        if isinstance(date_cell, (datetime, date)):
+                            date_str = date_cell.strftime("%Y-%m-%d")
+                        elif isinstance(date_cell, str):
+                            try:
+                                date_str = pd.to_datetime(date_cell).strftime(
+                                    "%Y-%m-%d"
+                                )
+                            except:
+                                pass
+
+                        if not date_str:
+                            continue
+
+                        try:
+                            val = float(val_cell)
+                            if math.isnan(val):
+                                continue
+                        except:
+                            continue
+
+                        current_data[date_str] = val
+                        has_changes = True
+                        col_points += 1
+
+                    if has_changes:
+                        logger.info(
+                            f"[Task:{pid}]     ✓ Updated {ts_code}: +{col_points} points"
+                        )
+                        ts_data.data = current_data
+                        if hasattr(ts_data, "updated"):
+                            ts_data.updated = datetime.now()
+                        updated_count += 1
+                        total_points += col_points
+                        db.flush()
+                    else:
+                        logger.info(f"[Task:{pid}]     · No new data for {ts_code}")
+
+            db.commit()
+            final_msg = f"Completed: {updated_count} series, {total_points} pts."
+            logger.info(f"[Task:{pid}] {final_msg}")
+            update_process(
+                pid,
+                status=ProcessStatus.COMPLETED,
+                message=final_msg,
+                progress=f"{len(sheets)}/{len(sheets)}",
+            )
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        logger.error(f"[Task:{pid}] Critical runtime error: {e}")
+        update_process(
+            pid, status=ProcessStatus.FAILED, message=f"Runtime error: {str(e)}"
+        )
 
 
 @router.post("/timeseries")

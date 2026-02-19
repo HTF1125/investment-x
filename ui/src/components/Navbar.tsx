@@ -157,17 +157,6 @@ function UserDropdown() {
               </div>
             </div>
 
-            {/* Notifications section */}
-            <div className="border-b border-white/[0.06]">
-              <div className="px-4 pt-3 pb-1.5 flex items-center gap-2">
-                <Bell className="w-3.5 h-3.5 text-slate-500" />
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Notifications</span>
-              </div>
-              <div className="px-2 pb-2">
-                <TaskNotifications embedded />
-              </div>
-            </div>
-
             {/* Actions */}
             <div className="p-2">
               <button
@@ -227,6 +216,8 @@ export default function Navbar() {
 
         {/* RIGHT: User / Login + Mobile Menu */}
         <div className="flex items-center gap-3 shrink-0">
+          {isAuthenticated && <TaskNotifications />}
+          
           {isAuthenticated ? (
             <UserDropdown />
           ) : (

@@ -81,98 +81,82 @@ def apply_academic_style(fig: go.Figure, force_dark: bool = True) -> go.Figure:
     # 3. Layout General
     fig.update_layout(
         font=dict(family=font_family, color=font_color, size=12),
-        # width=800,
-        # height=500,
-        margin=dict(l=50, r=20, t=60, b=40),
+        margin=dict(l=70, r=40, t=90, b=60),  # More breathing room
         plot_bgcolor=plot_bg,
         paper_bgcolor=bg_color,
         hovermode="x unified",
+        dragmode="pan",
         hoverlabel=dict(
             bgcolor="#1e293b" if is_dark else "white",
             font_color=font_color,
             bordercolor="rgba(255,255,255,0.1)" if is_dark else "#e2e8f0",
-            font=dict(family=font_family, size=12),
+            font=dict(family=font_family, size=13),
         ),
     )
 
     # 4. Title Styling
     fig.update_layout(
         title=dict(
-            x=0.01,
-            y=0.95,
+            x=0.02,
+            y=0.96,
             xanchor="left",
             yanchor="top",
-            font=dict(size=14, color=font_color, family=header_font),
+            font=dict(size=18, color=font_color, family=header_font, weight="bold"),
         )
     )
 
-    # 5. Legend Styling (Top-Left inside plot)
+    # 5. Legend Styling (Horizontal at bottom or top-left)
     fig.update_layout(
         legend=dict(
-            y=0.99,
-            x=0.01,
+            orientation="h",
+            y=1.02,
+            x=0.02,
             xanchor="left",
-            yanchor="top",
-            bgcolor="rgba(13, 15, 18, 0.8)" if is_dark else "rgba(255,255,255,0.8)",
-            bordercolor="rgba(255,255,255,0.1)" if is_dark else "rgba(0,0,0,0.1)",
-            borderwidth=1,
-            font=dict(size=10, color=font_color),
+            yanchor="bottom",
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=12, color=font_color),
         )
     )
 
     # 6. Axis Styling (The "Boxed" look)
     axis_style = dict(
         showline=True,
-        linewidth=1,
-        linecolor="rgba(255,255,255,0.2)" if is_dark else font_color,
-        mirror=True,  # Boxed effect
+        linewidth=1.5,
+        linecolor="rgba(255,255,255,0.15)" if is_dark else "rgba(0,0,0,0.15)",
+        mirror=True,
         ticks="outside",
-        ticklen=5,
-        tickcolor=font_color,
-        tickfont=dict(color=font_color, family=font_family),
-        title_font=dict(color=font_color, family=header_font),
-        showgrid=False,
-        zerolinecolor=font_color,
+        ticklen=6,
+        tickcolor="rgba(255,255,255,0.3)" if is_dark else "rgba(0,0,0,0.3)",
+        tickfont=dict(
+            color=sub_color if "sub_color" in locals() else font_color,
+            family=font_family,
+            size=11,
+        ),
+        title_font=dict(color=font_color, family=header_font, size=13, weight="normal"),
+        showgrid=True,
+        gridcolor=grid_line_color,
+        zeroline=True,
+        zerolinecolor="rgba(255,255,255,0.2)" if is_dark else "rgba(0,0,0,0.2)",
         zerolinewidth=1,
     )
 
     fig.update_xaxes(**axis_style)
     fig.update_yaxes(**axis_style)
 
-    # Ensure global font color and specific axis title color is black
+    # Secondary Axis handling
+    for i in range(2, 11):
+        fig.update_layout(
+            {f"yaxis{i}": axis_style} if hasattr(fig.layout, f"yaxis{i}") else {}
+        )
+        fig.update_layout(
+            {f"xaxis{i}": axis_style} if hasattr(fig.layout, f"xaxis{i}") else {}
+        )
+
+    # Ensure title and legend fonts are explicitly set
     fig.update_layout(
-        font_color=font_color,
         title_font_color=font_color,
-        xaxis_title_font_color=font_color,
-        yaxis_title_font_color=font_color,
-        xaxis=dict(title_font=dict(color=font_color)),
-        yaxis=dict(title_font=dict(color=font_color)),
-        legend=dict(font=dict(color=font_color)),
+        legend_font_color=font_color,
     )
-
-    # Iterate over all layout properties to find x/y axes and force title color
-    # This handles secondary axes (yaxis2, yaxis3) which are not covered by fig.update_yaxes
-    for attr in dir(fig.layout):
-        if attr.startswith("yaxis") or attr.startswith("xaxis"):
-            axis = getattr(fig.layout, attr)
-            if axis and hasattr(axis, "update"):
-                update_dict = {}
-                update_dict["title_font"] = dict(color=font_color)
-                update_dict["tickfont"] = dict(color=font_color)
-                update_dict["tickcolor"] = font_color
-                update_dict["linecolor"] = font_color
-
-                if (
-                    hasattr(axis, "title")
-                    and axis.title
-                    and hasattr(axis.title, "font")
-                ):
-                    try:
-                        axis.title.font.color = font_color
-                    except:
-                        pass
-
-                axis.update(**update_dict)
 
     # 7. Apply Standard Palette to traces for consistency
     for i, trace in enumerate(fig.data):
@@ -430,10 +414,11 @@ def _create_performance_heatmap(
             results[period_label] = sdf
 
         df_perf = pd.DataFrame(results)
+        # Sort by the longest period provided
         sort_col = list(periods.keys())[-1]
         df_perf = df_perf.sort_values(by=sort_col, ascending=True)
         latest_date = df_base.index[-1]
-        as_of_str = latest_date.strftime("%B %d, %Y")
+        as_of_str = latest_date.strftime("%b %d, %Y")
 
     except Exception as e:
         return _create_error_fig(f"Data error: {str(e)}")
@@ -446,20 +431,45 @@ def _create_performance_heatmap(
     y_labels = df_perf.index.tolist()
     z_values = df_perf.values
 
+    # Absolute max for symmetric color scaling
+    vmax = max(abs(df_perf.values.min()), abs(df_perf.values.max()), 5.0)
+
     # Value formatting for annotations
-    text_values = [[f"{v:.1f}%" for v in row] for row in z_values]
+    text_values = [
+        [f"{v:+.1f}%" if abs(v) >= 0.1 else "" for v in row] for row in z_values
+    ]
 
     fig = go.Figure(
         data=go.Heatmap(
             z=z_values,
             x=x_labels,
             y=y_labels,
+            zmin=-vmax,
+            zmax=vmax,
             zmid=0,
             text=text_values,
             texttemplate="%{text}",
-            xgap=4,
-            ygap=4,
-            hovertemplate="Asset: %{y}<br>Period: %{x}<br>Return: %{z:.2f}%<extra></extra>",
+            xgap=2,
+            ygap=2,
+            colorscale=[
+                [0, "#f43f5e"],  # Rose-500
+                [0.25, "#fb7185"],  # Rose-400
+                [0.4, "#fecdd3"],  # Rose-200
+                [0.5, "#1e293b"],  # Slate-800 (Neutral)
+                [0.6, "#d1fae5"],  # Emerald-100
+                [0.75, "#34d399"],  # Emerald-400
+                [1.0, "#10b981"],  # Emerald-500
+            ],
+            showscale=True,
+            colorbar=dict(
+                title=dict(text="Return %", font=dict(size=10)),
+                thickness=12,
+                len=0.8,
+                tickfont=dict(size=10),
+                outlinewidth=0,
+                x=1.02,
+            ),
+            hovertemplate="<b>%{y}</b><br>Period: %{x}<br>Return: %{z:.2f}%<extra></extra>",
         )
     )
 
@@ -467,60 +477,60 @@ def _create_performance_heatmap(
 
     # Theme detection
     is_dark = fig.layout.paper_bgcolor in ["#0d0f12", "black", "#000000"]
-    font_color = "#e2e8f0" if is_dark else "#000000"
-    neutral_bg = "#1e293b" if is_dark else "#f8fafc"
-    text_color = "white" if is_dark else "black"
+    font_color = "#f8fafc" if is_dark else "#0f172a"
+    sub_color = "#94a3b8" if is_dark else "#64748b"
 
-    fig.update_traces(
-        colorscale=[
-            [0, "#f43f5e"],  # Rose (Negative)
-            [0.45, "#fda4af"],  # Light Rose
-            [0.5, neutral_bg],  # Adaptive Neutral
-            [0.55, "#6ee7b7"],  # Light Emerald
-            [1, "#10b981"],  # Emerald (Positive)
-        ],
-        textfont={"size": 14, "family": "Inter, sans-serif", "color": text_color},
-        colorbar=dict(
-            title=dict(text="Return %", font=dict(size=12, color=font_color)),
-            thickness=15,
-            len=0.75,
-            tickfont=dict(size=12, color=font_color),
-        ),
-    )
+    # Dynamic height calculation to prevent squashing (min 400px, 30px per row)
+    dynamic_height = max(450, len(y_labels) * 32 + 150)
 
     fig.update_layout(
         title=dict(
             text=f"<b>{title}</b>",
-            font=dict(size=24, color=font_color),
+            font=dict(size=22, color=font_color, family="Outfit"),
             x=0.01,
+            y=0.98,
             xanchor="left",
+            yanchor="top",
         ),
         xaxis=dict(
-            title="",
             side="top",
-            tickfont=dict(size=14, color=font_color, family="Outfit"),
+            tickfont=dict(size=13, color=font_color, family="Outfit"),
             showgrid=False,
+            zeroline=False,
+            constrain="domain",
         ),
         yaxis=dict(
-            title="",
             autorange="reversed",
             tickfont=dict(size=12, color=font_color, family="Inter"),
             showgrid=False,
+            zeroline=False,
         ),
-        height=500,  # Standardized with other charts
-        margin=dict(t=120, b=40, l=160, r=60),
+        height=dynamic_height,
+        margin=dict(t=130, b=40, l=160, r=80),
+        plot_bgcolor="rgba(0,0,0,0)",
     )
 
+    # Secondary title / Meta info
     fig.add_annotation(
-        text=f"<b>Performance Pulse</b> | As of {as_of_str}",
+        text=f"<b>PERFORMANCE PULSE</b> <span style='color:{sub_color}'>| {as_of_str}</span>",
         xref="paper",
         yref="paper",
         x=0.0,
-        y=1.07,
+        y=1.08,
         showarrow=False,
-        font=dict(size=14, color="#94a3b8"),
+        font=dict(size=13, color=font_color),
         xanchor="left",
         yanchor="bottom",
+    )
+
+    # Critical: Set text font color for HEATMAP annotations specifically
+    # Plotly doesn't apply layout.font to heatmap text automatically in a way that contrasts well
+    fig.update_traces(
+        textfont=dict(
+            size=11,
+            family="Inter, sans-serif",
+            color="white",  # Always white for better contrast on Rose/Emerald
+        )
     )
 
     return fig
