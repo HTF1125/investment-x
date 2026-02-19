@@ -24,7 +24,14 @@ const cleanFigure = (data: any) => {
       cleaned.layout.height = undefined;
       cleaned.layout.paper_bgcolor = 'rgba(0,0,0,0)';
       cleaned.layout.plot_bgcolor = 'rgba(0,0,0,0)';
-      cleaned.layout.margin = {l: 40, r: 20, t: 30, b: 40};
+      // Preserve the chart's intended margins but cap them for card display
+      const orig = cleaned.layout.margin || {};
+      cleaned.layout.margin = {
+        l: Math.min(orig.l ?? 50, 120),
+        r: Math.min(orig.r ?? 20, 50),
+        t: Math.min(orig.t ?? 40, 80),
+        b: Math.min(orig.b ?? 30, 50),
+      };
     }
     return cleaned;
 };

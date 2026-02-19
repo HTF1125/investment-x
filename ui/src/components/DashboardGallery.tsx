@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { 
-  TrendingUp, Search, Layers, Grid, List as ListIcon, X, LayoutGrid, 
+  TrendingUp, Search, Layers, X, 
   Plus, Edit2, CheckCircle2, GripVertical, Eye, EyeOff, Loader2, RotateCcw,
-  MoreVertical, ArrowUp, ArrowDown, ArrowUpToLine
+  MoreVertical, ArrowUp, ArrowDown, ArrowUpToLine,
+  FileDown, Monitor, Check, Info, RefreshCw
 } from 'lucide-react';
-import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { Reorder, motion, AnimatePresence, useDragControls } from 'framer-motion';
@@ -27,25 +27,39 @@ interface ChartMeta {
 interface ChartCardProps {
   chart: ChartMeta;
   isAdmin: boolean;
-  viewMode: 'grid' | 'list';
   isReorderable: boolean;
   onTogglePdf: (id: string, status: boolean) => void;
   isSyncing?: boolean;
   onRankChange?: (id: string, newRank: number) => void;
   index: number;
   totalCharts: number;
+  onOpenStudio?: (chartId: string | null) => void;
 }
 const ChartCard = React.memo(function ChartCard({ 
   chart, 
   isAdmin, 
-  viewMode, 
   isReorderable, 
   onTogglePdf, 
   isSyncing,
   onRankChange,
   index,
-  totalCharts
+  totalCharts,
+  onOpenStudio
 }: ChartCardProps) {
+  // Viewport-based lazy rendering
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isInView, setIsInView] = useState(false);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setIsInView(true); observer.disconnect(); } },
+      { rootMargin: '200px' } // pre-load 200px before entering viewport
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const [localRank, setLocalRank] = useState(chart.rank + 1);
 
   // Sync with prop if it changes externally (important when list finally sorts)
@@ -103,27 +117,33 @@ const ChartCard = React.memo(function ChartCard({
 
             {/* 3. Interactive Name (Click to Edit) */}
             {isAdmin ? (
-              <Link
-                href={`/?view=studio&id=${chart.id}`}
+              <button
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenStudio?.(chart.id); }}
                 className="group/name flex items-center gap-2 min-w-0 overflow-hidden"
                 title="Edit in Studio"
               >
                 <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/20 group-hover/name:bg-sky-500/20 group-hover/name:text-sky-300 transition-all truncate">
                   {chart.name}
                 </span>
-              </Link>
+              </button>
             ) : (
               <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/10 truncate">
                 {chart.name}
               </span>
             )}
 
-            {viewMode === 'list' && (
-              <span className="text-[11px] font-medium text-slate-400 truncate">{chart.category}</span>
-            )}
+
          </div>
 
          <div className="flex items-center gap-3 shrink-0">
+            {chart.description && (
+              <div className="relative group/tip">
+                <Info className="w-3.5 h-3.5 text-slate-600 hover:text-sky-400 transition-colors cursor-help" />
+                <div className="absolute right-0 top-full mt-1 w-56 px-3 py-2 bg-slate-900 border border-white/10 rounded-lg text-[10px] text-slate-400 leading-relaxed opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-50 shadow-xl">
+                  {chart.description}
+                </div>
+              </div>
+            )}
             <div className="text-[9px] text-slate-600 font-mono hidden sm:flex items-center gap-3">
                 {isSyncing && <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />}
                 {chart.updated_at ? new Date(chart.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '---'}
@@ -132,23 +152,22 @@ const ChartCard = React.memo(function ChartCard({
       </div>
 
 
-      <div className={`flex ${viewMode === 'list' ? 'flex-row items-center gap-8' : 'flex-col'}`}>
-        {/* Chart Area */}
-        <div className={`bg-slate-950/20 relative ${viewMode === 'list' ? 'w-1/3 p-4' : 'w-full p-4 h-[350px]'}`}>
-          <Chart id={chart.id} initialFigure={chart.figure} />
-        </div>
-
-        {/* Card Analysis */}
-        <div className={`px-4 py-3 bg-black/20 border-t border-white/5 transition-colors ${viewMode === 'list' ? 'border-t-0 border-l w-2/3 h-full flex flex-col justify-center' : ''}`}>
-          <p className="text-[11px] text-slate-500 leading-relaxed font-light line-clamp-2">
-            {chart.description || "Intelligence stream aggregating..."}
-          </p>
+      <div ref={cardRef} className="flex flex-col">
+        {/* Chart Area — only render Plotly when in viewport */}
+        <div className="bg-slate-950/20 relative w-full p-4 h-[350px]">
+          {isInView ? (
+            <Chart id={chart.id} initialFigure={chart.figure} />
+          ) : (
+            <div className="flex items-center justify-center h-full w-full">
+              <Loader2 className="w-6 h-6 text-sky-400/20 animate-spin" />
+            </div>
+          )}
         </div>
       </div>
     </>
   );
 
-  const className = `glass-card overflow-hidden flex flex-col group ${viewMode === 'list' ? 'min-h-[200px]' : ''} transition-all duration-300 hover:border-sky-500/30 hover:shadow-sky-500/5 relative`;
+  const className = `glass-card overflow-hidden flex flex-col group transition-all duration-300 hover:border-sky-500/30 hover:shadow-sky-500/5 relative`;
 
   if (isReorderable) {
     return (
@@ -186,9 +205,10 @@ const ChartCard = React.memo(function ChartCard({
 interface DashboardGalleryProps {
   categories: string[];
   chartsByCategory: Record<string, ChartMeta[]>;
+  onOpenStudio?: (chartId: string | null) => void;
 }
 
-export default function DashboardGallery({ categories, chartsByCategory }: DashboardGalleryProps) {
+export default function DashboardGallery({ categories, chartsByCategory, onOpenStudio }: DashboardGalleryProps) {
   const { user, token } = useAuth();
   const isAdmin = user?.is_admin;
   const queryClient = useQueryClient();
@@ -199,9 +219,15 @@ export default function DashboardGallery({ categories, chartsByCategory }: Dashb
   const [activeCategory, setActiveCategory] = useState<string>('All Indicators');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
   const [mounted, setMounted] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Export state
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [exportingHtml, setExportingHtml] = useState(false);
+  const [exportHtmlStatus, setExportHtmlStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // ⏲️ Debounce Search Query
   useEffect(() => {
@@ -230,6 +256,66 @@ export default function DashboardGallery({ categories, chartsByCategory }: Dashb
     ));
     setIsRefreshing(false);
     queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+  };
+
+  const handleExportPDF = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportStatus('idle');
+    try {
+      const res = await fetch('/api/custom/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ items: [] }),
+      });
+      if (!res.ok) throw new Error('PDF failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `InvestmentX_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      setExportStatus('success');
+      setTimeout(() => setExportStatus('idle'), 3000);
+    } catch {
+      setExportStatus('error');
+      setTimeout(() => setExportStatus('idle'), 3000);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportHTML = async () => {
+    if (exportingHtml) return;
+    setExportingHtml(true);
+    setExportHtmlStatus('idle');
+    try {
+      const res = await fetch('/api/custom/html', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ items: [] }),
+      });
+      if (!res.ok) throw new Error('HTML failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `InvestmentX_Portfolio_${new Date().toISOString().slice(0, 10)}.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      setExportHtmlStatus('success');
+      setTimeout(() => setExportHtmlStatus('idle'), 3000);
+    } catch {
+      setExportHtmlStatus('error');
+      setTimeout(() => setExportHtmlStatus('idle'), 3000);
+    } finally {
+      setExportingHtml(false);
+    }
   };
 
   const allCategories = useMemo(() => ['All Indicators', ...(categories || [])], [categories]);
@@ -369,7 +455,7 @@ export default function DashboardGallery({ categories, chartsByCategory }: Dashb
   return (
     <div className="space-y-8 min-h-[800px]">
       {/* 🧭 Filter & Search Command Bar */}
-      <div className="flex flex-col lg:flex-row gap-6 items-center justify-between sticky top-20 z-40 px-6 py-4 glass-card bg-slate-900/60 backdrop-blur-2xl border-white/10 shadow-2xl">
+      <div className="flex flex-col lg:flex-row gap-6 items-center justify-between sticky top-14 z-40 px-6 py-3 glass-card bg-slate-900/60 backdrop-blur-2xl border-white/10 shadow-2xl">
         <div className="flex flex-wrap items-center gap-2 pb-2 lg:pb-0 w-full lg:w-[70%]">
           {!searchQuery && (
             <div className="flex flex-wrap gap-2">
@@ -437,33 +523,57 @@ export default function DashboardGallery({ categories, chartsByCategory }: Dashb
             )}
           </div>
 
+          {/* Refresh All & Export Buttons */}
+          <button
+            onClick={handleRefreshAll}
+            disabled={isRefreshing}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono font-bold uppercase tracking-wider transition-all disabled:opacity-30 ${
+              isRefreshing ? 'text-sky-400 bg-sky-500/10 border-sky-500/20' : 'text-slate-400 bg-black/40 border-white/5 hover:text-white hover:bg-white/10'
+            }`}
+            title="Refresh All Charts"
+            type="button"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
           <div className="flex gap-1 p-1 bg-black/40 border border-white/5 rounded-xl">
             <button
-              onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/20' : 'text-slate-500 hover:text-slate-300'}`}
-              title="Grid View"
+              onClick={handleExportPDF}
+              disabled={exporting || exportingHtml}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-all disabled:opacity-30 ${
+                exportStatus === 'success' ? 'text-emerald-400 bg-emerald-500/10'
+                : exportStatus === 'error' ? 'text-rose-400 bg-rose-500/10'
+                : 'text-slate-400 hover:text-white hover:bg-white/10'
+              }`}
+              title="Export PDF Report"
               type="button"
             >
-              <LayoutGrid className="w-4 h-4" />
+              {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : exportStatus === 'success' ? <Check className="w-3.5 h-3.5" /> : <FileDown className="w-3.5 h-3.5" />}
+              PDF
             </button>
             <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/20' : 'text-slate-500 hover:text-slate-300'}`}
-              title="List View"
+              onClick={handleExportHTML}
+              disabled={exporting || exportingHtml}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-all disabled:opacity-30 ${
+                exportHtmlStatus === 'success' ? 'text-emerald-400 bg-emerald-500/10'
+                : exportHtmlStatus === 'error' ? 'text-rose-400 bg-rose-500/10'
+                : 'text-slate-400 hover:text-white hover:bg-white/10'
+              }`}
+              title="Export Interactive HTML"
               type="button"
             >
-              <ListIcon className="w-4 h-4" />
+              {exportingHtml ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : exportHtmlStatus === 'success' ? <Check className="w-3.5 h-3.5" /> : <Monitor className="w-3.5 h-3.5" />}
+              HTML
             </button>
           </div>
 
           {isAdmin && (
-            <Link
-              href="/?view=studio"
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition-all ml-2 active:scale-95"
+            <button
+              onClick={() => onOpenStudio?.(null)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition-all ml-1 active:scale-95"
             >
               <Plus className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">CREATE</span>
-            </Link>
+            </button>
           )}
         </div>
       </div>
@@ -495,42 +605,40 @@ export default function DashboardGallery({ categories, chartsByCategory }: Dashb
         <Reorder.Group 
           values={filteredCharts}
           onReorder={handleReorder}
-          className={`grid ${viewMode === 'grid' 
-            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8' 
-            : 'grid-cols-1 gap-8'}`}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
         >
           {filteredCharts.map((chart, idx) => (
             <ChartCard
               key={chart.id}
               chart={chart}
               isAdmin={isAdmin || false}
-              viewMode={viewMode}
+
               isReorderable={true}
               onTogglePdf={handleTogglePdf}
               isSyncing={reorderMutation.isPending}
               onRankChange={handleRankChange}
               index={idx}
               totalCharts={filteredCharts.length}
+              onOpenStudio={onOpenStudio}
             />
           ))}
         </Reorder.Group>
       ) : (
         <div 
-          className={`grid ${viewMode === 'grid' 
-            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8' 
-            : 'grid-cols-1 gap-8'}`}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
         >
           {filteredCharts.map((chart, idx) => (
             <ChartCard
               key={chart.id}
               chart={chart}
               isAdmin={isAdmin || false}
-              viewMode={viewMode}
+
               isReorderable={false}
               onTogglePdf={handleTogglePdf}
               onRankChange={handleRankChange}
               index={idx}
               totalCharts={filteredCharts.length}
+              onOpenStudio={onOpenStudio}
             />
           ))}
         </div>

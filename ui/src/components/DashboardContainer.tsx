@@ -1,42 +1,102 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useQuery } from '@tanstack/react-query';
-import { apiFetch, apiFetchJson } from '@/lib/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetchJson } from '@/lib/api';
 import DashboardGallery from '@/components/DashboardGallery';
-import Header from '@/components/Header';
 import AppShell from '@/components/AppShell';
 import dynamic from 'next/dynamic';
-import { RefreshCw, WifiOff, LayoutGrid, Activity, X } from 'lucide-react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { RefreshCw, WifiOff, Activity, X } from 'lucide-react';
 
-// Lazy load heavy editor
-const CustomChartEditor = dynamic(() => import('@/components/CustomChartEditor'), { 
+// ─── Eager chunk preload via dynamic import handle ───
+// The chunk is fetched during idle time after dashboard mount (see useEffect below).
+// By the time the user clicks "open studio", the JS is already parsed & in memory.
+const editorImport = () => import('@/components/CustomChartEditor');
+const CustomChartEditor = dynamic(editorImport, {
   ssr: false,
-  loading: () => <div className="h-full flex items-center justify-center font-mono text-slate-500 animate-pulse bg-slate-900/50 backdrop-blur-xl">INITIALIZING QUANT STUDIO...</div>
+  loading: () => (
+    <div className="h-full flex items-center justify-center font-mono text-slate-500 animate-pulse bg-slate-900/50">
+      INITIALIZING QUANT STUDIO...
+    </div>
+  ),
 });
 
 export default function DashboardContainer({ initialData }: { initialData?: any }) {
   const { token, user } = useAuth();
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  
-  const viewParam = searchParams.get('view') || 'gallery';
-  const editingChartId = searchParams.get('id');
+  const queryClient = useQueryClient();
   const isAdmin = user?.is_admin;
 
-  const showStudio = viewParam === 'studio';
+  // Studio state — pure React state, no URL params
+  const [studioOpen, setStudioOpen] = useState(false);
+  const [studioChartId, setStudioChartId] = useState<string | null>(null);
+  // Once true, the editor component stays mounted permanently (hidden off-screen)
+  const [editorReady, setEditorReady] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: () => apiFetchJson('/api/v1/dashboard/summary'),
-    initialData: initialData || undefined, // Fallback to client-side fetch if SSR returned null
-    staleTime: 0, // Always consider stale to ensure fresh data after Studio edits
+    initialData: initialData || undefined,
+    staleTime: 1000 * 60 * 2,
+    refetchOnWindowFocus: false,
   });
 
-  // Error and loading states now render *inside* AppShell so the navbar stays accessible
+  // ─── Preload strategy ───
+  // After dashboard renders, use idle callback to:
+  //   1. Fetch the CustomChartEditor webpack chunk (Monaco + Plotly)
+  //   2. Prefetch the /api/custom chart list into react-query cache
+  // This ensures zero JS download delay on first studio click.
+  const preloaded = useRef(false);
+  useEffect(() => {
+    if (!isAdmin || preloaded.current) return;
+    preloaded.current = true;
+
+    const preload = () => {
+      // 1. Trigger webpack chunk download + parse
+      editorImport().then(() => {
+        // Chunk is now in memory — mount the editor (hidden) so React hydrates it
+        setEditorReady(true);
+      }).catch(() => {
+        // Silently fail preload — will load on-demand as fallback
+      });
+
+      // 2. Warm the react-query cache for the chart library list
+      queryClient.prefetchQuery({
+        queryKey: ['custom-charts'],
+        queryFn: () => apiFetchJson('/api/custom'),
+        staleTime: 1000 * 60 * 5,
+      });
+    };
+
+    // Use requestIdleCallback if available, otherwise setTimeout
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(preload, { timeout: 3000 });
+    } else {
+      setTimeout(preload, 1000);
+    }
+  }, [isAdmin, queryClient]);
+
+  const openStudio = useCallback((chartId: string | null = null) => {
+    setStudioChartId(chartId);
+    setStudioOpen(true);
+    // Fallback: if preload hasn't finished, mount the editor now
+    if (!editorReady) setEditorReady(true);
+  }, [editorReady]);
+
+  const closeStudio = useCallback(() => {
+    setStudioOpen(false);
+  }, []);
+
+  // Close studio on Escape key
+  useEffect(() => {
+    if (!studioOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeStudio();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [studioOpen, closeStudio]);
+
   if (isError) {
     return (
       <AppShell>
@@ -62,8 +122,6 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     );
   }
 
-  // Determine if we should show the loading screen
-  // If we have SSR data, we never show the loading screen
   const showLoading = !data && isLoading;
 
   if (showLoading) {
@@ -83,20 +141,18 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
               </div>
             </div>
             {!token && (
-              <button 
-                onClick={() => router.push('/login')}
+              <a 
+                href="/login"
                 className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-slate-400 transition-all"
               >
                 Return to Login
-              </button>
+              </a>
             )}
-            {/* Fail-safe button after 5 seconds of loading might be good, but for now we keep it clean */}
         </div>
       </AppShell>
     );
   }
 
-  // If no data and not loading (and no error caught by react-query), it's a silent fail
   if (!data && !isLoading && !isError) {
     return (
         <AppShell>
@@ -114,31 +170,17 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     );
   }
 
-  const setView = (v: string, id: string | null = null) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('view', v);
-    if (id) params.set('id', id); else params.delete('id');
-    router.push(`?${params.toString()}`, { scroll: false });
-  };
-
-  const closeStudio = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('view', 'gallery');
-    params.delete('id');
-    router.push(`?${params.toString()}`, { scroll: false });
-  };
-
   return (
     <AppShell>
       <div className="relative min-h-screen">
         {/* 📚 Base Dashboard Layer */}
-        <div className={`p-4 md:p-8 lg:p-12 transition-all duration-500 ${showStudio ? 'opacity-30 scale-[0.98] blur-sm pointer-events-none' : 'opacity-100 scale-100'}`}>
+        <div className={`p-4 md:p-8 lg:p-12 transition-opacity duration-150 ${studioOpen ? 'opacity-20 pointer-events-none' : 'opacity-100'}`}>
           <div className="max-w-[1600px] mx-auto">
-             <Header />
              {data.charts_by_category ? (
                 <DashboardGallery 
                     categories={data.categories || []} 
-                    chartsByCategory={data.charts_by_category} 
+                    chartsByCategory={data.charts_by_category}
+                    onOpenStudio={openStudio}
                 />
             ) : (
                 <div className="text-center py-20 text-slate-500">
@@ -157,60 +199,54 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
           </footer>
         </div>
 
-        {/* 🚀 Integrated Studio Workspace (Slide-over) */}
-        <AnimatePresence>
-          {showStudio && isAdmin && (
-            <>
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120]"
-                onClick={closeStudio}
-              />
-              <motion.div 
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed inset-y-0 right-0 w-[94vw] bg-black border-l border-white/10 shadow-2xl z-[130] flex flex-col overflow-hidden"
-              >
-                {/* Studio Control Header */}
-                <div className="h-14 shrink-0 flex items-center justify-between px-6 bg-[#05070c] border-b border-white/10">
-                   <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2 text-indigo-400">
-                         <Activity className="w-5 h-5" />
-                         <span className="text-xs font-bold font-mono uppercase tracking-[0.2em]">Quantum Studio Focus</span>
-                      </div>
-                      <div className="w-px h-4 bg-white/10" />
-                      <span className="text-[10px] text-slate-500 font-mono italic">
-                        {editingChartId ? `Modifying Instance: ${editingChartId}` : 'Authoring New Research Protocol'}
-                      </span>
-                   </div>
-                   <button 
-                     onClick={closeStudio}
-                     className="p-2 text-slate-500 hover:text-white hover:bg-white/5 rounded-xl transition-all flex items-center gap-2 group"
-                   >
-                     <span className="text-[10px] font-bold font-mono opacity-0 group-hover:opacity-100 transition-opacity">CLOSE WORKSPACE</span>
-                     <X className="w-5 h-5" />
-                   </button>
-                </div>
+        {/* 🚀 Studio Backdrop */}
+        {studioOpen && (
+          <div 
+            className="fixed inset-0 bg-black/60 z-[120] animate-in fade-in duration-150"
+            onClick={closeStudio}
+          />
+        )}
 
-                <div className="flex-grow overflow-hidden relative">
-                   <CustomChartEditor mode="integrated" initialChartId={editingChartId} onClose={closeStudio} />
+        {/* Studio Panel — CSS transform only, no mount/unmount */}
+        <div
+          className={`fixed inset-y-0 right-0 w-[94vw] bg-black border-l border-white/10 shadow-2xl z-[130] flex flex-col overflow-hidden transition-transform duration-200 ease-out ${
+            studioOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
+          style={{ pointerEvents: studioOpen ? 'auto' : 'none' }}
+        >
+          {/* Studio Control Header */}
+          <div className="h-14 shrink-0 flex items-center justify-between px-6 bg-[#05070c] border-b border-white/10">
+             <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-indigo-400">
+                   <Activity className="w-5 h-5" />
+                   <span className="text-xs font-bold font-mono uppercase tracking-[0.2em]">Quantum Studio Focus</span>
                 </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+                <div className="w-px h-4 bg-white/10" />
+                <span className="text-[10px] text-slate-500 font-mono italic">
+                  {studioChartId ? `Modifying Instance: ${studioChartId}` : 'Authoring New Research Protocol'}
+                </span>
+             </div>
+             <button 
+               onClick={closeStudio}
+               className="p-2 text-slate-500 hover:text-white hover:bg-white/5 rounded-xl transition-all flex items-center gap-2 group"
+             >
+               <span className="text-[10px] font-bold font-mono opacity-0 group-hover:opacity-100 transition-opacity">CLOSE WORKSPACE</span>
+               <X className="w-5 h-5" />
+             </button>
+          </div>
 
-        {/* Floating Toggle (Optional shortcut) */}
-        {isAdmin && !showStudio && (
-          <motion.button
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
+          <div className="flex-grow overflow-hidden relative">
+            {editorReady && (
+              <CustomChartEditor mode="integrated" initialChartId={studioChartId} onClose={closeStudio} />
+            )}
+          </div>
+        </div>
+
+        {/* Floating Toggle */}
+        {isAdmin && !studioOpen && (
+          <button
             className="fixed bottom-8 right-8 z-[110] p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-2xl shadow-indigo-600/30 transition-all flex items-center gap-3 border border-indigo-400/20 group hover:scale-105 active:scale-95"
-            onClick={() => setView('studio')}
+            onClick={() => openStudio()}
           >
              <div className="relative">
                 <Activity className="w-5 h-5" />
@@ -218,7 +254,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
                 <div className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full" />
              </div>
              <span className="text-xs font-bold uppercase tracking-widest hidden group-hover:block transition-all">Research Studio</span>
-          </motion.button>
+          </button>
         )}
       </div>
     </AppShell>

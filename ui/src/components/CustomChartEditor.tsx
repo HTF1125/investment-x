@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/context/AuthContext';
-import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import {
@@ -50,9 +49,7 @@ interface CustomChartEditorProps {
 
 export default function CustomChartEditor({ mode = 'standalone', initialChartId, onClose }: CustomChartEditorProps) {
   const { token } = useAuth();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const chartIdFromUrl = searchParams.get('id');
 
   // --- State ---
   const [code, setCode] = useState<string>(DEFAULT_CODE);
@@ -167,15 +164,27 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     }
   }, [savedCharts, isLoaded]);
 
-  // Handle loading chart from URL ID on mount/refresh
+  // Handle loading chart from prop (state-based studio navigation)
   useEffect(() => {
-    if (chartIdFromUrl && savedCharts.length > 0) {
-      const target = savedCharts.find((c: any) => c.id === chartIdFromUrl);
-      if (target) {
+    if (initialChartId && savedCharts.length > 0) {
+      const target = savedCharts.find((c: any) => c.id === initialChartId);
+      if (target && currentChartId !== initialChartId) {
         loadChart(target);
       }
+    } else if (initialChartId === null && currentChartId !== null) {
+      // CREATE clicked — reset to blank state
+      setCode(DEFAULT_CODE);
+      setName('Untitled Analysis');
+      setCategory('Personal');
+      setDescription('');
+      setTags('');
+      setCurrentChartId(null);
+      setExportPdf(true);
+      setPreviewFigure(null);
+      setPreviewError(null);
+      setSuccessMsg(null);
     }
-  }, [chartIdFromUrl, savedCharts]);
+  }, [initialChartId, savedCharts]);
 
   // Derive unique categories for the filter dropdown
   const categories = useMemo(() => {

@@ -1,12 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { 
   User as UserIcon, LogOut, LogIn, Database, Radio, 
-  Menu, X, Layout, Activity, Cpu, Hexagon
+  Menu, X, Layout, Cpu, Hexagon, Bell, ChevronDown,
+  Settings, Shield
 } from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -51,6 +52,139 @@ function NavLink({ href, children, onClick, className = '', icon }: NavLinkProps
   );
 }
 
+/**
+ * Live status indicators — pipeline, region, time.
+ */
+function StatusIndicators() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  return (
+    <div className="hidden xl:flex items-center gap-3 text-[10px] font-mono">
+      <div className="flex items-center gap-1.5">
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
+        <span className="text-emerald-500/80 uppercase">Live</span>
+      </div>
+      <div className="w-px h-3 bg-white/10" />
+      <span className="text-slate-500 uppercase">Seoul</span>
+      {mounted && (
+        <>
+          <div className="w-px h-3 bg-white/10" />
+          <span className="text-slate-400 tabular-nums font-semibold">
+            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * User profile dropdown with notifications, settings, and logout.
+ */
+function UserDropdown() {
+  const { user, logout } = useAuth();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const initials = [user?.first_name?.[0], user?.last_name?.[0]]
+    .filter(Boolean)
+    .join('')
+    .toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U';
+
+  return (
+    <div className="relative" ref={ref}>
+      {/* Trigger button */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`
+          flex items-center gap-2 px-1.5 py-1 rounded-xl border transition-all
+          ${open
+            ? 'bg-white/10 border-white/15 shadow-lg shadow-indigo-500/10'
+            : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/15'
+          }
+        `}
+      >
+        {/* Avatar */}
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center text-white text-[10px] font-bold shadow-inner">
+          {initials}
+        </div>
+        <div className="hidden sm:flex flex-col items-start leading-none pr-1">
+          <span className="text-[11px] font-bold text-slate-200">{user?.first_name || 'Operator'}</span>
+          <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">{user?.email?.split('@')[0]}</span>
+        </div>
+        <ChevronDown className={`w-3 h-3 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Dropdown */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="absolute right-0 top-full mt-2 w-80 bg-[#0a0f1e]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 z-[200] overflow-hidden"
+          >
+            {/* User header */}
+            <div className="p-4 border-b border-white/[0.06] bg-gradient-to-r from-indigo-500/5 to-sky-500/5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-indigo-500/20">
+                  {initials}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-white truncate">
+                    {user?.first_name || 'Operator'} {user?.last_name || ''}
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono truncate">{user?.email}</div>
+                </div>
+                {user?.is_admin && (
+                  <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md flex items-center gap-1">
+                    <Shield className="w-2.5 h-2.5" /> Admin
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Notifications section */}
+            <div className="border-b border-white/[0.06]">
+              <div className="px-4 pt-3 pb-1.5 flex items-center gap-2">
+                <Bell className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Notifications</span>
+              </div>
+              <div className="px-2 pb-2">
+                <TaskNotifications embedded />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="p-2">
+              <button
+                onClick={() => { setOpen(false); logout(); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all group"
+              >
+                <LogOut className="w-4 h-4 group-hover:text-rose-400 transition-colors" />
+                <span className="text-xs font-mono font-bold uppercase tracking-wider">Terminate Session</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -61,69 +195,40 @@ export default function Navbar() {
   }, [pathname]);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[100] h-14 bg-[#05070c]/80 backdrop-blur-2xl border-b border-white/[0.05]">
-      <div className="max-w-[1920px] mx-auto px-6 h-full flex items-center justify-between">
+    <nav className="fixed top-0 left-0 right-0 z-[100] h-12 bg-[#05070c]/80 backdrop-blur-2xl border-b border-white/[0.05]">
+      <div className="max-w-[1920px] mx-auto px-4 h-full flex items-center justify-between gap-4">
         
-        {/* LOGO AREA */}
-        <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-2.5 group">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-sky-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-                    <Hexagon className="w-4 h-4 text-white fill-white/20" />
+        {/* LEFT: Logo + Nav Links */}
+        <div className="flex items-center gap-4 shrink-0">
+            <Link href="/" className="flex items-center gap-2 group">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-600 to-sky-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
+                    <Hexagon className="w-3.5 h-3.5 text-white fill-white/20" />
                 </div>
-                <div className="flex flex-col leading-none">
-                    <span className="text-sm font-black text-white tracking-tighter uppercase">Investment<span className="text-indigo-400">X</span></span>
-                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-[0.3em] mt-0.5">Core.Nexus</span>
+                <div className="hidden sm:flex flex-col leading-none">
+                    <span className="text-xs font-black text-white tracking-tighter uppercase">Investment<span className="text-indigo-400">X</span></span>
+                    <span className="text-[8px] font-mono text-slate-500 uppercase tracking-[0.2em]">Core.Nexus</span>
                 </div>
             </Link>
 
             {/* Desktop Navigation */}
-            <div className="hidden lg:flex items-center gap-1 p-1 bg-black/20 rounded-xl border border-white/5">
-                <NavLink href="/" icon={<Layout className="w-3.5 h-3.5" />}>Dashboard</NavLink>
-                <NavLink href="/intel" icon={<Radio className="w-3.5 h-3.5" />}>Intel</NavLink>
+            <div className="hidden lg:flex items-center gap-1 p-0.5 bg-black/20 rounded-lg border border-white/5">
+                <NavLink href="/" icon={<Layout className="w-3 h-3" />}>Dashboard</NavLink>
+                <NavLink href="/intel" icon={<Radio className="w-3 h-3" />}>Intel</NavLink>
                 {user?.is_admin && (
-                  <NavLink href="/admin/timeseries" icon={<Database className="w-3.5 h-3.5" />}>System</NavLink>
+                  <NavLink href="/admin/timeseries" icon={<Database className="w-3 h-3" />}>System</NavLink>
                 )}
             </div>
         </div>
 
-        {/* SYSTEM STATUS (Center) */}
-        <div className="hidden xl:flex items-center gap-6 px-4 py-1.5 rounded-full bg-white/[0.02] border border-white/[0.05]">
-            <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                <span className="text-[10px] font-mono text-emerald-500/80 uppercase">Node: Active</span>
-            </div>
-            <div className="w-px h-3 bg-white/10" />
-            <div className="flex items-center gap-2">
-                <Cpu className="w-3 h-3 text-slate-600" />
-                <span className="text-[10px] font-mono text-slate-500 uppercase">Quant Kernel: 1.2.0</span>
-            </div>
+        {/* CENTER: Status */}
+        <div className="hidden lg:flex items-center gap-4 flex-1 justify-center">
+          <StatusIndicators />
         </div>
 
-        {/* ACTIONS AREA */}
-        <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center">
-             <TaskNotifications />
-          </div>
-
-          <div className="h-4 w-px bg-white/10 mx-1 hidden md:block" />
-
+        {/* RIGHT: User / Login + Mobile Menu */}
+        <div className="flex items-center gap-3 shrink-0">
           {isAuthenticated ? (
-             <div className="flex items-center gap-3">
-                <div className="hidden sm:flex flex-col items-end leading-none">
-                    <span className="text-[11px] font-bold text-slate-200">{user?.first_name || 'Operator'}</span>
-                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">{user?.email?.split('@')[0]}</span>
-                </div>
-                
-                <div className="group relative">
-                    <button 
-                        onClick={logout}
-                        className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all"
-                    >
-                        <UserIcon className="w-4 h-4" />
-                    </button>
-                    {/* Logout toolitp on hover could go here */}
-                </div>
-             </div>
+            <UserDropdown />
           ) : (
             <Link 
               href="/login"
@@ -138,7 +243,7 @@ export default function Navbar() {
               className="lg:hidden p-2 text-slate-400 hover:text-white transition-colors"
               onClick={() => setMenuOpen(!menuOpen)}
           >
-              {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </div>
@@ -150,7 +255,7 @@ export default function Navbar() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="lg:hidden absolute top-14 left-0 right-0 bg-[#05070c] border-b border-white/10 p-6 flex flex-col gap-4 shadow-2xl z-[90]"
+            className="lg:hidden absolute top-12 left-0 right-0 bg-[#05070c] border-b border-white/10 p-6 flex flex-col gap-4 shadow-2xl z-[90]"
           >
                <div className="flex flex-col gap-2">
                   <MobileNavLink href="/" icon={<Layout className="w-4 h-4" />}>Dashboard</MobileNavLink>

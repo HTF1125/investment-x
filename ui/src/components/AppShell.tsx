@@ -11,8 +11,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-black">
       <Navbar />
-      {/* pt-20 = 80px matches the navbar h-16 + 16px breathing room */}
-      <div className="pt-20">
+      {/* pt-14 = 56px matches the navbar h-12 + breathing room */}
+      <div className="pt-14">
         {children}
       </div>
     </main>

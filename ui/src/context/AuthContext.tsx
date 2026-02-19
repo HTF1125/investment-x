@@ -105,16 +105,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Token is now set in cookie, but we still update localStorage for legacy CSR components
       updateToken(data.access_token);
       
-      // Fetch user details immediately (now with cookies automatically included)
+      // Fetch user details immediately with the token we just received
       const meRes = await fetch('/api/auth/me', {
         credentials: 'include',
+        headers: { 'Authorization': `Bearer ${data.access_token}` },
       });
       
       if (meRes.ok) {
         const userData = await meRes.json();
         setUser(userData);
-        router.push('/');
       }
+      // Always redirect — initAuth on reload will re-validate
+      window.location.href = '/';
     } catch (err) {
       throw err;
     } finally {

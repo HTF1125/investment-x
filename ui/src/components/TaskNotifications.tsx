@@ -34,7 +34,7 @@ function saveDismissed(ids: string[]) {
   }
 }
 
-export default function TaskNotifications() {
+export default function TaskNotifications({ embedded = false }: { embedded?: boolean }) {
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<string[]>(loadDismissed);
@@ -85,6 +85,109 @@ export default function TaskNotifications() {
   const activeCount = processes.filter((p) => p.status === "running").length;
   const badgeCount = processes.length;
 
+  // Shared process list renderer
+  const renderProcessList = () => (
+    <div className={`${embedded ? 'max-h-[200px]' : 'max-h-[360px]'} overflow-y-auto p-2 space-y-1.5`}>
+      {processes.length === 0 ? (
+        <div className="text-center py-4 text-slate-600 text-xs italic">
+          No active tasks
+        </div>
+      ) : (
+        processes.map((process) => (
+          <div
+            key={process.id}
+            className={`
+              relative flex items-start gap-3 p-2.5 rounded-lg border transition-all
+              ${
+                process.status === "running"
+                  ? "bg-slate-800/50 border-sky-500/20"
+                  : process.status === "completed"
+                  ? "bg-emerald-900/10 border-emerald-500/15"
+                  : "bg-rose-900/10 border-rose-500/15"
+              }
+            `}
+          >
+            {/* Status Icon */}
+            <div className="shrink-0 mt-0.5">
+              {process.status === "running" && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+              )}
+              {process.status === "completed" && (
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+              )}
+              {process.status === "failed" && (
+                <XCircle className="w-3.5 h-3.5 text-rose-400" />
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="flex-grow min-w-0">
+              <div className="flex justify-between items-start">
+                <span className="text-xs font-medium text-slate-200 truncate pr-2">
+                  {process.name}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDismiss(process.id);
+                  }}
+                  className="text-slate-600 hover:text-white transition-colors shrink-0"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+
+              <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+                {process.message || (process.status === "running" ? "Processing..." : process.status)}
+              </div>
+
+              {process.status === "running" && process.progress && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <div className="flex-grow h-1 bg-slate-700/50 rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full"
+                      initial={{ width: "0%" }}
+                      animate={{ width: getProgressPercent(process.progress) }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                    {process.progress}
+                  </span>
+                </div>
+              )}
+
+              {process.end_time && (
+                <div className="text-[10px] text-slate-600 mt-1">
+                  {formatRelativeTime(process.end_time)}
+                </div>
+              )}
+              {process.status === "running" && (
+                <div className="text-[10px] text-slate-700 mt-0.5">
+                  Started {formatRelativeTime(process.start_time)}
+                </div>
+              )}
+            </div>
+          </div>
+        ))
+      )}
+      {processes.length > 0 && (
+        <button
+          onClick={handleClearAll}
+          className="w-full text-center text-[10px] text-slate-600 hover:text-rose-400 py-1.5 transition-colors flex items-center justify-center gap-1"
+        >
+          <Trash2 className="w-3 h-3" /> Clear All
+        </button>
+      )}
+    </div>
+  );
+
+  // Embedded mode: just render the list inline
+  if (embedded) {
+    return renderProcessList();
+  }
+
+  // Standalone mode: bell button + dropdown
   return (
     <div className="relative" ref={dropdownRef}>
       <button
@@ -121,105 +224,9 @@ export default function TaskNotifications() {
               <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
                 Tasks {activeCount > 0 && <span className="text-sky-400 ml-1">({activeCount} running)</span>}
               </span>
-              {processes.length > 0 && (
-                <button
-                  onClick={handleClearAll}
-                  className="text-[10px] text-slate-500 hover:text-rose-400 flex items-center gap-1 transition-colors"
-                >
-                  <Trash2 className="w-3 h-3" /> Clear All
-                </button>
-              )}
             </div>
 
-            {/* Process List */}
-            <div className="max-h-[360px] overflow-y-auto p-2 space-y-1.5 bg-slate-900/40">
-              {processes.length === 0 ? (
-                <div className="text-center py-8 text-slate-600 text-xs italic">
-                  No tasks
-                </div>
-              ) : (
-                processes.map((process) => (
-                  <div
-                    key={process.id}
-                    className={`
-                      relative flex items-start gap-3 p-3 rounded-lg border transition-all
-                      ${
-                        process.status === "running"
-                          ? "bg-slate-800/50 border-sky-500/20"
-                          : process.status === "completed"
-                          ? "bg-emerald-900/10 border-emerald-500/15"
-                          : "bg-rose-900/10 border-rose-500/15"
-                      }
-                    `}
-                  >
-                    {/* Status Icon */}
-                    <div className="shrink-0 mt-0.5">
-                      {process.status === "running" && (
-                        <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
-                      )}
-                      {process.status === "completed" && (
-                        <CheckCircle className="w-4 h-4 text-emerald-400" />
-                      )}
-                      {process.status === "failed" && (
-                        <XCircle className="w-4 h-4 text-rose-400" />
-                      )}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-grow min-w-0">
-                      <div className="flex justify-between items-start">
-                        <span className="text-sm font-medium text-slate-200 truncate pr-2">
-                          {process.name}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDismiss(process.id);
-                          }}
-                          className="text-slate-600 hover:text-white transition-colors shrink-0"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {/* Message + Progress */}
-                      <div className="text-xs text-slate-500 mt-1 truncate">
-                        {process.message || (process.status === "running" ? "Processing..." : process.status)}
-                      </div>
-
-                      {/* Progress bar for running tasks */}
-                      {process.status === "running" && process.progress && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <div className="flex-grow h-1 bg-slate-700/50 rounded-full overflow-hidden">
-                            <motion.div
-                              className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full"
-                              initial={{ width: "0%" }}
-                              animate={{ width: getProgressPercent(process.progress) }}
-                              transition={{ duration: 0.5, ease: "easeOut" }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-slate-500 font-mono shrink-0">
-                            {process.progress}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Timestamp */}
-                      {process.end_time && (
-                        <div className="text-[10px] text-slate-600 mt-1.5">
-                          {formatRelativeTime(process.end_time)}
-                        </div>
-                      )}
-                      {process.status === "running" && (
-                        <div className="text-[10px] text-slate-700 mt-1">
-                          Started {formatRelativeTime(process.start_time)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            {renderProcessList()}
           </motion.div>
         )}
       </AnimatePresence>
