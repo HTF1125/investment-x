@@ -2,7 +2,7 @@
 FROM node:18-alpine AS frontend-builder
 WORKDIR /app/ui
 COPY ui/package.json ui/package-lock.json ./
-RUN npm install
+RUN npm install --force
 COPY ui/ ./
 # Environment variable for static export build usually not strictly needed if relative paths are correct, 
 # but consistent with previous config is good.
