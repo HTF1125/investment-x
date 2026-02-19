@@ -10,7 +10,7 @@ from ix.misc.auth import verify_token
 from ix.db.models.user import User
 from ix.db.conn import Session
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
 def get_db():
@@ -30,7 +30,8 @@ def get_current_user(
     Dependency to get current authenticated user.
     Supports both Header (Authorization: Bearer X) and Cookie (access_token=X).
     """
-    # 1. Check Cookie if Header is missing
+    # 1. Check Header (via token param, already handled by oauth2_scheme if present)
+    # 2. Check Cookie if Header is missing
     if not token:
         token = request.cookies.get("access_token")
 

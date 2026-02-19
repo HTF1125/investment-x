@@ -208,6 +208,27 @@ def _is_task_running(name_prefix: str) -> bool:
     )
 
 
+@router.post("/task/process/start", response_model=Dict[str, str])
+async def start_client_process(name: str, user_id: str = None):
+    """Allow client to register a new process (e.g. multi-file upload)."""
+    pid = start_process(name, user_id)
+    return {"id": pid}
+
+
+@router.patch("/task/process/{pid}")
+async def update_client_process(
+    pid: str,
+    status: Optional[ProcessStatus] = None,
+    message: Optional[str] = None,
+    progress: Optional[str] = None,
+):
+    """Allow client to update a registered process."""
+    if pid not in PROCESS_REGISTRY:
+        raise HTTPException(status_code=404, detail="Process not found")
+    update_process(pid, status=status, message=message, progress=progress)
+    return {"status": "updated"}
+
+
 @router.post("/task/daily")
 async def run_daily_task(background_tasks: BackgroundTasks):
     """Trigger the full daily routine (update data + refresh charts) in background."""

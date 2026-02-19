@@ -6,192 +6,194 @@ from typing import Any, Dict, List, Optional
 
 
 @dataclass(frozen=True)
-class ChartTheme:
-    """
+class Color:
+    """Centralized color management for the Investment-X design system."""
 
-    Standard premium chart theme for Investment-X.
-    """
+    # Neon Palette
+    CYAN: str = "#00D2FF"
+    MAGENTA: str = "#FF69B4"
+    PURPLE: str = "#A020F0"
+    EMERALD: str = "#00FF66"
+    AMBER: str = "#FFB84D"
+    ROSE: str = "#ef4444"
+    SKY: str = "#3b82f6"
+    SLATE: str = "#94a3b8"
 
-    # Core sizing / template
+    # Theme Specifics
+    BG_DARK: str = "#0B0E14"
+    BG_LIGHT: str = "#FFFFFF"
+    LEGEND_DARK: str = "#3c3c3c"
 
-    width: int = 1000
-
-    height: int = 500
-
-    template: str = "plotly_white"
-
-    # Typography
-
-    font_family: str = "Inter, Roboto, Arial, sans-serif"
-
-    font_color: str = "#000000"  # True Black
-
-    # Grid / axis styling
-
-    grid_color: str = "rgba(0,0,0,0.06)"
-
-    zero_line_color: str = "rgba(0,0,0,0.25)"
-
-    axis_line_color: str = "rgba(0,0,0,0.25)"
-
-    # Line widths
-
-    line_width_primary: float = 2.6
-
-    line_width_secondary: float = 2.0
-
-    line_width_tertiary: float = 1.8
-
-    # Palette
-
-    color_scheme: Dict[str, str] = field(
+    # Asset Mapping (Signature colors for specific tickers/names)
+    ASSET_MAP: Dict[str, str] = field(
         default_factory=lambda: {
-            "magenta": "#ff00b8",
-            "blue": "#2a7fff",
-            "cyan": "#00d6c6",
-            "dark_blue": "#2c2f7a",
-            "orange": "#f59e0b",
-            "green": "#22c55e",
-            "grey": "#94a3b8",
-            # Aliases
-            "price": "#ff00b8",
-            "yoy": "#2a7fff",
-            "accent": "#00d6c6",
-            "cycle": "#2c2f7a",
-            "neutral": "#94a3b8",
-            "accent2": "#f59e0b",
-            "accent3": "#22c55e",
-            "negative": "#ef4444",
+            "s&p 500": "#00D2FF",
+            "spx": "#00D2FF",
+            "s&p500": "#00D2FF",
+            "equity": "#00D2FF",
+            "gold": "#FF69B4",
+            "xau": "#FF69B4",
+            "commodities": "#A020F0",
+            "crb": "#A020F0",
+            "usd": "#00FF66",
+            "dxy": "#00FF66",
+            "ust 10y": "#FFB84D",
+            "rates": "#FFB84D",
+            "btc": "#f59e0b",
+            "crypto": "#f59e0b",
+            "volatility": "#ef4444",
+            "vix": "#ef4444",
         }
     )
 
-    # Preferred default order for Plotly's colorway
-
-    colorway_keys: List[str] = field(
-        default_factory=lambda: [
-            "magenta",
-            "blue",
-            "cyan",
-            "dark_blue",
-            "orange",
-            "green",
-            "grey",
-        ]
-    )
-
-    def __post_init__(self) -> None:
-
-        # Inject grid/zero into scheme for consistency
-
-        cs = dict(self.color_scheme)
-
-        cs["grid"] = self.grid_color
-
-        cs["zero"] = self.zero_line_color
-
-        object.__setattr__(self, "color_scheme", cs)
-
     @property
     def colorway(self) -> List[str]:
-
+        """Returns the primary neon sequence for multi-series charts."""
         return [
-            self.color_scheme[k] for k in self.colorway_keys if k in self.color_scheme
+            self.CYAN,
+            self.MAGENTA,
+            self.PURPLE,
+            self.EMERALD,
+            self.AMBER,
+            self.ROSE,
+            self.SKY,
         ]
 
-    def color(self, key: str, default: Optional[str] = None) -> str:
+    def get_asset(self, name: str) -> Optional[str]:
+        """Retrieves a specific color for a known asset name."""
+        return self.ASSET_MAP.get(name.lower())
 
-        return self.color_scheme.get(key, default or "#000000")
 
-    def apply(self, fig: Any) -> Any:
+@dataclass(frozen=True)
+class ChartTheme:
+    """
+    Advanced premium chart theme for Investment-X.
+    Implements a high-contrast 'Neon Research' aesthetic.
+    """
+
+    # Design System
+    palette: Color = field(default_factory=Color)
+
+    # Sizing & Layout
+    width: int = 1000
+    height: int = 600
+    margin: Dict[str, int] = field(default_factory=lambda: dict(t=80, l=40, r=40, b=60))
+
+    # Typography
+    font_main: str = "Arial, Helvetica, sans-serif"
+    font_mono: str = "Inter, SF Mono, monospace"
+
+    def apply(self, fig: Any, mode: str = "light") -> Any:
         """
+        Apply the theme to a Plotly figure.
 
-        Apply theme defaults to a Plotly figure.
-
-        Forces colors to bypass template defaults.
+        Args:
+            fig: The Plotly figure object.
+            mode: 'light' or 'dark' (Defaulting to light to match user reference image).
         """
+        is_dark = mode == "dark"
+        bg_color = self.palette.BG_DARK if is_dark else self.palette.BG_LIGHT
+        text_color = "#FFFFFF" if is_dark else "#000000"
+        grid_color = "rgba(255,255,255,0.1)" if is_dark else "rgba(0,0,0,0.4)"
+        legend_bg = "rgba(40, 44, 52, 0.9)" if not is_dark else "rgba(11, 14, 20, 0.8)"
 
-        # Set template to None to prevent Plotly from applying defaults that might override our colors
-
-        fig.update_layout(template=None)
-
+        # 1. Base Layout
         fig.update_layout(
-            width=self.width,
-            height=self.height,
-            font=dict(family=self.font_family, color="#000000", size=12),
-            colorway=self.colorway,
-            paper_bgcolor="#FFFFFF",
-            plot_bgcolor="#FFFFFF",
-            margin=dict(l=60, r=60, t=100, b=60),
+            template=None,
+            paper_bgcolor=bg_color,
+            plot_bgcolor=bg_color,
+            font=dict(family=self.font_main, color=text_color, size=12),
+            colorway=self.palette.colorway,
+            margin=self.margin,
             hovermode="x unified",
-            # Legend styling
-            legend=dict(
-                orientation="h",
-                x=0.5,
-                xanchor="center",
-                y=1.05,
+            # Advanced Multi-tier Title
+            title=dict(
+                x=0.02,
+                y=0.98,
+                xanchor="left",
                 yanchor="top",
-                borderwidth=1,
-                bordercolor="rgba(0,0,0,0.15)",
-                font=dict(size=11, color="#000000"),
+                font=dict(size=14, color=text_color, family=self.font_main),
             ),
-            # General title default
-            title=dict(x=0.5, xanchor="center", font=dict(size=22, color="#000000")),
-            # Unified hover box
+            # 'Picture' Style Legend: Top-Left, Dark Box, Rounded
+            legend=dict(
+                orientation="v",
+                x=0.03,
+                y=0.97,
+                xanchor="left",
+                yanchor="top",
+                bgcolor=self.palette.LEGEND_DARK,
+                bordercolor="rgba(255,255,255,0.1)",
+                borderwidth=1,
+                font=dict(size=10, color="#FFFFFF"),
+                itemsizing="constant",
+            ),
+            # Hover Box
             hoverlabel=dict(
-                bgcolor="#FFFFFF",
-                font_size=11,
-                font_family=self.font_family,
-                font_color="#000000",
-                bordercolor="rgba(0,0,0,0.15)",
-                align="left",
-                namelength=-1,
+                bgcolor=legend_bg,
+                font=dict(size=12, color="#FFFFFF", family=self.font_mono),
+                bordercolor="rgba(255,255,255,0.2)",
             ),
         )
 
-        # Apply axes configuration
-
-        axes_config = dict(
-            showgrid=True,
-            gridcolor=self.grid_color,
+        # 2. Axis Configuration (Minimalist Horizontal focus)
+        axis_config = dict(
+            showline=True,
+            linecolor=text_color,
+            linewidth=1.2,
+            gridcolor=grid_color,
+            gridwidth=1,
             zeroline=False,
             ticks="outside",
-            ticklen=4,
-            tickcolor="#000000",
-            showline=True,
-            linecolor="#000000",
-            linewidth=1,
-            mirror=False,
-            tickfont=dict(color="#000000", size=11),
-            title=dict(font=dict(color="#000000", size=13)),
+            ticklen=6,
+            tickcolor=text_color,
+            tickfont=dict(size=11, color=text_color),
+            title=dict(font=dict(size=13, color=text_color)),
         )
 
-        fig.update_xaxes(**axes_config)
+        # Apply to all X axes
+        fig.update_xaxes(
+            **axis_config,
+            showgrid=False,
+            showline=True,
+        )
 
-        fig.update_yaxes(**axes_config)
+        # Apply to all Y axes (The Pulse: Horizontal lines only)
+        fig.update_yaxes(
+            **axis_config,
+            showgrid=True,
+            showline=False,  # Standard minimalist: hide the vertical spine
+            tickprefix="",
+            ticksuffix="   ",
+        )
 
-        # Fix secondary axes if they exist (only if created via make_subplots with secondary_y=True)
-        # Avoids: "In order to reference traces by row and column, you must first use plotly.tools.make_subplots"
+        # Specialized handling for secondary Y-axes (often used in dual-pane charts)
         try:
-            # Check if figure has subplot structure
-            if hasattr(fig, "_grid_ref") and fig._grid_ref:
-                fig.update_yaxes(secondary_y=True, showgrid=False)
-            elif "yaxis2" in fig.layout:
-                # Fallback for manually added secondary axes
-                fig.update_layout(yaxis2=dict(showgrid=False))
+            for i in range(2, 11):
+                attr = f"yaxis{i}"
+                if attr in fig.layout:
+                    fig.update_layout(
+                        {attr: {**axis_config, "showline": False, "showgrid": False}}
+                    )
         except:
             pass
 
-        # Force all existing trace text/font colors to black if they have such properties
-
+        # 3. Trace Styling (Neon Mapping & Smoothness)
         for trace in fig.data:
+            trace_name = str(trace.name or "")
 
-            if hasattr(trace, "textfont"):
+            # Map name to color using palette mapping
+            mapped_color = self.palette.get_asset(trace_name)
+            if mapped_color:
+                if hasattr(trace, "line"):
+                    trace.line.color = mapped_color
+                    trace.line.width = 2.8  # Slightly thicker for neon effect
+                elif hasattr(trace, "marker"):
+                    trace.marker.color = mapped_color
 
-                trace.textfont.color = "#000000"
-
-            if hasattr(trace, "marker") and hasattr(trace.marker, "line"):
-
-                pass  # placeholder
+            # Aesthetic Smoothing
+            if hasattr(trace, "line") and trace.type == "scatter":
+                trace.line.shape = "spline"
+                trace.line.smoothing = 1.3
 
         return fig
 
@@ -200,21 +202,13 @@ class ChartTheme:
 chart_theme = ChartTheme()
 
 
-# Backward compatibility for existing code that might use the old Theme class structure
-
-# though the user asked to update it to the new style.
-
-
 class Theme:
+    """Wrapper class for backward compatibility and singleton access."""
 
     def __init__(self):
-
-        self.colors = chart_theme.color_scheme
-
-        self.font = chart_theme.font_color
-
-        self.grid = chart_theme.grid_color
+        self.palette = chart_theme.palette
+        self.colors = self.palette.ASSET_MAP
+        self.font = chart_theme.font_main
 
     def apply(self, fig):
-
         return chart_theme.apply(fig)

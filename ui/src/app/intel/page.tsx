@@ -5,9 +5,10 @@ import NewsFeed from '@/components/NewsFeed';
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
-import { Radio, RefreshCw, Check, AlertTriangle } from 'lucide-react';
+import { Radio, RefreshCw, Check, AlertTriangle, FileText } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 
 export default function IntelPage() {
   const { user } = useAuth();
@@ -85,17 +86,27 @@ export default function IntelPage() {
               </div>
             </div>
 
-            {/* Admin-only scrape button */}
-            {user?.is_admin && (
-              <button
-                onClick={handleScrape}
-                disabled={syncing}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-sky-500/20 hover:shadow-sky-500/30 disabled:opacity-50"
+            <div className="flex items-center gap-3">
+              <Link 
+                href="/intel/research"
+                className="flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl text-sm font-semibold transition-all border border-white/10 group"
               >
-                <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? (syncMsg || 'Syncing...') : 'Update Channels'}
-              </button>
-            )}
+                <FileText className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
+                Research Library
+              </Link>
+
+              {/* Admin-only scrape button */}
+              {user?.is_admin && (
+                <button
+                  onClick={handleScrape}
+                  disabled={syncing}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-sky-500/20 hover:shadow-sky-500/30 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                  {syncing ? (syncMsg || 'Syncing...') : 'Update Channels'}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Feed */}
