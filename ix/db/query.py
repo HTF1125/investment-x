@@ -7,6 +7,7 @@ from pandas.tseries.offsets import MonthEnd
 from sqlalchemy.orm import Session as SessionType
 from ix.db.models import Timeseries
 from cachetools import TTLCache, cached
+from cachetools.keys import hashkey
 from ix import core
 from ix.core.stat import Cycle
 from ix.misc.date import today
@@ -132,7 +133,19 @@ def MultiSeries(**series: pd.Series) -> pd.DataFrame:
     return data
 
 
-# @cached(cache)
+def _series_cache_key(
+    code: str,
+    freq: str | None = None,
+    name: str | None = None,
+    ccy: str | None = None,
+    scale: int | None = None,
+    session: Optional[SessionType] = None,
+):
+    # Exclude `session` from cache key to avoid unhashable/ephemeral objects.
+    return hashkey(code, freq, name, ccy, scale)
+
+
+@cached(cache, key=_series_cache_key)
 def Series(
     code: str,
     freq: str | None = None,
@@ -205,7 +218,7 @@ def Series(
             name, new_code = code.split("=", maxsplit=1)
             s = Series(code=new_code, freq=freq).sort_index()
             s.name = name
-            return s
+            return s.copy()
 
         if ts is None:
             # No series found and not an alias pattern
@@ -311,7 +324,7 @@ def Series(
         if name:
             s.name = name
 
-        return s
+        return s.copy()
     except Exception as e:
         import logging
 
@@ -1280,24 +1293,5 @@ def NumPositivePercentByRow(df: pd.DataFrame):
 
 
 def GetChart(name: str):
-    """
-    Get a chart by name from the database.
-
-    Args:
-        name: Chart name (e.g., "AsianExportsYoY")
-
-    Returns:
-        Chart object, or None if not found
-    """
-    from ix.db.conn import Session
-    from ix.db.models import Chart
-
-    # Normalize name - remove () if present
-    if name.endswith("()"):
-        name = name[:-2]
-
-    with Session() as session:
-        chart = session.query(Chart).filter(Chart.code == name).first()
-        if chart is None:
-            return None
-        return chart
+    """Legacy helper removed with charts table decommission; always returns None."""
+    return None

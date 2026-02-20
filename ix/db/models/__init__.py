@@ -18,9 +18,9 @@ from typing import Optional, Dict
 from ix.db.conn import Base
 from .user import User
 from .telegram import TelegramMessage
-from .chart import Chart
 from .custom_chart import CustomChart
 from .financial_news import FinancialNews
+from .task_process import TaskProcess
 import pandas as pd
 
 # Re-export Base for convenience
@@ -34,9 +34,9 @@ __all__ = [
     "User",
     "TelegramMessage",
     "Insights",
-    "Chart",
     "CustomChart",
     "FinancialNews",
+    "TaskProcess",
 ]
 
 
@@ -50,6 +50,7 @@ def all():
         Insights,
         CustomChart,
         FinancialNews,
+        TaskProcess,
     ]
 
 

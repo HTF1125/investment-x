@@ -3,14 +3,14 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { 
   TrendingUp, Search, Layers, X, 
-  Plus, Edit2, CheckCircle2, GripVertical, Eye, EyeOff, Loader2, RotateCcw,
+  Plus, Edit2, CheckCircle2, Eye, EyeOff, Loader2, RotateCcw, Copy,
   MoreVertical, ArrowUp, ArrowDown, ArrowUpToLine,
   FileDown, Monitor, Check, Info, RefreshCw, LayoutGrid, List as ListIcon,
   ChevronDown
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { Reorder, motion, AnimatePresence, useDragControls, DragControls } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import Chart from './Chart';
 
@@ -31,12 +31,17 @@ interface ChartCardProps {
   isAdmin: boolean;
   isReorderable: boolean;
   onTogglePdf: (id: string, status: boolean) => void;
+  onRefreshChart?: (id: string) => void;
+  onCopyChart?: (id: string) => void;
+  isRefreshingChart?: boolean;
   isSyncing?: boolean;
   onRankChange?: (id: string, newRank: number) => void;
+  onMoveUp?: (id: string) => void;
+  onMoveDown?: (id: string) => void;
+  copySignal?: number;
   index: number;
   totalCharts: number;
   onOpenStudio?: (chartId: string | null) => void;
-  dragControls?: DragControls;
 }
 
 const ChartCard = React.memo(function ChartCard({ 
@@ -44,12 +49,17 @@ const ChartCard = React.memo(function ChartCard({
   isAdmin, 
   isReorderable, 
   onTogglePdf, 
+  onRefreshChart,
+  onCopyChart,
+  isRefreshingChart,
   isSyncing,
   onRankChange,
+  onMoveUp,
+  onMoveDown,
+  copySignal,
   index,
   totalCharts,
-  onOpenStudio,
-  dragControls
+  onOpenStudio
 }: ChartCardProps) {
   // Viewport-based lazy rendering
   const cardRef = useRef<HTMLDivElement>(null);
@@ -125,6 +135,31 @@ const ChartCard = React.memo(function ChartCard({
     )
   );
 
+  const renderOrderButtons = () => (
+    isAdmin && isReorderable && (
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMoveUp?.(chart.id); }}
+          className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors"
+          title="Move up"
+          aria-label="Move chart up"
+          disabled={index === 0}
+        >
+          <ArrowUp className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMoveDown?.(chart.id); }}
+          className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors"
+          title="Move down"
+          aria-label="Move chart down"
+          disabled={index === totalCharts - 1}
+        >
+          <ArrowDown className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    )
+  );
+
   const renderName = () => (
     isAdmin ? (
       <button
@@ -143,7 +178,7 @@ const ChartCard = React.memo(function ChartCard({
     )
   );
 
-    const className = `glass-card overflow-hidden flex flex-col group transition-all duration-300 hover:border-sky-500/30 hover:shadow-sky-500/5 relative h-full min-h-[450px]`;
+    const className = `glass-card overflow-hidden flex flex-col group transition-all duration-300 hover:border-sky-500/30 hover:shadow-sky-500/5 relative h-full min-h-[380px]`;
 
   // Grid View Content (Hardcoded)
   return (
@@ -152,11 +187,33 @@ const ChartCard = React.memo(function ChartCard({
       <div className="px-4 py-3 flex items-center justify-between border-b border-border/50 bg-card/10 relative">
          <div className="flex items-center gap-3 min-w-0 z-10">
             {renderRankInput()}
+            {renderOrderButtons()}
             {renderVisibilityToggle()}
             {renderName()}
          </div>
 
          <div className="flex items-center gap-3 shrink-0">
+            {isAdmin && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRefreshChart?.(chart.id); }}
+                  disabled={!!isRefreshingChart}
+                  className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors disabled:opacity-50"
+                  title="Rerun and save chart"
+                  aria-label="Refresh chart"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingChart ? 'animate-spin text-sky-400' : ''}`} />
+                </button>
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); }}
+                  className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors"
+                  title="Copy chart image"
+                  aria-label="Copy chart"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             {chart.description && (
               <div className="relative group/tip">
                 <Info className="w-3.5 h-3.5 text-slate-600 hover:text-sky-400 transition-colors cursor-help" />
@@ -174,9 +231,9 @@ const ChartCard = React.memo(function ChartCard({
 
       <div ref={cardRef} className="flex flex-col flex-1">
         {/* Chart Area — only render Plotly when in viewport */}
-        <div className="bg-slate-950/20 relative w-full p-4 h-[350px] min-h-[350px] flex-1">
+        <div className="bg-slate-950/20 relative w-full p-4 h-[290px] min-h-[290px] flex-1">
           {isInView ? (
-            <Chart id={chart.id} initialFigure={chart.figure} />
+            <Chart id={chart.id} initialFigure={chart.figure} copySignal={copySignal} />
           ) : (
             <div className="flex items-center justify-center h-full w-full">
               <Loader2 className="w-6 h-6 text-sky-400/20 animate-spin" />
@@ -188,58 +245,6 @@ const ChartCard = React.memo(function ChartCard({
   );
 });
 
-// Wrapper for Drag Controls
-const DraggableChartCard = React.memo((props: ChartCardProps) => {
-    const { chart, isReorderable, index } = props;
-    const controls = useDragControls();
-    
-    // Grid View: anywhere is a drag listener
-    const dragListener = true; 
-
-    if (!isReorderable) {
-      return (
-        <motion.div
-           className="h-full flex flex-col"
-           initial={{ opacity: 0, y: 20 }}
-           whileInView={{ opacity: 1, y: 0 }}
-           viewport={{ once: true, margin: "-50px" }}
-           transition={{ 
-             duration: 0.5, 
-             ease: [0.23, 1, 0.32, 1], // Premium easeOutQuint
-             delay: index % 6 * 0.05 // Stagger based on column index
-           }}
-        >
-           <ChartCard {...props} />
-        </motion.div>
-      );
-    }
-  
-    return (
-      <Reorder.Item
-        value={chart}
-        dragListener={dragListener}
-        dragControls={controls}
-        className="h-full" // Ensure height in grid
-        initial={{ opacity: 0, scale: 0.98 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.98 }}
-        whileDrag={{
-          scale: 1.02,
-          boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.5)',
-          zIndex: 50
-        }}
-        transition={{ duration: 0.2 }}
-      >
-        <ChartCard 
-            dragControls={controls} 
-            {...props} 
-        />
-      </Reorder.Item>
-    );
-});
-
-DraggableChartCard.displayName = 'DraggableChartCard';
-
 
 interface DashboardGalleryProps {
   categories: string[];
@@ -248,8 +253,8 @@ interface DashboardGalleryProps {
 }
 
 export default function DashboardGallery({ categories, chartsByCategory, onOpenStudio }: DashboardGalleryProps) {
-  const { user, token } = useAuth();
-  const isAdmin = user?.is_admin;
+  const { user } = useAuth();
+  const isAdmin = !!user?.is_admin;
   const queryClient = useQueryClient();
 
   // ⚡ Performance Optimized State
@@ -258,9 +263,10 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
   const [activeCategory, setActiveCategory] = useState<string>('All Indicators');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [refreshingChartIds, setRefreshingChartIds] = useState<Record<string, boolean>>({});
+  const [copySignals, setCopySignals] = useState<Record<string, number>>({});
 
   const [mounted, setMounted] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [showCategoryMenu, setShowCategoryMenu] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
   
@@ -287,6 +293,23 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
   const [exportingHtml, setExportingHtml] = useState(false);
   const [exportHtmlStatus, setExportHtmlStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
+  const refreshChartsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch('/api/task/refresh-charts', { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to trigger chart refresh');
+      }
+      return res.json() as Promise<{ task_id?: string }>;
+    },
+    onSettled: () => {
+      // Bottom-right TaskNotifications consumes this feed.
+      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
+    },
+  });
+
+  const isRefreshing = refreshChartsMutation.isPending;
+
   // ⏲️ Debounce Search Query
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
@@ -300,30 +323,27 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
     return localCharts.some((c, i) => c.id !== originalCharts[i]?.id);
   }, [localCharts, originalCharts]);
 
-  const handleRefreshAll = async () => {
-    if (isRefreshing || localCharts.length === 0) return;
-    setIsRefreshing(true);
-    // Concurrent refresh with limit
-    const refreshBatch = localCharts.slice(0, 5); 
-    await Promise.allSettled(refreshBatch.map((chart: any) => 
-      apiFetch('/api/custom/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: (chart as any).code || '' }),
-      })
-    ));
-    setIsRefreshing(false);
-    queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-  };
+  const handleRefreshAll = useCallback(async () => {
+    if (isRefreshing) return;
+    try {
+      const data = await refreshChartsMutation.mutateAsync();
+      if (data?.task_id) {
+        queryClient.invalidateQueries({ queryKey: ['task-processes'] });
+      }
+    } catch (e) {
+      // Keep UI resilient; TaskNotifications shows backend task status/errors.
+    }
+  }, [isRefreshing, refreshChartsMutation, queryClient]);
 
   const handleExportPDF = async () => {
     if (exporting) return;
     setExporting(true);
     setExportStatus('idle');
     try {
-      const res = await fetch('/api/custom/pdf', {
+      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
+      const res = await apiFetch('/api/custom/pdf', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: [] }),
       });
       if (!res.ok) throw new Error('PDF failed');
@@ -342,6 +362,7 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
       setExportStatus('error');
       setTimeout(() => setExportStatus('idle'), 3000);
     } finally {
+      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
       setExporting(false);
     }
   };
@@ -351,9 +372,10 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
     setExportingHtml(true);
     setExportHtmlStatus('idle');
     try {
-      const res = await fetch('/api/custom/html', {
+      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
+      const res = await apiFetch('/api/custom/html', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: [] }),
       });
       if (!res.ok) throw new Error('HTML failed');
@@ -372,6 +394,7 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
       setExportHtmlStatus('error');
       setTimeout(() => setExportHtmlStatus('idle'), 3000);
     } finally {
+      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
       setExportingHtml(false);
     }
   };
@@ -464,6 +487,76 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
     }
   });
 
+  const refreshChartMutation = useMutation({
+    mutationFn: async (chartId: string) => {
+      const local = localCharts.find((c) => c.id === chartId);
+      let payload: any = local;
+      const chartName = local?.name || chartId;
+      let taskId: string | null = null;
+
+      try {
+        const started = await apiFetchJson<{ id: string }>('/api/task/process/start?name=Refresh%20Single%20Chart');
+        taskId = started.id;
+        await apiFetchJson(
+          `/api/task/process/${taskId}?message=${encodeURIComponent(`Refreshing ${chartName}...`)}&progress=1/2`,
+          { method: 'PATCH' }
+        );
+      } catch {
+        taskId = null;
+      }
+
+      if (!payload || !payload.code) {
+        payload = await apiFetchJson(`/api/custom/${chartId}`);
+      }
+      try {
+        const result = await apiFetchJson(`/api/custom/${chartId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: payload.name,
+            category: payload.category,
+            description: payload.description,
+            tags: payload.tags || [],
+            export_pdf: payload.export_pdf,
+            code: payload.code,
+          }),
+        });
+        if (taskId) {
+          await apiFetchJson(
+            `/api/task/process/${taskId}?status=completed&message=${encodeURIComponent(`Refreshed ${chartName}`)}&progress=2/2`,
+            { method: 'PATCH' }
+          );
+        }
+        return result;
+      } catch (err: any) {
+        if (taskId) {
+          await apiFetchJson(
+            `/api/task/process/${taskId}?status=failed&message=${encodeURIComponent(err?.message || `Failed refreshing ${chartName}`)}`,
+            { method: 'PATCH' }
+          );
+        }
+        throw err;
+      }
+    },
+    onSuccess: (_data, chartId) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['custom-charts'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-figure', chartId], exact: false });
+      setRefreshingChartIds((prev) => {
+        const next = { ...prev };
+        delete next[chartId];
+        return next;
+      });
+    },
+    onError: (_err, chartId) => {
+      setRefreshingChartIds((prev) => {
+        const next = { ...prev };
+        delete next[chartId];
+        return next;
+      });
+    },
+  });
+
   const handleTogglePdf = React.useCallback((id: string, status: boolean) => {
     togglePdfMutation.mutate({ id, status });
   }, [togglePdfMutation]);
@@ -484,14 +577,19 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
       });
   }, []);
 
-  const handleReorder = React.useCallback((newSubset: ChartMeta[]) => {
-    if (!isReorderEnabled) return;
-    const subsetIds = new Set(newSubset.map(c => c.id));
-    let subsetIdx = 0;
-    setLocalCharts(prev => prev.map(chart => 
-      subsetIds.has(chart.id) ? newSubset[subsetIdx++] : chart
-    ));
-  }, [isReorderEnabled]);
+  const handleMoveBy = React.useCallback((id: string, delta: number) => {
+    setLocalCharts(prev => {
+      const oldIndex = prev.findIndex(c => c.id === id);
+      if (oldIndex === -1) return prev;
+      const newIndex = Math.max(0, Math.min(oldIndex + delta, prev.length - 1));
+      if (oldIndex === newIndex) return prev;
+
+      const next = [...prev];
+      const [item] = next.splice(oldIndex, 1);
+      next.splice(newIndex, 0, item);
+      return next.map((c, i) => ({ ...c, rank: i }));
+    });
+  }, []);
 
   const handleSaveOrder = React.useCallback(() => {
     reorderMutation.mutate(localCharts);
@@ -500,6 +598,15 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
   const handleResetOrder = React.useCallback(() => {
     setLocalCharts([...originalCharts]);
   }, [originalCharts]);
+
+  const handleRefreshChart = React.useCallback((id: string) => {
+    setRefreshingChartIds((prev) => ({ ...prev, [id]: true }));
+    refreshChartMutation.mutate(id);
+  }, [refreshChartMutation]);
+
+  const handleCopyFromHeader = React.useCallback((id: string) => {
+    setCopySignals((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
+  }, []);
 
   if (!mounted) {
     return (
@@ -514,7 +621,7 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
         </div>
 
         {/* Skeleton Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="glass-card h-[450px] flex flex-col overflow-hidden opacity-50">
               <div className="h-12 border-b border-border/50 bg-card/10" />
@@ -665,53 +772,48 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute right-0 top-full mt-2 w-64 !bg-white dark:!bg-slate-900 border border-border/50 rounded-2xl shadow-2xl p-1.5 z-50 overflow-hidden !opacity-100"
+                  className="absolute right-0 top-full mt-2 w-52 !bg-white dark:!bg-slate-900 border border-border/50 rounded-xl shadow-2xl p-1 z-50 overflow-hidden !opacity-100"
                   style={{ backgroundColor: 'rgb(var(--background))' }}
                 >
-                  <div className="px-3 py-2 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] border-b border-border/30 mb-1 flex items-center justify-between">
-                    Resource Actions
-                    <div className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse" />
-                  </div>
-                  
                   <button
                     onClick={() => { handleRefreshAll(); setShowActionMenu(false); }}
                     disabled={isRefreshing}
-                    className="w-full flex items-center justify-between px-3 py-3 rounded-lg text-xs font-bold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-sky-500/10 flex items-center justify-center border border-sky-500/20 group-hover/opt:border-sky-500/40">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-6 h-6 rounded-md bg-sky-500/10 flex items-center justify-center border border-sky-500/20 group-hover/opt:border-sky-500/40">
                         <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-400' : 'text-sky-400'}`} />
                       </div>
-                      <span className="uppercase tracking-wider">Sync Data</span>
+                      <span>Refresh Charts</span>
                     </div>
                     {isRefreshing && <span className="text-[9px] text-sky-500 animate-pulse font-mono font-bold tracking-tighter">LIVE</span>}
                   </button>
 
-                  <div className="h-px bg-border/20 my-1 mx-2" />
+                  <div className="h-px bg-border/20 my-1 mx-1" />
 
                   <button
                     onClick={() => { handleExportPDF(); setShowActionMenu(false); }}
                     disabled={exporting}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-xs font-bold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover/opt:border-emerald-500/40">
+                    <div className="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover/opt:border-emerald-500/40">
                       <FileDown className={`w-3.5 h-3.5 ${exporting ? 'animate-pulse text-emerald-400' : 'text-emerald-400'}`} />
                     </div>
-                    <span className="uppercase tracking-wider">
-                      {exporting ? 'Processing PDF...' : 'Generate PDF'}
+                    <span>
+                      {exporting ? 'Processing PDF...' : 'To PDF'}
                     </span>
                   </button>
 
                   <button
                     onClick={() => { handleExportHTML(); setShowActionMenu(false); }}
                     disabled={exportingHtml}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-xs font-bold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 group-hover/opt:border-indigo-500/40">
+                    <div className="w-6 h-6 rounded-md bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 group-hover/opt:border-indigo-500/40">
                       <Monitor className={`w-3.5 h-3.5 ${exportingHtml ? 'animate-pulse text-indigo-400' : 'text-indigo-400'}`} />
                     </div>
-                    <span className="uppercase tracking-wider">
-                      {exportingHtml ? 'Packaging...' : 'Web Archive'}
+                    <span>
+                      {exportingHtml ? 'Packaging...' : 'To HTML'}
                     </span>
                   </button>
                 </motion.div>
@@ -744,44 +846,40 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
       </div>
 
       {/* 🖼️ Grid Display */}
-        {isReorderEnabled ? (
-          <Reorder.Group 
-            values={filteredCharts}
-            onReorder={handleReorder}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {filteredCharts.map((chart, idx) => (
+          <motion.div
+            key={chart.id}
+            className="h-full flex flex-col"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ 
+              duration: 0.5, 
+              ease: [0.23, 1, 0.32, 1],
+              delay: idx % 6 * 0.05
+            }}
           >
-            {filteredCharts.map((chart, idx) => (
-              <DraggableChartCard
-                key={chart.id}
-                chart={chart}
-                isAdmin={isAdmin || false}
-                isReorderable={true}
-                onTogglePdf={handleTogglePdf}
-                isSyncing={reorderMutation.isPending}
-                onRankChange={handleRankChange}
-                index={idx}
-                totalCharts={filteredCharts.length}
-                onOpenStudio={onOpenStudio}
-              />
-            ))}
-          </Reorder.Group>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredCharts.map((chart, idx) => (
-              <DraggableChartCard
-                key={chart.id}
-                chart={chart}
-                isAdmin={isAdmin || false}
-                isReorderable={false}
-                onTogglePdf={handleTogglePdf}
-                onRankChange={handleRankChange}
-                index={idx}
-                totalCharts={filteredCharts.length}
-                onOpenStudio={onOpenStudio}
-              />
-            ))}
-          </div>
-        )}
+            <ChartCard
+              chart={chart}
+              isAdmin={isAdmin || false}
+              isReorderable={isReorderEnabled}
+              onTogglePdf={handleTogglePdf}
+              onRefreshChart={handleRefreshChart}
+              onCopyChart={handleCopyFromHeader}
+              isRefreshingChart={!!refreshingChartIds[chart.id]}
+              isSyncing={reorderMutation.isPending}
+              onRankChange={handleRankChange}
+              onMoveUp={(id) => handleMoveBy(id, -1)}
+              onMoveDown={(id) => handleMoveBy(id, 1)}
+              copySignal={copySignals[chart.id] || 0}
+              index={idx}
+              totalCharts={filteredCharts.length}
+              onOpenStudio={onOpenStudio}
+            />
+          </motion.div>
+        ))}
+      </div>
 
       {/* 📭 Empty State */}
       {filteredCharts.length === 0 && (

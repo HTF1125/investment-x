@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Callable
 from pydantic import BaseModel
 from datetime import datetime
 import pandas as pd
@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 import json
 import traceback
 import concurrent.futures
+import base64
 from io import BytesIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, landscape
@@ -330,6 +331,31 @@ def simplify_figure(figure_data: Any) -> Any:
     return figure_data
 
 
+def decode_plotly_binary_arrays(figure_data: Any) -> Any:
+    """
+    Decode Plotly JSON typed-array payloads:
+    {"bdata": "...", "dtype": "f8", "shape": "16, 5"} -> nested Python lists.
+    """
+    if isinstance(figure_data, dict):
+        if "bdata" in figure_data and "dtype" in figure_data:
+            try:
+                raw = base64.b64decode(figure_data["bdata"])
+                arr = np.frombuffer(raw, dtype=np.dtype(figure_data["dtype"]))
+                shape = figure_data.get("shape")
+                if shape:
+                    dims = [int(x.strip()) for x in str(shape).split(",") if x.strip()]
+                    if dims:
+                        arr = arr.reshape(tuple(dims))
+                return arr.tolist()
+            except Exception:
+                # If decoding fails, keep original payload so rendering can still try fallback paths.
+                return figure_data
+        return {k: decode_plotly_binary_arrays(v) for k, v in figure_data.items()}
+    if isinstance(figure_data, list):
+        return [decode_plotly_binary_arrays(v) for v in figure_data]
+    return figure_data
+
+
 def get_clean_figure_json(fig: Any) -> Any:
     """
     Serializes a Plotly figure to a dictionary, ensuring dates are strings and no binary data exists.
@@ -361,35 +387,109 @@ def get_clean_figure_json(fig: Any) -> Any:
 
 def render_chart_image(figure_data: Dict[str, Any]) -> Optional[bytes]:
     """Helper to render a single chart figure to PNG bytes using Kaleido PlotlyScope."""
+    decoded_figure = decode_plotly_binary_arrays(figure_data)
+
+    def _build_figure(raw: Any) -> go.Figure:
+        # Rehydrate from Plotly JSON first; this preserves encoded arrays better than go.Figure(raw)
+        if isinstance(raw, str):
+            try:
+                return pio.from_json(raw, skip_invalid=True)
+            except Exception:
+                pass
+        try:
+            return pio.from_json(json.dumps(raw), skip_invalid=True)
+        except Exception:
+            return go.Figure(raw, skip_invalid=True)
+
+    def _prepare_pdf_figure(fig: go.Figure) -> go.Figure:
+        """Increase typography and spacing for PDF readability."""
+        base_font = 16
+        if fig.layout.font and fig.layout.font.size:
+            base_font = max(16, int(fig.layout.font.size))
+        fig.update_layout(
+            font=dict(size=base_font),
+            margin=dict(l=120, r=80, t=120, b=100),
+            autosize=False,
+        )
+
+        # Ensure chart/axis text remains legible after page scaling.
+        fig.for_each_xaxis(
+            lambda x: x.update(
+                tickfont=dict(size=max(14, (x.tickfont.size if x.tickfont and x.tickfont.size else 12))),
+                title=dict(font=dict(size=max(16, (x.title.font.size if x.title and x.title.font and x.title.font.size else 14)))),
+            )
+        )
+        fig.for_each_yaxis(
+            lambda y: y.update(
+                tickfont=dict(size=max(14, (y.tickfont.size if y.tickfont and y.tickfont.size else 12))),
+                title=dict(font=dict(size=max(16, (y.title.font.size if y.title and y.title.font and y.title.font.size else 14)))),
+            )
+        )
+        if fig.layout.title:
+            title_size = 20
+            if fig.layout.title.font and fig.layout.title.font.size:
+                title_size = max(20, int(fig.layout.title.font.size))
+            fig.update_layout(title=dict(font=dict(size=title_size)))
+
+        if fig.layout.legend:
+            legend_size = 13
+            if fig.layout.legend.font and fig.layout.legend.font.size:
+                legend_size = max(13, int(fig.layout.legend.font.size))
+            fig.update_layout(legend=dict(font=dict(size=legend_size)))
+
+        # Heatmaps often look tiny in PDF exports. Force visible cell labels when present.
+        for trace in fig.data:
+            if getattr(trace, "type", None) == "heatmap":
+                textfont = getattr(trace, "textfont", None) or {}
+                z_data = getattr(trace, "z", None)
+                if not getattr(trace, "text", None) and z_data is not None:
+                    try:
+                        trace.update(text=np.round(np.array(z_data, dtype=float), 1).tolist())
+                    except Exception:
+                        pass
+                if not getattr(trace, "texttemplate", None):
+                    trace.update(texttemplate="%{text}")
+                trace.update(
+                    textfont=dict(
+                        size=max(14, int(getattr(textfont, "size", 12) or 12))
+                    )
+                )
+        return fig
+
     try:
         scope = get_kaleido_scope()
+        fig = _prepare_pdf_figure(_build_figure(decoded_figure))
+        fig_payload = fig.to_plotly_json()
         if not scope:
             logger.error("Kaleido scope not available. Falling back to fig.to_image().")
-            fig = go.Figure(figure_data)
-            return fig.to_image(format="png", width=1000, height=550, scale=2)
-
-        # Create Figure
-        fig = go.Figure(figure_data)
+            return pio.to_image(
+                fig, format="png", width=2200, height=1300, scale=2, engine="kaleido"
+            )
 
         # Convert to image bytes using scope directly (more robust than fig.to_image)
         # Use a lock to prevent concurrent access to the same scope instance
         with _KALEIDO_LOCK:
             img_bytes = scope.transform(
-                fig, format="png", width=1000, height=550, scale=2
+                fig_payload, format="png", width=2200, height=1300, scale=2
             )
         return img_bytes
     except Exception as e:
         logger.error(f"Error rendering chart image with PlotlyScope: {e}")
         # Try one last fallback
         try:
-            fig = go.Figure(figure_data)
-            return fig.to_image(format="png", width=1000, height=550, scale=2)
+            fig = _prepare_pdf_figure(_build_figure(decoded_figure))
+            return pio.to_image(
+                fig, format="png", width=2200, height=1300, scale=2, engine="kaleido"
+            )
         except Exception as fallback_e:
             logger.error(f"Final fallback failed: {fallback_e}")
             return None
 
 
-def generate_pdf_buffer(charts: List[CustomChart]) -> BytesIO:
+def generate_pdf_buffer(
+    charts: List[CustomChart],
+    progress_cb: Optional[Callable[[int, int, str], None]] = None,
+) -> BytesIO:
     buffer = BytesIO()
     # Use landscape for charts usually
     c = canvas.Canvas(buffer, pagesize=landscape(letter))
@@ -421,6 +521,7 @@ def generate_pdf_buffer(charts: List[CustomChart]) -> BytesIO:
 
         # Collect results with a timeout to prevent hanging the whole process
         try:
+            completed_renders = 0
             for future in concurrent.futures.as_completed(future_to_index, timeout=30):
                 index = future_to_index[future]
                 chart_name = valid_charts[index].name
@@ -435,10 +536,25 @@ def generate_pdf_buffer(charts: List[CustomChart]) -> BytesIO:
                             f"Render returned None for index {index}: {chart_name}"
                         )
                     results[index] = data
+                    if progress_cb:
+                        completed_renders += 1
+                        # First half of progress is image rendering.
+                        progress_cb(
+                            completed_renders,
+                            len(valid_charts) * 2,
+                            f"Rendering image {completed_renders}/{len(valid_charts)}...",
+                        )
                 except Exception as e:
                     logger.error(
                         f"Parallel rendering failed for chart at index {index} ({chart_name}): {e}"
                     )
+                    if progress_cb:
+                        completed_renders += 1
+                        progress_cb(
+                            completed_renders,
+                            len(valid_charts) * 2,
+                            f"Rendering image {completed_renders}/{len(valid_charts)}...",
+                        )
         except concurrent.futures.TimeoutError:
             logger.error("PDF generation timed out waiting for chart renders.")
             # We continue with whatever results we have (None for others)
@@ -447,18 +563,18 @@ def generate_pdf_buffer(charts: List[CustomChart]) -> BytesIO:
     for i, chart in enumerate(valid_charts):
         try:
             # 1. Render title
-            c.setFont("Helvetica-Bold", 18)
+            c.setFont("Helvetica-Bold", 22)
             title = chart.name or "Untitled Analysis"
             c.drawString(50, height - 50, title)
 
             # 2. Render meta
-            c.setFont("Helvetica", 10)
+            c.setFont("Helvetica", 13)
             meta = f"Category: {chart.category} | Updated: {chart.updated_at.strftime('%Y-%m-%d')}"
             c.drawString(50, height - 70, meta)
 
             # 3. Render description (wrapped)
             if chart.description:
-                c.setFont("Helvetica-Oblique", 10)
+                c.setFont("Helvetica-Oblique", 12)
                 desc_lines = textwrap.wrap(chart.description, width=120)
                 y_desc = height - 90
                 for line in desc_lines[:3]:  # Limit lines
@@ -487,6 +603,13 @@ def generate_pdf_buffer(charts: List[CustomChart]) -> BytesIO:
                 c.setFont("Helvetica", 12)
                 c.drawString(50, height / 2, "Error: Could not render chart image.")
 
+            if progress_cb:
+                # Second half of progress is page assembly.
+                progress_cb(
+                    len(valid_charts) + i + 1,
+                    len(valid_charts) * 2,
+                    f"Assembling PDF page {i + 1}/{len(valid_charts)}...",
+                )
             c.showPage()
 
         except Exception as e:
@@ -658,8 +781,13 @@ def export_custom_charts_pdf(
     If request.items is provided, use that order.
     If request.items is empty, auto-select all charts with export_pdf=True.
     """
-    user_identifier = getattr(current_user, "email", "unknown")
-    pid = start_process("Export PDF Report", user_id=user_identifier)
+    # Import task registry lazily to avoid circular-import fallback to dummy handlers.
+    from ix.api.routers.task import start_process as _start_process
+    from ix.api.routers.task import update_process as _update_process
+    from ix.api.routers.task import ProcessStatus as _ProcessStatus
+
+    user_identifier = str(getattr(current_user, "id", "") or "")
+    pid = _start_process("Export PDF Report", user_id=user_identifier)
 
     try:
         if request.items:
@@ -681,15 +809,34 @@ def export_custom_charts_pdf(
             )
 
         if not ordered_charts:
-            update_process(pid, ProcessStatus.FAILED, "No charts found")
+            _update_process(pid, _ProcessStatus.FAILED, "No charts found")
             raise HTTPException(
                 status_code=404, detail="No charts marked for PDF export"
             )
 
-        pdf_buffer = generate_pdf_buffer(ordered_charts)
+        total_steps = max(1, len(ordered_charts) * 2)
+        _update_process(
+            pid,
+            message="Preparing PDF export...",
+            progress=f"0/{total_steps}",
+        )
+
+        def _on_pdf_progress(current: int, total: int, message: str):
+            _update_process(
+                pid,
+                message=message,
+                progress=f"{current}/{max(1, total)}",
+            )
+
+        pdf_buffer = generate_pdf_buffer(ordered_charts, progress_cb=_on_pdf_progress)
 
         filename = f"InvestmentX_Report_{datetime.now().strftime('%Y%m%d')}.pdf"
-        update_process(pid, ProcessStatus.COMPLETED, "PDF Generated")
+        _update_process(
+            pid,
+            _ProcessStatus.COMPLETED,
+            "PDF Generated",
+            progress=f"{total_steps}/{total_steps}",
+        )
 
         return StreamingResponse(
             pdf_buffer,
@@ -698,7 +845,7 @@ def export_custom_charts_pdf(
         )
     except Exception as e:
         logger.error(f"PDF Export failed: {e}")
-        update_process(pid, ProcessStatus.FAILED, str(e))
+        _update_process(pid, _ProcessStatus.FAILED, str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -711,8 +858,13 @@ def export_custom_charts_html(
     """Generate a standalone HTML portfolio of charts marked for export."""
     from fastapi.responses import Response
 
-    user_identifier = getattr(current_user, "email", "unknown")
-    pid = start_process("Export Interactive Portfolio", user_id=user_identifier)
+    # Import task registry lazily to avoid circular-import fallback to dummy handlers.
+    from ix.api.routers.task import start_process as _start_process
+    from ix.api.routers.task import update_process as _update_process
+    from ix.api.routers.task import ProcessStatus as _ProcessStatus
+
+    user_identifier = str(getattr(current_user, "id", "") or "")
+    pid = _start_process("Export Interactive Portfolio", user_id=user_identifier)
 
     try:
         if request.items:
@@ -732,8 +884,10 @@ def export_custom_charts_html(
             )
 
         if not ordered_charts:
-            update_process(pid, ProcessStatus.FAILED, "No charts found")
+            _update_process(pid, _ProcessStatus.FAILED, "No charts found")
             raise HTTPException(status_code=404, detail="No charts marked for export")
+
+        _update_process(pid, message="Composing HTML bundle...", progress=f"0/{len(ordered_charts)}")
 
         # Build premium HTML bundle
         html_parts = []
@@ -812,6 +966,13 @@ def export_custom_charts_html(
                             fig.layout.plot_bgcolor = 'rgba(0,0,0,0)';
                             fig.layout.font = {{ color: '#94a3b8', family: 'Inter' }};
                             fig.layout.autosize = true;
+                            // Keep heatmap labels visible in exported HTML
+                            (fig.data || []).forEach(function(t) {{
+                                if (t && t.type === 'heatmap') {{
+                                    if (!t.texttemplate && t.text) t.texttemplate = '<b>%{{text}}</b>';
+                                    t.textfont = Object.assign({{color: '#e2e8f0', size: 10, family: 'Inter, sans-serif'}}, t.textfont || {{}});
+                                }}
+                            }});
                             Plotly.newPlot('{div_id}', fig.data, fig.layout, {{ 
                                 responsive: true, 
                                 displayModeBar: 'hover',
@@ -821,6 +982,11 @@ def export_custom_charts_html(
                     </script>
                 </div>
             """
+            )
+            _update_process(
+                pid,
+                message=f"Rendering section {i + 1}/{len(ordered_charts)}...",
+                progress=f"{i + 1}/{len(ordered_charts)}",
             )
 
         html_parts.append(
@@ -839,7 +1005,7 @@ def export_custom_charts_html(
             f"InvestmentX_Portfolio_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
         )
 
-        update_process(pid, ProcessStatus.COMPLETED, "Interactive Portfolio Generated")
+        _update_process(pid, _ProcessStatus.COMPLETED, "Interactive Portfolio Generated")
 
         return Response(
             content=full_html,
@@ -848,7 +1014,7 @@ def export_custom_charts_html(
         )
     except Exception as e:
         logger.error(f"HTML Export failed: {e}")
-        update_process(pid, ProcessStatus.FAILED, str(e))
+        _update_process(pid, _ProcessStatus.FAILED, str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 

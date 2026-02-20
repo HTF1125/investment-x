@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { 
   User as UserIcon, LogOut, LogIn, Database, Radio, 
   Menu, X, Layout, Cpu, Hexagon, Bell, ChevronDown,
-  Settings, Shield, Sun, Moon, Search
+  Settings, Shield, Sun, Moon
 } from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
 import { useTheme } from '@/context/ThemeContext';
@@ -111,22 +111,22 @@ function UserDropdown() {
       <button
         onClick={() => setOpen((v) => !v)}
         className={`
-          flex items-center gap-2 px-1.5 py-1 rounded-xl border transition-all h-9
+          flex items-center gap-1 sm:gap-2 px-1 sm:px-1.5 py-1 rounded-lg border transition-all h-8
           ${open
-            ? 'bg-accent/20 border-accent/40 shadow-lg shadow-indigo-500/10'
-            : 'bg-secondary/20 border-border/50 hover:bg-accent/10 hover:border-border'
+            ? 'bg-accent/10 text-black border-black/30 dark:text-white dark:border-white/30'
+            : 'bg-secondary/20 text-black border-black/20 hover:bg-accent/10 dark:text-white dark:border-white/20'
           }
         `}
       >
         {/* Avatar */}
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center text-white text-[10px] font-bold shadow-inner">
+        <div className="w-6 h-6 rounded-md bg-black text-white dark:bg-white dark:text-black flex items-center justify-center text-[10px] font-bold">
           {initials}
         </div>
         <div className="hidden sm:flex flex-col items-start leading-none pr-1">
-          <span className="text-[11px] font-bold text-foreground">{user?.first_name || 'Operator'}</span>
-          <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-tighter">{user?.email?.split('@')[0]}</span>
+          <span className="text-[11px] font-bold text-current">{user?.first_name || 'Operator'}</span>
+          <span className="text-[9px] font-mono text-black/60 dark:text-white/60 uppercase tracking-tighter">{user?.email?.split('@')[0]}</span>
         </div>
-        <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${open ? 'rotate-180 text-foreground' : ''}`} />
+        <ChevronDown className={`hidden sm:block w-3 h-3 text-current/70 transition-transform ${open ? 'rotate-180 text-current' : ''}`} />
       </button>
 
       {/* Dropdown */}
@@ -187,7 +187,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={toggleTheme}
-      className="flex items-center justify-center w-9 h-9 rounded-xl border border-border/50 bg-secondary/20 hover:bg-accent/10 hover:border-border transition-all text-muted-foreground hover:text-foreground shadow-sm"
+      className="flex items-center justify-center w-8 h-8 rounded-lg border border-border/50 bg-secondary/20 hover:bg-accent/10 hover:border-border transition-all text-muted-foreground hover:text-foreground shadow-sm"
       title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
     >
       {theme === 'dark' ? (
@@ -211,17 +211,17 @@ export default function Navbar() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-[100] h-12 bg-white dark:bg-black border-b border-border/50">
-      <div className="max-w-[1920px] mx-auto px-4 h-full flex items-center justify-between gap-4">
+      <div className="max-w-[1920px] mx-auto px-2 sm:px-4 h-full flex items-center justify-between gap-2 sm:gap-4 min-w-0">
         
         {/* LEFT: Logo + Nav Links */}
-        <div className="flex items-center gap-4 shrink-0">
-            <Link href="/" className="flex items-center group py-1">
+        <div className="flex items-center gap-2 sm:gap-4 shrink min-w-0">
+            <Link href="/" className="flex items-center group py-1 min-w-0">
                 <Image 
                     src={theme === 'dark' ? '/investment-x-logo-light.svg' : '/investment-x-logo-dark.svg'}
                     alt="Investment-X Logo"
                     width={220}
                     height={22}
-                    className="h-5 w-auto transition-opacity"
+                    className="h-4 sm:h-5 w-auto max-w-[140px] sm:max-w-[220px] transition-opacity"
                     priority
                     unoptimized
                 />
@@ -231,7 +231,6 @@ export default function Navbar() {
             <div className="hidden md:flex items-center gap-1 p-0.5 rounded-lg">
                 <NavLink href="/" icon={<Layout className="w-3 h-3" />}>Dashboard</NavLink>
                 <NavLink href="/intel" icon={<Radio className="w-3 h-3" />}>Intel</NavLink>
-                <NavLink href="/research" icon={<Search className="w-3 h-3" />}>Research</NavLink>
                 {user?.is_admin && (
                   <NavLink href="/admin/timeseries" icon={<Database className="w-3 h-3" />}>System</NavLink>
                 )}
@@ -244,7 +243,7 @@ export default function Navbar() {
         </div>
 
         {/* RIGHT: User / Login + Mobile Menu */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <ThemeToggle />
           {isAuthenticated && <TaskNotifications />}
           
@@ -253,7 +252,7 @@ export default function Navbar() {
           ) : (
             <Link 
               href="/login"
-              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 uppercase tracking-wider"
+              className="inline-flex items-center px-4 h-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 uppercase tracking-wider"
             >
               Initialize Session
             </Link>
@@ -261,7 +260,7 @@ export default function Navbar() {
 
           {/* Mobile Menu Button */}
           <button 
-              className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl border border-border/50 bg-secondary/20 hover:bg-accent/10 hover:border-border transition-all text-muted-foreground hover:text-foreground shadow-sm"
+              className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg border border-border/50 bg-secondary/20 hover:bg-accent/10 hover:border-border transition-all text-muted-foreground hover:text-foreground shadow-sm"
               onClick={() => setMenuOpen(!menuOpen)}
           >
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -282,7 +281,6 @@ export default function Navbar() {
                <div className="flex flex-col gap-2">
                   <MobileNavLink href="/" icon={<Layout className="w-4 h-4" />}>Dashboard</MobileNavLink>
                   <MobileNavLink href="/intel" icon={<Radio className="w-4 h-4" />}>Intel Feed</MobileNavLink>
-                  <MobileNavLink href="/research" icon={<Search className="w-4 h-4" />}>Research</MobileNavLink>
                   {user?.is_admin && (
                     <MobileNavLink href="/admin/timeseries" icon={<Database className="w-4 h-4" />}>System Admin</MobileNavLink>
                   )}

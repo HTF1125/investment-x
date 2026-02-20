@@ -91,6 +91,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const [editorFontSize, setEditorFontSize] = useState(13);
   const [editorFontFamily, setEditorFontFamily] = useState("'JetBrains Mono', monospace");
   const [isMounted, setIsMounted] = useState(false);
+  const loadedFromPropRef = useRef<string | null>(null);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(440);
@@ -154,7 +155,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const { data: savedCharts = [], refetch: refetchCharts } = useQuery({
     queryKey: ['custom-charts'],
     queryFn: () => apiFetchJson('/api/custom'),
-    enabled: !!token,
+    enabled: true,
   });
 
   useEffect(() => {
@@ -168,8 +169,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   useEffect(() => {
     if (initialChartId && savedCharts.length > 0) {
       const target = savedCharts.find((c: any) => c.id === initialChartId);
-      if (target && currentChartId !== initialChartId) {
+      if (target && loadedFromPropRef.current !== initialChartId) {
         loadChart(target);
+        loadedFromPropRef.current = initialChartId;
       }
     } else if (initialChartId === null && currentChartId !== null) {
       // CREATE clicked — reset to blank state
@@ -183,8 +185,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       setPreviewFigure(null);
       setPreviewError(null);
       setSuccessMsg(null);
+      loadedFromPropRef.current = null;
     }
-  }, [initialChartId, savedCharts]);
+  }, [initialChartId, savedCharts, currentChartId]);
 
   // Derive unique categories for the filter dropdown
   const categories = useMemo(() => {
@@ -224,16 +227,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       const payload = { items: items.map((c: any) => ({ id: c.id })) };
       return apiFetchJson('/api/custom/reorder', {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
     },
   });
-
-  useEffect(() => {
-    if (orderedCharts.length === 0 || !isLoaded) return;
-    const timer = setTimeout(() => reorderMutation.mutate(orderedCharts), 1500);
-    return () => clearTimeout(timer);
-  }, [orderedCharts, isLoaded]);
 
   const previewMutation = useMutation({
     mutationFn: async () => {

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Loader2, CheckCircle, XCircle, Bell, X, Trash2, Activity, Play, Archive, List } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, X, Trash2, Activity, Play, Archive, List, ListChecks } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiFetchJson } from "@/lib/api";
 
 interface ProcessInfo {
@@ -16,35 +17,26 @@ interface ProcessInfo {
   progress?: string;
 }
 
-const STORAGE_KEY = "ix-dismissed-tasks";
-
-function loadDismissed(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveDismissed(ids: string[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids.slice(-200)));
-  } catch {
-    // Silently ignore
-  }
-}
-
 export default function TaskNotifications({ embedded = false }: { embedded?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [dismissedIds, setDismissedIds] = useState<string[]>(loadDismissed);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
-  // Persist dismissed IDs
+  // Push updates (SSE) for near-real-time task refresh
   useEffect(() => {
-    saveDismissed(dismissedIds);
-  }, [dismissedIds]);
+    const es = new EventSource('/api/task/stream');
+    const refresh = () => queryClient.invalidateQueries({ queryKey: ['task-processes'] });
+    es.addEventListener('task', refresh as EventListener);
+    es.addEventListener('ready', refresh as EventListener);
+    es.onerror = () => {
+      // Fallback polling still active; browser auto-reconnects SSE.
+    };
+    return () => {
+      es.removeEventListener('task', refresh as EventListener);
+      es.removeEventListener('ready', refresh as EventListener);
+      es.close();
+    };
+  }, [queryClient]);
 
   // Click outside to close
   useEffect(() => {
@@ -61,22 +53,34 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
   const { data: allProcesses = [] } = useQuery({
     queryKey: ['task-processes'],
     queryFn: () => apiFetchJson<ProcessInfo[]>("/api/task/processes"),
-    refetchInterval: 2000, // Poll every 2s
-    staleTime: 1000,
+    enabled: true,
+    refetchInterval: (query) => {
+      const data = (query.state.data as ProcessInfo[] | undefined) ?? [];
+      const hasRunning = data.some((p) => p.status === "running");
+      if (hasRunning) return 700;
+      if (embedded || isOpen) return 1500;
+      return 5000;
+    },
+    refetchIntervalInBackground: false,
+    staleTime: 3000,
   });
 
-  // Filter out dismissed tasks
-  const processes = allProcesses.filter((p) => !dismissedIds.includes(p.id));
+  const processes = allProcesses;
 
-  const handleDismiss = (pid: string) => {
-    setDismissedIds((prev) => [...prev, pid]);
+  const handleDismiss = async (pid: string) => {
+    try {
+      await apiFetchJson(`/api/task/process/${pid}/dismiss`, { method: 'POST' });
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
+    }
   };
 
-  const handleClearAll = () => {
-    const completedOrFailed = processes
-      .filter(p => p.status !== 'running')
-      .map(p => p.id);
-    setDismissedIds((prev) => [...prev, ...completedOrFailed]);
+  const handleClearAll = async () => {
+    try {
+      await apiFetchJson('/api/task/process/dismiss-completed', { method: 'POST' });
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
+    }
   };
 
   const activeCount = processes.filter((p) => p.status === "running").length;
@@ -85,11 +89,11 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
 
   // Shared process list renderer
   const renderProcessList = () => (
-    <div className={`${embedded ? 'max-h-[300px]' : 'max-h-[400px]'} overflow-y-auto custom-scrollbar p-2 space-y-2`}>
+    <div className={`${embedded ? 'max-h-[260px]' : 'max-h-[330px]'} overflow-y-auto custom-scrollbar p-1.5 space-y-1.5`}>
       {processes.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground opacity-60">
-            <Activity className="w-8 h-8 mb-2 stroke-1" />
-            <span className="text-xs font-medium">System Idle</span>
+        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground opacity-60">
+            <Activity className="w-6 h-6 mb-1.5 stroke-1" />
+            <span className="text-[11px] font-medium">System Idle</span>
         </div>
       ) : (
         <AnimatePresence initial={false}>
@@ -101,7 +105,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 className={`
-                relative flex items-start gap-3 p-3 rounded-xl border backdrop-blur-sm transition-all group
+                relative flex items-start gap-2.5 p-2.5 rounded-lg border backdrop-blur-sm transition-all group
                 ${
                     process.status === "running"
                     ? "bg-sky-500/5 border-sky-500/20 shadow-[0_0_15px_-5px_rgba(14,165,233,0.15)]"
@@ -115,22 +119,22 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                 <div className="shrink-0 mt-0.5">
                 {process.status === "running" && (
                     <div className="relative">
-                        <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
                         <div className="absolute inset-0 blur-sm bg-sky-400/30 rounded-full animate-pulse" />
                     </div>
                 )}
                 {process.status === "completed" && (
-                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
                 )}
                 {process.status === "failed" && (
-                    <XCircle className="w-4 h-4 text-rose-400" />
+                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
                 )}
                 </div>
 
                 {/* Content */}
                 <div className="flex-grow min-w-0">
                 <div className="flex justify-between items-start gap-2">
-                    <span className="text-xs font-bold text-foreground truncate leading-tight">
+                    <span className="text-[10px] font-medium text-foreground truncate leading-tight">
                     {process.name}
                     </span>
                     <button
@@ -140,43 +144,34 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                         }}
                         className="text-muted-foreground hover:text-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100 p-0.5 hover:bg-accent/10 rounded"
                     >
-                        <X className="w-3 h-3" />
+                        <X className="w-2.5 h-2.5" />
                     </button>
                 </div>
 
-                <div className="text-[10px] text-muted-foreground mt-1 truncate font-mono flex items-center gap-1.5">
-                    {process.status === 'running' && <Play className="w-2 h-2 fill-current" />}
-                    {process.message || (process.status === "running" ? "Processing..." : process.status)}
+                <div className="mt-0.5 flex items-center justify-between gap-2 text-[9px] font-mono text-muted-foreground/80">
+                    <span className="truncate flex items-center gap-1">
+                      {process.status === 'running' && <Play className="w-2 h-2 fill-current shrink-0" />}
+                      <span className="truncate">{process.message || (process.status === "running" ? "Processing..." : process.status)}</span>
+                    </span>
+                    <span className="shrink-0">
+                      {process.end_time
+                        ? `${formatRelativeTime(process.end_time)} • ${formatDuration(process.start_time, process.end_time)}`
+                        : `Started ${formatRelativeTime(process.start_time)}`}
+                    </span>
                 </div>
 
-                {process.status === "running" && process.progress && (
-                    <div className="mt-2.5">
-                        <div className="flex justify-between text-[9px] text-muted-foreground font-mono mb-1">
-                            <span>Progress</span>
-                            <span className="text-sky-400 font-bold">{process.progress}</span>
-                        </div>
-                        <div className="h-1 bg-secondary rounded-full overflow-hidden">
-                            <motion.div
-                                className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full shadow-[0_0_10px_rgba(14,165,233,0.5)]"
-                                initial={{ width: "0%" }}
-                                animate={{ width: getProgressPercent(process.progress) }}
-                                transition={{ duration: 0.5, ease: "easeOut" }}
-                            />
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/50 opacity-50">
-                    {process.end_time ? (
-                    <span className="text-[9px] font-mono text-muted-foreground">
-                        Completed {formatRelativeTime(process.end_time)}
-                    </span>
-                    ) : (
-                    <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-1.5">
-                        <div className="w-1 h-1 rounded-full bg-sky-500 animate-pulse" />
-                        Started {formatRelativeTime(process.start_time)}
-                    </span>
-                    )}
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="h-1 w-full bg-secondary rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full"
+                      initial={{ width: "0%" }}
+                      animate={{ width: getRowPercent(process) }}
+                      transition={{ duration: 0.4, ease: "easeOut" }}
+                    />
+                  </div>
+                  <span className="text-[9px] font-mono text-sky-400 shrink-0">
+                    {getRowPercent(process)}
+                  </span>
                 </div>
                 </div>
             </motion.div>
@@ -187,9 +182,9 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
       {(completedCount > 0 || failedCount > 0) && (
         <button
           onClick={handleClearAll}
-          className="w-full group flex items-center justify-center gap-2 py-2 mt-2 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:bg-accent/10 rounded-lg transition-all border border-transparent hover:border-border/50"
+          className="w-full group flex items-center justify-center gap-1.5 py-1.5 mt-1 text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:bg-accent/10 rounded-md transition-all border border-transparent hover:border-border/50"
         >
-          <Trash2 className="w-3 h-3 group-hover:text-rose-400 transition-colors" /> 
+          <Trash2 className="w-2.5 h-2.5 group-hover:text-rose-400 transition-colors" /> 
           CLEAR COMPLETED
         </button>
       )}
@@ -207,7 +202,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`
-          flex items-center gap-3 px-3 py-1.5 rounded-xl border transition-all h-9 overflow-hidden group
+          flex items-center gap-2.5 px-2.5 py-1 rounded-lg border transition-all h-8 overflow-hidden group
           ${isOpen 
             ? 'bg-accent/20 border-accent/40 text-foreground shadow-lg shadow-sky-500/10' 
             : 'bg-secondary/20 border-border/50 text-muted-foreground hover:bg-accent/10 hover:border-border hover:text-foreground shadow-sm'
@@ -215,18 +210,15 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
         `}
         title="System Tasks & Processes"
       >
-        <div className="relative">
-          <Bell className={`w-3.5 h-3.5 ${activeCount > 0 ? 'text-sky-400' : 'text-current'}`} />
+        <div className="relative w-4 h-4 flex items-center justify-center">
           {activeCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" />
-            </span>
+            <span className="absolute inset-0 rounded-full border border-sky-400/40 animate-spin" />
           )}
+          <ListChecks className={`w-3.5 h-3.5 ${activeCount > 0 ? 'text-sky-400' : 'text-current'}`} />
         </div>
         
         {processes.length > 0 && (
-            <div className="flex items-center gap-3 font-mono text-[10px] font-bold border-l border-border pl-3">
+            <div className="hidden sm:flex items-center gap-2.5 font-mono text-[10px] font-bold border-l border-border pl-2.5">
                 {activeCount > 0 && (
                     <span className="text-sky-400 flex items-center gap-1">
                         {activeCount}
@@ -250,13 +242,13 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute right-0 top-full mt-3 w-80 sm:w-96 bg-background/95 border border-border rounded-2xl shadow-2xl backdrop-blur-2xl z-50 overflow-hidden ring-1 ring-border/50"
+            className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-background/95 border border-border rounded-xl shadow-2xl backdrop-blur-2xl z-50 overflow-hidden ring-1 ring-border/50"
           >
             {/* Header */}
-            <div className="px-4 py-3 border-b border-border flex justify-between items-center bg-accent/5">
+            <div className="px-3 py-2 border-b border-border flex justify-between items-center bg-accent/5">
               <div className="flex items-center gap-2">
-                <List className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-xs font-bold text-foreground uppercase tracking-wider">
+                <List className="w-3 h-3 text-muted-foreground" />
+                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
                     Task Manager
                 </span>
               </div>
@@ -277,12 +269,50 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
 
 /** Parse progress string like "2/4" into a CSS percentage. */
 function getProgressPercent(progress: string): string {
-  const parts = progress.split("/");
-  if (parts.length !== 2) return "50%";
+  const value = (progress || "").trim();
+  if (!value) return "0%";
+
+  // Already in percent format
+  if (value.endsWith("%")) {
+    const pct = parseInt(value.replace("%", ""), 10);
+    if (isNaN(pct)) return "0%";
+    return `${Math.max(0, Math.min(100, pct))}%`;
+  }
+
+  // Fraction format: "current/total"
+  const parts = value.split("/");
+  if (parts.length !== 2) return "0%";
   const current = parseInt(parts[0], 10);
   const total = parseInt(parts[1], 10);
-  if (isNaN(current) || isNaN(total) || total === 0) return "50%";
-  return `${Math.round((current / total) * 100)}%`;
+  if (isNaN(current) || isNaN(total) || total === 0) return "0%";
+  return `${Math.max(0, Math.min(100, Math.round((current / total) * 100)))}%`;
+}
+
+function getRowPercent(process: ProcessInfo): string {
+  if (process.status === "completed") return "100%";
+  if (process.status === "failed") {
+    if (!process.progress) return "0%";
+    return getProgressPercent(process.progress);
+  }
+  if (!process.progress) return "0%";
+  return getProgressPercent(process.progress);
+}
+
+function formatDuration(startIso: string, endIso: string): string {
+  try {
+    const start = new Date(startIso).getTime();
+    const end = new Date(endIso).getTime();
+    const sec = Math.max(0, Math.floor((end - start) / 1000));
+    if (sec < 60) return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    const rem = sec % 60;
+    if (min < 60) return rem ? `${min}m ${rem}s` : `${min}m`;
+    const hr = Math.floor(min / 60);
+    const minRem = min % 60;
+    return minRem ? `${hr}h ${minRem}m` : `${hr}h`;
+  } catch {
+    return "-";
+  }
 }
 
 /** Format ISO timestamp into a human-readable relative time. */

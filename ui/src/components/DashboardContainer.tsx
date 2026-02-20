@@ -53,19 +53,11 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
 
     const preload = () => {
       // 1. Trigger webpack chunk download + parse
-      editorImport().then(() => {
-        // Chunk is now in memory — mount the editor (hidden) so React hydrates it
-        setEditorReady(true);
-      }).catch(() => {
+      editorImport().catch(() => {
         // Silently fail preload — will load on-demand as fallback
       });
 
-      // 2. Warm the react-query cache for the chart library list
-      queryClient.prefetchQuery({
-        queryKey: ['custom-charts'],
-        queryFn: () => apiFetchJson('/api/custom'),
-        staleTime: 1000 * 60 * 5,
-      });
+      // 2. Do not prefetch /api/custom here to avoid background load noise.
     };
 
     // Use requestIdleCallback if available, otherwise setTimeout
@@ -174,8 +166,8 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     <AppShell>
       <div className="relative min-h-screen">
         {/* 📚 Base Dashboard Layer */}
-        <div className={`p-4 md:p-8 lg:p-12 transition-opacity duration-150 ${studioOpen ? 'opacity-20 pointer-events-none' : 'opacity-100'}`}>
-          <div className="max-w-[1600px] mx-auto">
+        <div className={`px-4 md:px-8 lg:px-12 pb-4 md:pb-8 lg:pb-12 pt-2 md:pt-4 lg:pt-6 transition-opacity duration-150 ${studioOpen ? 'opacity-20 pointer-events-none' : 'opacity-100'}`}>
+          <div className="w-full max-w-[1400px] mx-auto">
              {data.charts_by_category ? (
                 <DashboardGallery 
                     categories={data.categories || []} 

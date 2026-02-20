@@ -254,15 +254,13 @@ async def download_template(
     wb.remove(wb.active)
 
     # Styles
-    header_font = Font(name="Consolas", size=9, color="AAAAAA")
-    value_font = Font(name="Consolas", size=9, color="FFFFFF")
-    code_font = Font(name="Consolas", size=9, color="00BFFF", bold=True)
-    formula_font = Font(name="Consolas", size=8, color="808080", italic=True)
-    date_font = Font(name="Consolas", size=9, color="CCCCCC")
-    dark_fill = PatternFill(start_color="0D0F14", end_color="0D0F14", fill_type="solid")
-    header_fill = PatternFill(
-        start_color="1A1D25", end_color="1A1D25", fill_type="solid"
-    )
+    # User requested: black background and black text.
+    header_font = Font(name="Consolas", size=9, color="000000")
+    value_font = Font(name="Consolas", size=9, color="000000")
+    code_font = Font(name="Consolas", size=9, color="000000", bold=True)
+    formula_font = Font(name="Consolas", size=8, color="000000", italic=True)
+    date_font = Font(name="Consolas", size=9, color="000000")
+    black_fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
 
     # Generate dates: start from end_date + 2, descending to start_date
     date_top = end_dt + pd.DateOffset(days=2)
@@ -271,14 +269,20 @@ async def download_template(
     )
 
     for sheet_source, ts_list in grouped.items():
-        ws = wb.create_sheet(title=sheet_source[:31])
+        ws = wb.create_sheet(title=(sheet_source or "Unknown")[:31])
 
         # Row 1: Header info
         ws.cell(row=1, column=1, value=sheet_source).font = Font(
             name="Consolas", size=10, color="00BFFF", bold=True
         )
-        ws.cell(row=1, column=3, value=start_str).font = value_font
-        ws.cell(row=1, column=4, value=end_str).font = value_font
+        ws.cell(row=1, column=1).fill = black_fill
+        # C1 / D1 as real dates with date formatting
+        ws.cell(row=1, column=3, value=start_dt.to_pydatetime()).font = value_font
+        ws.cell(row=1, column=3).number_format = "yyyy-mm-dd"
+        ws.cell(row=1, column=3).fill = black_fill
+        ws.cell(row=1, column=4, value=end_dt.to_pydatetime()).font = value_font
+        ws.cell(row=1, column=4).number_format = "yyyy-mm-dd"
+        ws.cell(row=1, column=4).fill = black_fill
 
         # Metadata row labels (col A)
         row_labels = {
@@ -293,7 +297,7 @@ async def download_template(
         for r, label in row_labels.items():
             cell = ws.cell(row=r, column=1, value=label)
             cell.font = header_font
-            cell.fill = header_fill
+            cell.fill = black_fill
 
         # Fill columns B+ with timeseries metadata
         for col_idx, ts in enumerate(ts_list, start=2):
@@ -303,12 +307,19 @@ async def download_template(
             field = parts[1] if len(parts) > 1 else ""
 
             ws.cell(row=2, column=col_idx, value=ticker).font = value_font
+            ws.cell(row=2, column=col_idx).fill = black_fill
             ws.cell(row=3, column=col_idx, value=field).font = value_font
+            ws.cell(row=3, column=col_idx).fill = black_fill
             ws.cell(row=4, column=col_idx, value=sc).font = value_font
+            ws.cell(row=4, column=col_idx).fill = black_fill
             ws.cell(row=5, column=col_idx, value=ts.asset_class or "").font = value_font
+            ws.cell(row=5, column=col_idx).fill = black_fill
             ws.cell(row=6, column=col_idx, value=ts.source or "").font = value_font
+            ws.cell(row=6, column=col_idx).fill = black_fill
             ws.cell(row=7, column=col_idx, value=ts.name or "").font = value_font
+            ws.cell(row=7, column=col_idx).fill = black_fill
             ws.cell(row=8, column=col_idx, value=ts.code or "").font = code_font
+            ws.cell(row=8, column=col_idx).fill = black_fill
 
             # Universal formula — column letter swapped via template
             from openpyxl.utils import get_column_letter
@@ -316,26 +327,26 @@ async def download_template(
             col = get_column_letter(col_idx)
             formula_text = _DOWNLOAD_FORMULA_TEMPLATE.replace("__C__", col)
 
+            # Keep as normal Excel formula (no array-brace rendering).
             ws.cell(row=9, column=col_idx, value=formula_text).font = formula_font
+            ws.cell(row=9, column=col_idx).fill = black_fill
 
         # Date column (A9+) — descending from end_date + 2
         for i, d in enumerate(dates):
             ws.cell(row=9 + i, column=1, value=d.strftime("%Y-%m-%d")).font = date_font
+            ws.cell(row=9 + i, column=1).fill = black_fill
+
+        # Force black fill across the full used template area.
+        max_row = 8 + len(dates)
+        max_col = len(ts_list) + 1
+        for r in range(1, max_row + 1):
+            for c in range(1, max_col + 1):
+                ws.cell(row=r, column=c).fill = black_fill
 
         # Column widths
         ws.column_dimensions["A"].width = 16
         for col_idx in range(2, len(ts_list) + 2):
-            ws.column_dimensions[ws.cell(row=2, column=col_idx).column_letter].width = (
-                14
-            )
-
-        # Apply dark fill
-        for row in ws.iter_rows(
-            min_row=1, max_row=9 + len(dates), max_col=len(ts_list) + 1
-        ):
-            for cell in row:
-                if cell.fill == PatternFill():
-                    cell.fill = dark_fill
+            ws.column_dimensions[ws.cell(row=2, column=col_idx).column_letter].width = 14
 
     # Save to buffer
     buffer = io.BytesIO()

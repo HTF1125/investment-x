@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, Trash2, Edit3, Save, X, ChevronLeft, ChevronRight,
   Database, RefreshCw, Loader2, AlertTriangle, Check, Star, Mail,
-  LineChart, Download, Upload
+  LineChart, Download, Upload, ChevronDown
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { apiFetch, apiFetchJson } from '@/lib/api';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -42,6 +43,16 @@ interface Timeseries {
   favorite: boolean;
 }
 
+interface ProcessInfo {
+  id: string;
+  name: string;
+  status: 'running' | 'completed' | 'failed';
+  start_time: string;
+  end_time?: string;
+  message?: string;
+  progress?: string;
+}
+
 const EMPTY_FORM: Omit<Timeseries, 'id' | 'start' | 'end' | 'num_data'> = {
   code: '', name: '', provider: '', asset_class: '', category: '',
   source: '', source_code: '', frequency: '', unit: '', scale: 1,
@@ -64,7 +75,7 @@ export default function TimeseriesManager() {
   const [showCreate, setShowCreate] = useState(false);
   const [editItem, setEditItem] = useState<Timeseries | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Timeseries | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error'; sticky?: boolean } | null>(null);
 
   // Form state
   const [form, setForm] = useState(EMPTY_FORM);
@@ -79,15 +90,30 @@ export default function TimeseriesManager() {
 
   // Download State
   const [downloading, setDownloading] = useState(false);
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [actionsMenuPos, setActionsMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [availableSources, setAvailableSources] = useState<string[]>([]);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
+  const actionsBtnRef = useRef<HTMLButtonElement>(null);
+  const lastDailyProcessIdRef = useRef<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   // Close download menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (downloadMenuRef.current && !downloadMenuRef.current.contains(e.target as Node)) {
+        if (actionsBtnRef.current && actionsBtnRef.current.contains(e.target as Node)) return;
+        setShowActionsMenu(false);
         setShowDownloadMenu(false);
       }
     };
@@ -97,25 +123,56 @@ export default function TimeseriesManager() {
 
   // Fetch available sources when menu opens
   useEffect(() => {
-    if (!showDownloadMenu || !token || availableSources.length > 0) return;
+    if (!showDownloadMenu || availableSources.length > 0) return;
     (async () => {
       try {
-        const res = await fetch('/api/timeseries/sources', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await apiFetch('/api/timeseries/sources');
         if (res.ok) {
           const data = await res.json();
           setAvailableSources(data);
         }
       } catch { /* silent */ }
     })();
-  }, [showDownloadMenu, token]);
+  }, [showDownloadMenu, availableSources.length]);
+
+  const positionActionsMenu = useCallback(() => {
+    const btn = actionsBtnRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const menuWidth = 256; // w-64
+    const left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.right - menuWidth));
+    setActionsMenuPos({ top: rect.bottom + 8, left });
+  }, []);
+
+  useEffect(() => {
+    if (!showActionsMenu) return;
+    positionActionsMenu();
+    const onWindowChange = () => positionActionsMenu();
+    window.addEventListener('resize', onWindowChange);
+    window.addEventListener('scroll', onWindowChange, true);
+    return () => {
+      window.removeEventListener('resize', onWindowChange);
+      window.removeEventListener('scroll', onWindowChange, true);
+    };
+  }, [showActionsMenu, positionActionsMenu]);
 
   // ───── Toast helper
-  const flash = (msg: string, type: 'success' | 'error') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  };
+  const flash = useCallback((
+    msg: string,
+    type: 'success' | 'error',
+    opts?: { sticky?: boolean; durationMs?: number }
+  ) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    const sticky = !!opts?.sticky;
+    setToast({ msg, type, sticky });
+    if (!sticky) {
+      const durationMs = opts?.durationMs ?? 3500;
+      toastTimerRef.current = setTimeout(() => setToast(null), durationMs);
+    }
+  }, []);
 
   // ───── Debounce search
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -130,15 +187,12 @@ export default function TimeseriesManager() {
 
   // ───── Fetch Query
   const fetchTimeseries = async ({ page, search }: { page: number; search: string }) => {
-    if (!token) return [];
     const params = new URLSearchParams();
     params.set('limit', String(PAGE_SIZE));
     params.set('offset', String(page * PAGE_SIZE));
     if (search) params.set('search', search);
 
-    const res = await fetch(`/api/timeseries?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await apiFetch(`/api/timeseries?${params}`);
     if (!res.ok) throw new Error('Failed to fetch');
     return res.json() as Promise<Timeseries[]>;
   };
@@ -147,28 +201,61 @@ export default function TimeseriesManager() {
     queryKey: ['timeseries', { page, search: debouncedSearch }],
     queryFn: () => fetchTimeseries({ page, search: debouncedSearch }),
     placeholderData: keepPreviousData,
-    enabled: !!token,
+    enabled: true,
   });
 
   const loading = isLoading; // Alias for UI compatibility
+
+  const { data: allProcesses = [] } = useQuery({
+    queryKey: ['task-processes'],
+    queryFn: () => apiFetchJson<ProcessInfo[]>('/api/task/processes'),
+    refetchInterval: (query) => {
+      const data = (query.state.data as ProcessInfo[] | undefined) ?? [];
+      const hasRunning = data.some((p) => p.status === 'running');
+      return hasRunning ? 2500 : 15000;
+    },
+    refetchIntervalInBackground: false,
+    staleTime: 3000,
+    enabled: !!token,
+  });
+
+  const latestDaily = allProcesses.find((p) => p.name.startsWith('Daily Data Update'));
+
+  useEffect(() => {
+    if (!latestDaily) return;
+
+    setUpdateMsg(latestDaily.message || (latestDaily.status === 'running' ? 'Running...' : 'Idle'));
+    setUpdating(latestDaily.status === 'running');
+
+    if (
+      latestDaily.id !== lastDailyProcessIdRef.current &&
+      latestDaily.status !== 'running'
+    ) {
+      if (latestDaily.status === 'completed') {
+        flash('Daily update completed!', 'success', { sticky: true });
+        queryClient.invalidateQueries({ queryKey: ['timeseries'] });
+      } else if (latestDaily.status === 'failed') {
+        flash(latestDaily.message || 'Daily update failed', 'error', { sticky: true });
+      }
+    }
+    lastDailyProcessIdRef.current = latestDaily.id;
+  }, [latestDaily, flash, queryClient]);
 
   // ───── Fetch Chart Data
   const { data: chartData, isLoading: chartLoading } = useQuery({
     queryKey: ['series-data', viewChartItem?.code],
     queryFn: async () => {
-      if (!viewChartItem?.code || !token) return null;
+      if (!viewChartItem?.code) return null;
       // Fetch using the advanced series API to get processed data
       const params = new URLSearchParams();
       // Use Series('CODE') to fetch
       params.set('series', `Series('${viewChartItem.code}')`);
       
-      const res = await fetch(`/api/series?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await apiFetch(`/api/series?${params}`);
       if (!res.ok) throw new Error('Failed to fetch data');
       return res.json();
     },
-    enabled: !!viewChartItem && !!token,
+    enabled: !!viewChartItem,
   });
 
   // ───── Mutations
@@ -237,14 +324,11 @@ export default function TimeseriesManager() {
 
   // ───── Update Trigger
   const handleTriggerUpdate = async () => {
-    if (updating || !token) return;
+    if (updating) return;
     try {
         setUpdating(true);
         setUpdateMsg('Starting update...');
-        const res = await fetch('/api/task/daily', { 
-            method: 'POST', 
-            headers: { Authorization: `Bearer ${token}` } 
-        });
+        const res = await apiFetch('/api/task/daily', { method: 'POST' });
         
         if (!res.ok) {
             const err = await res.json();
@@ -254,34 +338,7 @@ export default function TimeseriesManager() {
                 throw new Error(err.detail || 'Failed to start');
             }
         }
-        
-        // Start polling
-        const poll = setInterval(async () => {
-             try {
-                 const sRes = await fetch('/api/task/status');
-                 if (!sRes.ok) return;
-                 const status = await sRes.json();
-                 
-                 if (status.daily) {
-                     if (status.daily.running) {
-                         setUpdateMsg(status.daily.message || 'Running...');
-                     } else {
-                         setUpdateMsg(status.daily.message || 'Idle');
-                         if (status.daily.message?.includes('Completed')) {
-                             flash('Daily update completed!', 'success');
-                             queryClient.invalidateQueries({ queryKey: ['timeseries'] });
-                         } else if (status.daily.message?.startsWith('Failed')) {
-                             flash(status.daily.message, 'error');
-                         }
-                         setUpdating(false);
-                         clearInterval(poll);
-                     }
-                 }
-             } catch (e) {
-                 // Silently handled
-                 // Don't stop polling on transient network error
-             }
-        }, 2000);
+        queryClient.invalidateQueries({ queryKey: ['task-processes'] });
     } catch (e: any) {
         flash(e.message, 'error');
         setUpdating(false);
@@ -289,14 +346,11 @@ export default function TimeseriesManager() {
   };
 
   const handleSendEmail = async () => {
-    if (emailing || !token) return;
+    if (emailing) return;
     try {
         setEmailing(true);
         flash('Triggering email report...', 'success');
-        const res = await fetch('/api/task/report', { 
-            method: 'POST', 
-            headers: { Authorization: `Bearer ${token}` } 
-        });
+        const res = await apiFetch('/api/task/report', { method: 'POST' });
         
         if (!res.ok) {
             const err = await res.json();
@@ -359,7 +413,7 @@ export default function TimeseriesManager() {
       }
 
       const data = await res.json();
-      flash(`Task started: ${file.name}. Monitor progress in the task center.`, 'success');
+      flash(`Task started: ${file.name}. Monitor progress in the task center.`, 'success', { sticky: true });
       
     } catch (err: any) {
       flash(err.message, 'error');
@@ -374,7 +428,7 @@ export default function TimeseriesManager() {
     setDownloading(true);
     setShowDownloadMenu(false);
     const label = sources.length === 1 ? sources[0] : `${sources.length} sources`;
-    flash(`Downloading ${label} template...`, 'success');
+    flash(`Downloading ${label} template...`, 'success', { sticky: true });
     
     // Build URL — bypass Next.js proxy (can't handle large binary).
     // In dev, hit backend directly on :8000. In prod, same origin serves both.
@@ -393,7 +447,10 @@ export default function TimeseriesManager() {
     a.click();
     a.remove();
     
-    setTimeout(() => setDownloading(false), 3000);
+    setTimeout(() => {
+      setDownloading(false);
+      flash(`Download request sent for ${label}. Check your browser downloads.`, 'success', { sticky: true });
+    }, 500);
   };
 
   const toggleSource = (src: string) => {
@@ -438,99 +495,130 @@ export default function TimeseriesManager() {
                   {updateMsg || 'Updating...'}
               </div>
           )}
-          <button
-            onClick={handleTriggerUpdate}
-            disabled={updating}
-            className={`flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-white/10 ${updating ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
-            {updating ? 'Running...' : 'Update Data'}
-          </button>
 
-          <button
-            onClick={handleSendEmail}
-            disabled={emailing}
-            className={`flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-white/10 ${emailing ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {emailing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-            {emailing ? 'Sending...' : 'Email Report'}
-          </button>
-          
-          
-          <div className="w-px h-8 bg-white/10 mx-1" />
-
-          {/* Download Dropdown */}
+          {/* Actions Dropdown */}
           <div className="relative" ref={downloadMenuRef}>
             <button
-              onClick={() => setShowDownloadMenu((p) => !p)}
-              disabled={downloading}
-              className={`flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-white/10 ${downloading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              ref={actionsBtnRef}
+              onClick={() => {
+                positionActionsMenu();
+                setShowActionsMenu((p) => !p);
+                if (showActionsMenu) setShowDownloadMenu(false);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-white/10"
             >
-              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {downloading ? 'Preparing...' : 'Download Data'}
-              <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showDownloadMenu ? 'rotate-90' : ''}`} />
+              <Database className="w-4 h-4" />
+              Actions
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showActionsMenu ? 'rotate-180' : ''}`} />
             </button>
 
-            {showDownloadMenu && (
-              <div className="absolute right-0 top-full mt-2 w-60 bg-[#12141a] border border-white/10 rounded-xl shadow-2xl shadow-black/60 overflow-hidden z-50">
-                <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between">
-                  <span className="text-[10px] font-bold tracking-[2px] text-slate-500 uppercase">Select Sources</span>
-                  {availableSources.length > 0 && (
-                    <button
-                      onClick={() =>
-                        setSelectedSources((prev) =>
-                          prev.length === availableSources.length ? [] : [...availableSources]
-                        )
-                      }
-                      className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold uppercase tracking-wider"
-                    >
-                      {selectedSources.length === availableSources.length ? 'None' : 'All'}
-                    </button>
-                  )}
+            {showActionsMenu && (
+              <div
+                className="fixed w-64 bg-[#12141a] border border-white/10 rounded-xl shadow-2xl shadow-black/60 overflow-hidden z-[120]"
+                style={{ top: actionsMenuPos.top, left: actionsMenuPos.left }}
+              >
+                <div className="p-1.5">
+                  <button
+                    onClick={handleTriggerUpdate}
+                    disabled={updating}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors ${updating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
+                    {updating ? 'Running...' : 'Update Data'}
+                  </button>
+                  <button
+                    onClick={handleSendEmail}
+                    disabled={emailing}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors ${emailing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {emailing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                    {emailing ? 'Sending...' : 'Email Report'}
+                  </button>
+                  <button
+                    onClick={() => setShowDownloadMenu((p) => !p)}
+                    disabled={downloading}
+                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors ${downloading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      {downloading ? 'Preparing...' : 'Download Data'}
+                    </span>
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showDownloadMenu ? 'rotate-90' : ''}`} />
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    <Upload className="w-4 h-4" /> Upload Data
+                  </button>
+                  <button
+                    onClick={() => { setShowActionsMenu(false); setShowCreate(true); setForm({ ...EMPTY_FORM }); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-sky-300 hover:text-sky-200 hover:bg-sky-500/10 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" /> New Timeseries
+                  </button>
                 </div>
-                {availableSources.length === 0 ? (
-                  <div className="px-4 py-4 flex items-center justify-center">
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-                  </div>
-                ) : (
-                  <>
-                    <div className="py-1">
-                      {availableSources.map((src) => (
-                        <label
-                          key={src}
-                          onClick={() => toggleSource(src)}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer select-none"
+
+                {showDownloadMenu && (
+                  <div className="border-t border-white/5">
+                    <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between">
+                      <span className="text-[10px] font-bold tracking-[2px] text-slate-500 uppercase">Select Sources</span>
+                      {availableSources.length > 0 && (
+                        <button
+                          onClick={() =>
+                            setSelectedSources((prev) =>
+                              prev.length === availableSources.length ? [] : [...availableSources]
+                            )
+                          }
+                          className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold uppercase tracking-wider"
                         >
-                          <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
-                            selectedSources.includes(src)
-                              ? 'bg-sky-500 border-sky-500'
-                              : 'border-white/20 bg-white/5'
-                          }`}>
-                            {selectedSources.includes(src) && <Check className="w-3 h-3 text-white" />}
-                          </div>
-                          {src}
-                        </label>
-                      ))}
+                          {selectedSources.length === availableSources.length ? 'None' : 'All'}
+                        </button>
+                      )}
                     </div>
-                    <div className="px-3 py-2.5 border-t border-white/5">
-                      <button
-                        onClick={() => handleDownloadTemplate(selectedSources)}
-                        disabled={selectedSources.length === 0}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-sky-200 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Download {selectedSources.length > 0 ? `(${selectedSources.length})` : ''}
-                      </button>
-                    </div>
-                  </>
+                    {availableSources.length === 0 ? (
+                      <div className="px-4 py-4 flex items-center justify-center">
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="py-1 max-h-56 overflow-y-auto">
+                          {availableSources.map((src) => (
+                            <label
+                              key={src}
+                              onClick={() => toggleSource(src)}
+                              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer select-none"
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                                selectedSources.includes(src)
+                                  ? 'bg-sky-500 border-sky-500'
+                                  : 'border-white/20 bg-white/5'
+                              }`}>
+                                {selectedSources.includes(src) && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              {src}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="px-3 py-2.5 border-t border-white/5">
+                          <button
+                            onClick={() => handleDownloadTemplate(selectedSources)}
+                            disabled={selectedSources.length === 0}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-sky-200 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Download {selectedSources.length > 0 ? `(${selectedSources.length})` : ''}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             )}
           </div>
 
-          <div className="w-px h-8 bg-white/10 mx-1" />
-
-          {/* Upload */}
+          {/* Upload input (triggered by dropdown action) */}
           <input
             type="file"
             ref={fileInputRef}
@@ -538,27 +626,6 @@ export default function TimeseriesManager() {
             accept=".xlsx"
             className="hidden"
           />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition-all border border-white/10"
-          >
-            <Upload className="w-4 h-4" /> Upload Data
-          </button>
-
-          <button
-            onClick={() => { setShowCreate(true); setForm({ ...EMPTY_FORM }); }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-sky-500/20 hover:shadow-sky-500/30"
-          >
-            <Plus className="w-4 h-4" /> New Timeseries
-          </button>
-          <button
-            onClick={() => queryClient.invalidateQueries({ queryKey: ['timeseries'] })}
-            disabled={loading}
-            className="p-2.5 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl border border-white/5 transition-all"
-            aria-label="Refresh timeseries list"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
         </div>
       </div>
 
@@ -818,7 +885,17 @@ export default function TimeseriesManager() {
             role="alert"
           >
             {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-            <span className="text-sm font-medium">{toast.msg}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium">{toast.msg}</span>
+              {toast.sticky && (
+                <button
+                  onClick={() => setToast(null)}
+                  className="px-2 py-1 rounded-lg border border-current/30 text-[11px] font-semibold hover:bg-white/10 transition-colors"
+                >
+                  OK
+                </button>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -12,8 +12,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen flex flex-col relative overflow-x-hidden">
       <Navbar />
-      {/* pt-14 = 56px matches the navbar h-12 + breathing room */}
-      <div className="pt-20 flex-grow">
+      {/* Match fixed navbar height (h-12) with minimal extra offset */}
+      <div className="pt-12 flex-grow">
         {children}
       </div>
       <Footer />

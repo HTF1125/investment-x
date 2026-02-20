@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from typing import Any, Dict, List, Optional
+from datetime import datetime
+
+import pandas as pd
+import plotly.graph_objects as go
 
 
 @dataclass(frozen=True)
@@ -212,3 +216,139 @@ class Theme:
 
     def apply(self, fig):
         return chart_theme.apply(fig)
+
+    @staticmethod
+    def _trace_color(trace: go.BaseTraceType) -> str:
+        if getattr(trace, "line", None) and getattr(trace.line, "color", None):
+            return trace.line.color
+        marker = getattr(trace, "marker", None)
+        if marker and getattr(marker, "color", None):
+            if isinstance(marker.color, str):
+                return marker.color
+        return "#e5e7eb"
+
+    @staticmethod
+    def _is_datetime_x(values: Any) -> bool:
+        if values is None:
+            return False
+        try:
+            s = pd.Series(list(values)).dropna()
+            if s.empty:
+                return False
+            if pd.api.types.is_datetime64_any_dtype(s):
+                return True
+            if isinstance(s.iloc[0], (datetime, pd.Timestamp)):
+                return True
+            parsed = pd.to_datetime(s, errors="coerce")
+            return parsed.notna().mean() > 0.8
+        except Exception:
+            return False
+
+    @staticmethod
+    def _x_bounds(fig: go.Figure) -> tuple[Any, Any]:
+        all_x: list[Any] = []
+        for trace in fig.data:
+            xs = getattr(trace, "x", None)
+            if xs is None:
+                continue
+            all_x.extend([x for x in xs if x is not None])
+        if not all_x:
+            return None, None
+        return min(all_x), max(all_x)
+
+    def format_chart(self, fig: go.Figure) -> go.Figure:
+        x_min, x_max = self._x_bounds(fig)
+        x_is_datetime = self._is_datetime_x([x_min, x_max]) if x_min is not None else False
+
+        fig.update_layout(
+            margin=dict(t=50, l=0, r=0, b=0),
+            font=dict(family="Ubuntu"),
+            paper_bgcolor="#0b0f14",
+            plot_bgcolor="#0b0f14",
+            hovermode="x",
+            title=dict(
+                x=0.01,
+                y=0.98,
+                xanchor="left",
+                yanchor="top",
+                font=dict(color="#f8fafc", size=14),
+            ),
+            legend=dict(
+                x=0.01,
+                y=0.98,
+                xanchor="left",
+                yanchor="top",
+                bgcolor="rgba(15,23,42,0.65)",
+                bordercolor="rgba(148,163,184,0.35)",
+                borderwidth=1,
+                font=dict(size=10, color="#e5e7eb"),
+                itemsizing="constant",
+            ),
+        )
+
+        # Keep title/legend locked to a stable location in the paper frame.
+        fig.update_layout(title_x=0.01, title_y=0.98)
+        fig.update_xaxes(
+            showgrid=True,
+            gridcolor="rgba(148,163,184,0.10)",
+            zeroline=False,
+            tickfont=dict(color="#e5e7eb", size=10),
+            showline=True,
+            linecolor="rgba(229,231,235,0.85)",
+            linewidth=1,
+            mirror=True,
+        )
+        fig.update_yaxes(
+            showgrid=True,
+            gridcolor="rgba(148,163,184,0.10)",
+            zeroline=True,
+            zerolinewidth=2,
+            zerolinecolor="rgba(148,163,184,0.65)",
+            tickfont=dict(color="#e5e7eb", size=10),
+            title_font=dict(color="#e5e7eb", size=10),
+            showline=True,
+            linecolor="rgba(229,231,235,0.85)",
+            linewidth=1,
+            mirror=True,
+        )
+        if "yaxis2" in fig.layout:
+            fig.update_layout(
+                yaxis2=dict(
+                    tickfont=dict(color="#e5e7eb", size=10),
+                    title_font=dict(color="#e5e7eb", size=10),
+                    showline=True,
+                    linecolor="rgba(229,231,235,0.85)",
+                    linewidth=1,
+                    mirror=True,
+                )
+            )
+
+        for trace in fig.data:
+            color = self._trace_color(trace)
+            hover_tpl = "%{fullData.name} : %{y:.2f}<extra></extra>"
+
+            trace.update(
+                hovertemplate=hover_tpl,
+                hoverlabel=dict(
+                    bgcolor=color,
+                    bordercolor=color,
+                    font=dict(color="#0f172a"),
+                ),
+            )
+
+        # Add 5% right-side breathing room on the x-axis where axis range is continuous.
+        if x_min is not None and x_max is not None and x_min != x_max:
+            try:
+                if x_is_datetime:
+                    x0 = pd.to_datetime(x_min)
+                    x1 = pd.to_datetime(x_max)
+                    pad = (x1 - x0) * 0.05
+                    fig.update_xaxes(range=[x0, x1 + pad])
+                    fig.update_xaxes(tickformat="%b %d, %Y")
+                elif isinstance(x_min, (int, float)) and isinstance(x_max, (int, float)):
+                    pad = (x_max - x_min) * 0.05
+                    fig.update_xaxes(range=[x_min, x_max + pad])
+            except Exception:
+                pass
+
+        return fig

@@ -61,9 +61,16 @@ CHANNELS_TO_SCRAPE = [
 ]
 
 
-async def scrape_all_channels():
-    """Scrape all channels defined in CHANNELS_TO_SCRAPE."""
-    for channel in CHANNELS_TO_SCRAPE:
+async def scrape_all_channels(progress_cb=None):
+    """Scrape all channels defined in CHANNELS_TO_SCRAPE.
+
+    Args:
+        progress_cb: Optional callback(current, total, channel_name) for progress updates.
+    """
+    total = len(CHANNELS_TO_SCRAPE)
+    for idx, channel in enumerate(CHANNELS_TO_SCRAPE, start=1):
+        if progress_cb:
+            progress_cb(idx, total, channel)
         # Add a small delay between channels to be polite
         await scrape_channel(channel, limit=50)
         await asyncio.sleep(2)

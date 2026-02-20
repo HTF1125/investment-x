@@ -2,13 +2,13 @@
 
 import React from 'react';
 import dynamic from 'next/dynamic';
-import { Loader2, Copy, Check } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 
 const ChartSkeleton = () => (
-  <div className="w-full h-full p-6 flex flex-col gap-4 bg-[#0a0a0a]/40 rounded-xl animate-pulse overflow-hidden relative min-h-[350px]">
+  <div className="w-full h-full p-6 flex flex-col gap-4 bg-[#0a0a0a]/40 rounded-xl animate-pulse overflow-hidden relative min-h-[290px]">
     {/* Grid Lines Pattern */}
     <div className="absolute inset-x-8 inset-y-12 flex flex-col justify-between opacity-10">
       {[...Array(8)].map((_, i) => (
@@ -106,9 +106,10 @@ const cleanFigure = (data: any, theme: string) => {
 interface ChartProps {
   id: string;
   initialFigure?: any;
+  copySignal?: number;
 }
 
-export default function Chart({ id, initialFigure }: ChartProps) {
+export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps) {
   const { theme } = useTheme();
   const queryClient = useQueryClient();
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
@@ -140,7 +141,7 @@ export default function Chart({ id, initialFigure }: ChartProps) {
     enabled: !!id && isVisible,
   });
 
-  const handleCopy = async () => {
+  const handleCopy = React.useCallback(async () => {
     if (!graphDiv || copyState !== 'idle') return;
     setCopyState('copying');
     try {
@@ -160,18 +161,26 @@ export default function Chart({ id, initialFigure }: ChartProps) {
         // Clipboard write may fail in insecure contexts — degrade silently
         setCopyState('idle');
     }
-  };
+  }, [graphDiv, copyState]);
+
+  const lastCopySignalRef = React.useRef(copySignal);
+  React.useEffect(() => {
+    if (copySignal !== lastCopySignalRef.current) {
+      lastCopySignalRef.current = copySignal;
+      handleCopy();
+    }
+  }, [copySignal, handleCopy]);
 
   if (!isVisible) {
     return (
-      <div ref={containerRef} className="h-[350px] w-full">
+      <div ref={containerRef} className="h-[290px] w-full">
         <ChartSkeleton />
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full min-h-[350px] relative group flex flex-col">
+    <div ref={containerRef} className="w-full h-full min-h-[290px] relative group flex flex-col">
       <AnimatePresence mode="wait">
         {isLoading || !figure ? (
           <motion.div
@@ -192,21 +201,6 @@ export default function Chart({ id, initialFigure }: ChartProps) {
             transition={{ duration: 0.5, ease: 'easeOut' }}
             className="w-full h-full"
           >
-            <button
-              onClick={handleCopy}
-              disabled={copyState !== 'idle'}
-              className="absolute top-2 right-2 z-10 p-2 bg-background/60 hover:bg-background/80 text-muted-foreground hover:text-foreground rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-lg border border-border"
-              title="Copy Chart to Clipboard"
-            >
-              {copyState === 'copying' ? (
-                <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
-              ) : copyState === 'done' ? (
-                <Check className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-            
             <Plot
               data={figure.data}
               layout={{

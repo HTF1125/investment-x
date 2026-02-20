@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 #     EconomicCalendar.insert_many(objs)
 
 
-def update_yahoo_data():
+def update_yahoo_data(progress_cb=None, start_index: int = 0, total_count: int | None = None):
 
     logger.info("Starting Yahoo data update process.")
 
@@ -59,12 +59,16 @@ def update_yahoo_data():
                 {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
             )
 
-        for ts_data in ts_data_list:
+        for idx, ts_data in enumerate(ts_data_list, start=1):
             ts_id = ts_data["id"]
             ts_code = ts_data["code"]
             ts_source_code = ts_data["source_code"]
 
             count_total += 1
+            if progress_cb:
+                current = start_index + idx
+                total = total_count if total_count is not None else len(ts_data_list)
+                progress_cb(current, total, ts_code)
             if ts_source_code is None:
                 logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
                 count_skipped_no_ticker += 1
@@ -102,7 +106,7 @@ def update_yahoo_data():
     )
 
 
-def update_fred_data():
+def update_fred_data(progress_cb=None, start_index: int = 0, total_count: int | None = None):
 
     logger.info("Starting Fred data update process.")
 
@@ -125,12 +129,16 @@ def update_fred_data():
                 {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
             )
 
-        for ts_data in ts_data_list:
+        for idx, ts_data in enumerate(ts_data_list, start=1):
             ts_id = ts_data["id"]
             ts_code = ts_data["code"]
             ts_source_code = ts_data["source_code"]
 
             count_total += 1
+            if progress_cb:
+                current = start_index + idx
+                total = total_count if total_count is not None else len(ts_data_list)
+                progress_cb(current, total, ts_code)
             if ts_source_code is None:
                 logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
                 count_skipped_no_ticker += 1
@@ -166,7 +174,7 @@ def update_fred_data():
     )
 
 
-def update_naver_data():
+def update_naver_data(progress_cb=None, start_index: int = 0, total_count: int | None = None):
 
     logger.info("Starting Naver data update process.")
 
@@ -189,12 +197,16 @@ def update_naver_data():
                 {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
             )
 
-        for ts_data in ts_data_list:
+        for idx, ts_data in enumerate(ts_data_list, start=1):
             ts_id = ts_data["id"]
             ts_code = ts_data["code"]
             ts_source_code = ts_data["source_code"]
 
             count_total += 1
+            if progress_cb:
+                current = start_index + idx
+                total = total_count if total_count is not None else len(ts_data_list)
+                progress_cb(current, total, ts_code)
             if ts_source_code is None:
                 logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
                 count_skipped_no_ticker += 1
@@ -384,22 +396,32 @@ def daily():
     update_naver_data()
 
 
-def refresh_all_charts():
-    """Fetches all charts and forces a re-render to update cached figures."""
+def refresh_all_charts(progress_cb=None):
+    """Fetches all charts and forces a re-render to update cached figures.
+
+    Args:
+        progress_cb: Optional callback(current, total, chart_code) for progress updates.
+    """
     from ix.db.conn import Session
-    from ix.db.models.chart import Chart
+    from ix.db.models import CustomChart
+    from ix.api.routers.custom import execute_custom_code, get_clean_figure_json
 
     with Session() as s:
-        charts = s.query(Chart).all()
-        logger.info(f"Found {len(charts)} charts to refresh.")
+        charts = s.query(CustomChart).order_by(CustomChart.rank.asc()).all()
+        total = len(charts)
+        logger.info(f"Found {total} charts to refresh.")
 
-        for chart in charts:
+        for idx, chart in enumerate(charts, start=1):
             try:
-                logger.info(f"Refreshing {chart.code} ({chart.category})...")
-                # Force update simply by calling update_figure which calls render(force_update=True)
-                chart.update_figure()
+                if progress_cb:
+                    progress_cb(idx, total, chart.name or chart.id)
+                logger.info(
+                    f"Refreshing [{idx}/{total}] {chart.name or chart.id} ({chart.category})..."
+                )
+                fig = execute_custom_code(chart.code)
+                chart.figure = get_clean_figure_json(fig)
             except Exception as e:
-                logger.error(f"Failed to refresh {chart.code}: {e}")
+                logger.error(f"Failed to refresh {chart.name or chart.id}: {e}")
 
         s.commit()
         logger.info("All charts processed.")

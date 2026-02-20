@@ -185,7 +185,6 @@ try:
         evaluation,
         task,
         risk,
-        charts,
         news,
         custom,
         insights,
@@ -198,7 +197,6 @@ try:
     app.include_router(evaluation.router, prefix="/api", tags=["Evaluation"])
     app.include_router(task.router, prefix="/api", tags=["Tasks"])
     app.include_router(risk.router, prefix="/api", tags=["Risk"])
-    app.include_router(charts.router, prefix="/api", tags=["Charts"])
     app.include_router(news.router, prefix="/api", tags=["News"])
     app.include_router(custom.router, prefix="/api", tags=["Custom"])
     app.include_router(insights.router, prefix="/api", tags=["Insights"])
@@ -207,16 +205,7 @@ try:
     app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
     logger.info("Routers registered successfully")
 
-    # Mount Dash app at root "/" AFTER all API routers
-    # This ensures /api/... routes take precedence over Dash's catch-all
-    try:
-        from starlette.middleware.wsgi import WSGIMiddleware
-        from ix.web.app import dash_app
-
-        app.mount("/dash", WSGIMiddleware(dash_app.server))
-        logger.info("Dash app mounted at /dash")
-    except Exception as e:
-        logger.warning(f"Failed to mount Dash app: {e}")
+    # Legacy Dash chartbook mount removed with charts table decommission.
 
 except Exception as e:
     import traceback
