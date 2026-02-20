@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import date, datetime
@@ -45,7 +45,8 @@ def list_insights(
     """
     try:
         from sqlalchemy import or_
-        from sqlalchemy.orm import defer
+
+        # defer is now imported at top level
 
         query = db.query(Insights).options(defer(Insights.pdf_content))
 
@@ -85,8 +86,13 @@ async def upload_insight(
         # 1. Calculate Content Hash to detect duplicates
         file_hash = hashlib.sha256(content).hexdigest()
 
-        # 2. Check for existing duplicate
-        existing = db.query(Insights).filter(Insights.hash == file_hash).first()
+        # 2. Check for existing duplicate (defer pdf loading for performance)
+        existing = (
+            db.query(Insights)
+            .options(defer(Insights.pdf_content))
+            .filter(Insights.hash == file_hash)
+            .first()
+        )
 
         # 3. Parse Metadata (Same logic as before)
         filename = file.filename
@@ -179,7 +185,7 @@ class InsightUpdate(BaseModel):
     status: Optional[str] = None
 
 
-@router.patch("/insights/{insight_id}")
+@router.patch("/insights/{insight_id}", response_model=InsightSchema)
 def update_insight(
     insight_id: str,
     data: InsightUpdate,
@@ -187,19 +193,39 @@ def update_insight(
     current_user: User = Depends(get_current_user),
 ):
     """Updates metadata for an insight. Restricted to admins."""
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin permissions required")
+    try:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Admin permissions required")
 
-    insight = db.query(Insights).filter(Insights.id == insight_id).first()
-    if not insight:
-        raise HTTPException(status_code=404, detail="Insight not found")
+        insight = (
+            db.query(Insights)
+            .options(defer(Insights.pdf_content))
+            .filter(Insights.id == insight_id)
+            .first()
+        )
+        if not insight:
+            raise HTTPException(status_code=404, detail="Insight not found")
 
-    for key, value in data.dict(exclude_unset=True).items():
-        setattr(insight, key, value)
+        for key, value in data.dict(exclude_unset=True).items():
+            setattr(insight, key, value)
 
-    db.commit()
-    db.refresh(insight)
-    return insight
+        db.commit()
+        # Refresh only non-binary attributes to avoid encoding errors and unnecessary data transfer
+        db.refresh(
+            insight,
+            attribute_names=[
+                "published_date",
+                "issuer",
+                "name",
+                "summary",
+                "status",
+                "created",
+            ],
+        )
+        return insight
+    except Exception as e:
+        logger.exception(f"Update failed for insight {insight_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Backend Error: {str(e)}")
 
 
 @router.delete("/insights/{insight_id}")
@@ -212,7 +238,12 @@ def delete_insight(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin permissions required")
 
-    insight = db.query(Insights).filter(Insights.id == insight_id).first()
+    insight = (
+        db.query(Insights)
+        .options(defer(Insights.pdf_content))
+        .filter(Insights.id == insight_id)
+        .first()
+    )
     if not insight:
         raise HTTPException(status_code=404, detail="Insight not found")
 

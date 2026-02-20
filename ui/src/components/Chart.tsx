@@ -5,25 +5,92 @@ import dynamic from 'next/dynamic';
 import { Loader2, Copy, Check } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { useTheme } from '@/context/ThemeContext';
+
+const ChartSkeleton = () => (
+  <div className="w-full h-full p-6 flex flex-col gap-4 bg-[#0a0a0a]/40 rounded-xl animate-pulse overflow-hidden relative min-h-[350px]">
+    {/* Grid Lines Pattern */}
+    <div className="absolute inset-x-8 inset-y-12 flex flex-col justify-between opacity-10">
+      {[...Array(8)].map((_, i) => (
+        <div key={i} className="h-px bg-sky-500/30 w-full" />
+      ))}
+    </div>
+    
+    {/* Body skeleton - Dynamic Bars */}
+    <div className="flex-1 flex items-end gap-3 px-8 pb-12 relative z-10 transition-all duration-1000">
+      {[40, 70, 45, 90, 65, 30, 85, 50, 60, 40].map((h, i) => (
+        <div 
+          key={i} 
+          className="flex-1 rounded-t-md bg-sky-500/5 border border-sky-500/10"
+          style={{ height: `${h}%`, animationDelay: `${i * 100}ms` }} 
+        />
+      ))}
+    </div>
+
+    {/* Center Glow */}
+    <div className="absolute inset-0 flex items-center justify-center z-20">
+      <div className="p-4 bg-background/60 backdrop-blur-xl rounded-2xl border border-white/5 shadow-2xl">
+        <Loader2 className="w-6 h-6 text-sky-500 animate-spin" />
+      </div>
+    </div>
+  </div>
+);
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-[450px] w-full bg-white/5 rounded-xl animate-pulse">
-      <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
-    </div>
-  ),
+  loading: () => <ChartSkeleton />,
 }) as any;
 
-const cleanFigure = (data: any) => {
+import { motion, AnimatePresence } from 'framer-motion';
+
+const cleanFigure = (data: any, theme: string) => {
     if (!data) return data;
-    const cleaned = { ...data };
+    const cleaned = JSON.parse(JSON.stringify(data)); // Deep clone
+    const isLight = theme === 'light';
+    const textColor = isLight ? 'rgb(15 23 42)' : 'rgb(248 250 252)';
+    const gridColor = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
+
     if (cleaned.layout) {
       cleaned.layout.autosize = true;
       cleaned.layout.width = undefined;
       cleaned.layout.height = undefined;
       cleaned.layout.paper_bgcolor = 'rgba(0,0,0,0)';
       cleaned.layout.plot_bgcolor = 'rgba(0,0,0,0)';
+      
+      const legendBg = isLight ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)';
+      const borderColor = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+      
+      // Theme-aware typography
+      cleaned.layout.font = { ...cleaned.layout.font, color: textColor, family: 'Inter, sans-serif' };
+      
+      const axes = ['xaxis', 'yaxis', 'xaxis2', 'yaxis2', 'xaxis3', 'yaxis3', 'xaxis4', 'yaxis4'];
+      axes.forEach(ax => {
+        if (cleaned.layout[ax]) {
+          cleaned.layout[ax].gridcolor = gridColor;
+          cleaned.layout[ax].zerolinecolor = gridColor;
+          cleaned.layout[ax].tickfont = { color: textColor, size: 10 };
+          cleaned.layout[ax].title = { 
+            ...cleaned.layout[ax].title, 
+            font: { color: textColor, size: 11, weight: 600 } 
+          };
+        }
+      });
+
+      if (cleaned.layout.legend) {
+        cleaned.layout.legend.font = { color: textColor, size: 10 };
+        cleaned.layout.legend.bgcolor = legendBg;
+        cleaned.layout.legend.bordercolor = borderColor;
+        cleaned.layout.legend.borderwidth = 1;
+      }
+
+      // Tooltip/Hover Styling
+      cleaned.layout.hoverlabel = {
+        bgcolor: isLight ? 'white' : 'rgb(15 23 42)',
+        bordercolor: borderColor,
+        font: { color: textColor, family: 'Inter, sans-serif', size: 12 },
+        align: 'left'
+      };
+
       // Preserve the chart's intended margins but cap them for card display
       const orig = cleaned.layout.margin || {};
       cleaned.layout.margin = {
@@ -42,6 +109,7 @@ interface ChartProps {
 }
 
 export default function Chart({ id, initialFigure }: ChartProps) {
+  const { theme } = useTheme();
   const queryClient = useQueryClient();
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
   const [copyState, setCopyState] = React.useState<'idle' | 'copying' | 'done'>('idle');
@@ -51,12 +119,12 @@ export default function Chart({ id, initialFigure }: ChartProps) {
   // Sync internal cache when initialFigure prop changes
   React.useEffect(() => {
     if (initialFigure && id) {
-      queryClient.setQueryData(['chart-figure', id], cleanFigure(initialFigure));
+      queryClient.setQueryData(['chart-figure', id, theme], cleanFigure(initialFigure, theme));
     }
-  }, [id, initialFigure, queryClient]);
+  }, [id, initialFigure, queryClient, theme]);
   
   const { data: figure, isLoading, error } = useQuery({
-    queryKey: ['chart-figure', id],
+    queryKey: ['chart-figure', id, theme],
     queryFn: async () => {
       const res = await apiFetch(`/api/v1/dashboard/charts/${id}/figure`);
       
@@ -65,9 +133,9 @@ export default function Chart({ id, initialFigure }: ChartProps) {
       }
       
       const data = await res.json();
-      return cleanFigure(data);
+      return cleanFigure(data, theme);
     },
-    initialData: () => cleanFigure(initialFigure),
+    initialData: () => cleanFigure(initialFigure, theme),
     staleTime: 1000 * 60 * 10, // 10 minutes cache
     enabled: !!id && isVisible,
   });
@@ -96,61 +164,72 @@ export default function Chart({ id, initialFigure }: ChartProps) {
 
   if (!isVisible) {
     return (
-      <div ref={containerRef} className="flex items-center justify-center h-[350px] w-full bg-white/5 rounded-xl animate-pulse">
-        <Loader2 className="w-8 h-8 text-sky-400/10 animate-spin" />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-[350px] w-full bg-white/5 rounded-xl animate-pulse">
-        <Loader2 className="w-8 h-8 text-sky-400/20 animate-spin" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-[350px] w-full bg-rose-500/5 rounded-xl border border-rose-500/10 text-rose-500 text-xs font-mono">
-        EXECUTION_ERROR: {id}
+      <div ref={containerRef} className="h-[350px] w-full">
+        <ChartSkeleton />
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full min-h-0 relative group">
-      <button
-        onClick={handleCopy}
-        disabled={copyState !== 'idle'}
-        className="absolute top-2 right-2 z-10 p-2 bg-black/60 hover:bg-black/80 text-slate-300 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-lg border border-white/10"
-        title="Copy Chart to Clipboard"
-      >
-        {copyState === 'copying' ? (
-          <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
-        ) : copyState === 'done' ? (
-          <Check className="w-4 h-4 text-emerald-400" />
+    <div ref={containerRef} className="w-full h-full min-h-[350px] relative group flex flex-col">
+      <AnimatePresence mode="wait">
+        {isLoading || !figure ? (
+          <motion.div
+            key="skeleton"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="h-full w-full"
+          >
+            <ChartSkeleton />
+          </motion.div>
         ) : (
-          <Copy className="w-4 h-4" />
+          <motion.div
+            key="chart"
+            initial={{ opacity: 0, scale: 0.99, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            className="w-full h-full"
+          >
+            <button
+              onClick={handleCopy}
+              disabled={copyState !== 'idle'}
+              className="absolute top-2 right-2 z-10 p-2 bg-background/60 hover:bg-background/80 text-muted-foreground hover:text-foreground rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-lg border border-border"
+              title="Copy Chart to Clipboard"
+            >
+              {copyState === 'copying' ? (
+                <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
+              ) : copyState === 'done' ? (
+                <Check className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+            
+            <Plot
+              data={figure.data}
+              layout={{
+                ...figure.layout,
+                autosize: true
+              }}
+              config={{
+                responsive: true,
+                displayModeBar: false,
+                displaylogo: false,
+              }}
+              style={{ width: '100%', height: '100%' }}
+              useResizeHandler={true}
+              onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
+            />
+          </motion.div>
         )}
-      </button>
-      
-      {figure && isVisible && (
-        <Plot
-          data={figure.data}
-          layout={{
-            ...figure.layout,
-            autosize: true
-          }}
-          config={{
-            responsive: true,
-            displayModeBar: false, // Cleaner display
-            displaylogo: false,
-          }}
-          style={{ width: '100%', height: '100%' }}
-          useResizeHandler={true}
-          onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
-        />
+      </AnimatePresence>
+
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-rose-500/5 rounded-xl border border-rose-500/10 text-rose-500 text-xs font-mono">
+          EXECUTION_ERROR: {id}
+        </div>
       )}
     </div>
   );

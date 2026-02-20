@@ -81,15 +81,15 @@ export default function IntelPage() {
                 <Radio className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white tracking-tight">Intelligence Feed</h1>
-                <p className="text-xs text-slate-500 font-mono tracking-wider uppercase">Telegram Channel Aggregator • Real-time</p>
+                <h1 className="text-2xl font-bold text-foreground tracking-tight">Intelligence Feed</h1>
+                <p className="text-xs text-muted-foreground font-mono tracking-wider uppercase">Telegram Channel Aggregator • Real-time</p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
               <Link 
-                href="/intel/research"
-                className="flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl text-sm font-semibold transition-all border border-white/10 group"
+                href="/research"
+                className="flex items-center gap-2 px-5 py-2.5 bg-secondary/20 hover:bg-secondary/30 text-foreground rounded-xl text-sm font-semibold transition-all border border-border/50 group"
               >
                 <FileText className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
                 Research Library

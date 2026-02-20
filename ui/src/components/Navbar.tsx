@@ -2,14 +2,16 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { 
   User as UserIcon, LogOut, LogIn, Database, Radio, 
   Menu, X, Layout, Cpu, Hexagon, Bell, ChevronDown,
-  Settings, Shield
+  Settings, Shield, Sun, Moon, Search
 } from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
+import { useTheme } from '@/context/ThemeContext';
 import { AnimatePresence, motion } from 'framer-motion';
 
 interface NavLinkProps {
@@ -34,8 +36,8 @@ function NavLink({ href, children, onClick, className = '', icon }: NavLinkProps
       className={`
         px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-2 group relative
         ${isActive
-          ? 'text-white bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.05)] border border-white/10'
-          : 'text-slate-500 hover:text-slate-200 hover:bg-white/5 border border-transparent'
+          ? 'text-foreground'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent/10 border border-transparent'
         }
         ${className}
       `}
@@ -65,12 +67,12 @@ function StatusIndicators() {
         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
         <span className="text-emerald-500/80 uppercase">Live</span>
       </div>
-      <div className="w-px h-3 bg-white/10" />
-      <span className="text-slate-500 uppercase">Seoul</span>
+      <div className="w-px h-3 bg-border" />
+      <span className="text-muted-foreground uppercase">Seoul</span>
       {mounted && (
         <>
-          <div className="w-px h-3 bg-white/10" />
-          <span className="text-slate-400 tabular-nums font-semibold">
+          <div className="w-px h-3 bg-border" />
+          <span className="text-foreground tabular-nums font-semibold">
             {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
           </span>
         </>
@@ -109,10 +111,10 @@ function UserDropdown() {
       <button
         onClick={() => setOpen((v) => !v)}
         className={`
-          flex items-center gap-2 px-1.5 py-1 rounded-xl border transition-all
+          flex items-center gap-2 px-1.5 py-1 rounded-xl border transition-all h-9
           ${open
-            ? 'bg-white/10 border-white/15 shadow-lg shadow-indigo-500/10'
-            : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/15'
+            ? 'bg-accent/20 border-accent/40 shadow-lg shadow-indigo-500/10'
+            : 'bg-secondary/20 border-border/50 hover:bg-accent/10 hover:border-border'
           }
         `}
       >
@@ -121,10 +123,10 @@ function UserDropdown() {
           {initials}
         </div>
         <div className="hidden sm:flex flex-col items-start leading-none pr-1">
-          <span className="text-[11px] font-bold text-slate-200">{user?.first_name || 'Operator'}</span>
-          <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">{user?.email?.split('@')[0]}</span>
+          <span className="text-[11px] font-bold text-foreground">{user?.first_name || 'Operator'}</span>
+          <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-tighter">{user?.email?.split('@')[0]}</span>
         </div>
-        <ChevronDown className={`w-3 h-3 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${open ? 'rotate-180 text-foreground' : ''}`} />
       </button>
 
       {/* Dropdown */}
@@ -135,19 +137,20 @@ function UserDropdown() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="absolute right-0 top-full mt-2 w-80 bg-[#0a0f1e]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 z-[200] overflow-hidden"
+            className="absolute right-0 top-full mt-2 w-80 !bg-white dark:!bg-slate-950 border border-border rounded-2xl shadow-2xl z-[200] overflow-hidden !opacity-100"
+            style={{ backgroundColor: 'rgb(var(--background))' }}
           >
             {/* User header */}
-            <div className="p-4 border-b border-white/[0.06] bg-gradient-to-r from-indigo-500/5 to-sky-500/5">
+            <div className="p-4 border-b border-border/50 bg-gradient-to-r from-primary/5 to-secondary/5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-indigo-500/20">
                   {initials}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-white truncate">
+                  <div className="text-sm font-bold text-foreground truncate">
                     {user?.first_name || 'Operator'} {user?.last_name || ''}
                   </div>
-                  <div className="text-[11px] text-slate-500 font-mono truncate">{user?.email}</div>
+                  <div className="text-[11px] text-muted-foreground font-mono truncate">{user?.email}</div>
                 </div>
                 {user?.is_admin && (
                   <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md flex items-center gap-1">
@@ -174,8 +177,31 @@ function UserDropdown() {
   );
 }
 
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  
+  if (!mounted) return <div className="w-8 h-8" />; // Placeholder to avoid hydration mismatch
+
+  return (
+    <button
+      onClick={toggleTheme}
+      className="flex items-center justify-center w-9 h-9 rounded-xl border border-border/50 bg-secondary/20 hover:bg-accent/10 hover:border-border transition-all text-muted-foreground hover:text-foreground shadow-sm"
+      title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+    >
+      {theme === 'dark' ? (
+        <Sun className="w-4 h-4" />
+      ) : (
+        <Moon className="w-4 h-4" />
+      )}
+    </button>
+  );
+}
+
 export default function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
+  const { theme } = useTheme();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const pathname = usePathname();
 
@@ -184,25 +210,28 @@ export default function Navbar() {
   }, [pathname]);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[100] h-12 bg-[#05070c]/80 backdrop-blur-2xl border-b border-white/[0.05]">
+    <nav className="fixed top-0 left-0 right-0 z-[100] h-12 bg-white dark:bg-black border-b border-border/50">
       <div className="max-w-[1920px] mx-auto px-4 h-full flex items-center justify-between gap-4">
         
         {/* LEFT: Logo + Nav Links */}
         <div className="flex items-center gap-4 shrink-0">
-            <Link href="/" className="flex items-center gap-2 group">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-600 to-sky-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-                    <Hexagon className="w-3.5 h-3.5 text-white fill-white/20" />
-                </div>
-                <div className="hidden sm:flex flex-col leading-none">
-                    <span className="text-xs font-black text-white tracking-tighter uppercase">Investment<span className="text-indigo-400">X</span></span>
-                    <span className="text-[8px] font-mono text-slate-500 uppercase tracking-[0.2em]">Core.Nexus</span>
-                </div>
+            <Link href="/" className="flex items-center group py-1">
+                <Image 
+                    src={theme === 'dark' ? '/investment-x-logo-light.svg' : '/investment-x-logo-dark.svg'}
+                    alt="Investment-X Logo"
+                    width={220}
+                    height={22}
+                    className="h-5 w-auto transition-opacity"
+                    priority
+                    unoptimized
+                />
             </Link>
 
             {/* Desktop Navigation */}
-            <div className="hidden lg:flex items-center gap-1 p-0.5 bg-black/20 rounded-lg border border-white/5">
+            <div className="hidden md:flex items-center gap-1 p-0.5 rounded-lg">
                 <NavLink href="/" icon={<Layout className="w-3 h-3" />}>Dashboard</NavLink>
                 <NavLink href="/intel" icon={<Radio className="w-3 h-3" />}>Intel</NavLink>
+                <NavLink href="/research" icon={<Search className="w-3 h-3" />}>Research</NavLink>
                 {user?.is_admin && (
                   <NavLink href="/admin/timeseries" icon={<Database className="w-3 h-3" />}>System</NavLink>
                 )}
@@ -210,12 +239,13 @@ export default function Navbar() {
         </div>
 
         {/* CENTER: Status */}
-        <div className="hidden lg:flex items-center gap-4 flex-1 justify-center">
+        <div className="hidden md:flex items-center gap-4 flex-1 justify-center">
           <StatusIndicators />
         </div>
 
         {/* RIGHT: User / Login + Mobile Menu */}
         <div className="flex items-center gap-3 shrink-0">
+          <ThemeToggle />
           {isAuthenticated && <TaskNotifications />}
           
           {isAuthenticated ? (
@@ -231,7 +261,7 @@ export default function Navbar() {
 
           {/* Mobile Menu Button */}
           <button 
-              className="lg:hidden p-2 text-slate-400 hover:text-white transition-colors"
+              className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl border border-border/50 bg-secondary/20 hover:bg-accent/10 hover:border-border transition-all text-muted-foreground hover:text-foreground shadow-sm"
               onClick={() => setMenuOpen(!menuOpen)}
           >
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -246,11 +276,13 @@ export default function Navbar() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="lg:hidden absolute top-12 left-0 right-0 bg-[#05070c] border-b border-white/10 p-6 flex flex-col gap-4 shadow-2xl z-[90]"
+            className="md:hidden absolute top-12 left-0 right-0 !bg-white dark:!bg-black border-b border-border p-6 flex flex-col gap-4 shadow-3xl z-[90] !opacity-100"
+            style={{ backgroundColor: 'rgb(var(--background))' }}
           >
                <div className="flex flex-col gap-2">
                   <MobileNavLink href="/" icon={<Layout className="w-4 h-4" />}>Dashboard</MobileNavLink>
                   <MobileNavLink href="/intel" icon={<Radio className="w-4 h-4" />}>Intel Feed</MobileNavLink>
+                  <MobileNavLink href="/research" icon={<Search className="w-4 h-4" />}>Research</MobileNavLink>
                   {user?.is_admin && (
                     <MobileNavLink href="/admin/timeseries" icon={<Database className="w-4 h-4" />}>System Admin</MobileNavLink>
                   )}
@@ -290,8 +322,8 @@ function MobileNavLink({ href, children, icon }: { href: string; children: React
       className={`
         flex items-center gap-3 px-4 py-3 rounded-xl font-mono text-sm transition-all
         ${isActive
-          ? 'bg-indigo-500/10 text-white border border-indigo-500/20'
-          : 'text-slate-400 hover:text-slate-200'
+          ? 'bg-primary/10 text-foreground border border-primary/20'
+          : 'text-muted-foreground hover:text-foreground'
         }
       `}
     >

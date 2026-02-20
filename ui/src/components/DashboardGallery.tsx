@@ -5,11 +5,12 @@ import {
   TrendingUp, Search, Layers, X, 
   Plus, Edit2, CheckCircle2, GripVertical, Eye, EyeOff, Loader2, RotateCcw,
   MoreVertical, ArrowUp, ArrowDown, ArrowUpToLine,
-  FileDown, Monitor, Check, Info, RefreshCw
+  FileDown, Monitor, Check, Info, RefreshCw, LayoutGrid, List as ListIcon,
+  ChevronDown
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { Reorder, motion, AnimatePresence, useDragControls } from 'framer-motion';
+import { Reorder, motion, AnimatePresence, useDragControls, DragControls } from 'framer-motion';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import Chart from './Chart';
 
@@ -24,6 +25,7 @@ interface ChartMeta {
   code?: string;
   figure?: any; // Prefetched figure data
 }
+
 interface ChartCardProps {
   chart: ChartMeta;
   isAdmin: boolean;
@@ -34,7 +36,9 @@ interface ChartCardProps {
   index: number;
   totalCharts: number;
   onOpenStudio?: (chartId: string | null) => void;
+  dragControls?: DragControls;
 }
+
 const ChartCard = React.memo(function ChartCard({ 
   chart, 
   isAdmin, 
@@ -44,7 +48,8 @@ const ChartCard = React.memo(function ChartCard({
   onRankChange,
   index,
   totalCharts,
-  onOpenStudio
+  onOpenStudio,
+  dragControls
 }: ChartCardProps) {
   // Viewport-based lazy rendering
   const cardRef = useRef<HTMLDivElement>(null);
@@ -54,8 +59,15 @@ const ChartCard = React.memo(function ChartCard({
     const el = cardRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setIsInView(true); observer.disconnect(); } },
-      { rootMargin: '200px' } // pre-load 200px before entering viewport
+      ([entry]) => { 
+        if (entry.isIntersecting) { 
+          // Add a small randomized delay to prevent CPU spikes when multiple cards intersect
+          const delay = Math.random() * 200;
+          setTimeout(() => setIsInView(true), delay);
+          observer.disconnect(); 
+        } 
+      },
+      { rootMargin: '400px', threshold: 0.01 } // Proactive loading
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -75,71 +87,80 @@ const ChartCard = React.memo(function ChartCard({
     }
   };
 
-  const content = (
-    <>
+  const renderRankInput = () => (
+    isAdmin && isReorderable && (
+      <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-mono shrink-0 transition-colors ${
+        isModified ? 'bg-amber-500/20 border-amber-500/40' : 'bg-sky-500/10 border-sky-500/20'
+      }`}>
+        <input
+          type="number"
+          value={localRank}
+          onChange={(e) => setLocalRank(parseInt(e.target.value) || 1)}
+          onBlur={handleRankSubmit}
+          onKeyDown={(e) => e.key === 'Enter' && handleRankSubmit()}
+          onClick={(e) => e.stopPropagation()}
+          className={`w-8 bg-transparent focus:outline-none text-center font-bold appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+            isModified ? 'text-amber-400' : 'text-sky-400'
+          }`}
+        />
+        <span className="text-slate-600">/</span>
+        <span className="text-slate-500">{totalCharts}</span>
+      </div>
+    )
+  );
+
+  const renderVisibilityToggle = () => (
+    isAdmin && (
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onTogglePdf(chart.id, !chart.export_pdf);
+        }}
+        className={`p-1 transition-all rounded hover:bg-white/5 shrink-0 ${chart.export_pdf ? 'text-emerald-400' : 'text-slate-600'}`}
+        title={chart.export_pdf ? "Public (Live on Dashboard)" : "Private (Draft/Admin Only)"}
+      >
+        {chart.export_pdf ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+      </button>
+    )
+  );
+
+  const renderName = () => (
+    isAdmin ? (
+      <button
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenStudio?.(chart.id); }}
+        className="group/name flex items-center gap-2 min-w-0 overflow-hidden text-left"
+        title="Edit in Studio"
+      >
+        <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/20 group-hover/name:bg-sky-500/20 group-hover/name:text-sky-300 transition-all truncate">
+          {chart.name}
+        </span>
+      </button>
+    ) : (
+      <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/10 truncate">
+        {chart.name}
+      </span>
+    )
+  );
+
+    const className = `glass-card overflow-hidden flex flex-col group transition-all duration-300 hover:border-sky-500/30 hover:shadow-sky-500/5 relative h-full min-h-[450px]`;
+
+  // Grid View Content (Hardcoded)
+  return (
+    <div className={className}>
       {/* Card Header */}
-      <div className="px-4 py-3 flex items-center justify-between border-b border-white/5 bg-white/[0.02] relative">
+      <div className="px-4 py-3 flex items-center justify-between border-b border-border/50 bg-card/10 relative">
          <div className="flex items-center gap-3 min-w-0 z-10">
-            {/* 1. Direct Rank Input (LEFTMOST) */}
-            {isAdmin && isReorderable && (
-              <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-mono shrink-0 transition-colors ${
-                isModified ? 'bg-amber-500/20 border-amber-500/40' : 'bg-sky-500/10 border-sky-500/20'
-              }`}>
-                <input
-                  type="number"
-                  value={localRank}
-                  onChange={(e) => setLocalRank(parseInt(e.target.value) || 1)}
-                  onBlur={handleRankSubmit}
-                  onKeyDown={(e) => e.key === 'Enter' && handleRankSubmit()}
-                  className={`w-8 bg-transparent focus:outline-none text-center font-bold appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                    isModified ? 'text-amber-400' : 'text-sky-400'
-                  }`}
-                />
-                <span className="text-slate-600">/</span>
-                <span className="text-slate-500">{totalCharts}</span>
-              </div>
-            )}
-
-            {/* 2. Visibility Toggle */}
-            {isAdmin && (
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onTogglePdf(chart.id, !chart.export_pdf);
-                }}
-                className={`p-1 transition-all rounded hover:bg-white/5 shrink-0 ${chart.export_pdf ? 'text-emerald-400' : 'text-slate-600'}`}
-                title={chart.export_pdf ? "Public (Live on Dashboard)" : "Private (Draft/Admin Only)"}
-              >
-                {chart.export_pdf ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              </button>
-            )}
-
-            {/* 3. Interactive Name (Click to Edit) */}
-            {isAdmin ? (
-              <button
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenStudio?.(chart.id); }}
-                className="group/name flex items-center gap-2 min-w-0 overflow-hidden"
-                title="Edit in Studio"
-              >
-                <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/20 group-hover/name:bg-sky-500/20 group-hover/name:text-sky-300 transition-all truncate">
-                  {chart.name}
-                </span>
-              </button>
-            ) : (
-              <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/10 truncate">
-                {chart.name}
-              </span>
-            )}
-
-
+            {renderRankInput()}
+            {renderVisibilityToggle()}
+            {renderName()}
          </div>
 
          <div className="flex items-center gap-3 shrink-0">
             {chart.description && (
               <div className="relative group/tip">
                 <Info className="w-3.5 h-3.5 text-slate-600 hover:text-sky-400 transition-colors cursor-help" />
-                <div className="absolute right-0 top-full mt-1 w-56 px-3 py-2 bg-slate-900 border border-white/10 rounded-lg text-[10px] text-slate-400 leading-relaxed opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-50 shadow-xl">
+                <div className="absolute right-0 top-full mt-1 w-56 px-3 py-2 bg-popover border border-border rounded-lg text-[10px] text-muted-foreground leading-relaxed opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-50 shadow-xl">
                   {chart.description}
                 </div>
               </div>
@@ -151,10 +172,9 @@ const ChartCard = React.memo(function ChartCard({
          </div>
       </div>
 
-
-      <div ref={cardRef} className="flex flex-col">
+      <div ref={cardRef} className="flex flex-col flex-1">
         {/* Chart Area — only render Plotly when in viewport */}
-        <div className="bg-slate-950/20 relative w-full p-4 h-[350px]">
+        <div className="bg-slate-950/20 relative w-full p-4 h-[350px] min-h-[350px] flex-1">
           {isInView ? (
             <Chart id={chart.id} initialFigure={chart.figure} />
           ) : (
@@ -164,43 +184,62 @@ const ChartCard = React.memo(function ChartCard({
           )}
         </div>
       </div>
-    </>
+    </div>
   );
+});
 
-  const className = `glass-card overflow-hidden flex flex-col group transition-all duration-300 hover:border-sky-500/30 hover:shadow-sky-500/5 relative`;
+// Wrapper for Drag Controls
+const DraggableChartCard = React.memo((props: ChartCardProps) => {
+    const { chart, isReorderable, index } = props;
+    const controls = useDragControls();
+    
+    // Grid View: anywhere is a drag listener
+    const dragListener = true; 
 
-  if (isReorderable) {
+    if (!isReorderable) {
+      return (
+        <motion.div
+           className="h-full flex flex-col"
+           initial={{ opacity: 0, y: 20 }}
+           whileInView={{ opacity: 1, y: 0 }}
+           viewport={{ once: true, margin: "-50px" }}
+           transition={{ 
+             duration: 0.5, 
+             ease: [0.23, 1, 0.32, 1], // Premium easeOutQuint
+             delay: index % 6 * 0.05 // Stagger based on column index
+           }}
+        >
+           <ChartCard {...props} />
+        </motion.div>
+      );
+    }
+  
     return (
       <Reorder.Item
         value={chart}
-        dragListener={false}
-        className={className}
+        dragListener={dragListener}
+        dragControls={controls}
+        className="h-full" // Ensure height in grid
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.98 }}
         whileDrag={{
-          scale: 1.05,
-          boxShadow: '0 25px 40px -10px rgb(0 0 0 / 0.7), 0 10px 15px -5px rgb(0 0 0 / 0.5)',
-          zIndex: 100
+          scale: 1.02,
+          boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.5)',
+          zIndex: 50
         }}
-        transition={{
-          type: 'spring',
-          damping: 20,
-          stiffness: 400,
-          mass: 0.8
-        }}
+        transition={{ duration: 0.2 }}
       >
-        {content}
+        <ChartCard 
+            dragControls={controls} 
+            {...props} 
+        />
       </Reorder.Item>
     );
-  }
-
-  return (
-    <div className={className}>
-      {content}
-    </div>
-  );
 });
+
+DraggableChartCard.displayName = 'DraggableChartCard';
+
 
 interface DashboardGalleryProps {
   categories: string[];
@@ -222,6 +261,25 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
 
   const [mounted, setMounted] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
+  const [showActionMenu, setShowActionMenu] = useState(false);
+  
+  const categoryRef = useRef<HTMLDivElement>(null);
+  const actionRef = useRef<HTMLDivElement>(null);
+
+  // Close menus on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (categoryRef.current && !categoryRef.current.contains(event.target as Node)) {
+        setShowCategoryMenu(false);
+      }
+      if (actionRef.current && !actionRef.current.contains(event.target as Node)) {
+        setShowActionMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Export state
   const [exporting, setExporting] = useState(false);
@@ -445,142 +503,227 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
 
   if (!mounted) {
     return (
-      <div className="min-h-[800px] flex flex-col items-center justify-center gap-4 text-slate-500 font-mono">
-        <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
-        <span className="text-xs uppercase tracking-[0.2em] opacity-40">Initializing Research Engine</span>
+      <div className="space-y-8 min-h-[800px] animate-pulse">
+        {/* Skeleton Command Bar */}
+        <div className="h-16 w-full glass-card bg-card/5 border-border/50 rounded-xl" />
+        
+        {/* Skeleton Header */}
+        <div className="flex justify-between items-center px-2">
+          <div className="h-8 w-64 bg-card/10 rounded-lg" />
+          <div className="h-6 w-32 bg-card/5 rounded-lg" />
+        </div>
+
+        {/* Skeleton Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="glass-card h-[450px] flex flex-col overflow-hidden opacity-50">
+              <div className="h-12 border-b border-border/50 bg-card/10" />
+              <div className="flex-1 p-4">
+                <div className="w-full h-full bg-card/5 rounded-xl flex items-center justify-center">
+                   <Loader2 className="w-6 h-6 text-sky-500/20 animate-spin" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-8 min-h-[800px]">
-      {/* 🧭 Filter & Search Command Bar */}
-      <div className="flex flex-col lg:flex-row gap-6 items-center justify-between sticky top-14 z-40 px-6 py-3 glass-card bg-slate-900/60 backdrop-blur-2xl border-white/10 shadow-2xl">
-        <div className="flex flex-wrap items-center gap-2 pb-2 lg:pb-0 w-full lg:w-[70%]">
+      {/* 🧭 Unified Command Bar (Single Line Architecture) */}
+      <div 
+        className="flex flex-row items-center gap-4 sticky top-12 z-40 px-6 py-4 border-b !bg-white dark:!bg-black border-border/50 shadow-2xl !opacity-100"
+        style={{ backgroundColor: 'rgb(var(--background))' }}
+      >
+        
+        {/* LEFT: Premium Category Selector */}
+        <div className="shrink-0" ref={categoryRef}>
           {!searchQuery && (
-            <div className="flex flex-wrap gap-2">
-              {allCategories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-all border ${
-                    activeCategory === cat
-                      ? 'bg-sky-500 border-sky-400 text-white shadow-lg shadow-sky-500/20'
-                      : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+            <div className="relative">
+              <button 
+                onClick={() => setShowCategoryMenu(!showCategoryMenu)}
+                className={`
+                  flex items-center gap-2 pl-3.5 sm:pl-4 pr-3.5 sm:pr-4 py-2.5 
+                  bg-secondary/10 border rounded-xl transition-all duration-300
+                  ${showCategoryMenu ? 'border-sky-500/50 bg-sky-500/5 shadow-lg shadow-sky-500/10' : 'border-border/50 hover:bg-accent/10'}
+                `}
+              >
+                <Layers className={`w-4 h-4 transition-colors ${showCategoryMenu ? 'text-sky-400' : 'text-sky-400/70'}`} />
+                <span className="hidden sm:inline text-xs font-bold text-foreground uppercase tracking-wider truncate max-w-[140px]">
+                  {activeCategory}
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-300 ${showCategoryMenu ? 'rotate-180 text-foreground' : ''}`} />
+              </button>
+              
+              <AnimatePresence>
+                {showCategoryMenu && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute left-0 top-full mt-2 w-64 !bg-white dark:!bg-slate-900 border border-border/50 rounded-2xl shadow-2xl p-1.5 z-50 overflow-hidden !opacity-100"
+                    style={{ backgroundColor: 'rgb(var(--background))' }}
+                  >
+                    <div className="px-3 py-2 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] border-b border-border/30 mb-1 flex items-center justify-between">
+                      Indicator Scope
+                      <div className="w-1 h-1 rounded-full bg-sky-500 animate-pulse" />
+                    </div>
+                    
+                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+                      {allCategories.map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => {
+                            setActiveCategory(cat);
+                            setShowCategoryMenu(false);
+                          }}
+                          className={`
+                            w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-bold transition-all
+                            ${activeCategory === cat 
+                              ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30 shadow-inner' 
+                              : 'text-foreground/70 hover:bg-white/5 hover:text-foreground'
+                            }
+                          `}
+                        >
+                          <span className="uppercase tracking-wider">{cat}</span>
+                          {activeCategory === cat && <CheckCircle2 className="w-3.5 h-3.5" />}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
           {searchQuery && (
-            <div className="flex items-center gap-2 text-sky-400 text-xs font-semibold px-4 py-1.5 bg-sky-500/10 rounded-full border border-sky-500/20">
-              <Layers className="w-4 h-4" />
-              Intelligence Search: Global Scope ({filteredCharts.length} matches)
+            <div className="flex items-center gap-2 text-sky-400 text-[10px] font-black px-4 py-3 bg-sky-500/10 rounded-xl border border-sky-500/20 whitespace-nowrap tracking-widest uppercase">
+              <Search className="w-4 h-4" />
+              Intelligence Results
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-3 w-full lg:w-auto shrink-0">
+        {/* CENTER: Expansive Search Bar */}
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search Indicators..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-11 pr-11 py-2.5 bg-secondary/10 border border-border/50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/50 transition-all font-light"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-accent/10 rounded-md transition-colors"
+              type="button"
+            >
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          )}
+        </div>
+
+        {/* RIGHT: Consolidated System Actions Dropdown */}
+        <div className="flex items-center gap-4 shrink-0">
           {isAdmin && isReorderEnabled && isOrderDirty && (
-            <div className="flex items-center gap-2 pr-4 border-r border-white/10 mr-2 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                <button
                  onClick={handleSaveOrder}
                  disabled={reorderMutation.isPending}
-                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95"
+                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95 whitespace-nowrap"
                >
                  {reorderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                 SAVE ORDER
-               </button>
-               <button
-                 onClick={handleResetOrder}
-                 className="p-2 text-slate-500 hover:text-rose-400 transition-colors active:rotate-180 duration-500"
-                 title="Discard Changes"
-               >
-                 <RotateCcw className="w-4 h-4" />
+                 <span className="hidden sm:inline">SAVE RANK</span>
                </button>
             </div>
           )}
 
-          <div className="relative flex-grow lg:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Filter by keyword..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-10 py-2.5 bg-black/40 border border-white/10 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/50 transition-all font-light"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded-md transition-colors"
-                type="button"
-              >
-                <X className="w-3 h-3 text-slate-400" />
-              </button>
-            )}
-          </div>
+          <div className="relative" ref={actionRef}>
+            <button 
+              onClick={() => setShowActionMenu(!showActionMenu)}
+              className={`
+                flex items-center gap-2 p-2.5 bg-secondary/10 border rounded-xl transition-all duration-300
+                ${showActionMenu ? 'border-sky-500/50 bg-sky-500/5 shadow-lg shadow-sky-500/10' : 'border-border/50 hover:bg-accent/10'}
+              `}
+            >
+              <div className="relative">
+                <RefreshCw className={`w-4 h-4 transition-colors ${isRefreshing ? 'animate-spin text-sky-400' : showActionMenu ? 'text-sky-400' : 'text-muted-foreground'}`} />
+                {(exporting || exportingHtml) && (
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-sky-500 rounded-full animate-pulse" />
+                )}
+              </div>
+              <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform duration-300 ${showActionMenu ? 'rotate-180 text-foreground' : ''}`} />
+            </button>
 
-          {/* Refresh All & Export Buttons */}
-          <button
-            onClick={handleRefreshAll}
-            disabled={isRefreshing}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono font-bold uppercase tracking-wider transition-all disabled:opacity-30 ${
-              isRefreshing ? 'text-sky-400 bg-sky-500/10 border-sky-500/20' : 'text-slate-400 bg-black/40 border-white/5 hover:text-white hover:bg-white/10'
-            }`}
-            title="Refresh All Charts"
-            type="button"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-          <div className="flex gap-1 p-1 bg-black/40 border border-white/5 rounded-xl">
-            <button
-              onClick={handleExportPDF}
-              disabled={exporting || exportingHtml}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-all disabled:opacity-30 ${
-                exportStatus === 'success' ? 'text-emerald-400 bg-emerald-500/10'
-                : exportStatus === 'error' ? 'text-rose-400 bg-rose-500/10'
-                : 'text-slate-400 hover:text-white hover:bg-white/10'
-              }`}
-              title="Export PDF Report"
-              type="button"
-            >
-              {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : exportStatus === 'success' ? <Check className="w-3.5 h-3.5" /> : <FileDown className="w-3.5 h-3.5" />}
-              PDF
-            </button>
-            <button
-              onClick={handleExportHTML}
-              disabled={exporting || exportingHtml}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-all disabled:opacity-30 ${
-                exportHtmlStatus === 'success' ? 'text-emerald-400 bg-emerald-500/10'
-                : exportHtmlStatus === 'error' ? 'text-rose-400 bg-rose-500/10'
-                : 'text-slate-400 hover:text-white hover:bg-white/10'
-              }`}
-              title="Export Interactive HTML"
-              type="button"
-            >
-              {exportingHtml ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : exportHtmlStatus === 'success' ? <Check className="w-3.5 h-3.5" /> : <Monitor className="w-3.5 h-3.5" />}
-              HTML
-            </button>
-          </div>
+            {/* Premium Action Dropdown Menu */}
+            <AnimatePresence>
+              {showActionMenu && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute right-0 top-full mt-2 w-64 !bg-white dark:!bg-slate-900 border border-border/50 rounded-2xl shadow-2xl p-1.5 z-50 overflow-hidden !opacity-100"
+                  style={{ backgroundColor: 'rgb(var(--background))' }}
+                >
+                  <div className="px-3 py-2 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] border-b border-border/30 mb-1 flex items-center justify-between">
+                    Resource Actions
+                    <div className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse" />
+                  </div>
+                  
+                  <button
+                    onClick={() => { handleRefreshAll(); setShowActionMenu(false); }}
+                    disabled={isRefreshing}
+                    className="w-full flex items-center justify-between px-3 py-3 rounded-lg text-xs font-bold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-sky-500/10 flex items-center justify-center border border-sky-500/20 group-hover/opt:border-sky-500/40">
+                        <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-400' : 'text-sky-400'}`} />
+                      </div>
+                      <span className="uppercase tracking-wider">Sync Data</span>
+                    </div>
+                    {isRefreshing && <span className="text-[9px] text-sky-500 animate-pulse font-mono font-bold tracking-tighter">LIVE</span>}
+                  </button>
 
-          {isAdmin && (
-            <button
-              onClick={() => onOpenStudio?.(null)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition-all ml-1 active:scale-95"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">CREATE</span>
-            </button>
-          )}
+                  <div className="h-px bg-border/20 my-1 mx-2" />
+
+                  <button
+                    onClick={() => { handleExportPDF(); setShowActionMenu(false); }}
+                    disabled={exporting}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-xs font-bold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover/opt:border-emerald-500/40">
+                      <FileDown className={`w-3.5 h-3.5 ${exporting ? 'animate-pulse text-emerald-400' : 'text-emerald-400'}`} />
+                    </div>
+                    <span className="uppercase tracking-wider">
+                      {exporting ? 'Processing PDF...' : 'Generate PDF'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => { handleExportHTML(); setShowActionMenu(false); }}
+                    disabled={exportingHtml}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-xs font-bold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 group-hover/opt:border-indigo-500/40">
+                      <Monitor className={`w-3.5 h-3.5 ${exportingHtml ? 'animate-pulse text-indigo-400' : 'text-indigo-400'}`} />
+                    </div>
+                    <span className="uppercase tracking-wider">
+                      {exportingHtml ? 'Packaging...' : 'Web Archive'}
+                    </span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
       {/* 📊 Results Header */}
       <div className="flex items-center justify-between px-2">
-        <h2 className="text-2xl font-semibold text-slate-200 flex items-center gap-3 tracking-tight">
+        <h2 className="text-2xl font-semibold text-foreground flex items-center gap-3 tracking-tight">
           {debouncedSearch ? (
             <>Search Results <span className="text-sky-500/60 font-mono text-lg">[{filteredCharts.length}]</span></>
           ) : (
@@ -600,49 +743,45 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
         )}
       </div>
 
-      {/* 🖼️ Grid/List Display with Virtualization Support */}
-      {isReorderEnabled ? (
-        <Reorder.Group 
-          values={filteredCharts}
-          onReorder={handleReorder}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
-        >
-          {filteredCharts.map((chart, idx) => (
-            <ChartCard
-              key={chart.id}
-              chart={chart}
-              isAdmin={isAdmin || false}
-
-              isReorderable={true}
-              onTogglePdf={handleTogglePdf}
-              isSyncing={reorderMutation.isPending}
-              onRankChange={handleRankChange}
-              index={idx}
-              totalCharts={filteredCharts.length}
-              onOpenStudio={onOpenStudio}
-            />
-          ))}
-        </Reorder.Group>
-      ) : (
-        <div 
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
-        >
-          {filteredCharts.map((chart, idx) => (
-            <ChartCard
-              key={chart.id}
-              chart={chart}
-              isAdmin={isAdmin || false}
-
-              isReorderable={false}
-              onTogglePdf={handleTogglePdf}
-              onRankChange={handleRankChange}
-              index={idx}
-              totalCharts={filteredCharts.length}
-              onOpenStudio={onOpenStudio}
-            />
-          ))}
-        </div>
-      )}
+      {/* 🖼️ Grid Display */}
+        {isReorderEnabled ? (
+          <Reorder.Group 
+            values={filteredCharts}
+            onReorder={handleReorder}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+          >
+            {filteredCharts.map((chart, idx) => (
+              <DraggableChartCard
+                key={chart.id}
+                chart={chart}
+                isAdmin={isAdmin || false}
+                isReorderable={true}
+                onTogglePdf={handleTogglePdf}
+                isSyncing={reorderMutation.isPending}
+                onRankChange={handleRankChange}
+                index={idx}
+                totalCharts={filteredCharts.length}
+                onOpenStudio={onOpenStudio}
+              />
+            ))}
+          </Reorder.Group>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredCharts.map((chart, idx) => (
+              <DraggableChartCard
+                key={chart.id}
+                chart={chart}
+                isAdmin={isAdmin || false}
+                isReorderable={false}
+                onTogglePdf={handleTogglePdf}
+                onRankChange={handleRankChange}
+                index={idx}
+                totalCharts={filteredCharts.length}
+                onOpenStudio={onOpenStudio}
+              />
+            ))}
+          </div>
+        )}
 
       {/* 📭 Empty State */}
       {filteredCharts.length === 0 && (

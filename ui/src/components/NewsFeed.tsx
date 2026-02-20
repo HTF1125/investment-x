@@ -26,7 +26,7 @@ export default function NewsFeed() {
 
   if (isLoading) {
     return (
-      <div className="h-48 glass-card animate-pulse flex items-center justify-center text-slate-500 text-sm">
+      <div className="h-48 !bg-card border border-border/50 rounded-2xl animate-pulse flex items-center justify-center text-muted-foreground text-sm">
         Loading Intelligence Feed...
       </div>
     );
@@ -34,12 +34,12 @@ export default function NewsFeed() {
 
   if (isError) {
     return (
-      <div className="glass-card overflow-hidden border-rose-500/20 mb-12">
+      <div className="border border-rose-500/20 rounded-2xl bg-rose-500/5 mb-12">
         <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
           <WifiOff className="w-8 h-8 text-rose-400/50" />
           <div>
-            <p className="text-sm font-medium text-slate-400">Unable to load intelligence feed</p>
-            <p className="text-xs text-slate-600 mt-1">Check your connection and try again.</p>
+            <p className="text-sm font-medium text-foreground">Unable to load intelligence feed</p>
+            <p className="text-xs text-muted-foreground mt-1">Check your connection and try again.</p>
           </div>
         </div>
       </div>
@@ -49,19 +49,19 @@ export default function NewsFeed() {
   if (messages.length === 0) return null;
 
   return (
-    <div className="glass-card overflow-hidden border-sky-500/20 mb-12">
-      <div className="bg-sky-500/10 px-6 py-4 flex items-center justify-between border-b border-sky-500/20">
-        <h3 className="text-sky-400 font-semibold flex items-center gap-2">
-          <Cpu className="w-5 h-5 text-sky-400" />
+    <div className="!bg-background border border-border/50 rounded-2xl overflow-hidden mb-12 shadow-2xl">
+      <div className="bg-sky-500/5 px-6 py-4 flex items-center justify-between border-b border-border/50">
+        <h3 className="text-sky-400 font-semibold flex items-center gap-2 text-sm uppercase tracking-wider">
+          <Cpu className="w-5 h-5" />
           Quant Intelligence Feed (24h)
         </h3>
         <span className="text-[10px] text-sky-500/60 uppercase tracking-widest font-mono">Live Sync</span>
       </div>
       
-      <div className="max-h-[400px] overflow-y-auto overflow-x-hidden">
-        <div className="divide-y divide-white/5">
+      <div className="max-h-[600px] overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <div className="divide-y divide-border/30">
           {/* Sticky header */}
-          <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-md border-b border-white/5 px-6 py-2.5 grid grid-cols-[auto_1fr] md:grid-cols-[100px_180px_1fr] gap-4 text-[10px] uppercase tracking-wider text-slate-500 font-medium">
+          <div className="sticky top-0 z-10 !bg-background !opacity-100 border-b border-border px-6 py-3 grid grid-cols-[auto_1fr] md:grid-cols-[100px_180px_1fr] gap-4 text-[10px] uppercase tracking-wider text-muted-foreground font-black">
             <span>Timestamp</span>
             <span className="hidden md:block">Source</span>
             <span>Intelligence Content</span>
@@ -73,19 +73,19 @@ export default function NewsFeed() {
               className="px-6 py-4 grid grid-cols-[auto_1fr] md:grid-cols-[100px_180px_1fr] gap-4 hover:bg-white/[0.03] transition-colors group"
             >
               {/* Timestamp */}
-              <div className="text-xs text-slate-500 tabular-nums whitespace-nowrap flex items-start gap-2 pt-0.5">
+              <div className="text-xs text-muted-foreground tabular-nums whitespace-nowrap flex items-start gap-2 pt-0.5 font-mono">
                 <Clock className="w-3 h-3 mt-0.5 shrink-0" />
                 {mounted ? new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
               </div>
 
               {/* Source — visible on md+ */}
-              <div className="hidden md:block text-xs font-semibold text-slate-300 truncate pt-0.5">
-                {msg.channel_name}
+              <div className="hidden md:block text-xs font-bold text-foreground/80 truncate pt-0.5 font-mono">
+                {msg.channel_name.replace('t.me/', '')}
               </div>
 
               {/* Content */}
-              <div className="text-sm text-slate-400 leading-relaxed font-light break-words whitespace-pre-wrap overflow-hidden min-w-0">
-                <span className="md:hidden text-[10px] font-semibold text-slate-500 uppercase tracking-wider mr-2">{msg.channel_name}</span>
+              <div className="text-[13px] text-foreground/90 leading-relaxed font-normal break-words whitespace-pre-wrap overflow-hidden min-w-0">
+                <span className="md:hidden text-[10px] font-bold text-sky-500 uppercase tracking-wider mr-2">{msg.channel_name}</span>
                 {msg.message}
               </div>
             </div>

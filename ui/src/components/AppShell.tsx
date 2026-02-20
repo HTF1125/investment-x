@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 
 /**
  * Shared application shell providing the fixed Navbar and
@@ -9,12 +10,13 @@ import Navbar from '@/components/Navbar';
  */
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="min-h-screen bg-black">
+    <main className="min-h-screen flex flex-col relative overflow-x-hidden">
       <Navbar />
       {/* pt-14 = 56px matches the navbar h-12 + breathing room */}
-      <div className="pt-14">
+      <div className="pt-20 flex-grow">
         {children}
       </div>
+      <Footer />
     </main>
   );
 }
