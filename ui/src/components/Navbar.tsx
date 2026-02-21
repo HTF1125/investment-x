@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { 
   User as UserIcon, LogOut, LogIn, Database, Radio, 
   Menu, X, Layout, Cpu, Hexagon, Bell, ChevronDown,
-  Settings, Shield, Sun, Moon
+  Settings, Shield, Sun, Moon, CandlestickChart
 } from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
 import { useTheme } from '@/context/ThemeContext';
@@ -231,6 +231,7 @@ export default function Navbar() {
             <div className="hidden md:flex items-center gap-1 p-0.5 rounded-lg">
                 <NavLink href="/" icon={<Layout className="w-3 h-3" />}>Dashboard</NavLink>
                 <NavLink href="/intel" icon={<Radio className="w-3 h-3" />}>Intel</NavLink>
+                <NavLink href="/technical" icon={<CandlestickChart className="w-3 h-3" />}>Technical</NavLink>
                 {user?.is_admin && (
                   <NavLink href="/admin/timeseries" icon={<Database className="w-3 h-3" />}>System</NavLink>
                 )}
@@ -281,6 +282,7 @@ export default function Navbar() {
                <div className="flex flex-col gap-2">
                   <MobileNavLink href="/" icon={<Layout className="w-4 h-4" />}>Dashboard</MobileNavLink>
                   <MobileNavLink href="/intel" icon={<Radio className="w-4 h-4" />}>Intel Feed</MobileNavLink>
+                  <MobileNavLink href="/technical" icon={<CandlestickChart className="w-4 h-4" />}>Technical</MobileNavLink>
                   {user?.is_admin && (
                     <MobileNavLink href="/admin/timeseries" icon={<Database className="w-4 h-4" />}>System Admin</MobileNavLink>
                   )}

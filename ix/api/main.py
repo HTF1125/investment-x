@@ -188,6 +188,7 @@ try:
         news,
         custom,
         insights,
+        technical,
     )
 
     logger.info("Importing routers...")
@@ -200,6 +201,7 @@ try:
     app.include_router(news.router, prefix="/api", tags=["News"])
     app.include_router(custom.router, prefix="/api", tags=["Custom"])
     app.include_router(insights.router, prefix="/api", tags=["Insights"])
+    app.include_router(technical.router, prefix="/api", tags=["Technical"])
     from ix.api.routers import dashboard
 
     app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])

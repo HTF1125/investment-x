@@ -5,7 +5,7 @@ import {
   TrendingUp, Search, Layers, X, 
   Plus, Edit2, CheckCircle2, Eye, EyeOff, Loader2, RotateCcw, Copy,
   MoreVertical, ArrowUp, ArrowDown, ArrowUpToLine,
-  FileDown, Monitor, Check, Info, RefreshCw, LayoutGrid, List as ListIcon,
+  FileDown, Monitor, Check, Info, RefreshCw, LayoutGrid, List as ListIcon, Trash2,
   ChevronDown
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -33,7 +33,9 @@ interface ChartCardProps {
   onTogglePdf: (id: string, status: boolean) => void;
   onRefreshChart?: (id: string) => void;
   onCopyChart?: (id: string) => void;
+  onDeleteChart?: (id: string) => void;
   isRefreshingChart?: boolean;
+  isDeletingChart?: boolean;
   isSyncing?: boolean;
   onRankChange?: (id: string, newRank: number) => void;
   onMoveUp?: (id: string) => void;
@@ -51,7 +53,9 @@ const ChartCard = React.memo(function ChartCard({
   onTogglePdf, 
   onRefreshChart,
   onCopyChart,
+  onDeleteChart,
   isRefreshingChart,
+  isDeletingChart,
   isSyncing,
   onRankChange,
   onMoveUp,
@@ -212,6 +216,15 @@ const ChartCard = React.memo(function ChartCard({
                 >
                   <Copy className="w-3.5 h-3.5" />
                 </button>
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteChart?.(chart.id); }}
+                  disabled={!!isDeletingChart}
+                  className="p-1 rounded hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 transition-colors disabled:opacity-50"
+                  title="Delete chart"
+                  aria-label="Delete chart"
+                >
+                  <Trash2 className={`w-3.5 h-3.5 ${isDeletingChart ? 'animate-pulse text-rose-400' : ''}`} />
+                </button>
               </div>
             )}
             {chart.description && (
@@ -235,8 +248,30 @@ const ChartCard = React.memo(function ChartCard({
           {isInView ? (
             <Chart id={chart.id} initialFigure={chart.figure} copySignal={copySignal} />
           ) : (
-            <div className="flex items-center justify-center h-full w-full">
-              <Loader2 className="w-6 h-6 text-sky-400/20 animate-spin" />
+            <div className="relative h-full w-full overflow-hidden rounded-lg border border-sky-500/10 bg-[linear-gradient(120deg,rgba(8,12,20,0.95),rgba(10,16,28,0.95),rgba(8,12,20,0.95))]">
+              <motion.div
+                className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-sky-400/10 to-transparent"
+                animate={{ x: ['0%', '360%'] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+              />
+              <div className="absolute inset-0 p-6 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="h-4 w-40 rounded bg-sky-500/15 animate-pulse" />
+                  <div className="h-3 w-24 rounded bg-slate-500/20 animate-pulse" />
+                </div>
+                <div className="grid grid-cols-8 gap-2 items-end h-32">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="rounded-sm bg-cyan-500/20 animate-pulse"
+                      style={{ height: `${25 + ((i * 13) % 60)}%`, animationDelay: `${i * 80}ms` }}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 text-sky-400/30 animate-spin" />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -264,6 +299,8 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [refreshingChartIds, setRefreshingChartIds] = useState<Record<string, boolean>>({});
+  const [deletingChartIds, setDeletingChartIds] = useState<Record<string, boolean>>({});
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [copySignals, setCopySignals] = useState<Record<string, number>>({});
 
   const [mounted, setMounted] = useState(false);
@@ -557,6 +594,31 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
     },
   });
 
+  const deleteChartMutation = useMutation({
+    mutationFn: async (chartId: string) => {
+      await apiFetchJson(`/api/custom/${chartId}`, { method: 'DELETE' });
+      return chartId;
+    },
+    onSuccess: (chartId) => {
+      setLocalCharts((prev) => prev.filter((c) => c.id !== chartId));
+      setOriginalCharts((prev) => prev.filter((c) => c.id !== chartId));
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['custom-charts'] });
+      setDeletingChartIds((prev) => {
+        const next = { ...prev };
+        delete next[chartId];
+        return next;
+      });
+    },
+    onError: (_err, chartId) => {
+      setDeletingChartIds((prev) => {
+        const next = { ...prev };
+        delete next[chartId];
+        return next;
+      });
+    },
+  });
+
   const handleTogglePdf = React.useCallback((id: string, status: boolean) => {
     togglePdfMutation.mutate({ id, status });
   }, [togglePdfMutation]);
@@ -607,6 +669,19 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
   const handleCopyFromHeader = React.useCallback((id: string) => {
     setCopySignals((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
   }, []);
+
+  const handleDeleteChart = React.useCallback((id: string) => {
+    const target = localCharts.find((c) => c.id === id);
+    setDeleteTarget({ id, name: target?.name || id });
+  }, [localCharts]);
+
+  const confirmDeleteChart = React.useCallback(() => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeletingChartIds((prev) => ({ ...prev, [id]: true }));
+    deleteChartMutation.mutate(id);
+    setDeleteTarget(null);
+  }, [deleteTarget, deleteChartMutation]);
 
   if (!mounted) {
     return (
@@ -867,7 +942,9 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
               onTogglePdf={handleTogglePdf}
               onRefreshChart={handleRefreshChart}
               onCopyChart={handleCopyFromHeader}
+              onDeleteChart={handleDeleteChart}
               isRefreshingChart={!!refreshingChartIds[chart.id]}
+              isDeletingChart={!!deletingChartIds[chart.id]}
               isSyncing={reorderMutation.isPending}
               onRankChange={handleRankChange}
               onMoveUp={(id) => handleMoveBy(id, -1)}
@@ -889,6 +966,45 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
           <p className="text-slate-600 mt-2 text-sm font-light">Try expanding your search parameters.</p>
         </div>
       )}
+
+      <AnimatePresence>
+        {deleteTarget && (
+          <motion.div
+            className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setDeleteTarget(null)}
+          >
+            <motion.div
+              className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-slate-950 shadow-2xl shadow-rose-900/20 p-5"
+              initial={{ y: 16, scale: 0.97, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: 10, scale: 0.98, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-sm font-semibold text-foreground mb-1">Delete Chart</div>
+              <div className="text-xs text-muted-foreground mb-4">
+                Delete <span className="text-rose-300 font-mono">{deleteTarget.name}</span>? This action cannot be undone.
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  className="px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteChart}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
