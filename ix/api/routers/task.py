@@ -4,7 +4,6 @@ from enum import Enum
 import uuid
 import asyncio
 from threading import RLock
-import os
 import json
 from pydantic import BaseModel
 
@@ -46,10 +45,6 @@ class ProcessInfo(BaseModel):
 
 
 REGISTRY_LOCK = RLock()
-TASK_STORE_DIR = os.path.join(os.getcwd(), "runtime", "tasks")
-os.makedirs(TASK_STORE_DIR, exist_ok=True)
-TASK_DISMISS_DIR = os.path.join(TASK_STORE_DIR, "_dismissals")
-os.makedirs(TASK_DISMISS_DIR, exist_ok=True)
 SSE_SUBSCRIBERS: set[asyncio.Queue] = set()
 
 
@@ -70,33 +65,6 @@ def _broadcast_task_event(event: str, pid: str):
             stale.append(q)
     for q in stale:
         SSE_SUBSCRIBERS.discard(q)
-
-
-def _dismiss_file(user_id: str) -> str:
-    safe = str(user_id).replace("/", "_")
-    return os.path.join(TASK_DISMISS_DIR, f"{safe}.json")
-
-
-def _load_dismissed(user_id: str) -> set[str]:
-    path = _dismiss_file(user_id)
-    if not os.path.exists(path):
-        return set()
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, list):
-            return set(str(x) for x in data)
-    except Exception:
-        pass
-    return set()
-
-
-def _save_dismissed(user_id: str, dismissed: set[str]):
-    try:
-        with open(_dismiss_file(user_id), "w", encoding="utf-8") as f:
-            json.dump(sorted(list(dismissed))[-500:], f, ensure_ascii=True)
-    except Exception:
-        pass
 
 
 def start_process(name: str, user_id: str = None) -> str:
@@ -346,9 +314,7 @@ async def get_processes(current_user: User = Depends(get_current_user)):
         )
         for p in rows
     }
-    dismissed = _load_dismissed(str(current_user.id))
-    visible = [p for p in merged.values() if p.id not in dismissed]
-    procs = sorted(visible, key=lambda x: x.start_time, reverse=True)
+    procs = sorted(merged.values(), key=lambda x: x.start_time, reverse=True)
     return procs[:30]
 
 
@@ -431,10 +397,11 @@ async def delete_client_process(pid: str):
 
 @router.post("/task/process/{pid}/dismiss")
 async def dismiss_process(pid: str, current_user: User = Depends(get_current_user)):
-    """Dismiss a task for current user only (multi-user safe)."""
-    dismissed = _load_dismissed(str(current_user.id))
-    dismissed.add(pid)
-    _save_dismissed(str(current_user.id), dismissed)
+    """Dismiss a task by deleting it from persistent DB storage."""
+    _ensure_task_table()
+    with Session() as db:
+        db.query(TaskProcess).filter(TaskProcess.id == pid).delete()
+    _broadcast_task_event("deleted", pid)
     return {"status": "dismissed"}
 
 

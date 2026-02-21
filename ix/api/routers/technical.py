@@ -9,11 +9,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 import yfinance as yf
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from plotly.subplots import make_subplots
-
-from ix.api.dependencies import get_current_user
-from ix.db.models.user import User
 
 router = APIRouter()
 
@@ -409,7 +406,6 @@ def technical_elliott(
     setup_from: int = Query(9, ge=1, le=9),
     countdown_from: int = Query(13, ge=1, le=13),
     label_cooldown: int = Query(0, ge=0, le=20),
-    _: User = Depends(get_current_user),
 ):
     try:
         tk = ticker.strip().upper()

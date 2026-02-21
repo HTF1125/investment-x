@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import Request
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from ix.db.conn import get_session
 from ix.db.models import CustomChart as Chart
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
+from ix.misc.auth import verify_token
 
 router = APIRouter()
 
@@ -28,15 +30,35 @@ class DashboardSummary(BaseModel):
     charts_by_category: Dict[str, List[ChartMetaSchema]]
 
 
-from ix.api.dependencies import get_current_user
 from ix.db.models.user import User
+
+
+def _get_optional_user(request: Request) -> User | None:
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    token = None
+    if auth and auth.lower().startswith("bearer "):
+        token = auth.split(" ", 1)[1].strip()
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        return None
+    payload = verify_token(token)
+    if not payload:
+        return None
+    email = payload.get("sub")
+    if not email:
+        return None
+    user = User.get_by_email(email)
+    if not user or getattr(user, "disabled", False):
+        return None
+    return user
 
 
 @router.get("/dashboard/summary", response_model=DashboardSummary)
 def get_dashboard_summary(
+    request: Request,
     response: Response,
     db: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user),
     include_figures: bool = True,  # Default to true for fast dashboard load
 ):
     """
@@ -48,7 +70,10 @@ def get_dashboard_summary(
     response.headers["Expires"] = "0"
     query = db.query(Chart)
 
-    if not current_user.is_admin:
+    current_user = _get_optional_user(request)
+    is_admin = bool(current_user and current_user.is_admin)
+
+    if not is_admin:
         query = query.filter(Chart.export_pdf == True)
 
     charts = query.all()
@@ -66,7 +91,7 @@ def get_dashboard_summary(
         meta = ChartMetaSchema.from_orm(chart)
 
         # Security: Never leak logic to non-admins
-        if not current_user.is_admin:
+        if not is_admin:
             meta.code = None
 
         # Include figure for all charts
@@ -85,7 +110,7 @@ def get_dashboard_summary(
 
 @router.get("/dashboard/charts/{chart_id}/figure")
 def get_chart_figure(
-    chart_id: str, response: Response, db: Session = Depends(get_session)
+    chart_id: str, request: Request, response: Response, db: Session = Depends(get_session)
 ):
     """
     Returns the Plotly JSON figure for a specific custom chart.
@@ -99,6 +124,11 @@ def get_chart_figure(
         chart = db.query(Chart).filter(Chart.name == chart_id).first()
         if not chart:
             raise HTTPException(status_code=404, detail="Chart not found")
+
+    current_user = _get_optional_user(request)
+    is_admin = bool(current_user and current_user.is_admin)
+    if not is_admin and not bool(chart.export_pdf):
+        raise HTTPException(status_code=404, detail="Chart not found")
 
     if not chart.figure:
         # For CustomCharts, we might need to re-execute the code if figure is missing

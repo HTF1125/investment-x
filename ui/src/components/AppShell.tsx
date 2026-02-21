@@ -8,7 +8,13 @@ import Footer from '@/components/Footer';
  * Shared application shell providing the fixed Navbar and
  * a content area with correct top-padding to avoid overlap.
  */
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({
+  children,
+  hideFooter = false,
+}: {
+  children: React.ReactNode;
+  hideFooter?: boolean;
+}) {
   return (
     <main className="min-h-screen flex flex-col relative overflow-x-hidden">
       <Navbar />
@@ -16,7 +22,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="pt-12 flex-grow">
         {children}
       </div>
-      <Footer />
+      {!hideFooter && <Footer />}
     </main>
   );
 }
