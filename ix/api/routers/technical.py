@@ -155,33 +155,111 @@ def _wave_labels(n: int) -> list[str]:
     seq = ["(1)", "(2)", "(3)", "(4)", "(5)", "(a)", "(b)", "(c)"]
     return seq[:n] if n <= len(seq) else seq + [f"({i})" for i in range(6, 6 + n - len(seq))]
 
-def _semantic_labels(piv: pd.DataFrame, bullish_bias: bool = True) -> list[str]:
-    """
-    Assign Elliott labels by pivot type (H/L) and current leg direction.
-    This avoids cases like placing (1) on a low pivot in an up-leg.
-    """
-    if len(piv) < 2:
-        return _wave_labels(len(piv))
+def _alternates_types(types: list[str]) -> bool:
+    return all(types[i] != types[i - 1] for i in range(1, len(types)))
 
-    if bullish_bias:
-        high_seq = ["(1)", "(3)", "(5)", "(b)"]
-        low_seq = ["(2)", "(4)", "(a)", "(c)"]
-    else:
-        # In a down-leg, lows usually carry impulse odds.
-        low_seq = ["(1)", "(3)", "(5)", "(b)"]
-        high_seq = ["(2)", "(4)", "(a)", "(c)"]
 
-    hi_i = 0
-    lo_i = 0
-    out: list[str] = []
-    for t in piv["Type"].tolist():
-        if t == "H":
-            out.append(high_seq[hi_i] if hi_i < len(high_seq) else "")
-            hi_i += 1
-        else:
-            out.append(low_seq[lo_i] if lo_i < len(low_seq) else "")
-            lo_i += 1
-    return out
+def _valid_motive(prices: np.ndarray, types: list[str], bullish: bool) -> bool:
+    # Contiguous 6 pivots: p0..p5 define waves 1..5.
+    p0, p1, p2, p3, p4, p5 = [float(x) for x in prices]
+    if bullish:
+        if types != ["L", "H", "L", "H", "L", "H"]:
+            return False
+        w1 = p1 - p0
+        w3 = p3 - p2
+        w5 = p5 - p4
+        if min(w1, w3, w5) <= 0:
+            return False
+        if not (p0 < p2 < p1):
+            return False
+        if not (p2 < p4 < p3):
+            return False
+        if p4 <= p1:
+            return False
+        if p5 <= p3:
+            return False
+        if w3 <= min(w1, w5):
+            return False
+        return True
+
+    if types != ["H", "L", "H", "L", "H", "L"]:
+        return False
+    w1 = p0 - p1
+    w3 = p2 - p3
+    w5 = p4 - p5
+    if min(w1, w3, w5) <= 0:
+        return False
+    if not (p1 < p2 < p0):
+        return False
+    if not (p3 < p4 < p2):
+        return False
+    if p4 >= p1:
+        return False
+    if p5 >= p3:
+        return False
+    if w3 <= min(w1, w5):
+        return False
+    return True
+
+
+def _find_motive_segment(piv: pd.DataFrame, max_lookback: int = 120) -> tuple[int, bool] | None:
+    if len(piv) < 6:
+        return None
+    recent = piv.tail(max_lookback).reset_index(drop=True)
+    offset = len(piv) - len(recent)
+    candidates: list[tuple[int, float, bool]] = []
+    for i in range(0, len(recent) - 5):
+        seg = recent.iloc[i : i + 6]
+        types = seg["Type"].tolist()
+        if not _alternates_types(types):
+            continue
+        prices = seg["Price"].to_numpy(dtype=float)
+        for bullish in (True, False):
+            if _valid_motive(prices, types, bullish):
+                score = abs(float(prices[-1] - prices[0]))
+                candidates.append((i, score, bullish))
+    if not candidates:
+        return None
+    # Prefer the latest valid pattern, then larger price displacement.
+    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    start_idx, _, bullish = candidates[0]
+    return (start_idx + offset, bullish)
+
+
+def _valid_abc(prices: np.ndarray, types: list[str], bullish_motive: bool) -> bool:
+    a, b, c, d = [float(x) for x in prices]  # d is prior wave-5 pivot
+    if bullish_motive:
+        # after bullish motive ends at high d, correction is L-H-L
+        if types != ["L", "H", "L"]:
+            return False
+        if not (a < d and b < d and c < b):
+            return False
+        return c <= a
+    # after bearish motive ends at low d, correction is H-L-H
+    if types != ["H", "L", "H"]:
+        return False
+    if not (a > d and b > d and c > b):
+        return False
+    return c >= a
+
+
+def _extract_elliott_labels(piv: pd.DataFrame) -> tuple[pd.DataFrame | None, pd.DataFrame | None, bool | None]:
+    found = _find_motive_segment(piv)
+    if found is None:
+        return None, None, None
+    start, bullish = found
+    motive = piv.iloc[start : start + 6].copy()
+    correction = None
+    if start + 9 <= len(piv):
+        abc = piv.iloc[start + 6 : start + 9].copy()
+        last_p5 = float(motive["Price"].iloc[-1])
+        abc_prices = np.array(
+            [float(abc["Price"].iloc[0]), float(abc["Price"].iloc[1]), float(abc["Price"].iloc[2]), last_p5]
+        )
+        abc_types = abc["Type"].tolist()
+        if _valid_abc(abc_prices, abc_types, bullish_motive=bullish):
+            correction = abc
+    return motive, correction, bullish
 
 
 def _add_fib_zone(fig: go.Figure, piv: pd.DataFrame) -> None:
@@ -262,34 +340,68 @@ def _build_figure(
     )
 
     swings_map: Dict[int, pd.DataFrame] = {4: _find_swings(df, 4), 8: _find_swings(df, 8), 16: _find_swings(df, 16)}
-    layers = {4: ("#ef4444", 1.1, False), 8: ("#3b82f6", 1.6, True), 16: ("#e5e7eb", 1.2, False)}
-    bottom_labels = {"(2)", "(4)", "(a)", "(c)"}
-    lookback = min(len(df), 80)
-    bullish_bias = bool(df["Close"].iloc[-1] >= df["Close"].iloc[-lookback])
-    for length, (color, width, with_labels) in layers.items():
-        piv = swings_map[length].tail(9)
+    layers = {4: ("#ef4444", 1.1), 8: ("#3b82f6", 1.6), 16: ("#e5e7eb", 1.2)}
+    top_pos = "top center"
+    bottom_pos = "bottom center"
+    for length, (color, width) in layers.items():
+        piv = swings_map[length].tail(40)
         if len(piv) < 2:
             continue
-        labels = _semantic_labels(piv, bullish_bias=bullish_bias) if with_labels else _wave_labels(len(piv))
-        text_pos = [("bottom center" if lbl.lower() in bottom_labels else "top center") for lbl in labels] if with_labels else None
         fig.add_trace(
             go.Scatter(
                 x=piv["Date"],
                 y=piv["Price"],
-                mode="lines+markers+text" if with_labels else "lines",
+                mode="lines+markers",
                 line=dict(color=color, width=width),
                 marker=dict(size=5, color=color),
-                text=[lbl for lbl in labels] if with_labels else None,
-                textposition=text_pos if text_pos is not None else "top center",
-                textfont=dict(size=13, color=color),
                 name=f"ZigZag {length}",
                 hovertemplate=f"{length}-ZZ: %{{y:.2f}}<extra></extra>",
             ),
             row=1,
             col=1,
         )
-        if length == 8:
-            _add_fib_zone(fig, piv)
+    zz8 = swings_map[8]
+    motive, correction, bullish = _extract_elliott_labels(zz8)
+    if motive is not None:
+        wave_color = "#3b82f6" if bullish else "#ef4444"
+        motive_labels = ["", "(1)", "(2)", "(3)", "(4)", "(5)"]
+        motive_pos = [top_pos if t == "H" else bottom_pos for t in motive["Type"].tolist()]
+        fig.add_trace(
+            go.Scatter(
+                x=motive["Date"],
+                y=motive["Price"],
+                mode="lines+markers+text",
+                line=dict(color=wave_color, width=2.0),
+                marker=dict(size=7, color=wave_color),
+                text=motive_labels,
+                textposition=motive_pos,
+                textfont=dict(size=16, color=wave_color),
+                name="Elliott Motive",
+                hovertemplate="Motive: %{y:.2f}<extra></extra>",
+            ),
+            row=1,
+            col=1,
+        )
+        _add_fib_zone(fig, motive)
+    if correction is not None:
+        corr_color = "#3b82f6" if bullish else "#ef4444"
+        corr_pos = [top_pos if t == "H" else bottom_pos for t in correction["Type"].tolist()]
+        fig.add_trace(
+            go.Scatter(
+                x=correction["Date"],
+                y=correction["Price"],
+                mode="lines+markers+text",
+                line=dict(color=corr_color, width=1.8),
+                marker=dict(size=6, color=corr_color),
+                text=["(a)", "(b)", "(c)"],
+                textposition=corr_pos,
+                textfont=dict(size=15, color=corr_color),
+                name="Elliott Correction",
+                hovertemplate="Correction: %{y:.2f}<extra></extra>",
+            ),
+            row=1,
+            col=1,
+        )
 
     td = TDSequentialClean(show_setup_from=show_setup_from, show_countdown_from=show_countdown_from, label_cooldown_bars=label_cooldown_bars)
     tdf = td.compute(df["Close"])
