@@ -67,6 +67,20 @@ def _broadcast_task_event(event: str, pid: str):
         SSE_SUBSCRIBERS.discard(q)
 
 
+def _is_admin_user(user: User) -> bool:
+    return bool(getattr(user, "is_admin", False))
+
+
+def _current_user_id(user: User) -> str:
+    return str(getattr(user, "id", "") or "")
+
+
+def _can_access_task(task_user_id: Optional[str], current_user: User) -> bool:
+    if _is_admin_user(current_user):
+        return True
+    return bool(task_user_id and task_user_id == _current_user_id(current_user))
+
+
 def start_process(name: str, user_id: str = None) -> str:
     """Register a new process as running. Returns process ID."""
     pid = str(uuid.uuid4())
@@ -139,9 +153,9 @@ def update_process(
 # ═══════════════════════════════════════════════════════════
 
 
-def _run_daily_update():
+def _run_daily_update(user_id: str | None = None):
     """Synchronous wrapper for the full daily pipeline with progress tracking."""
-    pid = start_process("Daily Data Update")
+    pid = start_process("Daily Data Update", user_id=user_id)
     try:
         from ix.db.models import Timeseries
         from ix.misc.task import update_yahoo_data, update_fred_data, update_naver_data
@@ -188,9 +202,9 @@ def _run_daily_update():
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
-def _run_send_reports():
+def _run_send_reports(user_id: str | None = None):
     """Synchronous wrapper for email report sending."""
-    pid = start_process("Send Email Reports")
+    pid = start_process("Send Email Reports", user_id=user_id)
     try:
         update_process(pid, message="Loading data for reports...", progress="1/3")
         update_process(pid, message="Building report files...", progress="2/3")
@@ -205,9 +219,9 @@ def _run_send_reports():
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
-def _run_send_brief():
+def _run_send_brief(user_id: str | None = None):
     """Synchronous wrapper for daily market brief."""
-    pid = start_process("Daily Market Brief")
+    pid = start_process("Daily Market Brief", user_id=user_id)
     try:
         update_process(pid, message="Collecting latest feed...", progress="1/3")
         update_process(pid, message="Generating market brief...", progress="2/3")
@@ -222,9 +236,9 @@ def _run_send_brief():
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
-async def _run_telegram_scrape():
+async def _run_telegram_scrape(user_id: str | None = None):
     """Async wrapper for Telegram channel scraping."""
-    pid = start_process("Telegram Sync")
+    pid = start_process("Telegram Sync", user_id=user_id)
     try:
         from ix.misc.telegram import scrape_all_channels, CHANNELS_TO_SCRAPE
 
@@ -253,10 +267,10 @@ async def _run_telegram_scrape():
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
-def _run_refresh_charts(pid: Optional[str] = None):
+def _run_refresh_charts(pid: Optional[str] = None, user_id: str | None = None):
     """Synchronous wrapper for chart refresh."""
     if pid is None:
-        pid = start_process("Refresh Charts")
+        pid = start_process("Refresh Charts", user_id=user_id)
     try:
         from ix.misc.task import refresh_all_charts
 
@@ -297,10 +311,13 @@ def _run_refresh_charts(pid: Optional[str] = None):
 async def get_processes(current_user: User = Depends(get_current_user)):
     """Get all tracked processes, sorted by start time desc (max 30)."""
     _ensure_task_table()
+    current_uid = _current_user_id(current_user)
+    is_admin = _is_admin_user(current_user)
     with Session() as db:
-        rows = (
-            db.query(TaskProcess).order_by(TaskProcess.start_time.desc()).limit(200).all()
-        )
+        q = db.query(TaskProcess).order_by(TaskProcess.start_time.desc())
+        if not is_admin:
+            q = q.filter(TaskProcess.user_id == current_uid)
+        rows = q.limit(200).all()
     merged = {
         p.id: ProcessInfo(
             id=p.id,
@@ -349,25 +366,31 @@ async def stream_process_events(current_user: User = Depends(get_current_user)):
     )
 
 
-def _is_task_running(name_prefix: str) -> bool:
+def _is_task_running(name_prefix: str, user_id: str | None = None) -> bool:
     """Check if any process with the given name prefix is currently running."""
     _ensure_task_table()
     with Session() as db:
-        row = (
-            db.query(TaskProcess.id)
-            .filter(
-                TaskProcess.status == ProcessStatus.RUNNING.value,
-                TaskProcess.name.like(f"{name_prefix}%"),
-            )
-            .first()
+        q = db.query(TaskProcess.id).filter(
+            TaskProcess.status == ProcessStatus.RUNNING.value,
+            TaskProcess.name.like(f"{name_prefix}%"),
         )
+        if user_id:
+            q = q.filter(TaskProcess.user_id == user_id)
+        row = q.first()
     return row is not None
 
 
 @router.post("/task/process/start", response_model=Dict[str, str])
-async def start_client_process(name: str, user_id: str = None):
+async def start_client_process(
+    name: str,
+    user_id: str = None,
+    current_user: User = Depends(get_current_user),
+):
     """Allow client to register a new process (e.g. multi-file upload)."""
-    pid = start_process(name, user_id)
+    assigned_user_id = _current_user_id(current_user)
+    if _is_admin_user(current_user) and user_id:
+        assigned_user_id = user_id
+    pid = start_process(name, assigned_user_id)
     return {"id": pid}
 
 
@@ -377,17 +400,26 @@ async def update_client_process(
     status: Optional[ProcessStatus] = None,
     message: Optional[str] = None,
     progress: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
 ):
     """Allow client to update a registered process."""
-    if not _get_process(pid):
+    proc = _get_process(pid)
+    if not proc:
         raise HTTPException(status_code=404, detail="Process not found")
+    if not _can_access_task(proc.user_id, current_user):
+        raise HTTPException(status_code=403, detail="Not allowed to update this task")
     update_process(pid, status=status, message=message, progress=progress)
     return {"status": "updated"}
 
 
 @router.delete("/task/process/{pid}")
-async def delete_client_process(pid: str):
+async def delete_client_process(pid: str, current_user: User = Depends(get_current_user)):
     """Delete a process from DB-backed task store."""
+    proc = _get_process(pid)
+    if not proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+    if not _can_access_task(proc.user_id, current_user):
+        raise HTTPException(status_code=403, detail="Not allowed to delete this task")
     _ensure_task_table()
     with Session() as db:
         db.query(TaskProcess).filter(TaskProcess.id == pid).delete()
@@ -398,6 +430,11 @@ async def delete_client_process(pid: str):
 @router.post("/task/process/{pid}/dismiss")
 async def dismiss_process(pid: str, current_user: User = Depends(get_current_user)):
     """Dismiss a task by deleting it from persistent DB storage."""
+    proc = _get_process(pid)
+    if not proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+    if not _can_access_task(proc.user_id, current_user):
+        raise HTTPException(status_code=403, detail="Not allowed to dismiss this task")
     _ensure_task_table()
     with Session() as db:
         db.query(TaskProcess).filter(TaskProcess.id == pid).delete()
@@ -410,12 +447,17 @@ async def dismiss_completed_processes(current_user: User = Depends(get_current_u
     """Clear all completed/failed tasks from persistent store."""
     _ensure_task_table()
     deleted_ids: list[str] = []
+    current_uid = _current_user_id(current_user)
+    is_admin = _is_admin_user(current_user)
     with Session() as db:
-        rows = (
-            db.query(TaskProcess.id)
-            .filter(TaskProcess.status.in_([ProcessStatus.COMPLETED.value, ProcessStatus.FAILED.value]))
-            .all()
+        q = db.query(TaskProcess.id).filter(
+            TaskProcess.status.in_(
+                [ProcessStatus.COMPLETED.value, ProcessStatus.FAILED.value]
+            )
         )
+        if not is_admin:
+            q = q.filter(TaskProcess.user_id == current_uid)
+        rows = q.all()
         deleted_ids = [r.id for r in rows]
         if deleted_ids:
             db.query(TaskProcess).filter(TaskProcess.id.in_(deleted_ids)).delete(synchronize_session=False)
@@ -426,74 +468,93 @@ async def dismiss_completed_processes(current_user: User = Depends(get_current_u
 
 
 @router.post("/task/daily")
-async def run_daily_task(background_tasks: BackgroundTasks):
+async def run_daily_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
     """Trigger the full daily routine (update data + refresh charts) in background."""
-    if _is_task_running("Daily Data Update"):
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("Daily Data Update", user_id=current_uid):
         raise HTTPException(status_code=400, detail="Daily task is already running")
 
-    background_tasks.add_task(_run_daily_update)
+    background_tasks.add_task(_run_daily_update, current_uid)
     return {"message": "Daily task triggered", "status": "started"}
 
 
 @router.post("/task/report")
-async def run_report_task(background_tasks: BackgroundTasks):
+async def run_report_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
     """Trigger email report sending in background."""
-    if _is_task_running("Send Email Reports"):
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("Send Email Reports", user_id=current_uid):
         raise HTTPException(status_code=400, detail="Report task is already running")
 
-    background_tasks.add_task(_run_send_reports)
+    background_tasks.add_task(_run_send_reports, current_uid)
     return {"message": "Report task triggered", "status": "started"}
 
 
 @router.post("/task/brief")
-async def run_market_brief_task(background_tasks: BackgroundTasks):
+async def run_market_brief_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
     """Trigger the Daily Market Brief in background."""
-    if _is_task_running("Daily Market Brief"):
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("Daily Market Brief", user_id=current_uid):
         raise HTTPException(status_code=400, detail="Brief task is already running")
 
-    background_tasks.add_task(_run_send_brief)
+    background_tasks.add_task(_run_send_brief, current_uid)
     return {"message": "Market brief triggered", "status": "started"}
 
 
 @router.post("/task/telegram")
-async def run_telegram_scrape_task(background_tasks: BackgroundTasks):
+async def run_telegram_scrape_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
     """Trigger Telegram scraping for all configured channels in background."""
-    if _is_task_running("Telegram Sync"):
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("Telegram Sync", user_id=current_uid):
         raise HTTPException(status_code=400, detail="Telegram sync is already running")
 
-    background_tasks.add_task(_run_telegram_scrape)
+    background_tasks.add_task(_run_telegram_scrape, current_uid)
     return {"message": "Telegram sync triggered", "status": "started"}
 
 
 @router.post("/task/refresh-charts")
-async def run_refresh_charts_task(background_tasks: BackgroundTasks):
+async def run_refresh_charts_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
     """Trigger a refresh of all charts in background."""
-    if _is_task_running("Refresh Charts"):
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("Refresh Charts", user_id=current_uid):
         raise HTTPException(status_code=400, detail="Chart refresh is already running")
 
     # Register process immediately so clients can see it in the next poll cycle.
-    pid = start_process("Refresh Charts")
-    background_tasks.add_task(_run_refresh_charts, pid)
+    pid = start_process("Refresh Charts", user_id=current_uid)
+    background_tasks.add_task(_run_refresh_charts, pid, current_uid)
     return {"message": "Chart refresh triggered", "status": "started", "task_id": pid}
 
 
 # Legacy endpoint for backward compat
 @router.get("/task/status")
-async def get_task_status():
-    """Legacy status check — returns running state for daily/telegram tasks."""
-    daily_running = _is_task_running("Daily Data Update")
-    telegram_running = _is_task_running("Telegram Sync")
+async def get_task_status(current_user: User = Depends(get_current_user)):
+    """Legacy status check — returns running state for current user's tasks."""
+    current_uid = _current_user_id(current_user)
+    daily_running = _is_task_running("Daily Data Update", user_id=current_uid)
+    telegram_running = _is_task_running("Telegram Sync", user_id=current_uid)
 
     # Find latest process for each to get the message
     def latest_msg(prefix: str) -> str:
         _ensure_task_table()
         with Session() as db:
-            latest = (
-                db.query(TaskProcess)
-                .filter(TaskProcess.name.like(f"{prefix}%"))
-                .order_by(TaskProcess.start_time.desc())
-                .first()
-            )
+            q = db.query(TaskProcess).filter(TaskProcess.name.like(f"{prefix}%"))
+            if not _is_admin_user(current_user):
+                q = q.filter(TaskProcess.user_id == current_uid)
+            latest = q.order_by(TaskProcess.start_time.desc()).first()
             if not latest:
                 return "Idle"
             return latest.message or "Idle"

@@ -366,15 +366,16 @@ async def upload_template_data(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: SessionType = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
 ):
     """Upload Excel file with timeseries data in the background."""
     from ix.api.routers.task import start_process
 
-    # Check for admin (optional but recommended since this updates DB)
-    # current_user = Depends(get_current_admin_user)
-
     contents = await file.read()
-    pid = start_process(f"Timeseries Upload: {file.filename}")
+    pid = start_process(
+        f"Timeseries Upload: {file.filename}",
+        user_id=str(getattr(current_user, "id", "") or ""),
+    )
 
     background_tasks.add_task(_run_upload_background_task, pid, contents)
 
