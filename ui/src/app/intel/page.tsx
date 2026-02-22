@@ -2,10 +2,12 @@
 
 import AppShell from '@/components/AppShell';
 import NewsFeed from '@/components/NewsFeed';
+import YouTubeIntelFeed from '@/components/YouTubeIntelFeed';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Radio, RefreshCw, Check, AlertTriangle, Activity } from 'lucide-react';
+import { Radio, RefreshCw, Check, AlertTriangle, Activity, BellRing, ScanLine, LayoutGrid } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -21,11 +23,15 @@ interface ProcessInfo {
 
 export default function IntelPage() {
   const { user } = useAuth();
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
+  const [syncingYoutube, setSyncingYoutube] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error'; sticky?: boolean } | null>(null);
   const lastTelegramProcessIdRef = useRef<string | null>(null);
+  const lastYoutubeProcessIdRef = useRef<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -64,6 +70,7 @@ export default function IntelPage() {
   });
 
   const latestTelegram = allProcesses.find((p) => p.name.startsWith('Telegram Sync'));
+  const latestYoutube = allProcesses.find((p) => p.name.startsWith('YouTube Sync'));
 
   useEffect(() => {
     if (!latestTelegram) return;
@@ -77,13 +84,33 @@ export default function IntelPage() {
     ) {
       if (latestTelegram.status === 'completed') {
         flash('Channel sync completed!', 'success', { sticky: true });
-        queryClient.invalidateQueries({ queryKey: ['telegram-news'] });
+        queryClient.invalidateQueries({ queryKey: ['news-feed'] });
+        queryClient.invalidateQueries({ queryKey: ['youtube-intel'] });
       } else if (latestTelegram.status === 'failed') {
         flash(latestTelegram.message || 'Channel sync failed', 'error', { sticky: true });
       }
     }
     lastTelegramProcessIdRef.current = latestTelegram.id;
   }, [latestTelegram, flash, queryClient]);
+
+  useEffect(() => {
+    if (!latestYoutube) return;
+    setSyncingYoutube(latestYoutube.status === 'running');
+
+    if (
+      latestYoutube.id !== lastYoutubeProcessIdRef.current &&
+      latestYoutube.status !== 'running'
+    ) {
+      if (latestYoutube.status === 'completed') {
+        flash('YouTube sync completed!', 'success', { sticky: true });
+        queryClient.invalidateQueries({ queryKey: ['youtube-intel'] });
+        queryClient.invalidateQueries({ queryKey: ['news-feed'] });
+      } else if (latestYoutube.status === 'failed') {
+        flash(latestYoutube.message || 'YouTube sync failed', 'error', { sticky: true });
+      }
+    }
+    lastYoutubeProcessIdRef.current = latestYoutube.id;
+  }, [latestYoutube, flash, queryClient]);
 
   const handleScrape = async () => {
     if (syncing) return;
@@ -107,63 +134,119 @@ export default function IntelPage() {
     }
   };
 
+  const handleYouTubeSync = async () => {
+    if (syncingYoutube) return;
+    setSyncingYoutube(true);
+    try {
+      const res = await apiFetch('/api/task/youtube', { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.detail || 'YouTube sync failed');
+      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
+      flash('YouTube sync started.', 'success');
+    } catch (err: any) {
+      flash(err.message || 'YouTube sync failed', 'error');
+      setSyncingYoutube(false);
+    } finally {
+      // Keep running state controlled by task polling effect.
+    }
+  };
+
   return (
     <AppShell>
-        <div className="p-4 md:p-8 lg:p-12 max-w-[1600px] mx-auto">
+      <div className="relative overflow-hidden">
+        <div className={`absolute inset-0 pointer-events-none ${
+          isLight
+            ? 'bg-[radial-gradient(circle_at_20%_0%,rgba(14,165,233,0.07),transparent_38%),radial-gradient(circle_at_80%_0%,rgba(16,185,129,0.05),transparent_34%)]'
+            : 'bg-[radial-gradient(circle_at_20%_0%,rgba(14,165,233,0.14),transparent_38%),radial-gradient(circle_at_80%_0%,rgba(16,185,129,0.08),transparent_34%)]'
+        }`} />
 
-          {/* Header */}
-          <div className="mb-6 rounded-2xl border border-border/60 bg-card/20 backdrop-blur-sm p-4 md:p-5">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center">
-                  <Radio className="w-4 h-4 text-sky-400" />
+        <div className="relative p-4 md:p-8 lg:p-10 max-w-[1680px] mx-auto space-y-6">
+          <section className="rounded-3xl border border-border/60 bg-card/[0.28] backdrop-blur-xl p-5 md:p-7 overflow-hidden">
+            <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-5">
+              <div className="space-y-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/35 bg-primary/10 px-3 py-1 text-[10px] font-mono tracking-[0.18em] uppercase text-primary">
+                  <ScanLine className="w-3.5 h-3.5" />
+                  Multi-Source Signal Desk
                 </div>
-                <div>
-                  <h1 className="text-xl md:text-2xl font-semibold text-foreground tracking-tight">Intel Feed</h1>
-                  <p className="text-[11px] text-muted-foreground font-mono tracking-wider uppercase">Telegram Channel Aggregator</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center mt-0.5">
+                    <Radio className="w-4.5 h-4.5 text-primary" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Intel Feed</h1>
+                    <p className="text-[12px] md:text-[13px] text-muted-foreground font-mono tracking-wider uppercase mt-1">
+                      YouTube + Telegram Channel Aggregator
+                    </p>
+                  </div>
                 </div>
+                <p className="text-sm text-foreground/70 max-w-3xl leading-relaxed">
+                  Central stream for macro, market, and thematic intelligence. Unsummarized and new videos are prioritized,
+                  and Telegram items are rolled from the latest 24 hours.
+                </p>
               </div>
 
-              <div className="flex items-center gap-2.5 text-[11px] font-mono">
-                <div className={`inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border ${
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 min-w-[280px]">
+                <div className={`rounded-xl border px-3 py-2.5 ${
                   syncing
-                    ? 'text-sky-300 border-sky-500/40 bg-sky-500/10'
-                    : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                    ? 'border-sky-500/40 bg-sky-500/10'
+                    : 'border-emerald-500/40 bg-emerald-500/10'
                 }`}>
-                  <Activity className={`w-3.5 h-3.5 ${syncing ? 'animate-pulse' : ''}`} />
-                  <span>{syncing ? 'LIVE SYNC' : 'IDLE'}</span>
-                </div>
-                {latestTelegram?.progress && (
-                  <div className="inline-flex items-center px-2.5 h-8 rounded-lg border border-border/60 bg-background/40 text-foreground/80">
-                    {latestTelegram.progress}
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Sync Status</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold">
+                    <Activity className={`w-3.5 h-3.5 ${syncing ? 'animate-pulse text-primary' : 'text-emerald-500 dark:text-emerald-300'}`} />
+                    <span className={syncing ? 'text-primary' : 'text-emerald-600 dark:text-emerald-200'}>{syncing ? 'Live Sync' : 'Idle'}</span>
                   </div>
-                )}
+                </div>
+                <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-2.5">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Progress</div>
+                  <div className="mt-1 text-xs font-semibold text-foreground/85">
+                    {latestTelegram?.progress || 'n/a'}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-2.5">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Pipeline</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-foreground/85">
+                    <LayoutGrid className="w-3.5 h-3.5 text-primary" />
+                    Video + Text
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Admin-only scrape button */}
-            {user?.is_admin && (
-              <div className="mt-4 pt-4 border-t border-border/40">
-                <button
-                  onClick={handleScrape}
-                  disabled={syncing}
-                  className="inline-flex items-center gap-2 px-4 h-9 bg-sky-500 hover:bg-sky-400 text-black rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                  {syncing ? (syncMsg || 'Syncing...') : 'Update Channels'}
-                </button>
+            <div className="mt-5 pt-4 border-t border-border/40 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="text-[11px] font-mono text-muted-foreground inline-flex items-center gap-2">
+                <BellRing className="w-3.5 h-3.5 text-primary" />
+                {syncing ? (syncMsg || 'Background sync running...') : 'System standing by for next sync event.'}
               </div>
-            )}
-          </div>
+              {user?.is_admin && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleScrape}
+                    disabled={syncing}
+                    className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-xl border border-sky-500/45 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 transition-colors disabled:opacity-50 text-sm font-semibold"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                    {syncing ? 'Syncing Telegram...' : 'Sync Telegram'}
+                  </button>
+                  <button
+                    onClick={handleYouTubeSync}
+                    disabled={syncingYoutube}
+                    className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-xl border border-primary/45 bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-50 text-sm font-semibold"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${syncingYoutube ? 'animate-spin' : ''}`} />
+                    {syncingYoutube ? 'Syncing YouTube...' : 'Sync YouTube'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
 
-          <div className="mb-6 text-[11px] font-mono text-muted-foreground border border-border/40 rounded-xl px-3 py-2.5 bg-background/30">
-            Live intelligence stream with task-aware sync state and rolling Telegram ingestion.
-          </div>
-
-          {/* Feed */}
-          <NewsFeed />
-
+          <section className="grid grid-cols-1 gap-6">
+            <YouTubeIntelFeed />
+            <NewsFeed />
+          </section>
         </div>
+      </div>
 
         {/* Animated Toast */}
         <AnimatePresence>

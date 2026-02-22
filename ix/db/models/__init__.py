@@ -20,6 +20,7 @@ from .user import User
 from .telegram import TelegramMessage
 from .custom_chart import CustomChart
 from .financial_news import FinancialNews
+from .youtube_intel import YouTubeIntel
 from .task_process import TaskProcess
 import pandas as pd
 
@@ -36,6 +37,7 @@ __all__ = [
     "Insights",
     "CustomChart",
     "FinancialNews",
+    "YouTubeIntel",
     "TaskProcess",
 ]
 
@@ -50,6 +52,7 @@ def all():
         Insights,
         CustomChart,
         FinancialNews,
+        YouTubeIntel,
         TaskProcess,
     ]
 

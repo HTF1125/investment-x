@@ -267,6 +267,35 @@ async def _run_telegram_scrape(user_id: str | None = None):
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
+def _run_youtube_sync(user_id: str | None = None):
+    """Synchronous wrapper for YouTube intel sync with task tracking."""
+    pid = start_process("YouTube Sync", user_id=user_id)
+    try:
+        update_process(pid, message="Preparing YouTube sync...", progress="0/1")
+        from ix.api.routers.news import _sync_youtube_catalog
+
+        with Session() as db:
+            removed_under_5m, sync_error = _sync_youtube_catalog(db=db, limit=50)
+
+        if sync_error:
+            update_process(
+                pid,
+                status=ProcessStatus.FAILED,
+                message=sync_error,
+                progress="1/1",
+            )
+            return
+
+        update_process(
+            pid,
+            status=ProcessStatus.COMPLETED,
+            message=f"YouTube sync completed. Removed {removed_under_5m} videos under 5 minutes.",
+            progress="1/1",
+        )
+    except Exception as e:
+        update_process(pid, status=ProcessStatus.FAILED, message=str(e))
+
+
 def _run_refresh_charts(pid: Optional[str] = None, user_id: str | None = None):
     """Synchronous wrapper for chart refresh."""
     if pid is None:
@@ -521,6 +550,20 @@ async def run_telegram_scrape_task(
 
     background_tasks.add_task(_run_telegram_scrape, current_uid)
     return {"message": "Telegram sync triggered", "status": "started"}
+
+
+@router.post("/task/youtube")
+async def run_youtube_sync_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger YouTube intel sync in background with task tracking."""
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("YouTube Sync", user_id=current_uid):
+        raise HTTPException(status_code=400, detail="YouTube sync is already running")
+
+    background_tasks.add_task(_run_youtube_sync, current_uid)
+    return {"message": "YouTube sync triggered", "status": "started"}
 
 
 @router.post("/task/refresh-charts")

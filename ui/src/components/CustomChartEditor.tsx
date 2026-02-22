@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import {
@@ -49,6 +50,8 @@ interface CustomChartEditorProps {
 
 export default function CustomChartEditor({ mode = 'standalone', initialChartId, onClose }: CustomChartEditorProps) {
   const { token } = useAuth();
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const queryClient = useQueryClient();
 
   // --- State ---
@@ -508,10 +511,10 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   // RENDER — 3-panel: [Library sidebar] | [Preview] | [Editor]
   // ─────────────────────────────────────────────────────────
   return (
-    <div className={`flex w-full overflow-hidden bg-[#02040a] ${mode === 'standalone' ? 'h-full' : 'h-full border-l border-white/10 shadow-2xl z-50'}`}>
+    <div className={`flex w-full overflow-hidden bg-background ${mode === 'standalone' ? 'h-full' : 'h-full border-l border-border/50 shadow-2xl z-50'}`}>
       {/* ═══════════════ ACTIVITY BAR (VS Code Style) ═══════════════ */}
       {mode === 'standalone' && (
-        <aside className="hidden lg:flex w-14 shrink-0 flex-col items-center py-4 gap-4 bg-[#05070c] border-r border-white/5 z-20">
+        <aside className="hidden lg:flex w-14 shrink-0 flex-col items-center py-4 gap-4 bg-card border-r border-border/50 z-20">
           <button 
             onClick={() => { setActiveTab('library'); setLibraryOpen(true); }}
             className={`p-2 rounded-xl transition-all ${activeTab === 'library' && libraryOpen ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
@@ -542,7 +545,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       )}
 
       {/* ═══════════════ MOBILE TAB BAR ═══════════════ */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-12 bg-[#0d0f14] border-t border-white/[0.08] flex items-center justify-around px-2">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-12 bg-card border-t border-border/50 flex items-center justify-around px-2">
         <button
           onClick={() => setMobilePanel('workspace')}
           className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-colors ${mobilePanel === 'workspace' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500'}`}
@@ -562,7 +565,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       {/* ═══════════════ SIDEBAR PANEL ═══════════════ */}
       {mode === 'standalone' && (
         <aside className={`
-          ${libraryOpen ? 'w-80' : 'w-0'} shrink-0 flex flex-col border-r border-white/5 bg-[#080a0f]/40 backdrop-blur-xl transition-all duration-300 overflow-hidden relative z-10
+          ${libraryOpen ? 'w-80' : 'w-0'} shrink-0 flex flex-col border-r border-border/50 bg-card/70 backdrop-blur-xl transition-all duration-300 overflow-hidden relative z-10
         `}>
         {/* Sidebar Header */}
         <div className="h-12 shrink-0 flex items-center justify-between px-4 border-b border-white/5 bg-white/[0.02]">
@@ -827,9 +830,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     )}
 
       {/* ═══════════════ CENTER — Workspace ═══════════════ */}
-      <main className="flex-grow flex flex-col min-w-0 bg-[#02040a] relative">
+      <main className="flex-grow flex flex-col min-w-0 bg-background relative">
         {/* Workspace Header / Breadcrumbs */}
-        <header className="h-12 shrink-0 flex items-center justify-between px-6 border-b border-white/5 bg-[#05070c]/50 backdrop-blur-md relative z-20">
+        <header className="h-12 shrink-0 flex items-center justify-between px-6 border-b border-border/50 bg-card/70 backdrop-blur-md relative z-20">
             <div className="flex items-center gap-3 min-w-0">
                 <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
                     <Activity className="w-4 h-4" />
@@ -839,7 +842,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="bg-transparent text-[13px] font-bold text-white placeholder-slate-700 focus:outline-none truncate w-full"
+                        className="bg-transparent text-[13px] font-bold text-foreground placeholder-muted-foreground focus:outline-none truncate w-full"
                         placeholder="Untitled Analysis"
                     />
                     <div className="flex items-center gap-2 text-[9px] font-mono text-slate-500 uppercase tracking-tighter">
@@ -871,14 +874,14 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                 <div className="w-px h-5 bg-white/10 mx-1" />
                 <button
                     onClick={() => setShowMeta(!showMeta)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${showMeta ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-slate-500 hover:text-white bg-white/5 border border-transparent hover:border-white/10'}`}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${showMeta ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-muted-foreground hover:text-foreground bg-card/60 border border-transparent hover:border-border/50'}`}
                 >
                     <Settings className={`w-4 h-4 ${showMeta ? 'animate-spin-slow' : ''}`} />
                     <span className="text-xs font-bold">Properties</span>
                 </button>
                 <button
                     onClick={toggleCodePanel}
-                    className={`p-2.5 rounded-xl transition-all ${showCodePanel ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-slate-500 hover:text-white bg-white/5 border border-transparent hover:border-white/10'}`}
+                    className={`p-2.5 rounded-xl transition-all ${showCodePanel ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-muted-foreground hover:text-foreground bg-card/60 border border-transparent hover:border-border/50'}`}
                 >
                     <Code className="w-4 h-4" />
                 </button>
@@ -892,7 +895,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="shrink-0 bg-[#0d0f14] border-b border-white/5 overflow-hidden z-10"
+                    className="shrink-0 bg-card border-b border-border/50 overflow-hidden z-10"
                 >
                     <div className="flex flex-col gap-5 px-8 py-6 max-w-7xl mx-auto">
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -1086,12 +1089,12 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
             </div>
         </div>
         
-        <div className="flex-grow flex flex-col min-h-0 bg-[#1e1e1e]">
+        <div className="flex-grow flex flex-col min-h-0 bg-background">
             <Editor
                 height="100%"
                 defaultLanguage="python"
                 value={code}
-                theme="vs-dark"
+                theme={isLight ? 'vs' : 'vs-dark'}
                 onChange={(value: string | undefined) => setCode(value || '')}
                 options={{
                 minimap: { enabled: false },
@@ -1118,16 +1121,16 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed bottom-8 right-8 z-[100] flex items-center gap-4 px-6 py-4 bg-[#0d0f14]/80 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl shadow-black"
+            className="fixed bottom-8 right-8 z-[100] flex items-center gap-4 px-6 py-4 bg-card/90 backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl"
           >
             <div className={`p-2 rounded-xl ${pdfStatus === 'exporting' ? 'bg-indigo-500/20 text-indigo-400' : pdfStatus === 'complete' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
                 {pdfStatus === 'exporting' ? <Loader2 className="w-5 h-5 animate-spin" /> : pdfStatus === 'complete' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-white uppercase tracking-tight">
+              <span className="text-sm font-bold text-foreground uppercase tracking-tight">
                 {pdfStatus === 'exporting' ? 'Synthesizing PDF...' : pdfStatus === 'complete' ? 'Synthesis Complete' : 'Process Failed'}
               </span>
-              <span className="text-[10px] text-slate-500 font-mono mt-0.5">
+              <span className="text-[10px] text-muted-foreground font-mono mt-0.5">
                 {pdfStatus === 'exporting' ? `Building ${pdfCount} chart definitions` : pdfStatus === 'complete' ? 'File ready for archival' : 'System error encountered'}
               </span>
             </div>
@@ -1150,22 +1153,22 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                initial={{ scale: 0.9, opacity: 0, y: 20 }}
                animate={{ scale: 1, opacity: 1, y: 0 }}
                exit={{ scale: 0.9, opacity: 0, y: 20 }}
-               className="relative w-full max-w-sm bg-[#0d0f14] border border-white/10 rounded-2xl shadow-2xl p-6"
+               className="relative w-full max-w-sm bg-card border border-border/50 rounded-2xl shadow-2xl p-6"
             >
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-500">
                   <Trash2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Delete Analysis?</h3>
-                  <p className="text-xs text-slate-500 mt-1">This action is permanent and cannot be undone.</p>
+                  <h3 className="text-lg font-bold text-foreground">Delete Analysis?</h3>
+                  <p className="text-xs text-muted-foreground mt-1">This action is permanent and cannot be undone.</p>
                 </div>
               </div>
               
               <div className="flex gap-3">
                 <button
                   onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white text-xs font-bold rounded-xl transition-all"
+                  className="flex-1 px-4 py-2.5 bg-card/70 hover:bg-card text-foreground text-xs font-bold rounded-xl transition-all"
                 >
                   Cancel
                 </button>

@@ -7,6 +7,11 @@ import QueryProvider from '@/providers/QueryProvider';
 export const metadata: Metadata = {
   title: "Investment-X | Macro Intelligence",
   description: "Advanced Macro Research & Quantitative Intelligence Library",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
