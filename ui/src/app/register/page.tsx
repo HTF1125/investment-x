@@ -49,7 +49,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-slate-950 via-slate-900 to-black">
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
       
-      <div className="w-full max-w-lg glass-card p-8 relative z-10 shadow-2xl shadow-emerald-500/10 border-emerald-500/20">
+      <div className="w-full max-w-lg glass-card p-6 sm:p-8 relative z-10 shadow-2xl shadow-emerald-500/10 border-emerald-500/20">
         <div className="mb-8 text-center">
           <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-4 border border-emerald-500/20">
             <UserPlus className="w-6 h-6 text-emerald-400" />
@@ -66,7 +66,7 @@ export default function RegisterPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">First Name</label>
               <div className="relative">

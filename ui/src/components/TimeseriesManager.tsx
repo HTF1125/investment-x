@@ -488,9 +488,9 @@ export default function TimeseriesManager() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
           {updating && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-sky-500/10 text-sky-400 rounded-lg border border-sky-500/20 text-xs font-mono animate-pulse">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-sky-500/10 text-sky-400 rounded-lg border border-sky-500/20 text-xs font-mono animate-pulse max-w-full">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   {updateMsg || 'Updating...'}
               </div>
@@ -702,7 +702,7 @@ export default function TimeseriesManager() {
                     <td className="px-4 py-3 text-slate-500 text-xs font-mono whitespace-nowrap">{ts.end || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs font-mono">{ts.num_data?.toLocaleString() ?? '—'}</td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => setViewChartItem(ts)}
                           className="p-1.5 text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
@@ -734,7 +734,7 @@ export default function TimeseriesManager() {
         </div>
 
         {/* Pagination */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-white/5 bg-white/[0.02]">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 border-t border-white/5 bg-white/[0.02]">
           <span className="text-xs text-slate-500 font-mono">
             Page {page + 1}
           </span>
@@ -877,7 +877,7 @@ export default function TimeseriesManager() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border ${
+            className={`fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-[60] flex items-start sm:items-center gap-3 px-4 sm:px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border ${
               toast.type === 'success'
                 ? 'bg-emerald-500/15 border-emerald-500/20 text-emerald-300'
                 : 'bg-rose-500/15 border-rose-500/20 text-rose-300'
@@ -885,8 +885,8 @@ export default function TimeseriesManager() {
             role="alert"
           >
             {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium">{toast.msg}</span>
+            <div className="flex items-start sm:items-center gap-2 sm:gap-3 min-w-0">
+              <span className="text-sm font-medium break-words">{toast.msg}</span>
               {toast.sticky && (
                 <button
                   onClick={() => setToast(null)}
@@ -908,10 +908,10 @@ export default function TimeseriesManager() {
           onClick={() => setViewChartItem(null)}
         >
           <div 
-             className="bg-[#0d0f14] border border-white/10 rounded-3xl w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl overflow-hidden"
+             className="bg-[#0d0f14] border border-white/10 rounded-3xl w-full max-w-5xl h-[85dvh] sm:h-[80vh] flex flex-col shadow-2xl overflow-hidden"
              onClick={(e) => e.stopPropagation()}
           >
-            <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#12141a]">
+            <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 sm:px-6 py-4 border-b border-white/10 bg-[#12141a]">
               <div>
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
                    <LineChart className="w-5 h-5 text-indigo-400" />

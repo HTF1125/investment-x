@@ -185,7 +185,7 @@ export default function IntelPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 min-w-[280px]">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full xl:w-auto xl:min-w-[340px]">
                 <div className={`rounded-xl border px-3 py-2.5 ${
                   syncing
                     ? 'border-sky-500/40 bg-sky-500/10'
@@ -219,11 +219,11 @@ export default function IntelPage() {
                 {syncing ? (syncMsg || 'Background sync running...') : 'System standing by for next sync event.'}
               </div>
               {user?.is_admin && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
                   <button
                     onClick={handleScrape}
                     disabled={syncing}
-                    className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-xl border border-sky-500/45 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 transition-colors disabled:opacity-50 text-sm font-semibold"
+                    className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-xl border border-sky-500/45 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 transition-colors disabled:opacity-50 text-sm font-semibold w-full sm:w-auto"
                   >
                     <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
                     {syncing ? 'Syncing Telegram...' : 'Sync Telegram'}
@@ -231,7 +231,7 @@ export default function IntelPage() {
                   <button
                     onClick={handleYouTubeSync}
                     disabled={syncingYoutube}
-                    className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-xl border border-primary/45 bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-50 text-sm font-semibold"
+                    className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-xl border border-primary/45 bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-50 text-sm font-semibold w-full sm:w-auto"
                   >
                     <RefreshCw className={`w-4 h-4 ${syncingYoutube ? 'animate-spin' : ''}`} />
                     {syncingYoutube ? 'Syncing YouTube...' : 'Sync YouTube'}
@@ -256,15 +256,15 @@ export default function IntelPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               transition={{ duration: 0.2 }}
-              className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border ${
+              className={`fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-[60] flex items-start sm:items-center gap-3 px-4 sm:px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border ${
                 toast.type === 'success'
                   ? 'bg-emerald-500/15 border-emerald-500/20 text-emerald-300'
                   : 'bg-rose-500/15 border-rose-500/20 text-rose-300'
               }`}
             >
               {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">{toast.msg}</span>
+              <div className="flex items-start sm:items-center gap-2 sm:gap-3 min-w-0">
+                <span className="text-sm font-medium break-words">{toast.msg}</span>
                 {toast.sticky && (
                   <button
                     onClick={() => setToast(null)}

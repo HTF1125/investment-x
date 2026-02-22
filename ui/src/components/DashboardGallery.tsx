@@ -188,15 +188,15 @@ const ChartCard = React.memo(function ChartCard({
   return (
     <div className={className}>
       {/* Card Header */}
-      <div className="px-4 py-3 flex items-center justify-between border-b border-border/50 bg-card/10 relative">
-         <div className="flex items-center gap-3 min-w-0 z-10">
+      <div className="px-3 sm:px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/50 bg-card/10 relative">
+         <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0 z-10 w-full sm:w-auto">
             {renderRankInput()}
             {renderOrderButtons()}
             {renderVisibilityToggle()}
             {renderName()}
          </div>
 
-         <div className="flex items-center gap-3 shrink-0">
+         <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto shrink-0">
             {isAdmin && (
               <div className="flex items-center gap-1">
                 <button
@@ -716,24 +716,24 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
     <div className="space-y-8 min-h-[800px]">
       {/* 🧭 Unified Command Bar (Single Line Architecture) */}
       <div 
-        className="flex flex-row items-center gap-4 sticky top-12 z-40 px-6 py-4 border-b !bg-white dark:!bg-black border-border/50 shadow-2xl !opacity-100"
+        className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4 sticky top-12 z-40 px-3 sm:px-4 md:px-6 py-3 md:py-4 border-b !bg-white dark:!bg-black border-border/50 shadow-2xl !opacity-100"
         style={{ backgroundColor: 'rgb(var(--background))' }}
       >
         
         {/* LEFT: Premium Category Selector */}
-        <div className="shrink-0" ref={categoryRef}>
+        <div className="shrink-0 w-full md:w-auto" ref={categoryRef}>
           {!searchQuery && (
             <div className="relative">
               <button 
                 onClick={() => setShowCategoryMenu(!showCategoryMenu)}
                 className={`
-                  flex items-center gap-2 pl-3.5 sm:pl-4 pr-3.5 sm:pr-4 py-2.5 
+                  w-full sm:w-auto flex items-center justify-between gap-2 pl-3.5 sm:pl-4 pr-3.5 sm:pr-4 py-2.5 
                   bg-secondary/10 border rounded-xl transition-all duration-300
                   ${showCategoryMenu ? 'border-sky-500/50 bg-sky-500/5 shadow-lg shadow-sky-500/10' : 'border-border/50 hover:bg-accent/10'}
                 `}
               >
                 <Layers className={`w-4 h-4 transition-colors ${showCategoryMenu ? 'text-sky-400' : 'text-sky-400/70'}`} />
-                <span className="hidden sm:inline text-xs font-bold text-foreground uppercase tracking-wider truncate max-w-[140px]">
+                <span className="text-xs font-bold text-foreground uppercase tracking-wider truncate max-w-[160px]">
                   {activeCategory}
                 </span>
                 <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-300 ${showCategoryMenu ? 'rotate-180 text-foreground' : ''}`} />
@@ -788,7 +788,7 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
         </div>
 
         {/* CENTER: Expansive Search Bar */}
-        <div className="relative flex-1">
+        <div className="relative w-full md:flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
@@ -809,13 +809,13 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
         </div>
 
         {/* RIGHT: Consolidated System Actions Dropdown */}
-        <div className="flex items-center gap-4 shrink-0">
+        <div className="flex items-center justify-end gap-2 sm:gap-3 shrink-0 w-full md:w-auto">
           {isAdmin && isReorderEnabled && isOrderDirty && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                <button
                  onClick={handleSaveOrder}
                  disabled={reorderMutation.isPending}
-                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95 whitespace-nowrap"
+                 className="flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95 whitespace-nowrap"
                >
                  {reorderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                  <span className="hidden sm:inline">SAVE RANK</span>
@@ -899,8 +899,8 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
       </div>
 
       {/* 📊 Results Header */}
-      <div className="flex items-center justify-between px-2">
-        <h2 className="text-2xl font-semibold text-foreground flex items-center gap-3 tracking-tight">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-1 sm:px-2">
+        <h2 className="text-xl sm:text-2xl font-semibold text-foreground flex flex-wrap items-center gap-2 sm:gap-3 tracking-tight w-full">
           {debouncedSearch ? (
             <>Search Results <span className="text-sky-500/60 font-mono text-lg">[{filteredCharts.length}]</span></>
           ) : (
@@ -914,14 +914,14 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
           )}
         </h2>
         {isReorderEnabled && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-sky-500/10 border border-sky-500/20 rounded-lg animate-pulse">
+          <div className="flex items-center gap-2 px-3 py-1 bg-sky-500/10 border border-sky-500/20 rounded-lg animate-pulse self-start sm:self-auto">
              <span className="text-[10px] font-bold text-sky-400 uppercase tracking-tighter">Live Ranking Console</span>
           </div>
         )}
       </div>
 
       {/* 🖼️ Grid Display */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-8">
         {filteredCharts.map((chart, idx) => (
           <motion.div
             key={chart.id}

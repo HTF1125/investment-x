@@ -109,10 +109,10 @@ export default function TechnicalPage() {
 
   return (
     <AppShell hideFooter>
-      <section className="h-[calc(100vh-3rem)] w-full overflow-hidden">
-        <div className="h-full max-w-[1800px] mx-auto px-4 md:px-6 lg:px-8 pt-3 pb-3 flex flex-col gap-2 overflow-hidden">
+      <section className="h-[calc(100dvh-3rem)] min-h-[calc(100vh-3rem)] w-full overflow-hidden">
+        <div className="h-full max-w-[1800px] mx-auto px-4 md:px-6 lg:px-8 pt-3 pb-3 flex flex-col gap-2 overflow-x-hidden overflow-y-auto md:overflow-hidden">
           <div className="rounded-2xl border border-border/50 bg-gradient-to-r from-indigo-500/10 to-sky-500/10 px-4 py-3 shrink-0">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center">
                   <CandlestickChart className="w-4 h-4 text-indigo-300" />
@@ -132,8 +132,8 @@ export default function TechnicalPage() {
           </div>
 
           <div className="rounded-2xl border border-border/50 bg-card/20 backdrop-blur-sm p-3 md:p-4 shrink-0">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-              <div className="col-span-2 md:col-span-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              <div className="sm:col-span-2 lg:col-span-1">
                 <label className="block text-[11px] text-muted-foreground mb-1.5">Ticker</label>
                 <input
                   value={tickerInput}

@@ -253,7 +253,7 @@ export default function YouTubeIntelFeed() {
   if (isError) {
     return (
       <div className="border border-rose-500/25 rounded-3xl bg-rose-500/5 p-5">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div className="flex items-center gap-2 text-rose-300 text-sm">
             <AlertTriangle className="w-4 h-4" />
             {(error as Error)?.message || 'Failed to load YouTube intelligence'}
@@ -296,7 +296,7 @@ export default function YouTubeIntelFeed() {
             Unsummarized videos are ranked first, then newest.
           </p>
         </div>
-        <div className="inline-flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider">
+        <div className="inline-flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-wider">
           <span className="px-2.5 h-7 rounded-lg border border-primary/35 bg-primary/10 text-primary inline-flex items-center">
             {data?.note ? 'Live Rank' : 'Manual Mode'}
           </span>
@@ -322,7 +322,7 @@ export default function YouTubeIntelFeed() {
                 addVideoMutation.mutate(manualUrl.trim());
               }}
               disabled={addVideoMutation.isPending}
-              className="inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl border border-primary/40 bg-primary/10 text-[11px] font-mono uppercase tracking-wider text-primary hover:bg-primary/20 disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl border border-primary/40 bg-primary/10 text-[11px] font-mono uppercase tracking-wider text-primary hover:bg-primary/20 disabled:opacity-60 w-full md:w-auto"
             >
               <PlusCircle className="w-3.5 h-3.5" />
               Add Video
@@ -386,7 +386,7 @@ export default function YouTubeIntelFeed() {
                   href={v.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="group relative rounded-xl overflow-hidden border border-border/60 bg-card/50 w-full max-w-[200px]"
+                  className="group relative rounded-xl overflow-hidden border border-border/60 bg-card/50 w-full max-w-full sm:max-w-[200px]"
                 >
                   <img
                     src={`https://i.ytimg.com/vi/${v.video_id}/hqdefault.jpg`}
@@ -400,7 +400,7 @@ export default function YouTubeIntelFeed() {
                 </a>
 
                 <div className="min-w-0">
-                  <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 mb-2">
                     <div className="min-w-0">
                       <a
                         href={v.url}
@@ -411,7 +411,7 @@ export default function YouTubeIntelFeed() {
                         <span className="break-words">{v.title}</span>
                         <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                       </a>
-                      <div className="text-[11px] text-muted-foreground font-mono mt-1 flex items-center gap-2">
+                      <div className="text-[11px] text-muted-foreground font-mono mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
                         <span>{v.channel}</span>
                         <span>•</span>
                         <span>{new Date(v.published_at).toLocaleString()}</span>
@@ -439,7 +439,7 @@ export default function YouTubeIntelFeed() {
                   </div>
 
                   <div className="mb-1 rounded-2xl border border-border/40 bg-background/35 p-3.5">
-                    <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <div className="text-[10px] font-mono uppercase tracking-wider text-primary inline-flex items-center gap-1.5">
                         <FileText className="w-3.5 h-3.5" />
                         Summary
@@ -571,13 +571,13 @@ export default function YouTubeIntelFeed() {
         })}
       </div>
 
-      <div className="px-5 md:px-6 py-3 border-t border-border/40 bg-background/45 flex items-center justify-between">
+      <div className="px-5 md:px-6 py-3 border-t border-border/40 bg-background/45 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="text-[11px] font-mono text-muted-foreground">
           {data?.total
             ? `${(data.page - 1) * data.page_size + 1}-${Math.min(data.page * data.page_size, data.total)} of ${data.total}`
             : '0'}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-end sm:self-auto">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={!data || data.page <= 1}

@@ -253,9 +253,10 @@ export default function Navbar() {
           ) : (
             <Link 
               href="/login"
-              className="inline-flex items-center px-4 h-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 uppercase tracking-wider"
+              className="inline-flex items-center px-2.5 sm:px-4 h-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] sm:text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 uppercase tracking-wider"
             >
-              Initialize Session
+              <span className="sm:hidden">Login</span>
+              <span className="hidden sm:inline">Initialize Session</span>
             </Link>
           )}
 

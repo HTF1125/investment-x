@@ -194,28 +194,28 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
 
         {/* Studio Panel — CSS transform only, no mount/unmount */}
         <div
-          className={`fixed inset-y-0 right-0 w-[94vw] bg-background border-l border-border shadow-2xl z-[130] flex flex-col overflow-hidden transition-transform duration-200 ease-out ${
+          className={`fixed inset-y-0 right-0 w-full sm:w-[94vw] md:w-[90vw] lg:w-[80vw] bg-background border-l border-border shadow-2xl z-[130] flex flex-col overflow-hidden transition-transform duration-200 ease-out ${
             studioOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
           style={{ pointerEvents: studioOpen ? 'auto' : 'none' }}
         >
           {/* Studio Control Header */}
-          <div className="h-14 shrink-0 flex items-center justify-between px-6 bg-card border-b border-border">
-             <div className="flex items-center gap-4">
+          <div className="h-14 sm:h-16 shrink-0 flex items-center justify-between px-3 sm:px-4 md:px-6 bg-card border-b border-border">
+             <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                 <div className="flex items-center gap-2 text-indigo-400">
                    <Activity className="w-5 h-5" />
-                   <span className="text-xs font-bold font-mono uppercase tracking-[0.2em]">Quantum Studio Focus</span>
+                   <span className="text-[10px] sm:text-xs font-bold font-mono uppercase tracking-[0.2em] whitespace-nowrap">Quantum Studio Focus</span>
                 </div>
-                <div className="w-px h-4 bg-foreground/10" />
-                <span className="text-[10px] text-muted-foreground font-mono italic">
+                <div className="hidden sm:block w-px h-4 bg-foreground/10" />
+                <span className="hidden md:block text-[10px] text-muted-foreground font-mono italic truncate max-w-[40vw]">
                   {studioChartId ? `Modifying Instance: ${studioChartId}` : 'Authoring New Research Protocol'}
                 </span>
              </div>
              <button 
                onClick={closeStudio}
-               className="p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-xl transition-all flex items-center gap-2 group"
+               className="p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/5 rounded-xl transition-all flex items-center gap-1 sm:gap-2 group shrink-0"
              >
-               <span className="text-[10px] font-bold font-mono opacity-0 group-hover:opacity-100 transition-opacity">CLOSE WORKSPACE</span>
+               <span className="hidden md:block text-[10px] font-bold font-mono opacity-0 group-hover:opacity-100 transition-opacity">CLOSE WORKSPACE</span>
                <X className="w-5 h-5" />
              </button>
           </div>
@@ -230,15 +230,15 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
         {/* Floating Toggle */}
         {isAdmin && !studioOpen && (
           <button
-            className="fixed bottom-8 right-8 z-[110] p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-2xl shadow-indigo-600/30 transition-all flex items-center gap-3 border border-indigo-400/20 group hover:scale-105 active:scale-95"
+            className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 md:bottom-8 md:right-8 z-[110] p-3 sm:p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-2xl shadow-indigo-600/30 transition-all flex items-center gap-2 sm:gap-3 border border-indigo-400/20 group hover:scale-105 active:scale-95"
             onClick={() => openStudio()}
           >
              <div className="relative">
-                <Activity className="w-5 h-5" />
+                <Activity className="w-4 h-4 sm:w-5 sm:h-5" />
                 <div className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
                 <div className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full" />
              </div>
-             <span className="text-xs font-bold uppercase tracking-widest hidden group-hover:block transition-all">Research Studio</span>
+             <span className="text-xs font-bold uppercase tracking-widest hidden lg:group-hover:block transition-all">Research Studio</span>
           </button>
         )}
       </div>
