@@ -91,7 +91,7 @@ def _now_utc() -> datetime:
 def _parse_iso8601(s: str) -> datetime:
     text = (s or "").strip()
     if not text:
-        return _now_utc()
+        raise ValueError("Missing ISO-8601 datetime")
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
     dt = datetime.fromisoformat(text)
@@ -162,7 +162,9 @@ def _extract_video_id_from_url(url: str) -> str:
 def _fetch_video_info(video_id: str) -> dict[str, Any]:
     watch_url = f"https://www.youtube.com/watch?v={video_id}"
     duration_seconds = _fetch_video_duration_seconds(video_id)
-    published_at = _fetch_video_published_at(video_id) or _now_utc()
+    published_at = _fetch_video_published_at(video_id)
+    if published_at is None:
+        raise ValueError("Unable to resolve canonical published_at for video")
     # Try oEmbed first (title + author_name).
     try:
         oembed_url = (
@@ -286,33 +288,50 @@ def _fetch_channel_feed(channel_id: str) -> list[dict[str, Any]]:
     root = ET.fromstring(xml_data)
     out: list[dict[str, Any]] = []
     for entry in root.findall("a:entry", _ATOM_NS):
-        vid = entry.findtext("a:id", default="", namespaces=_ATOM_NS).replace("yt:video:", "")
-        title = entry.findtext("a:title", default="", namespaces=_ATOM_NS).strip()
-        link_node = entry.find("a:link", _ATOM_NS)
-        link = ""
-        if link_node is not None:
-            link = link_node.attrib.get("href", "")
-        published_raw = entry.findtext("a:published", default="", namespaces=_ATOM_NS)
-        published = _parse_iso8601(published_raw)
-        channel_name = entry.findtext("a:author/a:name", default="", namespaces=_ATOM_NS).strip()
-        desc = entry.findtext("m:group/m:description", default="", namespaces=_ATOM_NS).strip()
-        duration_seconds = None
-        duration_node = entry.find("m:group/yt:duration", _ATOM_NS)
-        if duration_node is not None:
-            raw_seconds = duration_node.attrib.get("seconds")
-            if raw_seconds and raw_seconds.isdigit():
-                duration_seconds = int(raw_seconds)
-        out.append(
-            {
-                "video_id": vid,
-                "channel": channel_name or channel_id,
-                "title": title,
-                "published_at": published,
-                "url": link or f"https://www.youtube.com/watch?v={vid}",
-                "description": desc,
-                "duration_seconds": duration_seconds,
-            }
-        )
+        try:
+            vid = (
+                entry.findtext("a:id", default="", namespaces=_ATOM_NS)
+                .replace("yt:video:", "")
+                .strip()
+            )
+            if not vid:
+                continue
+
+            title = entry.findtext("a:title", default="", namespaces=_ATOM_NS).strip()
+            link_node = entry.find("a:link", _ATOM_NS)
+            link = ""
+            if link_node is not None:
+                link = link_node.attrib.get("href", "")
+
+            published_raw = entry.findtext("a:published", default="", namespaces=_ATOM_NS)
+            published = _parse_iso8601(published_raw)
+
+            channel_name = entry.findtext(
+                "a:author/a:name", default="", namespaces=_ATOM_NS
+            ).strip()
+            desc = entry.findtext("m:group/m:description", default="", namespaces=_ATOM_NS).strip()
+
+            duration_seconds = None
+            duration_node = entry.find("m:group/yt:duration", _ATOM_NS)
+            if duration_node is not None:
+                raw_seconds = duration_node.attrib.get("seconds")
+                if raw_seconds and raw_seconds.isdigit():
+                    duration_seconds = int(raw_seconds)
+
+            out.append(
+                {
+                    "video_id": vid,
+                    "channel": channel_name or channel_id,
+                    "title": title,
+                    "published_at": published,
+                    "url": link or f"https://www.youtube.com/watch?v={vid}",
+                    "description": desc,
+                    "duration_seconds": duration_seconds,
+                }
+            )
+        except Exception:
+            # Skip malformed entries instead of poisoning the full channel sync.
+            continue
     return out
 
 
@@ -352,7 +371,9 @@ def _upsert_video_stub(db: Session, video: dict[str, Any]) -> YouTubeIntel:
     row.channel = video["channel"]
     row.title = video["title"]
     row.url = video["url"]
-    row.published_at = video["published_at"]
+    # Keep original published_at immutable after first insert.
+    if row.published_at is None:
+        row.published_at = video["published_at"]
     row.duration_seconds = video.get("duration_seconds")
     return row
 
@@ -505,7 +526,6 @@ def _sync_youtube_catalog(db: Session, limit: int = 50) -> tuple[int, Optional[s
                     .delete(synchronize_session=False)
                 )
             deleted_under_5m = _delete_under_5_minute_videos(db)
-            _backfill_suspicious_published_dates(db, limit_rows=200)
             db.commit()
         else:
             sync_error = "No configured YouTube channels available."
@@ -583,9 +603,6 @@ def get_recent_youtube_intel(
                 YouTubeIntel.summary.ilike(pattern),
             )
         )
-    db_rows = db_query.all()
-    _repair_published_dates_inline(db, db_rows[: max(1, min(page_size, 10))], max_repairs=5)
-    # Re-read after potential inline repair.
     db_rows = db_query.all()
     all_items = [_to_video_schema(r) for r in db_rows]
 
@@ -672,7 +689,13 @@ def add_youtube_video_for_intel(
             detail="This video was deleted and is blocked from re-ingestion.",
         )
 
-    video = _fetch_video_info(video_id)
+    try:
+        video = _fetch_video_info(video_id)
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to fetch canonical published date for this YouTube video.",
+        )
     duration = video.get("duration_seconds")
     if duration is not None and duration < _MIN_VIDEO_SECONDS:
         raise HTTPException(

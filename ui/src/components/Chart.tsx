@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import { applyChartTheme } from '@/lib/chartTheme';
 
 const ChartSkeleton = () => (
   <div className="w-full h-full p-6 flex flex-col gap-4 bg-[#0a0a0a]/40 rounded-xl animate-pulse overflow-hidden relative min-h-[290px]">
@@ -43,66 +44,6 @@ const Plot = dynamic(() => import('react-plotly.js'), {
 
 import { motion, AnimatePresence } from 'framer-motion';
 
-const cleanFigure = (data: any, theme: string) => {
-    if (!data) return data;
-    const cleaned = JSON.parse(JSON.stringify(data)); // Deep clone
-    const isLight = theme === 'light';
-    const textColor = isLight ? 'rgb(15 23 42)' : 'rgb(248 250 252)';
-    const gridColor = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
-
-    if (cleaned.layout) {
-      cleaned.layout.autosize = true;
-      cleaned.layout.width = undefined;
-      cleaned.layout.height = undefined;
-      cleaned.layout.paper_bgcolor = 'rgba(0,0,0,0)';
-      cleaned.layout.plot_bgcolor = 'rgba(0,0,0,0)';
-      
-      const legendBg = isLight ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)';
-      const borderColor = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
-      
-      // Theme-aware typography
-      cleaned.layout.font = { ...cleaned.layout.font, color: textColor, family: 'Inter, sans-serif' };
-      
-      const axes = ['xaxis', 'yaxis', 'xaxis2', 'yaxis2', 'xaxis3', 'yaxis3', 'xaxis4', 'yaxis4'];
-      axes.forEach(ax => {
-        if (cleaned.layout[ax]) {
-          cleaned.layout[ax].gridcolor = gridColor;
-          cleaned.layout[ax].zerolinecolor = gridColor;
-          cleaned.layout[ax].tickfont = { color: textColor, size: 10 };
-          cleaned.layout[ax].title = { 
-            ...cleaned.layout[ax].title, 
-            font: { color: textColor, size: 11, weight: 600 } 
-          };
-        }
-      });
-
-      if (cleaned.layout.legend) {
-        cleaned.layout.legend.font = { color: textColor, size: 10 };
-        cleaned.layout.legend.bgcolor = legendBg;
-        cleaned.layout.legend.bordercolor = borderColor;
-        cleaned.layout.legend.borderwidth = 1;
-      }
-
-      // Tooltip/Hover Styling
-      cleaned.layout.hoverlabel = {
-        bgcolor: isLight ? 'white' : 'rgb(15 23 42)',
-        bordercolor: borderColor,
-        font: { color: textColor, family: 'Inter, sans-serif', size: 12 },
-        align: 'left'
-      };
-
-      // Preserve the chart's intended margins but cap them for card display
-      const orig = cleaned.layout.margin || {};
-      cleaned.layout.margin = {
-        l: Math.min(orig.l ?? 50, 120),
-        r: Math.min(orig.r ?? 20, 50),
-        t: Math.min(orig.t ?? 40, 80),
-        b: Math.min(orig.b ?? 30, 50),
-      };
-    }
-    return cleaned;
-};
-
 interface ChartProps {
   id: string;
   initialFigure?: any;
@@ -116,13 +57,26 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
   const [copyState, setCopyState] = React.useState<'idle' | 'copying' | 'done'>('idle');
   const [isVisible, setIsVisible] = React.useState(true);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const safelyThemeFigure = React.useCallback(
+    (figure: any) => {
+      try {
+        return applyChartTheme(figure, theme, { transparentBackground: true });
+      } catch {
+        return figure;
+      }
+    },
+    [theme]
+  );
 
   // Sync internal cache when initialFigure prop changes
   React.useEffect(() => {
     if (initialFigure && id) {
-      queryClient.setQueryData(['chart-figure', id, theme], cleanFigure(initialFigure, theme));
+      queryClient.setQueryData(
+        ['chart-figure', id, theme],
+        safelyThemeFigure(initialFigure)
+      );
     }
-  }, [id, initialFigure, queryClient, theme]);
+  }, [id, initialFigure, queryClient, theme, safelyThemeFigure]);
   
   const { data: figure, isLoading, error } = useQuery({
     queryKey: ['chart-figure', id, theme],
@@ -134,9 +88,9 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
       }
       
       const data = await res.json();
-      return cleanFigure(data, theme);
+      return safelyThemeFigure(data);
     },
-    initialData: () => cleanFigure(initialFigure, theme),
+    initialData: () => safelyThemeFigure(initialFigure),
     staleTime: 1000 * 60 * 10, // 10 minutes cache
     enabled: !!id && isVisible,
   });

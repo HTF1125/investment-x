@@ -26,6 +26,7 @@ from ix.db.conn import get_session
 from ix.db.models import CustomChart, User
 from ix.api.dependencies import get_current_user
 from ix.misc import get_logger
+from ix.misc.theme import chart_theme
 
 # Import process manager functions (ensure no circular deps)
 try:
@@ -47,6 +48,19 @@ except ImportError:
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def _theme_figure_for_delivery(figure: Any) -> Any:
+    """Apply canonical misc theme when returning figures to dashboard/studio clients."""
+    if figure is None:
+        return None
+    return chart_theme.apply_json(figure, mode="light")
+
+
+def _to_custom_chart_response(chart: CustomChart):
+    payload = CustomChartResponse.from_orm(chart)
+    payload.figure = _theme_figure_for_delivery(chart.figure)
+    return payload
 
 # --- Pydantic Models ---
 
@@ -155,9 +169,24 @@ def execute_custom_code(code: str):
     from ix.cht.style import (
         get_value_label,
         get_color,
-        apply_academic_style,
         add_zero_line,
     )
+
+    def apply_theme(fig: Any, mode: str | None = None, force_dark: bool | None = None):
+        """
+        Backward-compatible wrapper around ix.misc.theme chart theme.
+        - mode: 'light' or 'dark'
+        - force_dark: legacy flag supported by older custom scripts
+        """
+        resolved_mode = mode
+        if resolved_mode not in {"light", "dark"}:
+            if force_dark is True:
+                resolved_mode = "dark"
+            elif force_dark is False:
+                resolved_mode = "light"
+            else:
+                resolved_mode = "light"
+        return chart_theme.apply(fig, mode=resolved_mode)
 
     # Create a single session for all queries in this execution
     # This dramatically improves performance for charts with many tickers
@@ -204,8 +233,8 @@ def execute_custom_code(code: str):
         "Ffill": Ffill,
         "get_value_label": get_value_label,
         "get_color": get_color,
-        "apply_academic_style": apply_academic_style,
-        "apply_theme": apply_academic_style,  # Alias for easier usage
+        "apply_academic_style": apply_theme,
+        "apply_theme": apply_theme,
         "add_zero_line": add_zero_line,
         "df_plot": df_plot,
         "__name__": "__main__",
@@ -265,6 +294,13 @@ def execute_custom_code(code: str):
                 raise ValueError(
                     "The code must define a variable named 'fig' containing the Plotly figure."
                 )
+
+        # Enforce the misc chart theme before returning to frontend/storage.
+        try:
+            fig_result = apply_theme(fig_result)
+        except Exception as theme_err:
+            logger.warning(f"Theme application skipped due to error: {theme_err}")
+
         return fig_result
 
     except BaseException as e:
@@ -714,7 +750,7 @@ def create_custom_chart(
     db.commit()
     db.refresh(new_chart)
     logger.info(f"New chart created with ID: {new_chart.id}, Name: '{new_chart.name}'")
-    return new_chart
+    return _to_custom_chart_response(new_chart)
 
 
 @router.get("/custom", response_model=List[CustomChartResponse])
@@ -727,11 +763,12 @@ def list_custom_charts(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    return (
+    charts = (
         db.query(CustomChart)
         .order_by(CustomChart.rank.asc(), CustomChart.created_at.desc())
         .all()
     )
+    return [_to_custom_chart_response(chart) for chart in charts]
 
 
 @router.put("/custom/reorder")
@@ -1033,7 +1070,7 @@ def get_custom_chart(
 
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
-    return chart
+    return _to_custom_chart_response(chart)
 
 
 @router.put("/custom/{chart_id}", response_model=CustomChartResponse)
@@ -1100,7 +1137,7 @@ def update_custom_chart(
     logger.info(
         f"Chart {chart.id} updated successfully. Figure updated: {update_data.code is not None}"
     )
-    return chart
+    return _to_custom_chart_response(chart)
 
 
 @router.delete("/custom/{chart_id}")

@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchJson } from '@/lib/api';
+import { applyChartTheme } from '@/lib/chartTheme';
 import {
   Loader2, Play, Save, Code, FileText, 
   Download, Copy, Trash2, Plus, Terminal, Search,
@@ -224,6 +225,29 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
 
   // Count of charts flagged for PDF export
   const pdfCount = useMemo(() => orderedCharts.filter((c: any) => c.export_pdf).length, [orderedCharts]);
+  const parseBodySafe = useCallback(async (res: Response) => {
+    const text = await res.text();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }, []);
+
+  const toErrorPayload = useCallback((body: any, status: number) => {
+    if (body && typeof body === 'object') {
+      const detail = body.detail;
+      if (detail && typeof detail === 'object') return detail;
+      if (typeof detail === 'string') return { error: 'Request Error', message: detail };
+      if (typeof body.message === 'string') return { error: 'Request Error', message: body.message };
+      if (typeof body.error === 'string') return { error: body.error, message: body.message || `Request failed (${status})` };
+    }
+    if (typeof body === 'string') {
+      return { error: 'Request Error', message: body };
+    }
+    return { error: 'Request Error', message: `Request failed (${status})` };
+  }, []);
 
   const reorderMutation = useMutation({
     mutationFn: (items: any[]) => {
@@ -243,11 +267,13 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       });
-      
-      const data = await res.json();
+
+      const data = await parseBodySafe(res);
       if (!res.ok) {
-         const errorObj = typeof data.detail === 'object' ? data.detail : data;
-         throw errorObj;
+        throw toErrorPayload(data, res.status);
+      }
+      if (!data || typeof data !== 'object') {
+        throw toErrorPayload(data, res.status);
       }
       return data;
     },
@@ -277,10 +303,12 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const data = await parseBodySafe(res);
       if (!res.ok) {
-         const errorObj = typeof data.detail === 'object' ? data.detail : data;
-         throw errorObj;
+        throw toErrorPayload(data, res.status);
+      }
+      if (!data || typeof data !== 'object') {
+        throw toErrorPayload(data, res.status);
       }
       return { data, method };
     },
@@ -396,8 +424,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
         body: JSON.stringify({ items: [] }),
       });
       if (!res.ok) {
-         const errData = await res.json().catch(() => ({}));
-         throw new Error(errData.detail || 'PDF generation failed');
+        const errData = await parseBodySafe(res);
+        const errPayload = toErrorPayload(errData, res.status);
+        throw new Error(errPayload?.message || 'PDF generation failed');
       }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -506,6 +535,16 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const loading = previewMutation.isPending;
   const saving = saveMutation.isPending;
   const error = previewError ?? (saveMutation.isError ? saveMutation.error : null) ?? null;
+  const themedPreviewFigure = useMemo(
+    () => {
+      try {
+        return applyChartTheme(previewFigure, theme, { transparentBackground: true });
+      } catch {
+        return previewFigure;
+      }
+    },
+    [previewFigure, theme]
+  );
 
   // ─────────────────────────────────────────────────────────
   // RENDER — 3-panel: [Library sidebar] | [Preview] | [Editor]
@@ -965,15 +1004,12 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
             {/* Main Visualizer */}
             <div className="flex-grow relative bg-[#010205] flex flex-col min-h-0">
                 <div className="flex-grow relative overflow-hidden">
-                    {previewFigure ? (
+                    {themedPreviewFigure ? (
                         <Plot
-                        data={previewFigure.data}
+                        data={themedPreviewFigure.data}
                         layout={{ 
-                            ...previewFigure.layout, 
-                            autosize: true,
-                            paper_bgcolor: 'rgba(0,0,0,0)',
-                            plot_bgcolor: 'rgba(0,0,0,0)',
-                            font: { color: '#94a3b8', family: 'Inter' },
+                            ...themedPreviewFigure.layout, 
+                            autosize: true
                         }}
                         config={{ responsive: true, displayModeBar: 'hover', displaylogo: false }}
                         style={{ width: '100%', height: '100%' }}

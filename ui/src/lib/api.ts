@@ -21,6 +21,16 @@ export async function apiFetch(
   });
 }
 
+async function parseResponseBody(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 /**
  * Convenience wrapper that auto-parses JSON and throws on non-ok responses.
  */
@@ -29,9 +39,28 @@ export async function apiFetchJson<T = any>(
   options: RequestInit = {},
 ): Promise<T> {
   const res = await apiFetch(url, options);
+  const body = await parseResponseBody(res);
+
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Request failed (${res.status})`);
+    if (typeof body === 'string') {
+      throw new Error(body || `Request failed (${res.status})`);
+    }
+    const detail = body?.detail;
+    if (typeof detail === 'string') {
+      throw new Error(detail);
+    }
+    if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
+      throw new Error(detail.message);
+    }
+    if (typeof body?.message === 'string') {
+      throw new Error(body.message);
+    }
+    throw new Error(`Request failed (${res.status})`);
   }
-  return res.json();
+
+  if (typeof body === 'string') {
+    throw new Error(`Expected JSON response from ${url}, received text response.`);
+  }
+
+  return (body ?? {}) as T;
 }

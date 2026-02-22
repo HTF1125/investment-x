@@ -1,16 +1,25 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import QueryProvider from '@/providers/QueryProvider';
 
+export const viewport: Viewport = {
+  themeColor: "#020617",
+  width: "device-width",
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
   title: "Investment-X | Macro Intelligence",
   description: "Advanced Macro Research & Quantitative Intelligence Library",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
     apple: "/icon.svg",
+    shortcut: "/favicon.svg",
   },
 };
 

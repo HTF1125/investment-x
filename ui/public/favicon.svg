@@ -1,15 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#070a12"/>
-      <stop offset="100%" stop-color="#141a2a"/>
-    </linearGradient>
-  </defs>
-
-  <rect x="3" y="3" width="58" height="58" rx="14" fill="url(#bg2)" stroke="#222c45" stroke-width="2"/>
-
-  <path d="M18 16h9v32h-9z" fill="#ca1c4f"/>
-  <path d="M16 28h14v8H16z" fill="#ca1c4f"/>
-
-  <path d="M38 16h10l5 8 5-8h10L57 32l11 16H58l-5-8-5 8H38l11-16-11-16z" fill="#f8fafc"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Deep Obsidian Circular Base -->
+  <circle cx="64" cy="64" r="64" fill="#020617"/>
+  
+  <!-- Centered "IX" Mark (Investment-X) -->
+  <!-- "I" Pillar -->
+  <path d="M38 38V90" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  
+  <!-- "X" Symbol -->
+  <path d="M66 38L106 90" stroke="#ca1c4f" stroke-width="14" stroke-linecap="round"/>
+  <path d="M106 38L66 90" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
 </svg>
+
+
+
+

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
-from typing import Any, Dict, List, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -13,7 +12,7 @@ import plotly.graph_objects as go
 class Color:
     """Centralized color management for the Investment-X design system."""
 
-    # Neon Palette
+    # Core palette
     CYAN: str = "#00D2FF"
     MAGENTA: str = "#FF69B4"
     PURPLE: str = "#A020F0"
@@ -23,12 +22,11 @@ class Color:
     SKY: str = "#3b82f6"
     SLATE: str = "#94a3b8"
 
-    # Theme Specifics
+    # Theme primitives
     BG_DARK: str = "#0B0E14"
     BG_LIGHT: str = "#FFFFFF"
-    LEGEND_DARK: str = "#3c3c3c"
 
-    # Asset Mapping (Signature colors for specific tickers/names)
+    # Domain mapping (stable signature colors by name)
     ASSET_MAP: Dict[str, str] = field(
         default_factory=lambda: {
             "s&p 500": "#00D2FF",
@@ -52,7 +50,6 @@ class Color:
 
     @property
     def colorway(self) -> List[str]:
-        """Returns the primary neon sequence for multi-series charts."""
         return [
             self.CYAN,
             self.MAGENTA,
@@ -64,145 +61,312 @@ class Color:
         ]
 
     def get_asset(self, name: str) -> Optional[str]:
-        """Retrieves a specific color for a known asset name."""
-        return self.ASSET_MAP.get(name.lower())
+        if not name:
+            return None
+        return self.ASSET_MAP.get(name.lower().strip())
 
 
 @dataclass(frozen=True)
 class ChartTheme:
     """
-    Advanced premium chart theme for Investment-X.
-    Implements a high-contrast 'Neon Research' aesthetic.
+    Canonical chart theme used by dashboard/studio delivery.
+    Includes:
+    - Date axis detection with right-side breathing room
+    - Automatic legend visibility decision
+    - Consistent title/axis/hover readability
     """
 
-    # Design System
     palette: Color = field(default_factory=Color)
-
-    # Sizing & Layout
     width: int = 1000
     height: int = 600
-    margin: Dict[str, int] = field(default_factory=lambda: dict(t=80, l=40, r=40, b=60))
-
-    # Typography
+    margin: Dict[str, int] = field(default_factory=lambda: dict(t=50, l=0, r=0, b=0))
     font_main: str = "Arial, Helvetica, sans-serif"
     font_mono: str = "Inter, SF Mono, monospace"
+    right_padding_ratio: float = 0.05
+    datetime_tickformat: str = "%Y-%m-%d"
+    title_x: float = 0.01
+    title_y: float = 0.98
+    legend_x: float = 0.01
+    legend_y: float = 0.98
+    legend_gap: int = 0
 
-    def apply(self, fig: Any, mode: str = "light") -> Any:
-        """
-        Apply the theme to a Plotly figure.
-
-        Args:
-            fig: The Plotly figure object.
-            mode: 'light' or 'dark' (Defaulting to light to match user reference image).
-        """
-        is_dark = mode == "dark"
-        bg_color = self.palette.BG_DARK if is_dark else self.palette.BG_LIGHT
-        text_color = "#FFFFFF" if is_dark else "#000000"
-        grid_color = "rgba(255,255,255,0.1)" if is_dark else "rgba(0,0,0,0.4)"
-        legend_bg = "rgba(40, 44, 52, 0.9)" if not is_dark else "rgba(11, 14, 20, 0.8)"
-
-        # 1. Base Layout
-        fig.update_layout(
-            template=None,
-            paper_bgcolor=bg_color,
-            plot_bgcolor=bg_color,
-            font=dict(family=self.font_main, color=text_color, size=12),
-            colorway=self.palette.colorway,
-            margin=self.margin,
-            hovermode="x unified",
-            # Advanced Multi-tier Title
-            title=dict(
-                x=0.02,
-                y=0.98,
-                xanchor="left",
-                yanchor="top",
-                font=dict(size=14, color=text_color, family=self.font_main),
-            ),
-            # 'Picture' Style Legend: Top-Left, Dark Box, Rounded
-            legend=dict(
-                orientation="v",
-                x=0.03,
-                y=0.97,
-                xanchor="left",
-                yanchor="top",
-                bgcolor=self.palette.LEGEND_DARK,
-                bordercolor="rgba(255,255,255,0.1)",
-                borderwidth=1,
-                font=dict(size=10, color="#FFFFFF"),
-                itemsizing="constant",
-            ),
-            # Hover Box
-            hoverlabel=dict(
-                bgcolor=legend_bg,
-                font=dict(size=12, color="#FFFFFF", family=self.font_mono),
-                bordercolor="rgba(255,255,255,0.2)",
-            ),
-        )
-
-        # 2. Axis Configuration (Minimalist Horizontal focus)
-        axis_config = dict(
-            showline=True,
-            linecolor=text_color,
-            linewidth=1.2,
-            gridcolor=grid_color,
-            gridwidth=1,
-            zeroline=False,
-            ticks="outside",
-            ticklen=6,
-            tickcolor=text_color,
-            tickfont=dict(size=11, color=text_color),
-            title=dict(font=dict(size=13, color=text_color)),
-        )
-
-        # Apply to all X axes
-        fig.update_xaxes(
-            **axis_config,
-            showgrid=False,
-            showline=True,
-        )
-
-        # Apply to all Y axes (The Pulse: Horizontal lines only)
-        fig.update_yaxes(
-            **axis_config,
-            showgrid=True,
-            showline=False,  # Standard minimalist: hide the vertical spine
-            tickprefix="",
-            ticksuffix="   ",
-        )
-
-        # Specialized handling for secondary Y-axes (often used in dual-pane charts)
+    @staticmethod
+    def _is_datetime_values(values: Any) -> bool:
+        if values is None:
+            return False
         try:
-            for i in range(2, 11):
-                attr = f"yaxis{i}"
-                if attr in fig.layout:
-                    fig.update_layout(
-                        {attr: {**axis_config, "showline": False, "showgrid": False}}
-                    )
-        except:
+            s = pd.Series(list(values)).dropna()
+            if s.empty:
+                return False
+            if pd.api.types.is_datetime64_any_dtype(s):
+                return True
+            if isinstance(s.iloc[0], (datetime, pd.Timestamp)):
+                return True
+            parsed = pd.to_datetime(s, errors="coerce")
+            return parsed.notna().mean() >= 0.8
+        except Exception:
+            return False
+
+    @staticmethod
+    def _datetime_bounds(values: Any) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
+        try:
+            s = pd.Series(list(values)).dropna()
+            if s.empty:
+                return None, None
+            parsed = pd.to_datetime(s, errors="coerce")
+            if parsed.notna().mean() < 0.8:
+                return None, None
+            parsed = parsed.dropna()
+            if parsed.empty:
+                return None, None
+            return parsed.min(), parsed.max()
+        except Exception:
+            return None, None
+
+    @staticmethod
+    def _axis_names(fig: go.Figure, prefix: str) -> list[str]:
+        # Always include primary axis even if not explicitly present in layout.
+        base = [prefix]
+        try:
+            layout_dict = fig.layout.to_plotly_json()
+            for k in layout_dict.keys():
+                if k.startswith(prefix) and k != prefix:
+                    suffix = k[len(prefix) :]
+                    if suffix.isdigit():
+                        base.append(k)
+        except Exception:
             pass
 
-        # 3. Trace Styling (Neon Mapping & Smoothness)
+        def _key(name: str) -> int:
+            suffix = name[len(prefix) :]
+            return int(suffix) if suffix.isdigit() else 1
+
+        return sorted(list(set(base)), key=_key)
+
+    @staticmethod
+    def _axis_ref_from_name(axis_name: str, axis_prefix: str) -> str:
+        # xaxis -> x, xaxis2 -> x2, yaxis -> y, ...
+        if axis_name == axis_prefix:
+            return axis_prefix[0]
+        suffix = axis_name[len(axis_prefix) :]
+        return f"{axis_prefix[0]}{suffix}"
+
+    def _x_values_for_axis(self, fig: go.Figure, axis_name: str) -> list[Any]:
+        axis_ref = self._axis_ref_from_name(axis_name, "xaxis")
+        values: list[Any] = []
+
         for trace in fig.data:
-            trace_name = str(trace.name or "")
+            trace_axis = getattr(trace, "xaxis", None) or "x"
+            if trace_axis != axis_ref:
+                continue
+            xs = getattr(trace, "x", None)
+            if xs is None:
+                continue
+            try:
+                values.extend([x for x in xs if x is not None])
+            except Exception:
+                # Fallback for non-iterable/scalar values.
+                if xs is not None:
+                    values.append(xs)
+        return values
 
-            # Map name to color using palette mapping
-            mapped_color = self.palette.get_asset(trace_name)
-            if mapped_color:
-                if hasattr(trace, "line"):
-                    trace.line.color = mapped_color
-                    trace.line.width = 2.8  # Slightly thicker for neon effect
-                elif hasattr(trace, "marker"):
+    @staticmethod
+    def _trace_has_explicit_color(trace: go.BaseTraceType) -> bool:
+        line = getattr(trace, "line", None)
+        if line is not None and getattr(line, "color", None):
+            return True
+        marker = getattr(trace, "marker", None)
+        if marker is not None and isinstance(getattr(marker, "color", None), str):
+            return True
+        return False
+
+    def _should_show_legend(self, fig: go.Figure) -> bool:
+        if not fig.data:
+            return False
+
+        legend_trace_types = {"pie", "funnelarea", "sunburst", "treemap", "icicle"}
+        for trace in fig.data:
+            if getattr(trace, "visible", None) is False:
+                continue
+            if getattr(trace, "showlegend", None) is False:
+                continue
+            if getattr(trace, "type", None) in legend_trace_types:
+                return True
+
+        count = 0
+        names = set()
+        for trace in fig.data:
+            if getattr(trace, "visible", None) is False:
+                continue
+            if getattr(trace, "showlegend", None) is False:
+                continue
+            count += 1
+            nm = str(getattr(trace, "name", "") or "").strip()
+            if nm:
+                names.add(nm)
+
+        if count <= 1:
+            return False
+        if len(names) <= 1 and count <= 2:
+            return False
+        return True
+
+    def _apply_datetime_right_padding(self, fig: go.Figure) -> None:
+        """
+        If an X-axis is date-like, add right-side breathing room.
+        If not date-like, skip (per user requirement).
+        """
+        for axis_name in self._axis_names(fig, "xaxis"):
+            axis_obj = getattr(fig.layout, axis_name, None)
+            axis_type = getattr(axis_obj, "type", None) if axis_obj else None
+            if axis_type == "category":
+                continue
+
+            x_values = self._x_values_for_axis(fig, axis_name)
+            if not x_values or not self._is_datetime_values(x_values):
+                continue
+
+            x0, x1 = self._datetime_bounds(x_values)
+            if x0 is None or x1 is None or x0 == x1:
+                continue
+
+            pad = (x1 - x0) * self.right_padding_ratio
+            if pad <= pd.Timedelta(0):
+                continue
+
+            updates: Dict[str, Any] = {"range": [x0, x1 + pad], "tickformat": self.datetime_tickformat}
+
+            fig.update_layout({axis_name: updates})
+
+    def apply(self, fig: Any, mode: str = "light") -> go.Figure:
+        """
+        Apply theme to a Plotly figure object.
+        This mutates and returns the same figure instance.
+        """
+        fig_obj = fig if isinstance(fig, go.Figure) else go.Figure(fig, skip_invalid=True)
+        is_dark = str(mode).lower() == "dark"
+
+        bg_color = self.palette.BG_DARK if is_dark else self.palette.BG_LIGHT
+        text_color = "#e5e7eb" if is_dark else "#111111"
+        title_color = "#e5e7eb" if is_dark else "#000000"
+        grid_color = "rgba(148,163,184,0.22)" if is_dark else "rgba(0,0,0,0.14)"
+        legend_bg = "rgba(11,14,20,0.82)" if is_dark else "rgba(255,255,255,0.92)"
+        legend_border = "rgba(148,163,184,0.38)" if is_dark else "rgba(15,23,42,0.16)"
+        chart_border = "rgba(255,255,255,0.95)"
+        base_font_size = 10
+        title_font_size = 14
+
+        show_legend = self._should_show_legend(fig_obj)
+
+        fig_obj.update_layout(
+            template="plotly_dark" if is_dark else "simple_white",
+            paper_bgcolor=bg_color,
+            plot_bgcolor=bg_color,
+            font=dict(family=self.font_main, color=text_color, size=base_font_size),
+            colorway=self.palette.colorway,
+            margin=self.margin,
+            hovermode="x",
+            showlegend=show_legend,
+            title=dict(
+                x=self.title_x,
+                y=self.title_y,
+                xanchor="left",
+                yanchor="top",
+                font=dict(size=title_font_size, color=title_color, family=self.font_main),
+            ),
+            legend=dict(
+                orientation="v",
+                x=self.legend_x,
+                y=self.legend_y,
+                xanchor="left",
+                yanchor="top",
+                bgcolor=legend_bg,
+                bordercolor=legend_border,
+                borderwidth=1,
+                font=dict(size=base_font_size, color=text_color),
+                itemsizing="constant",
+                tracegroupgap=self.legend_gap,
+                itemwidth=40,
+            ),
+            hoverlabel=dict(
+                bgcolor=legend_bg,
+                bordercolor=legend_border,
+                font=dict(size=base_font_size, color=text_color, family=self.font_mono),
+            ),
+        )
+
+        # Axis styling: horizontal grids emphasized, boxed readability.
+        x_axis_style = dict(
+            showline=True,
+            linewidth=1,
+            linecolor=chart_border,
+            mirror=True,
+            ticks="outside",
+            ticklen=5,
+            tickcolor=text_color,
+            tickfont=dict(size=base_font_size, color=text_color),
+            title_font=dict(size=base_font_size, color=text_color),
+            showgrid=False,
+            zeroline=False,
+        )
+        y_axis_style = dict(
+            showline=True,
+            linewidth=1,
+            linecolor=chart_border,
+            mirror=True,
+            ticks="outside",
+            ticklen=5,
+            tickcolor=text_color,
+            tickfont=dict(size=base_font_size, color=text_color),
+            title_font=dict(size=base_font_size, color=text_color),
+            showgrid=True,
+            gridcolor=grid_color,
+            zeroline=True,
+            zerolinewidth=1,
+            zerolinecolor=grid_color,
+        )
+        fig_obj.update_xaxes(**x_axis_style)
+        fig_obj.update_yaxes(**y_axis_style)
+
+        # Ensure annotation text remains readable (subplot titles, text labels, etc).
+        if fig_obj.layout.annotations:
+            for ann in fig_obj.layout.annotations:
+                existing_font = getattr(ann, "font", None) or {}
+                ann.update(font=dict(**existing_font, color=text_color, size=base_font_size))
+
+        # Apply signature colors where trace color is unspecified.
+        for trace in fig_obj.data:
+            if self._trace_has_explicit_color(trace):
+                continue
+            mapped_color = self.palette.get_asset(str(getattr(trace, "name", "") or ""))
+            if not mapped_color:
+                continue
+            if hasattr(trace, "line") and trace.line is not None:
+                trace.line.color = mapped_color
+            if hasattr(trace, "marker") and trace.marker is not None:
+                try:
                     trace.marker.color = mapped_color
+                except Exception:
+                    pass
 
-            # Aesthetic Smoothing
-            if hasattr(trace, "line") and trace.type == "scatter":
-                trace.line.shape = "spline"
-                trace.line.smoothing = 1.3
+        self._apply_datetime_right_padding(fig_obj)
+        return fig_obj
 
-        return fig
+    def apply_json(self, figure: Any, mode: str = "light") -> Any:
+        """
+        Apply theme to a Plotly JSON-like figure and return themed JSON.
+        Safe fallback: returns original payload if rehydration/themeing fails.
+        """
+        if figure is None:
+            return figure
+        try:
+            fig_obj = figure if isinstance(figure, go.Figure) else go.Figure(figure, skip_invalid=True)
+            return self.apply(fig_obj, mode=mode).to_plotly_json()
+        except Exception:
+            return figure
 
 
-# Global THEME singleton
+# Global singleton used by API routers.
 chart_theme = ChartTheme()
 
 
@@ -214,8 +378,8 @@ class Theme:
         self.colors = self.palette.ASSET_MAP
         self.font = chart_theme.font_main
 
-    def apply(self, fig):
-        return chart_theme.apply(fig)
+    def apply(self, fig, mode: str = "light"):
+        return chart_theme.apply(fig, mode=mode)
 
     @staticmethod
     def _trace_color(trace: go.BaseTraceType) -> str:
@@ -229,20 +393,7 @@ class Theme:
 
     @staticmethod
     def _is_datetime_x(values: Any) -> bool:
-        if values is None:
-            return False
-        try:
-            s = pd.Series(list(values)).dropna()
-            if s.empty:
-                return False
-            if pd.api.types.is_datetime64_any_dtype(s):
-                return True
-            if isinstance(s.iloc[0], (datetime, pd.Timestamp)):
-                return True
-            parsed = pd.to_datetime(s, errors="coerce")
-            return parsed.notna().mean() > 0.8
-        except Exception:
-            return False
+        return ChartTheme._is_datetime_values(values)
 
     @staticmethod
     def _x_bounds(fig: go.Figure) -> tuple[Any, Any]:
@@ -251,104 +402,16 @@ class Theme:
             xs = getattr(trace, "x", None)
             if xs is None:
                 continue
-            all_x.extend([x for x in xs if x is not None])
+            try:
+                all_x.extend([x for x in xs if x is not None])
+            except Exception:
+                if xs is not None:
+                    all_x.append(xs)
         if not all_x:
             return None, None
         return min(all_x), max(all_x)
 
     def format_chart(self, fig: go.Figure) -> go.Figure:
-        x_min, x_max = self._x_bounds(fig)
-        x_is_datetime = self._is_datetime_x([x_min, x_max]) if x_min is not None else False
-
-        fig.update_layout(
-            margin=dict(t=50, l=0, r=0, b=0),
-            font=dict(family="Ubuntu"),
-            paper_bgcolor="#0b0f14",
-            plot_bgcolor="#0b0f14",
-            hovermode="x",
-            title=dict(
-                x=0.01,
-                y=0.98,
-                xanchor="left",
-                yanchor="top",
-                font=dict(color="#f8fafc", size=14),
-            ),
-            legend=dict(
-                x=0.01,
-                y=0.98,
-                xanchor="left",
-                yanchor="top",
-                bgcolor="rgba(15,23,42,0.65)",
-                bordercolor="rgba(148,163,184,0.35)",
-                borderwidth=1,
-                font=dict(size=10, color="#e5e7eb"),
-                itemsizing="constant",
-            ),
-        )
-
-        # Keep title/legend locked to a stable location in the paper frame.
-        fig.update_layout(title_x=0.01, title_y=0.98)
-        fig.update_xaxes(
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.10)",
-            zeroline=False,
-            tickfont=dict(color="#e5e7eb", size=10),
-            showline=True,
-            linecolor="rgba(229,231,235,0.85)",
-            linewidth=1,
-            mirror=True,
-        )
-        fig.update_yaxes(
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.10)",
-            zeroline=True,
-            zerolinewidth=2,
-            zerolinecolor="rgba(148,163,184,0.65)",
-            tickfont=dict(color="#e5e7eb", size=10),
-            title_font=dict(color="#e5e7eb", size=10),
-            showline=True,
-            linecolor="rgba(229,231,235,0.85)",
-            linewidth=1,
-            mirror=True,
-        )
-        if "yaxis2" in fig.layout:
-            fig.update_layout(
-                yaxis2=dict(
-                    tickfont=dict(color="#e5e7eb", size=10),
-                    title_font=dict(color="#e5e7eb", size=10),
-                    showline=True,
-                    linecolor="rgba(229,231,235,0.85)",
-                    linewidth=1,
-                    mirror=True,
-                )
-            )
-
-        for trace in fig.data:
-            color = self._trace_color(trace)
-            hover_tpl = "%{fullData.name} : %{y:.2f}<extra></extra>"
-
-            trace.update(
-                hovertemplate=hover_tpl,
-                hoverlabel=dict(
-                    bgcolor=color,
-                    bordercolor=color,
-                    font=dict(color="#0f172a"),
-                ),
-            )
-
-        # Add 5% right-side breathing room on the x-axis where axis range is continuous.
-        if x_min is not None and x_max is not None and x_min != x_max:
-            try:
-                if x_is_datetime:
-                    x0 = pd.to_datetime(x_min)
-                    x1 = pd.to_datetime(x_max)
-                    pad = (x1 - x0) * 0.05
-                    fig.update_xaxes(range=[x0, x1 + pad])
-                    fig.update_xaxes(tickformat="%b %d, %Y")
-                elif isinstance(x_min, (int, float)) and isinstance(x_max, (int, float)):
-                    pad = (x_max - x_min) * 0.05
-                    fig.update_xaxes(range=[x_min, x_max + pad])
-            except Exception:
-                pass
-
-        return fig
+        # Backward-compatible entry point.
+        # Keep light as default so title/axis remain black for presentation views.
+        return chart_theme.apply(fig, mode="light")

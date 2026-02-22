@@ -7,6 +7,7 @@ from ix.db.models import CustomChart as Chart
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from ix.misc.auth import verify_token
+from ix.misc.theme import chart_theme
 
 router = APIRouter()
 
@@ -31,6 +32,13 @@ class DashboardSummary(BaseModel):
 
 
 from ix.db.models.user import User
+
+
+def _theme_figure_for_delivery(figure: Any) -> Any:
+    """Apply canonical misc theme at response-time without mutating DB payload."""
+    if figure is None:
+        return None
+    return chart_theme.apply_json(figure, mode="light")
 
 
 def _get_optional_user(request: Request) -> User | None:
@@ -96,7 +104,7 @@ def get_dashboard_summary(
 
         # Include figure for all charts
         if include_figures:
-            meta.figure = chart.figure
+            meta.figure = _theme_figure_for_delivery(chart.figure)
 
         summary["charts_by_category"][cat].append(meta)
 
@@ -137,4 +145,4 @@ def get_chart_figure(
             status_code=404, detail="Figure data missing for this chart"
         )
 
-    return chart.figure
+    return _theme_figure_for_delivery(chart.figure)
