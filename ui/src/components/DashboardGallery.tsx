@@ -181,12 +181,12 @@ const ChartCard = React.memo(function ChartCard({
         className="group/name flex items-center gap-2 min-w-0 overflow-hidden text-left"
         title="Edit in Studio"
       >
-        <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/20 group-hover/name:bg-sky-500/20 group-hover/name:text-sky-300 transition-all truncate">
+        <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/20 group-hover/name:bg-sky-500/20 group-hover/name:text-sky-300 transition-all truncate max-w-[130px] sm:max-w-[190px] md:max-w-[250px]">
           {chart.name}
         </span>
       </button>
     ) : (
-      <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/10 truncate">
+      <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/10 truncate max-w-[130px] sm:max-w-[190px] md:max-w-[250px]">
         {chart.name}
       </span>
     )
@@ -198,15 +198,15 @@ const ChartCard = React.memo(function ChartCard({
   return (
     <div className={className}>
       {/* Card Header */}
-      <div className="px-3 sm:px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/50 bg-card/10 relative">
-         <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0 z-10 w-full sm:w-auto">
+      <div className="px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 border-b border-border/50 bg-card/10 relative">
+         <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 min-w-0 flex-1 overflow-hidden z-10">
             {renderRankInput()}
             {renderOrderButtons()}
             {renderVisibilityToggle()}
             {renderName()}
          </div>
 
-         <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto shrink-0">
+         <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
             {(canRefresh || canDelete || !!onCopyChart) && (
               <div className="flex items-center gap-1">
                 {canRefresh && (
@@ -249,8 +249,8 @@ const ChartCard = React.memo(function ChartCard({
                 </div>
               </div>
             )}
-            <div className="text-[9px] text-slate-600 font-mono hidden sm:flex items-center gap-3">
-                <span className="max-w-[180px] truncate" title={`Created by ${creatorLabel}`}>
+            <div className="text-[9px] text-slate-600 font-mono hidden sm:flex items-center gap-2">
+                <span className="max-w-[120px] truncate" title={`Created by ${creatorLabel}`}>
                   by {creatorLabel}
                 </span>
                 {isSyncing && <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />}

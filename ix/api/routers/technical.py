@@ -425,6 +425,17 @@ def _normalize_yf(data: pd.DataFrame, ticker: str) -> pd.DataFrame:
     return data[["Open", "High", "Low", "Close", "Volume"]].dropna()
 
 
+def _compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0.0)
+    loss = -delta.clip(upper=0.0)
+    avg_gain = gain.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    return rsi.clip(lower=0.0, upper=100.0)
+
+
 def _build_figure(
     df: pd.DataFrame,
     ticker: str,
@@ -434,10 +445,16 @@ def _build_figure(
     visible_start: Optional[pd.Timestamp] = None,
     visible_end: Optional[pd.Timestamp] = None,
 ) -> go.Figure:
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.78, 0.22])
+    fig = make_subplots(
+        rows=3,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=[0.62, 0.23, 0.15],
+    )
+
     ohlc_hover = [
         (
-            f"{ticker.upper()} Bars<br>"
             f"Date: {d.strftime('%Y-%m-%d')}<br>"
             f"Open: {o:.2f}<br>"
             f"High: {h:.2f}<br>"
@@ -447,18 +464,21 @@ def _build_figure(
         for d, o, h, l, c in zip(df.index, df["Open"], df["High"], df["Low"], df["Close"])
     ]
     fig.add_trace(
-        go.Ohlc(
+        go.Candlestick(
             x=df.index,
             open=df["Open"],
             high=df["High"],
             low=df["Low"],
             close=df["Close"],
-            name=f"{ticker.upper()} Bars",
-            increasing_line_color="#00d1b2",
-            decreasing_line_color="#ff4d6d",
-            line_width=1.2,
-            showlegend=True,
-            hovertext=ohlc_hover,
+            name=f"{ticker.upper()} Price",
+            increasing_line_color="#22c55e",
+            increasing_fillcolor="rgba(34,197,94,0.55)",
+            decreasing_line_color="#f43f5e",
+            decreasing_fillcolor="rgba(244,63,94,0.55)",
+            line_width=1.0,
+            whiskerwidth=0.2,
+            legendgroup="price",
+            text=ohlc_hover,
             hoverinfo="text",
         ),
         row=1,
@@ -467,12 +487,11 @@ def _build_figure(
 
     close = pd.to_numeric(df["Close"], errors="coerce")
     ma_layers = [
-        ("SMA 5", 5, "#22c55e"),
-        ("SMA 20", 20, "#f59e0b"),
-        ("SMA 50", 50, "#38bdf8"),
-        ("SMA 200", 200, "#a78bfa"),
+        ("MA 5", 5, "#22c55e", 1.5),
+        ("MA 20", 20, "#f59e0b", 1.7),
+        ("MA 200", 200, "#8b5cf6", 1.9),
     ]
-    for name, window, color in ma_layers:
+    for name, window, color, width in ma_layers:
         ma = close.rolling(window=window, min_periods=window).mean()
         if ma.notna().any():
             fig.add_trace(
@@ -480,112 +499,258 @@ def _build_figure(
                     x=df.index,
                     y=ma,
                     mode="lines",
-                    line=dict(color=color, width=1.8),
+                    line=dict(color=color, width=width),
                     name=name,
+                    legendgroup="price",
                     hovertemplate=f"{name}: %{{y:.2f}}<extra></extra>",
                 ),
                 row=1,
                 col=1,
             )
 
+    close_values = close.to_numpy(dtype=float)
+    dy = np.nanmedian(np.abs(np.diff(close_values))) if len(close_values) > 2 else np.nanstd(close_values) * 0.01
+    if not np.isfinite(dy) or dy <= 0:
+        dy = max(np.nanstd(close_values) * 0.01, 1.0)
+
     swings_map: Dict[int, pd.DataFrame] = {4: _find_swings(df, 4), 8: _find_swings(df, 8), 16: _find_swings(df, 16)}
-    layers = {4: ("#ef4444", 1.1), 8: ("#3b82f6", 1.6), 16: ("#e5e7eb", 1.2)}
-    top_pos = "top center"
-    bottom_pos = "bottom center"
-    for length, (color, width) in layers.items():
-        piv = swings_map[length].tail(40)
-        if len(piv) < 2:
-            continue
+    motive, correction, bullish, wave_degree = _extract_best_elliott(swings_map)
+
+    if wave_degree and wave_degree in swings_map and len(swings_map[wave_degree]) >= 2:
+        piv = swings_map[wave_degree].tail(36)
         fig.add_trace(
             go.Scatter(
                 x=piv["Date"],
                 y=piv["Price"],
-                mode="lines+markers",
-                line=dict(color=color, width=width),
-                marker=dict(size=5, color=color),
-                name=f"ZigZag {length}",
-                hovertemplate=f"{length}-ZZ: %{{y:.2f}}<extra></extra>",
+                mode="lines",
+                line=dict(color="rgba(148,163,184,0.35)", width=1.0, dash="dot"),
+                name="Wave Backbone",
+                showlegend=False,
+                hovertemplate="Backbone: %{y:.2f}<extra></extra>",
             ),
             row=1,
             col=1,
         )
-    motive, correction, bullish, wave_degree = _extract_best_elliott(swings_map)
+
     if motive is not None:
-        wave_color = "#3b82f6" if bullish else "#ef4444"
-        motive_labels = ["0", "(1)", "(2)", "(3)", "(4)", "(5)"]
-        motive_pos = [top_pos if t == "H" else bottom_pos for t in motive["Type"].tolist()]
+        wave_color = "#22c55e" if bullish else "#f43f5e"
         fig.add_trace(
             go.Scatter(
                 x=motive["Date"],
                 y=motive["Price"],
-                mode="lines+markers+text",
-                line=dict(color=wave_color, width=2.0),
-                marker=dict(size=7, color=wave_color),
-                text=motive_labels,
-                textposition=motive_pos,
-                textfont=dict(size=16, color=wave_color),
-                name=f"Elliott Motive ({wave_degree}-ZZ)" if wave_degree else "Elliott Motive",
-                hovertemplate="Motive: %{y:.2f}<extra></extra>",
+                mode="lines+markers",
+                line=dict(color=wave_color, width=2.1),
+                marker=dict(size=6, color=wave_color),
+                name="Elliott 1-5",
+                legendgroup="elliott",
+                hovertemplate="Wave: %{y:.2f}<extra></extra>",
             ),
             row=1,
             col=1,
         )
-        _add_fib_zone(fig, motive)
+        motive_y = [
+            float(price + (dy * 1.35 if t == "H" else -dy * 1.35))
+            for price, t in zip(motive["Price"], motive["Type"])
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=motive["Date"],
+                y=motive_y,
+                mode="text",
+                text=["0", "1", "2", "3", "4", "5"],
+                textfont=dict(size=12, color=wave_color),
+                showlegend=False,
+                hoverinfo="skip",
+            ),
+            row=1,
+            col=1,
+        )
+
     if correction is not None:
-        corr_color = "#3b82f6" if bullish else "#ef4444"
-        corr_pos = [top_pos if t == "H" else bottom_pos for t in correction["Type"].tolist()]
+        corr_color = "#38bdf8" if bullish else "#fb7185"
         fig.add_trace(
             go.Scatter(
                 x=correction["Date"],
                 y=correction["Price"],
-                mode="lines+markers+text",
-                line=dict(color=corr_color, width=1.8),
-                marker=dict(size=6, color=corr_color),
-                text=["(a)", "(b)", "(c)"],
-                textposition=corr_pos,
-                textfont=dict(size=15, color=corr_color),
-                name=f"Elliott Correction ({wave_degree}-ZZ)" if wave_degree else "Elliott Correction",
+                mode="lines+markers",
+                line=dict(color=corr_color, width=1.9),
+                marker=dict(size=5, color=corr_color),
+                name="Elliott A-B-C",
+                legendgroup="elliott",
                 hovertemplate="Correction: %{y:.2f}<extra></extra>",
             ),
             row=1,
             col=1,
         )
+        corr_y = [
+            float(price + (dy * 1.1 if t == "H" else -dy * 1.1))
+            for price, t in zip(correction["Price"], correction["Type"])
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=correction["Date"],
+                y=corr_y,
+                mode="text",
+                text=["A", "B", "C"],
+                textfont=dict(size=11, color=corr_color),
+                showlegend=False,
+                hoverinfo="skip",
+            ),
+            row=1,
+            col=1,
+        )
 
-    td = TDSequentialClean(show_setup_from=show_setup_from, show_countdown_from=show_countdown_from, label_cooldown_bars=label_cooldown_bars)
+    td = TDSequentialClean(
+        show_setup_from=show_setup_from,
+        show_countdown_from=show_countdown_from,
+        label_cooldown_bars=label_cooldown_bars,
+    )
     tdf = td.compute(df["Close"])
-    y = tdf["close"].to_numpy()
-    dy = np.nanmedian(np.abs(np.diff(y))) if len(y) > 2 else np.nanstd(y) * 0.01
-    if not np.isfinite(dy) or dy <= 0:
-        dy = max(np.nanstd(y) * 0.01, 1.0)
-    above = tdf["close"] + dy * 2.0
-    below = tdf["close"] - dy * 2.0
+    above = tdf["close"] + dy * 1.9
+    below = tdf["close"] - dy * 1.9
     bear_setup_mask = td._cooldown_mask(tdf["bear_setup"] >= td.show_setup_from)
     bull_setup_mask = td._cooldown_mask(tdf["bull_setup"] >= td.show_setup_from)
     bear_cd_mask = td._cooldown_mask(tdf["bear_cd"] >= td.show_countdown_from)
     bull_cd_mask = td._cooldown_mask(tdf["bull_cd"] >= td.show_countdown_from)
     if bear_setup_mask.any():
-        fig.add_trace(go.Scatter(x=tdf.index[bear_setup_mask], y=above[bear_setup_mask], mode="text", text=tdf.loc[bear_setup_mask, "bear_setup"].astype(int).astype(str), textfont=dict(color="#ff4d4d", size=11), showlegend=False, hoverinfo="skip"), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=tdf.index[bear_setup_mask],
+                y=above[bear_setup_mask],
+                mode="text",
+                text=tdf.loc[bear_setup_mask, "bear_setup"].astype(int).astype(str),
+                textfont=dict(color="#fb7185", size=10),
+                showlegend=False,
+                hoverinfo="skip",
+            ),
+            row=1,
+            col=1,
+        )
     if bull_setup_mask.any():
-        fig.add_trace(go.Scatter(x=tdf.index[bull_setup_mask], y=below[bull_setup_mask], mode="text", text=tdf.loc[bull_setup_mask, "bull_setup"].astype(int).astype(str), textfont=dict(color="#00ff99", size=11), showlegend=False, hoverinfo="skip"), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=tdf.index[bull_setup_mask],
+                y=below[bull_setup_mask],
+                mode="text",
+                text=tdf.loc[bull_setup_mask, "bull_setup"].astype(int).astype(str),
+                textfont=dict(color="#34d399", size=10),
+                showlegend=False,
+                hoverinfo="skip",
+            ),
+            row=1,
+            col=1,
+        )
     if bear_cd_mask.any():
-        fig.add_trace(go.Scatter(x=tdf.index[bear_cd_mask], y=above[bear_cd_mask] + dy * 1.2, mode="text", text=tdf.loc[bear_cd_mask, "bear_cd"].astype(int).astype(str), textfont=dict(color="#ff4d4d", size=13), showlegend=False, hoverinfo="skip"), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=tdf.index[bear_cd_mask],
+                y=above[bear_cd_mask] + dy,
+                mode="text",
+                text=tdf.loc[bear_cd_mask, "bear_cd"].astype(int).astype(str),
+                textfont=dict(color="#f43f5e", size=11),
+                showlegend=False,
+                hoverinfo="skip",
+            ),
+            row=1,
+            col=1,
+        )
     if bull_cd_mask.any():
-        fig.add_trace(go.Scatter(x=tdf.index[bull_cd_mask], y=below[bull_cd_mask] - dy * 1.2, mode="text", text=tdf.loc[bull_cd_mask, "bull_cd"].astype(int).astype(str), textfont=dict(color="#00ff99", size=13), showlegend=False, hoverinfo="skip"), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=tdf.index[bull_cd_mask],
+                y=below[bull_cd_mask] - dy,
+                mode="text",
+                text=tdf.loc[bull_cd_mask, "bull_cd"].astype(int).astype(str),
+                textfont=dict(color="#10b981", size=11),
+                showlegend=False,
+                hoverinfo="skip",
+            ),
+            row=1,
+            col=1,
+        )
 
-    osc = df["Close"].pct_change(5).mul(100)
-    bar_colors = np.where(osc >= 0, "rgba(34,197,94,0.75)", "rgba(239,68,68,0.75)")
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema12 - ema26
+    macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+    macd_hist = macd_line - macd_signal
+    hist_prev = macd_hist.shift(1)
+    hist_colors = np.where(
+        macd_hist >= 0,
+        np.where(macd_hist >= hist_prev, "rgba(16,185,129,0.85)", "rgba(16,185,129,0.45)"),
+        np.where(macd_hist <= hist_prev, "rgba(244,63,94,0.85)", "rgba(244,63,94,0.45)"),
+    )
     fig.add_trace(
         go.Bar(
             x=df.index,
-            y=osc,
-            marker_color=bar_colors,
-            name="Wave Momentum (5D %)",
-            hovertemplate="Wave Momentum: %{y:.2f}%<extra></extra>",
+            y=macd_hist,
+            marker_color=hist_colors,
+            name="MACD Hist",
+            showlegend=False,
+            hovertemplate="MACD Hist: %{y:.3f}<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=macd_line,
+            mode="lines",
+            line=dict(color="#38bdf8", width=1.8),
+            name="MACD",
+            legendgroup="macd",
+            hovertemplate="MACD: %{y:.3f}<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=macd_signal,
+            mode="lines",
+            line=dict(color="#f59e0b", width=1.5),
+            name="Signal",
+            legendgroup="macd",
+            hovertemplate="Signal: %{y:.3f}<extra></extra>",
         ),
         row=2,
         col=1,
     )
     fig.add_hline(y=0, line_width=1, line_color="rgba(148,163,184,0.55)", row=2, col=1)
+
+    rsi = _compute_rsi(close, period=14)
+    rsi_mean = rsi.rolling(window=9, min_periods=9).mean()
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=rsi,
+            mode="lines",
+            line=dict(color="#60a5fa", width=1.8),
+            name="RSI 14",
+            legendgroup="rsi",
+            hovertemplate="RSI 14: %{y:.1f}<extra></extra>",
+        ),
+        row=3,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=rsi_mean,
+            mode="lines",
+            line=dict(color="#f59e0b", width=1.4, dash="dot"),
+            name="RSI Mean",
+            legendgroup="rsi",
+            hovertemplate="RSI Mean: %{y:.1f}<extra></extra>",
+        ),
+        row=3,
+        col=1,
+    )
+    fig.add_hline(y=70, line_width=1, line_color="rgba(244,63,94,0.75)", line_dash="dot", row=3, col=1)
+    fig.add_hline(y=50, line_width=1, line_color="rgba(148,163,184,0.45)", line_dash="dash", row=3, col=1)
+    fig.add_hline(y=30, line_width=1, line_color="rgba(34,197,94,0.75)", line_dash="dot", row=3, col=1)
 
     # Visible window controls display range only (does not slice source data).
     if visible_start is not None and visible_end is not None and visible_start < visible_end:
@@ -598,42 +763,53 @@ def _build_figure(
                 pad1 = (y1_max - y1_min) * 0.08
                 fig.update_yaxes(range=[y1_min - pad1, y1_max + pad1], row=1, col=1)
 
-            osc_sub = osc.loc[mask]
-            if not osc_sub.dropna().empty:
-                y2_min = float(osc_sub.min())
-                y2_max = float(osc_sub.max())
+            macd_sub = pd.concat(
+                [macd_line.loc[mask], macd_signal.loc[mask], macd_hist.loc[mask]],
+                axis=1,
+            ).dropna(how="all")
+            if not macd_sub.empty:
+                y2_min = float(macd_sub.min().min())
+                y2_max = float(macd_sub.max().max())
                 if np.isfinite(y2_min) and np.isfinite(y2_max):
                     if y2_max == y2_min:
                         y2_min -= 1.0
                         y2_max += 1.0
-                    pad2 = (y2_max - y2_min) * 0.15
+                    pad2 = (y2_max - y2_min) * 0.18
                     fig.update_yaxes(range=[y2_min - pad2, y2_max + pad2], row=2, col=1)
+
             fig.update_xaxes(range=[visible_start, visible_end], row=1, col=1)
             fig.update_xaxes(range=[visible_start, visible_end], row=2, col=1)
-
+            fig.update_xaxes(range=[visible_start, visible_end], row=3, col=1)
 
     fig.update_layout(
         template=None,
         paper_bgcolor="#050913",
         plot_bgcolor="#070d1a",
         font=dict(family="Ubuntu, Inter, Roboto, sans-serif", color="#dbeafe", size=12),
-        margin=dict(l=70, r=20, t=20, b=20),
+        margin=dict(l=72, r=22, t=60, b=24),
         title=dict(text=""),
         hovermode="x unified",
-        hoverlabel=dict(bgcolor="rgba(15,23,42,0.92)", bordercolor="rgba(148,163,184,0.35)", font=dict(color="#e2e8f0", size=11)),
+        hoverlabel=dict(
+            bgcolor="rgba(15,23,42,0.92)",
+            bordercolor="rgba(148,163,184,0.35)",
+            font=dict(color="#e2e8f0", size=11),
+        ),
         legend=dict(
-            orientation="v",
+            orientation="h",
             x=0.01,
-            y=0.99,
+            y=1.02,
             xanchor="left",
-            yanchor="top",
-            bgcolor="rgba(15,23,42,0.70)",
+            yanchor="bottom",
+            bgcolor="rgba(15,23,42,0.68)",
             bordercolor="rgba(148,163,184,0.35)",
             borderwidth=1,
             font=dict(size=10),
+            traceorder="normal",
+            itemclick="toggleothers",
+            itemdoubleclick="toggle",
         ),
         xaxis_rangeslider_visible=False,
-        bargap=0.15,
+        bargap=0.12,
     )
     fig.update_xaxes(
         showgrid=True,
@@ -652,6 +828,17 @@ def _build_figure(
         mirror=True,
         automargin=True,
         showspikes=False,
+    )
+    fig.update_yaxes(title_text="Price", row=1, col=1)
+    fig.update_yaxes(title_text="MACD", row=2, col=1)
+    fig.update_yaxes(
+        title_text="RSI",
+        range=[0, 100],
+        tickmode="array",
+        tickvals=[30, 50, 70],
+        ticktext=["30", "50", "70"],
+        row=3,
+        col=1,
     )
     return fig
 

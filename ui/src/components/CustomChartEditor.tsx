@@ -87,7 +87,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   // --- State ---
   const [code, setCode] = useState<string>(DEFAULT_CODE);
   const [name, setName] = useState('Untitled Analysis');
-  const [category, setCategory] = useState('Personal');
+  const [category, setCategory] = useState('ChartPack');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
   const [currentChartId, setCurrentChartId] = useState<string | null>(initialChartId || null);
@@ -624,7 +624,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setCurrentChartOwnerId(chart.created_by_user_id || null);
     setName(chart.name || 'Untitled Analysis');
     setCode(chart.code || DEFAULT_CODE);
-    setCategory(chart.category || 'Personal');
+    setCategory(chart.category || 'ChartPack');
     setDescription(chart.description || '');
     setTags(chart.tags ? chart.tags.join(', ') : '');
     setExportPdf(chart.export_pdf ?? true);
@@ -678,7 +678,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setCurrentChartOwnerId(null);
     setName('Untitled Analysis');
     setCode(DEFAULT_CODE);
-    setCategory('Personal');
+    setCategory('ChartPack');
     setDescription('');
     setTags('');
     setExportPdf(true);
@@ -708,7 +708,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       // CREATE clicked — reset to blank state
       setCode(DEFAULT_CODE);
       setName('Untitled Analysis');
-      setCategory('Personal');
+      setCategory('ChartPack');
       setDescription('');
       setTags('');
       setCurrentChartId(null);
@@ -1159,8 +1159,8 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                     className="shrink-0 bg-card border-b border-border/50 overflow-hidden z-10"
                 >
                     <div className="flex flex-col gap-5 px-8 py-6 max-w-7xl mx-auto">
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                            <div className="lg:col-span-3 space-y-2">
+                        <div className="grid grid-cols-4 gap-3 items-start">
+                            <div className="col-span-1 min-w-0 space-y-2">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
                                     <Layers className="w-3 h-3 text-indigo-500" /> Category
                                 </label>
@@ -1169,25 +1169,25 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                     value={category}
                                     onChange={(e) => setCategory(e.target.value)}
                                     readOnly={!canEditCurrentChart}
-                                    className={`w-full border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500/50 transition-all font-semibold ${
+                                    className={`w-full border rounded-xl px-3 py-2 text-[11px] outline-none focus:border-indigo-500/50 transition-all font-semibold ${
                                       isLight
                                         ? 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'
                                         : 'bg-white/[0.03] border-white/10 text-slate-300'
                                     }`}
-                                    placeholder="Enter category..."
+                                    placeholder="ChartPack"
                                 />
                             </div>
                             
-                            <div className="lg:col-span-3 space-y-2">
+                            <div className="col-span-1 min-w-0 space-y-2">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <Search className="w-3 h-3 text-indigo-500" /> Metadata Tags
+                                    <Search className="w-3 h-3 text-indigo-500" /> Tags
                                 </label>
                                 <input
                                     type="text"
                                     value={tags}
                                     onChange={(e) => setTags(e.target.value)}
                                     readOnly={!canEditCurrentChart}
-                                    className={`w-full border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500/50 transition-all font-mono ${
+                                    className={`w-full border rounded-xl px-3 py-2 text-[11px] outline-none focus:border-indigo-500/50 transition-all font-mono ${
                                       isLight
                                         ? 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'
                                         : 'bg-white/[0.03] border-white/10 text-slate-300 placeholder:text-slate-700'
@@ -1196,7 +1196,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                 />
                             </div>
 
-                            <div className="lg:col-span-2 space-y-2">
+                            <div className="col-span-1 min-w-0 space-y-2">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
                                     <Activity className="w-3 h-3 text-indigo-500" /> Created By
                                 </label>
@@ -1204,7 +1204,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                     type="text"
                                     value={createdByLabel}
                                     readOnly
-                                    className={`w-full border rounded-xl px-4 py-2.5 text-xs font-mono ${
+                                    className={`w-full border rounded-xl px-3 py-2 text-[11px] font-mono ${
                                       isLight
                                         ? 'bg-slate-50 border-slate-200 text-slate-600'
                                         : 'bg-white/[0.02] border-white/10 text-slate-400'
@@ -1212,16 +1212,16 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                 />
                             </div>
 
-                            <div className="lg:col-span-4 space-y-2">
+                            <div className="col-span-1 min-w-0 space-y-2">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
                                     <FileText className="w-3 h-3 text-indigo-500" /> Description
                                 </label>
-                                <textarea
+                                <input
+                                    type="text"
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
                                     readOnly={!canEditCurrentChart}
-                                    rows={1}
-                                    className={`w-full border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500/50 transition-all resize-none font-medium custom-scrollbar min-h-[42px] ${
+                                    className={`w-full border rounded-xl px-3 py-2 text-[11px] outline-none focus:border-indigo-500/50 transition-all font-medium ${
                                       isLight
                                         ? 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'
                                         : 'bg-white/[0.03] border-white/10 text-slate-300'
@@ -1257,7 +1257,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
 
             {/* Main Visualizer */}
             <div className={`flex-grow relative flex flex-col min-h-0 ${isLight ? 'bg-slate-100' : 'bg-[#010205]'}`}>
-                <div className="flex-grow relative overflow-hidden">
+                <div className={`flex-grow relative overflow-hidden m-2 md:m-3 rounded-2xl border ${
+                  isLight
+                    ? 'border-slate-200 bg-white/80 shadow-sm'
+                    : 'border-sky-500/20 bg-[#020711] shadow-[inset_0_0_0_1px_rgba(14,165,233,0.08)]'
+                }`}>
                     {themedPreviewFigure ? (
                         <Plot
                         data={themedPreviewFigure.data}
