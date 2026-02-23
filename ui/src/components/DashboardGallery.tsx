@@ -2,9 +2,9 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { 
-  TrendingUp, Search, Layers, X, 
+  Layers, 
   Plus, Edit2, CheckCircle2, Eye, EyeOff, Loader2, RotateCcw, Copy,
-  MoreVertical, ArrowUp, ArrowDown, ArrowUpToLine,
+  MoreVertical, ArrowUp, ArrowDown,
   FileDown, Monitor, Check, Info, RefreshCw, LayoutGrid, List as ListIcon, Trash2,
   ChevronDown
 } from 'lucide-react';
@@ -22,13 +22,19 @@ interface ChartMeta {
   updated_at: string | null;
   rank: number;
   export_pdf?: boolean;
+  created_by_user_id?: string | null;
+  created_by_email?: string | null;
+  created_by_name?: string | null;
   code?: string;
   figure?: any; // Prefetched figure data
 }
 
 interface ChartCardProps {
   chart: ChartMeta;
-  isAdmin: boolean;
+  canEdit: boolean;
+  canRefresh: boolean;
+  canDelete: boolean;
+  canManageVisibility: boolean;
   isReorderable: boolean;
   onTogglePdf: (id: string, status: boolean) => void;
   onRefreshChart?: (id: string) => void;
@@ -48,7 +54,10 @@ interface ChartCardProps {
 
 const ChartCard = React.memo(function ChartCard({ 
   chart, 
-  isAdmin, 
+  canEdit,
+  canRefresh,
+  canDelete,
+  canManageVisibility,
   isReorderable, 
   onTogglePdf, 
   onRefreshChart,
@@ -94,6 +103,7 @@ const ChartCard = React.memo(function ChartCard({
   }, [chart.rank]);
 
   const isModified = localRank !== chart.rank + 1;
+  const creatorLabel = chart.created_by_name || chart.created_by_email || 'Unknown';
 
   const handleRankSubmit = () => {
     if (isModified) {
@@ -102,7 +112,7 @@ const ChartCard = React.memo(function ChartCard({
   };
 
   const renderRankInput = () => (
-    isAdmin && isReorderable && (
+    isReorderable && (
       <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-mono shrink-0 transition-colors ${
         isModified ? 'bg-amber-500/20 border-amber-500/40' : 'bg-sky-500/10 border-sky-500/20'
       }`}>
@@ -124,7 +134,7 @@ const ChartCard = React.memo(function ChartCard({
   );
 
   const renderVisibilityToggle = () => (
-    isAdmin && (
+    canManageVisibility && (
       <button
         onClick={(e) => {
           e.preventDefault();
@@ -140,7 +150,7 @@ const ChartCard = React.memo(function ChartCard({
   );
 
   const renderOrderButtons = () => (
-    isAdmin && isReorderable && (
+    isReorderable && (
       <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMoveUp?.(chart.id); }}
@@ -165,7 +175,7 @@ const ChartCard = React.memo(function ChartCard({
   );
 
   const renderName = () => (
-    isAdmin ? (
+    canEdit ? (
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenStudio?.(chart.id); }}
         className="group/name flex items-center gap-2 min-w-0 overflow-hidden text-left"
@@ -197,17 +207,19 @@ const ChartCard = React.memo(function ChartCard({
          </div>
 
          <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto shrink-0">
-            {isAdmin && (
+            {(canRefresh || canDelete || !!onCopyChart) && (
               <div className="flex items-center gap-1">
-                <button
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRefreshChart?.(chart.id); }}
-                  disabled={!!isRefreshingChart}
-                  className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors disabled:opacity-50"
-                  title="Rerun and save chart"
-                  aria-label="Refresh chart"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingChart ? 'animate-spin text-sky-400' : ''}`} />
-                </button>
+                {canRefresh && (
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRefreshChart?.(chart.id); }}
+                    disabled={!!isRefreshingChart}
+                    className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors disabled:opacity-50"
+                    title="Rerun and save chart"
+                    aria-label="Refresh chart"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingChart ? 'animate-spin text-sky-400' : ''}`} />
+                  </button>
+                )}
                 <button
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); }}
                   className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors"
@@ -216,15 +228,17 @@ const ChartCard = React.memo(function ChartCard({
                 >
                   <Copy className="w-3.5 h-3.5" />
                 </button>
-                <button
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteChart?.(chart.id); }}
-                  disabled={!!isDeletingChart}
-                  className="p-1 rounded hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 transition-colors disabled:opacity-50"
-                  title="Delete chart"
-                  aria-label="Delete chart"
-                >
-                  <Trash2 className={`w-3.5 h-3.5 ${isDeletingChart ? 'animate-pulse text-rose-400' : ''}`} />
-                </button>
+                {canDelete && (
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteChart?.(chart.id); }}
+                    disabled={!!isDeletingChart}
+                    className="p-1 rounded hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 transition-colors disabled:opacity-50"
+                    title="Delete chart"
+                    aria-label="Delete chart"
+                  >
+                    <Trash2 className={`w-3.5 h-3.5 ${isDeletingChart ? 'animate-pulse text-rose-400' : ''}`} />
+                  </button>
+                )}
               </div>
             )}
             {chart.description && (
@@ -236,6 +250,9 @@ const ChartCard = React.memo(function ChartCard({
               </div>
             )}
             <div className="text-[9px] text-slate-600 font-mono hidden sm:flex items-center gap-3">
+                <span className="max-w-[180px] truncate" title={`Created by ${creatorLabel}`}>
+                  by {creatorLabel}
+                </span>
                 {isSyncing && <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />}
                 {chart.updated_at ? new Date(chart.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '---'}
             </div>
@@ -287,37 +304,48 @@ interface DashboardGalleryProps {
   onOpenStudio?: (chartId: string | null) => void;
 }
 
-export default function DashboardGallery({ categories, chartsByCategory, onOpenStudio }: DashboardGalleryProps) {
+export default function DashboardGallery({ chartsByCategory, onOpenStudio }: DashboardGalleryProps) {
   const { user } = useAuth();
-  const isAdmin = !!user?.is_admin;
+  const role = String(user?.role || '').toLowerCase();
+  const isOwner = !!user && role === 'owner';
+  const isAdminRole = !!user && (role === 'admin' || user.is_admin);
+  const canRefreshAllCharts = isOwner || isAdminRole;
+  const currentUserId = user?.id || null;
+
+  const isChartOwner = useCallback(
+    (chart: ChartMeta) => {
+      if (!currentUserId || !chart.created_by_user_id) return false;
+      return String(chart.created_by_user_id) === String(currentUserId);
+    },
+    [currentUserId]
+  );
   const queryClient = useQueryClient();
 
   // ⚡ Performance Optimized State
   const [localCharts, setLocalCharts] = useState<ChartMeta[]>([]);
   const [originalCharts, setOriginalCharts] = useState<ChartMeta[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string>('All Indicators');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [refreshingChartIds, setRefreshingChartIds] = useState<Record<string, boolean>>({});
   const [deletingChartIds, setDeletingChartIds] = useState<Record<string, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [copySignals, setCopySignals] = useState<Record<string, number>>({});
 
   const [mounted, setMounted] = useState(false);
-  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
+  const [quickJumpId, setQuickJumpId] = useState('');
+  const [showQuickJumpMenu, setShowQuickJumpMenu] = useState(false);
   
-  const categoryRef = useRef<HTMLDivElement>(null);
   const actionRef = useRef<HTMLDivElement>(null);
+  const quickJumpRef = useRef<HTMLDivElement>(null);
+  const chartAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (categoryRef.current && !categoryRef.current.contains(event.target as Node)) {
-        setShowCategoryMenu(false);
-      }
       if (actionRef.current && !actionRef.current.contains(event.target as Node)) {
         setShowActionMenu(false);
+      }
+      if (quickJumpRef.current && !quickJumpRef.current.contains(event.target as Node)) {
+        setShowQuickJumpMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -347,12 +375,6 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
 
   const isRefreshing = refreshChartsMutation.isPending;
 
-  // ⏲️ Debounce Search Query
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
 
   const isOrderDirty = useMemo(() => {
     if (localCharts.length !== originalCharts.length) return false;
@@ -361,7 +383,7 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
   }, [localCharts, originalCharts]);
 
   const handleRefreshAll = useCallback(async () => {
-    if (isRefreshing) return;
+    if (!canRefreshAllCharts || isRefreshing) return;
     try {
       const data = await refreshChartsMutation.mutateAsync();
       if (data?.task_id) {
@@ -370,7 +392,7 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
     } catch (e) {
       // Keep UI resilient; TaskNotifications shows backend task status/errors.
     }
-  }, [isRefreshing, refreshChartsMutation, queryClient]);
+  }, [canRefreshAllCharts, isRefreshing, refreshChartsMutation, queryClient]);
 
   const handleExportPDF = async () => {
     if (exporting) return;
@@ -436,8 +458,6 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
     }
   };
 
-  const allCategories = useMemo(() => ['All Indicators', ...(categories || [])], [categories]);
-
   // 🔄 Prop to Local State Sync
   useEffect(() => {
     const uniqueChartsMap = new Map<string, ChartMeta>();
@@ -458,40 +478,96 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (activeCategory === 'All Indicators') return;
-    if (!allCategories.includes(activeCategory)) {
-        setActiveCategory(allCategories[0]);
-    }
-  }, [allCategories, activeCategory]);
-
   // 🔍 Filter & Sort charts (Memoized)
   const allFilteredCharts = useMemo(() => {
     let result = [...localCharts];
 
-    if (!isAdmin) {
-      result = result.filter(c => c.export_pdf !== false);
-    }
-
-    if (activeCategory !== 'All Indicators') {
-      result = result.filter(c => c.category === activeCategory);
-    }
-
-    if (debouncedSearch.trim()) {
-      const q = debouncedSearch.toLowerCase();
-      result = result.filter(c => 
-        (c.name || '').toLowerCase().includes(q) || 
-        (c.description?.toLowerCase().includes(q))
-      );
+    if (!isOwner && !isAdminRole) {
+      result = result.filter((c) => c.export_pdf !== false || isChartOwner(c));
     }
     
     return result;
-  }, [localCharts, isAdmin, activeCategory, debouncedSearch]);
+  }, [localCharts, isOwner, isAdminRole, isChartOwner]);
 
   // No pagination: render all charts at once
   const filteredCharts = allFilteredCharts;
+  const quickJumpIndex = useMemo(
+    () => filteredCharts.findIndex((c) => c.id === quickJumpId),
+    [filteredCharts, quickJumpId]
+  );
+  const quickJumpLabel = useMemo(() => {
+    if (quickJumpIndex < 0) return 'Select chart';
+    const chart = filteredCharts[quickJumpIndex];
+    if (!chart) return 'Select chart';
+    return `${quickJumpIndex + 1}. ${chart.name || `Chart ${quickJumpIndex + 1}`}`;
+  }, [filteredCharts, quickJumpIndex]);
 
-  const isReorderEnabled = isAdmin && !searchQuery.trim() && activeCategory === 'All Indicators';
+  const setChartAnchorRef = useCallback(
+    (chartId: string) => (node: HTMLDivElement | null) => {
+      if (node) {
+        chartAnchorRefs.current[chartId] = node;
+        return;
+      }
+      delete chartAnchorRefs.current[chartId];
+    },
+    []
+  );
+
+  const scrollToChart = useCallback((chartId: string) => {
+    if (!chartId) return;
+    const target =
+      chartAnchorRefs.current[chartId] ||
+      document.getElementById(`chart-anchor-${chartId}`);
+    if (!target) return;
+    const stickyOffset = 120;
+    const y = target.getBoundingClientRect().top + window.scrollY - stickyOffset;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    if (filteredCharts.length === 0) {
+      if (quickJumpId) setQuickJumpId('');
+      if (showQuickJumpMenu) setShowQuickJumpMenu(false);
+      return;
+    }
+    if (!quickJumpId || !filteredCharts.some((c) => c.id === quickJumpId)) {
+      setQuickJumpId(filteredCharts[0].id);
+    }
+  }, [filteredCharts, quickJumpId, showQuickJumpMenu]);
+
+  const handleQuickJumpSelect = useCallback(
+    (chartId: string) => {
+      setQuickJumpId(chartId);
+      setShowQuickJumpMenu(false);
+      scrollToChart(chartId);
+    },
+    [scrollToChart]
+  );
+
+  const handleQuickJumpStep = useCallback(
+    (delta: number) => {
+      if (filteredCharts.length === 0) return;
+      const currentIndex = filteredCharts.findIndex((c) => c.id === quickJumpId);
+      const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+      const nextIndex = Math.max(0, Math.min(baseIndex + delta, filteredCharts.length - 1));
+      const next = filteredCharts[nextIndex];
+      if (!next) return;
+      handleQuickJumpSelect(next.id);
+    },
+    [filteredCharts, quickJumpId, handleQuickJumpSelect]
+  );
+
+  const isReorderEnabled = isOwner;
+  const canManageVisibility = isOwner;
+  const canEditChart = useCallback(
+    (chart: ChartMeta) => isOwner || isChartOwner(chart),
+    [isOwner, isChartOwner]
+  );
+  const canDeleteChart = canEditChart;
+  const canRefreshChart = useCallback(
+    (chart: ChartMeta) => canRefreshAllCharts || isChartOwner(chart),
+    [canRefreshAllCharts, isChartOwner]
+  );
 
   // 🛠️ Stable Handlers
   const togglePdfMutation = useMutation({
@@ -526,54 +602,9 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
 
   const refreshChartMutation = useMutation({
     mutationFn: async (chartId: string) => {
-      const local = localCharts.find((c) => c.id === chartId);
-      let payload: any = local;
-      const chartName = local?.name || chartId;
-      let taskId: string | null = null;
-
-      try {
-        const started = await apiFetchJson<{ id: string }>('/api/task/process/start?name=Refresh%20Single%20Chart');
-        taskId = started.id;
-        await apiFetchJson(
-          `/api/task/process/${taskId}?message=${encodeURIComponent(`Refreshing ${chartName}...`)}&progress=1/2`,
-          { method: 'PATCH' }
-        );
-      } catch {
-        taskId = null;
-      }
-
-      if (!payload || !payload.code) {
-        payload = await apiFetchJson(`/api/custom/${chartId}`);
-      }
-      try {
-        const result = await apiFetchJson(`/api/custom/${chartId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: payload.name,
-            category: payload.category,
-            description: payload.description,
-            tags: payload.tags || [],
-            export_pdf: payload.export_pdf,
-            code: payload.code,
-          }),
-        });
-        if (taskId) {
-          await apiFetchJson(
-            `/api/task/process/${taskId}?status=completed&message=${encodeURIComponent(`Refreshed ${chartName}`)}&progress=2/2`,
-            { method: 'PATCH' }
-          );
-        }
-        return result;
-      } catch (err: any) {
-        if (taskId) {
-          await apiFetchJson(
-            `/api/task/process/${taskId}?status=failed&message=${encodeURIComponent(err?.message || `Failed refreshing ${chartName}`)}`,
-            { method: 'PATCH' }
-          );
-        }
-        throw err;
-      }
+      return apiFetchJson(`/api/custom/${chartId}/refresh`, {
+        method: 'POST',
+      });
     },
     onSuccess: (_data, chartId) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
@@ -620,8 +651,9 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
   });
 
   const handleTogglePdf = React.useCallback((id: string, status: boolean) => {
+    if (!canManageVisibility) return;
     togglePdfMutation.mutate({ id, status });
-  }, [togglePdfMutation]);
+  }, [canManageVisibility, togglePdfMutation]);
 
   const handleRankChange = React.useCallback((id: string, newRank: number) => {
       setLocalCharts(prev => {
@@ -654,17 +686,20 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
   }, []);
 
   const handleSaveOrder = React.useCallback(() => {
+    if (!isReorderEnabled) return;
     reorderMutation.mutate(localCharts);
-  }, [localCharts, reorderMutation]);
+  }, [isReorderEnabled, localCharts, reorderMutation]);
 
   const handleResetOrder = React.useCallback(() => {
     setLocalCharts([...originalCharts]);
   }, [originalCharts]);
 
   const handleRefreshChart = React.useCallback((id: string) => {
+    const target = localCharts.find((c) => c.id === id);
+    if (!target || !canRefreshChart(target)) return;
     setRefreshingChartIds((prev) => ({ ...prev, [id]: true }));
     refreshChartMutation.mutate(id);
-  }, [refreshChartMutation]);
+  }, [canRefreshChart, localCharts, refreshChartMutation]);
 
   const handleCopyFromHeader = React.useCallback((id: string) => {
     setCopySignals((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
@@ -672,8 +707,9 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
 
   const handleDeleteChart = React.useCallback((id: string) => {
     const target = localCharts.find((c) => c.id === id);
+    if (!target || !canDeleteChart(target)) return;
     setDeleteTarget({ id, name: target?.name || id });
-  }, [localCharts]);
+  }, [canDeleteChart, localCharts]);
 
   const confirmDeleteChart = React.useCallback(() => {
     if (!deleteTarget) return;
@@ -713,218 +749,193 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
   }
 
   return (
-    <div className="space-y-8 min-h-[800px]">
-      {/* 🧭 Unified Command Bar (Single Line Architecture) */}
-      <div 
-        className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4 sticky top-12 z-40 px-3 sm:px-4 md:px-6 py-3 md:py-4 border-b !bg-white dark:!bg-black border-border/50 shadow-2xl !opacity-100"
-        style={{ backgroundColor: 'rgb(var(--background))' }}
+    <div className="space-y-6 min-h-[800px]">
+      {/* 🧭 Fixed Navigator Controls */}
+      <div
+        className="fixed top-12 left-0 right-0 z-50 border-b border-slate-200/80 dark:border-border/50 shadow-2xl bg-white/95 dark:bg-black/95 backdrop-blur-md"
       >
-        
-        {/* LEFT: Premium Category Selector */}
-        <div className="shrink-0 w-full md:w-auto" ref={categoryRef}>
-          {!searchQuery && (
-            <div className="relative">
-              <button 
-                onClick={() => setShowCategoryMenu(!showCategoryMenu)}
-                className={`
-                  w-full sm:w-auto flex items-center justify-between gap-2 pl-3.5 sm:pl-4 pr-3.5 sm:pr-4 py-2.5 
-                  bg-secondary/10 border rounded-xl transition-all duration-300
-                  ${showCategoryMenu ? 'border-sky-500/50 bg-sky-500/5 shadow-lg shadow-sky-500/10' : 'border-border/50 hover:bg-accent/10'}
-                `}
-              >
-                <Layers className={`w-4 h-4 transition-colors ${showCategoryMenu ? 'text-sky-400' : 'text-sky-400/70'}`} />
-                <span className="text-xs font-bold text-foreground uppercase tracking-wider truncate max-w-[160px]">
-                  {activeCategory}
-                </span>
-                <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-300 ${showCategoryMenu ? 'rotate-180 text-foreground' : ''}`} />
-              </button>
-              
-              <AnimatePresence>
-                {showCategoryMenu && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute left-0 top-full mt-2 w-64 !bg-white dark:!bg-slate-900 border border-border/50 rounded-2xl shadow-2xl p-1.5 z-50 overflow-hidden !opacity-100"
-                    style={{ backgroundColor: 'rgb(var(--background))' }}
-                  >
-                    <div className="px-3 py-2 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] border-b border-border/30 mb-1 flex items-center justify-between">
-                      Indicator Scope
-                      <div className="w-1 h-1 rounded-full bg-sky-500 animate-pulse" />
-                    </div>
-                    
-                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-                      {allCategories.map((cat) => (
-                        <button
-                          key={cat}
-                          onClick={() => {
-                            setActiveCategory(cat);
-                            setShowCategoryMenu(false);
-                          }}
-                          className={`
-                            w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-bold transition-all
-                            ${activeCategory === cat 
-                              ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30 shadow-inner' 
-                              : 'text-foreground/70 hover:bg-white/5 hover:text-foreground'
-                            }
-                          `}
-                        >
-                          <span className="uppercase tracking-wider">{cat}</span>
-                          {activeCategory === cat && <CheckCircle2 className="w-3.5 h-3.5" />}
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-          {searchQuery && (
-            <div className="flex items-center gap-2 text-sky-400 text-[10px] font-black px-4 py-3 bg-sky-500/10 rounded-xl border border-sky-500/20 whitespace-nowrap tracking-widest uppercase">
-              <Search className="w-4 h-4" />
-              Intelligence Results
-            </div>
-          )}
-        </div>
-
-        {/* CENTER: Expansive Search Bar */}
-        <div className="relative w-full md:flex-1">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search Indicators..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-11 py-2.5 bg-secondary/10 border border-border/50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/50 transition-all font-light"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-accent/10 rounded-md transition-colors"
-              type="button"
-            >
-              <X className="w-4 h-4 text-muted-foreground" />
-            </button>
-          )}
-        </div>
-
-        {/* RIGHT: Consolidated System Actions Dropdown */}
-        <div className="flex items-center justify-end gap-2 sm:gap-3 shrink-0 w-full md:w-auto">
-          {isAdmin && isReorderEnabled && isOrderDirty && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-               <button
-                 onClick={handleSaveOrder}
-                 disabled={reorderMutation.isPending}
-                 className="flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95 whitespace-nowrap"
-               >
-                 {reorderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                 <span className="hidden sm:inline">SAVE RANK</span>
-               </button>
-            </div>
-          )}
-
-          <div className="relative" ref={actionRef}>
-            <button 
-              onClick={() => setShowActionMenu(!showActionMenu)}
-              className={`
-                flex items-center gap-2 p-2.5 bg-secondary/10 border rounded-xl transition-all duration-300
-                ${showActionMenu ? 'border-sky-500/50 bg-sky-500/5 shadow-lg shadow-sky-500/10' : 'border-border/50 hover:bg-accent/10'}
-              `}
-            >
-              <div className="relative">
-                <RefreshCw className={`w-4 h-4 transition-colors ${isRefreshing ? 'animate-spin text-sky-400' : showActionMenu ? 'text-sky-400' : 'text-muted-foreground'}`} />
-                {(exporting || exportingHtml) && (
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-sky-500 rounded-full animate-pulse" />
-                )}
+        <div className="mx-auto w-full max-w-[1800px] px-2 sm:px-4 md:px-6 py-2.5 md:py-3">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
+            <div className="min-w-0 flex-1 rounded-2xl border border-sky-300/70 dark:border-sky-500/20 bg-gradient-to-r from-sky-100/85 via-indigo-100/65 to-cyan-100/85 dark:from-sky-500/10 dark:via-indigo-500/10 dark:to-cyan-500/10 px-2.5 sm:px-3 py-2.5 flex items-center gap-2 shadow-lg shadow-sky-900/5 dark:shadow-black/20">
+              <div className="hidden lg:flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300 font-bold shrink-0">
+                <ListIcon className="w-3.5 h-3.5" />
+                Navigator
               </div>
-              <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform duration-300 ${showActionMenu ? 'rotate-180 text-foreground' : ''}`} />
-            </button>
-
-            {/* Premium Action Dropdown Menu */}
-            <AnimatePresence>
-              {showActionMenu && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute right-0 top-full mt-2 w-52 !bg-white dark:!bg-slate-900 border border-border/50 rounded-xl shadow-2xl p-1 z-50 overflow-hidden !opacity-100"
-                  style={{ backgroundColor: 'rgb(var(--background))' }}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowQuickJumpMenu(false);
+                  handleQuickJumpStep(-1);
+                }}
+                disabled={quickJumpIndex <= 0}
+                className="px-2.5 py-1.5 rounded-lg border border-sky-300/80 dark:border-sky-500/25 bg-white/90 dark:bg-black/20 text-[11px] text-slate-700 dark:text-slate-300 hover:text-sky-900 dark:hover:text-white hover:bg-sky-100/80 dark:hover:bg-sky-500/10 disabled:opacity-55 disabled:cursor-not-allowed transition-colors"
+              >
+                Prev
+              </button>
+              <div className="relative min-w-0 flex-1" ref={quickJumpRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickJumpMenu((prev) => !prev)}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl border text-[11px] transition-all ${
+                    showQuickJumpMenu
+                      ? 'border-sky-500/60 bg-white text-slate-900 shadow-lg shadow-sky-200/60 dark:border-sky-400/50 dark:bg-sky-500/10 dark:text-white dark:shadow-sky-500/20'
+                      : 'border-sky-300/80 bg-white/90 text-slate-800 hover:bg-sky-100/70 dark:border-sky-500/25 dark:bg-black/25 dark:text-slate-100 dark:hover:bg-sky-500/10'
+                  }`}
                 >
-                  <button
-                    onClick={() => { handleRefreshAll(); setShowActionMenu(false); }}
-                    disabled={isRefreshing}
-                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-6 h-6 rounded-md bg-sky-500/10 flex items-center justify-center border border-sky-500/20 group-hover/opt:border-sky-500/40">
-                        <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-400' : 'text-sky-400'}`} />
+                  <span className="truncate">{quickJumpLabel}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${showQuickJumpMenu ? 'rotate-180 text-sky-700 dark:text-sky-300' : 'text-slate-500 dark:text-slate-400'}`} />
+                </button>
+                <AnimatePresence>
+                  {showQuickJumpMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.98 }}
+                      className="absolute left-0 right-0 top-full mt-2 z-50 rounded-xl border border-sky-300/80 dark:border-sky-500/25 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md shadow-2xl shadow-slate-900/10 dark:shadow-black/40 p-1.5"
+                    >
+                      <div className="max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
+                        {filteredCharts.map((chart, idx) => {
+                          const isActive = chart.id === quickJumpId;
+                          return (
+                            <button
+                              key={chart.id}
+                              type="button"
+                              onClick={() => handleQuickJumpSelect(chart.id)}
+                              className={`w-full text-left px-2.5 py-2 rounded-lg text-[11px] transition-colors ${
+                                isActive
+                                  ? 'bg-sky-100 text-sky-900 border border-sky-300 dark:bg-sky-500/20 dark:text-sky-200 dark:border-sky-400/30'
+                                  : 'text-slate-700 hover:bg-sky-50 dark:text-slate-200 dark:hover:bg-white/5'
+                              }`}
+                            >
+                              <span className="font-semibold text-sky-700 dark:text-sky-300/90 mr-1">{idx + 1}.</span>
+                              <span className="align-middle">{chart.name || `Chart ${idx + 1}`}</span>
+                            </button>
+                          );
+                        })}
                       </div>
-                      <span>Refresh Charts</span>
-                    </div>
-                    {isRefreshing && <span className="text-[9px] text-sky-500 animate-pulse font-mono font-bold tracking-tighter">LIVE</span>}
-                  </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowQuickJumpMenu(false);
+                  handleQuickJumpStep(1);
+                }}
+                disabled={quickJumpIndex < 0 || quickJumpIndex >= filteredCharts.length - 1}
+                className="px-2.5 py-1.5 rounded-lg border border-sky-300/80 dark:border-sky-500/25 bg-white/90 dark:bg-black/20 text-[11px] text-slate-700 dark:text-slate-300 hover:text-sky-900 dark:hover:text-white hover:bg-sky-100/80 dark:hover:bg-sky-500/10 disabled:opacity-55 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+              <div className="text-[10px] font-mono text-slate-700 dark:text-slate-300/80 shrink-0 rounded-md px-2 py-1 bg-white/90 dark:bg-black/20 border border-sky-300/70 dark:border-sky-500/15">
+                {quickJumpIndex >= 0 ? `${quickJumpIndex + 1}/${filteredCharts.length}` : `0/${filteredCharts.length}`}
+              </div>
+            </div>
 
-                  <div className="h-px bg-border/20 my-1 mx-1" />
-
+            <div className="flex items-center justify-end gap-1.5 sm:gap-3 shrink-0 w-auto">
+              {isReorderEnabled && isOrderDirty && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                   <button
-                    onClick={() => { handleExportPDF(); setShowActionMenu(false); }}
-                    disabled={exporting}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                    onClick={handleSaveOrder}
+                    disabled={reorderMutation.isPending}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95 whitespace-nowrap"
                   >
-                    <div className="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover/opt:border-emerald-500/40">
-                      <FileDown className={`w-3.5 h-3.5 ${exporting ? 'animate-pulse text-emerald-400' : 'text-emerald-400'}`} />
-                    </div>
-                    <span>
-                      {exporting ? 'Processing PDF...' : 'To PDF'}
-                    </span>
+                    {reorderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    <span className="hidden sm:inline">SAVE RANK</span>
                   </button>
-
-                  <button
-                    onClick={() => { handleExportHTML(); setShowActionMenu(false); }}
-                    disabled={exportingHtml}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-white/5 transition-all group/opt disabled:opacity-30"
-                  >
-                    <div className="w-6 h-6 rounded-md bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 group-hover/opt:border-indigo-500/40">
-                      <Monitor className={`w-3.5 h-3.5 ${exportingHtml ? 'animate-pulse text-indigo-400' : 'text-indigo-400'}`} />
-                    </div>
-                    <span>
-                      {exportingHtml ? 'Packaging...' : 'To HTML'}
-                    </span>
-                  </button>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
+
+              <div className="relative" ref={actionRef}>
+                <button
+                  onClick={() => setShowActionMenu(!showActionMenu)}
+                  className={`
+                    flex items-center gap-1.5 sm:gap-2 p-2 sm:p-2.5 bg-white/85 dark:bg-secondary/10 border rounded-xl transition-all duration-300
+                    ${showActionMenu ? 'border-sky-500/60 bg-sky-100/70 dark:bg-sky-500/5 shadow-lg shadow-sky-500/10' : 'border-sky-300/70 dark:border-border/50 hover:bg-sky-100/70 dark:hover:bg-accent/10'}
+                  `}
+                >
+                  <div className="relative">
+                    <RefreshCw className={`w-4 h-4 transition-colors ${isRefreshing ? 'animate-spin text-sky-400' : showActionMenu ? 'text-sky-400' : 'text-muted-foreground'}`} />
+                    {(exporting || exportingHtml) && (
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-sky-500 rounded-full animate-pulse" />
+                    )}
+                  </div>
+                  <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform duration-300 ${showActionMenu ? 'rotate-180 text-foreground' : ''}`} />
+                </button>
+
+                <AnimatePresence>
+                  {showActionMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 top-full mt-2 w-52 !bg-white dark:!bg-slate-900 border border-border/50 rounded-xl shadow-2xl p-1 z-50 overflow-hidden !opacity-100"
+                      style={{ backgroundColor: 'rgb(var(--background))' }}
+                    >
+                      {canRefreshAllCharts && (
+                        <>
+                          <button
+                            onClick={() => { handleRefreshAll(); setShowActionMenu(false); }}
+                            disabled={isRefreshing}
+                            className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-6 h-6 rounded-md bg-sky-500/10 flex items-center justify-center border border-sky-500/20 group-hover/opt:border-sky-500/40">
+                                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-400' : 'text-sky-400'}`} />
+                              </div>
+                              <span>Refresh Charts</span>
+                            </div>
+                            {isRefreshing && <span className="text-[9px] text-sky-500 animate-pulse font-mono font-bold tracking-tighter">LIVE</span>}
+                          </button>
+
+                          <div className="h-px bg-border/20 my-1 mx-1" />
+                        </>
+                      )}
+
+                      <button
+                        onClick={() => { handleExportPDF(); setShowActionMenu(false); }}
+                        disabled={exporting}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                      >
+                        <div className="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover/opt:border-emerald-500/40">
+                          <FileDown className={`w-3.5 h-3.5 ${exporting ? 'animate-pulse text-emerald-400' : 'text-emerald-400'}`} />
+                        </div>
+                        <span>
+                          {exporting ? 'Processing PDF...' : 'To PDF'}
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => { handleExportHTML(); setShowActionMenu(false); }}
+                        disabled={exportingHtml}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-all group/opt disabled:opacity-30"
+                      >
+                        <div className="w-6 h-6 rounded-md bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 group-hover/opt:border-indigo-500/40">
+                          <Monitor className={`w-3.5 h-3.5 ${exportingHtml ? 'animate-pulse text-indigo-400' : 'text-indigo-400'}`} />
+                        </div>
+                        <span>
+                          {exportingHtml ? 'Packaging...' : 'To HTML'}
+                        </span>
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 📊 Results Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-1 sm:px-2">
-        <h2 className="text-xl sm:text-2xl font-semibold text-foreground flex flex-wrap items-center gap-2 sm:gap-3 tracking-tight w-full">
-          {debouncedSearch ? (
-            <>Search Results <span className="text-sky-500/60 font-mono text-lg">[{filteredCharts.length}]</span></>
-          ) : (
-            <>
-              <TrendingUp className="w-6 h-6 text-sky-400" />
-              {activeCategory}
-              <span className="text-xs font-mono font-normal text-slate-500 mt-1.5 uppercase tracking-widest">
-                / {filteredCharts.length} Indicators
-              </span>
-            </>
-          )}
-        </h2>
-        {isReorderEnabled && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-sky-500/10 border border-sky-500/20 rounded-lg animate-pulse self-start sm:self-auto">
-             <span className="text-[10px] font-bold text-sky-400 uppercase tracking-tighter">Live Ranking Console</span>
-          </div>
-        )}
-      </div>
+      <div className="h-[84px] md:h-[92px]" />
 
       {/* 🖼️ Grid Display */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-8">
         {filteredCharts.map((chart, idx) => (
           <motion.div
             key={chart.id}
+            id={`chart-anchor-${chart.id}`}
+            ref={setChartAnchorRef(chart.id)}
             className="h-full flex flex-col"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -937,7 +948,10 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
           >
             <ChartCard
               chart={chart}
-              isAdmin={isAdmin || false}
+              canEdit={canEditChart(chart)}
+              canRefresh={canRefreshChart(chart)}
+              canDelete={canDeleteChart(chart)}
+              canManageVisibility={canManageVisibility}
               isReorderable={isReorderEnabled}
               onTogglePdf={handleTogglePdf}
               onRefreshChart={handleRefreshChart}
@@ -963,7 +977,7 @@ export default function DashboardGallery({ categories, chartsByCategory, onOpenS
         <div className="py-32 text-center glass-card border-dashed border-white/10 bg-transparent animate-in zoom-in-95 duration-500">
           <Layers className="w-12 h-12 text-slate-700 mx-auto mb-4 opacity-20" />
           <h3 className="text-xl font-medium text-slate-500">No matching indicators</h3>
-          <p className="text-slate-600 mt-2 text-sm font-light">Try expanding your search parameters.</p>
+          <p className="text-slate-600 mt-2 text-sm font-light">No charts available with your current access.</p>
         </div>
       )}
 
