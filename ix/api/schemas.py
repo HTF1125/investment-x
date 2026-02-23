@@ -20,6 +20,7 @@ class TokenData(BaseModel):
 
     email: Optional[str] = None
     is_admin: bool = False
+    role: str = "general"
 
 
 class UserLogin(BaseModel):
@@ -46,6 +47,7 @@ class UserResponse(BaseModel):
     email: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    role: str = "general"
     is_admin: bool = False
     disabled: bool = False
     created_at: Optional[datetime] = None

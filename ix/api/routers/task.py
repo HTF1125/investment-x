@@ -68,7 +68,7 @@ def _broadcast_task_event(event: str, pid: str):
 
 
 def _is_admin_user(user: User) -> bool:
-    return bool(getattr(user, "is_admin", False))
+    return bool(getattr(user, "effective_role", User.ROLE_GENERAL) in User.ADMIN_ROLES)
 
 
 def _current_user_id(user: User) -> str:
@@ -572,6 +572,9 @@ async def run_refresh_charts_task(
     current_user: User = Depends(get_current_user),
 ):
     """Trigger a refresh of all charts in background."""
+    if not _is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
     current_uid = _current_user_id(current_user)
     if _is_task_running("Refresh Charts", user_id=current_uid):
         raise HTTPException(status_code=400, detail="Chart refresh is already running")

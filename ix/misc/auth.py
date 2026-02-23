@@ -76,75 +76,14 @@ def authenticate_user(email: str, password: str):
 
         user = User.get_by_email(email)
         if not user:
-            # Hardcoded check for the primary developer account bootstrap
-            BOOTSTRAP_EMAIL = "roberthan1125@gmail.com"
-            BOOTSTRAP_PASSWORD = "investmentx1125A!"
-
-            if (
-                email or ""
-            ).strip().lower() == BOOTSTRAP_EMAIL and password == BOOTSTRAP_PASSWORD:
-                try:
-                    user = User.new_user(
-                        email=email,
-                        password=password,
-                        first_name="Admin",
-                        is_admin=True,
-                    )
-                    logger.info("Bootstrapped initial admin user.")
-                except Exception as _exc:
-                    logger.exception("Failed to bootstrap admin user")
-                    return None
-            else:
-                logger.warning(f"User not found: {email}")
-                return None
+            logger.warning(f"User not found: {email}")
+            return None
 
         if getattr(user, "disabled", False):
             logger.warning(f"User is disabled: {email}")
             return None
 
         if not user.verify_password(password):
-            # If this is the bootstrap admin credential, force-reset the stored hash if it mismatch
-            BOOTSTRAP_EMAIL = "roberthan1125@gmail.com"
-            BOOTSTRAP_PASSWORD = "investmentx1125A!"
-            if (
-                email or ""
-            ).strip().lower() == BOOTSTRAP_EMAIL and password == BOOTSTRAP_PASSWORD:
-                try:
-                    from ix.db.conn import Session
-
-                    user_to_return = None
-                    with Session() as session:
-                        db_user = (
-                            session.query(User).filter(User.email == email).first()
-                        )
-                        if db_user:
-                            db_user.password = User.hash_password(password)
-                            db_user.is_admin = True
-                            user_to_return = db_user
-                        else:
-                            new_user = User(
-                                email=email,
-                                password=User.hash_password(password),
-                                first_name="Admin",
-                                is_admin=True,
-                                disabled=False,
-                                created_at=datetime.utcnow(),
-                            )
-                            session.add(new_user)
-                            session.flush()
-                            session.refresh(new_user)
-                            user_to_return = new_user
-
-                        if user_to_return:
-                            for column in User.__table__.columns:
-                                getattr(user_to_return, column.name)
-                            session.expunge(user_to_return)
-
-                    logger.info("Reset bootstrap admin password hash on demand.")
-                    return user_to_return
-                except Exception as _exc:
-                    logger.exception("Failed to reset bootstrap admin password hash")
-                    return None
             logger.warning(f"Invalid password for user: {email}")
             return None
         return user
@@ -177,19 +116,34 @@ def get_current_user(token: str):
 
 
 def create_user_token(
-    email: str, is_admin: bool = False, expires_delta: Optional[timedelta] = None
+    email: str,
+    role: str = "general",
+    is_admin: Optional[bool] = None,
+    expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
     Create a JWT token for a user
 
     Args:
         email: User email
-        is_admin: Whether the user is an admin
+        role: Role string (owner/admin/general)
+        is_admin: Optional compatibility flag; if omitted it is derived from role
         expires_delta: Optional timedelta for token expiration
 
     Returns:
         JWT token string
     """
-    token_data = {"sub": email, "is_admin": is_admin, "iat": datetime.utcnow()}
+    resolved_role = (role or "").strip().lower() or "general"
+    resolved_is_admin = (
+        is_admin
+        if is_admin is not None
+        else resolved_role in {"owner", "admin"}
+    )
+    token_data = {
+        "sub": email,
+        "role": resolved_role,
+        "is_admin": bool(resolved_is_admin),  # keep for backward compatibility
+        "iat": datetime.utcnow(),
+    }
 
     return create_access_token(token_data, expires_delta=expires_delta)

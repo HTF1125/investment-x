@@ -86,6 +86,7 @@ function StatusIndicators() {
  */
 function UserDropdown() {
   const { user, logout } = useAuth();
+  const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -152,7 +153,7 @@ function UserDropdown() {
                   </div>
                   <div className="text-[11px] text-muted-foreground font-mono truncate">{user?.email}</div>
                 </div>
-                {user?.is_admin && (
+                {isAdmin && (
                   <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md flex items-center gap-1">
                     <Shield className="w-2.5 h-2.5" /> Admin
                   </span>
@@ -202,6 +203,7 @@ function ThemeToggle() {
 export default function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
   const { theme } = useTheme();
+  const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const pathname = usePathname();
 
@@ -232,7 +234,7 @@ export default function Navbar() {
                 <NavLink href="/" icon={<Layout className="w-3 h-3" />}>Dashboard</NavLink>
                 <NavLink href="/intel" icon={<Radio className="w-3 h-3" />}>Intel</NavLink>
                 <NavLink href="/technical" icon={<CandlestickChart className="w-3 h-3" />}>Technical</NavLink>
-                {user?.is_admin && (
+                {isAdmin && (
                   <NavLink href="/admin/timeseries" icon={<Database className="w-3 h-3" />}>System</NavLink>
                 )}
             </div>
@@ -284,7 +286,7 @@ export default function Navbar() {
                   <MobileNavLink href="/" icon={<Layout className="w-4 h-4" />}>Dashboard</MobileNavLink>
                   <MobileNavLink href="/intel" icon={<Radio className="w-4 h-4" />}>Intel Feed</MobileNavLink>
                   <MobileNavLink href="/technical" icon={<CandlestickChart className="w-4 h-4" />}>Technical</MobileNavLink>
-                  {user?.is_admin && (
+                  {isAdmin && (
                     <MobileNavLink href="/admin/timeseries" icon={<Database className="w-4 h-4" />}>System Admin</MobileNavLink>
                   )}
                </div>

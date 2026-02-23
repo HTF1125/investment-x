@@ -33,7 +33,7 @@ export default function YouTubeIntelFeed() {
   const { user } = useAuth();
   const { theme } = useTheme();
   const isLight = theme === 'light';
-  const isAdmin = !!user?.is_admin;
+  const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const [manualUrl, setManualUrl] = useState('');
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<'unsummarized' | 'published_desc'>('unsummarized');

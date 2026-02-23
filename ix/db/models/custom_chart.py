@@ -15,7 +15,9 @@ class CustomChart(Base):
     id = Column(
         UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
     )
-    # user_id removed (shared across all admins)
+    created_by_user_id = Column(
+        UUID(as_uuid=False), ForeignKey("user.id"), nullable=True, index=True
+    )
 
     code = Column(Text, nullable=False)  # The Python code
     name = Column(String, nullable=True)  # Name of the analysis
@@ -37,4 +39,4 @@ class CustomChart(Base):
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    # user relationship removed
+    creator = relationship("User", foreign_keys=[created_by_user_id], lazy="joined")

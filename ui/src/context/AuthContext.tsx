@@ -9,6 +9,7 @@ export interface User {
   email: string;
   first_name?: string;
   last_name?: string;
+  role?: 'owner' | 'admin' | 'general' | string;
   is_admin: boolean;
   disabled: boolean;
   created_at?: string;
@@ -32,6 +33,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Store token in state to avoid direct localStorage reads during render (SSR hydration safety)
   const [token, setToken] = useState<string | null>(null);
   const router = useRouter();
+
+  const normalizeUser = useCallback((raw: any): User => {
+    const roleRaw = String(raw?.role || '').toLowerCase();
+    const role = roleRaw === 'owner' || roleRaw === 'admin' || roleRaw === 'general'
+      ? roleRaw
+      : 'general';
+    const isAdmin = role === 'owner' || role === 'admin' || !!raw?.is_admin;
+    return {
+      ...raw,
+      role,
+      is_admin: isAdmin,
+    } as User;
+  }, []);
 
   // Sync token from localStorage on mount only (client-side)
   useEffect(() => {
@@ -63,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (res.ok) {
           const userData = await res.json();
-          setUser(userData);
+          setUser(normalizeUser(userData));
           if (storedToken) setToken(storedToken);
         } else {
           updateToken(null);
@@ -77,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     initAuth();
-  }, [updateToken]);
+  }, [normalizeUser, updateToken]);
 
   const login = useCallback(async (email: string, password: string, rememberMe: boolean = false) => {
     setLoading(true);
@@ -113,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (meRes.ok) {
         const userData = await meRes.json();
-        setUser(userData);
+        setUser(normalizeUser(userData));
       }
       // Always redirect — initAuth on reload will re-validate
       window.location.href = '/';
@@ -122,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [router, updateToken]);
+  }, [normalizeUser, router, updateToken]);
 
   const register = useCallback(async (email: string, password: string, firstName?: string, lastName?: string) => {
     setLoading(true);

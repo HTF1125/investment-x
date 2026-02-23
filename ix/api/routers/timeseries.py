@@ -18,6 +18,7 @@ from typing import Optional, List, Dict, Any
 from collections import OrderedDict
 import json
 import math
+import re
 import pandas as pd
 from datetime import datetime, date
 
@@ -95,7 +96,7 @@ async def get_timeseries(
     limit: Optional[int] = Query(None, description="Limit number of results"),
     offset: int = Query(0, description="Offset for pagination"),
     search: Optional[str] = Query(
-        None, description="Search by code, name, source, or category"
+        None, description="Search by code/name/source/category/provider/asset class/country"
     ),
     category: Optional[str] = Query(None, description="Filter by category"),
     asset_class: Optional[str] = Query(None, description="Filter by asset class"),
@@ -106,22 +107,179 @@ async def get_timeseries(
     GET /api/timeseries - List all timeseries with optional filtering and pagination.
     """
     ensure_connection()
-    from sqlalchemy import or_
+    from sqlalchemy import and_, or_, case, func
 
     timeseries_query = db.query(Timeseries)
 
-    # Full-text search across multiple fields
+    # DB-native search for PostgreSQL, with fallback ranking for other dialects.
     if search:
-        pattern = f"%{search}%"
-        timeseries_query = timeseries_query.filter(
-            or_(
-                Timeseries.code.ilike(pattern),
-                Timeseries.name.ilike(pattern),
-                Timeseries.source.ilike(pattern),
-                Timeseries.category.ilike(pattern),
-                Timeseries.source_code.ilike(pattern),
+        term = search.strip().lower()
+        tokens = [t for t in re.split(r"\s+", term) if t]
+
+        if tokens:
+            code_l = func.lower(func.coalesce(Timeseries.code, ""))
+            name_l = func.lower(func.coalesce(Timeseries.name, ""))
+            source_l = func.lower(func.coalesce(Timeseries.source, ""))
+            category_l = func.lower(func.coalesce(Timeseries.category, ""))
+            provider_l = func.lower(func.coalesce(Timeseries.provider, ""))
+            asset_class_l = func.lower(func.coalesce(Timeseries.asset_class, ""))
+            country_l = func.lower(func.coalesce(Timeseries.country, ""))
+            source_code_l = func.lower(func.coalesce(Timeseries.source_code, ""))
+
+            dialect_name = (
+                getattr(getattr(db, "bind", None), "dialect", None).name
+                if getattr(getattr(db, "bind", None), "dialect", None) is not None
+                else ""
             )
-        )
+
+            if dialect_name == "postgresql":
+                # Weighted FTS vector:
+                # code/name strongest; metadata moderate; source_code lower.
+                search_vector = (
+                    func.setweight(
+                        func.to_tsvector("simple", func.coalesce(Timeseries.code, "")),
+                        "A",
+                    )
+                    .op("||")(
+                        func.setweight(
+                            func.to_tsvector(
+                                "simple", func.coalesce(Timeseries.name, "")
+                            ),
+                            "A",
+                        )
+                    )
+                    .op("||")(
+                        func.setweight(
+                            func.to_tsvector(
+                                "simple", func.coalesce(Timeseries.source, "")
+                            ),
+                            "B",
+                        )
+                    )
+                    .op("||")(
+                        func.setweight(
+                            func.to_tsvector(
+                                "simple", func.coalesce(Timeseries.category, "")
+                            ),
+                            "B",
+                        )
+                    )
+                    .op("||")(
+                        func.setweight(
+                            func.to_tsvector(
+                                "simple", func.coalesce(Timeseries.provider, "")
+                            ),
+                            "C",
+                        )
+                    )
+                    .op("||")(
+                        func.setweight(
+                            func.to_tsvector(
+                                "simple", func.coalesce(Timeseries.asset_class, "")
+                            ),
+                            "C",
+                        )
+                    )
+                    .op("||")(
+                        func.setweight(
+                            func.to_tsvector(
+                                "simple", func.coalesce(Timeseries.country, "")
+                            ),
+                            "D",
+                        )
+                    )
+                    .op("||")(
+                        func.setweight(
+                            func.to_tsvector(
+                                "simple", func.coalesce(Timeseries.source_code, "")
+                            ),
+                            "D",
+                        )
+                    )
+                )
+                ts_query = func.plainto_tsquery("simple", term)
+
+                # Keep prefix path so incremental typing ("sp", "usd") still feels responsive.
+                prefix_match = or_(
+                    code_l.like(f"{term}%"),
+                    name_l.like(f"{term}%"),
+                    source_l.like(f"{term}%"),
+                    category_l.like(f"{term}%"),
+                )
+                if len(term) >= 3:
+                    prefix_match = or_(prefix_match, source_code_l.like(f"{term}%"))
+
+                fts_match = search_vector.op("@@")(ts_query)
+                timeseries_query = timeseries_query.filter(or_(fts_match, prefix_match))
+
+                rank_expr = (
+                    func.ts_rank_cd(search_vector, ts_query)
+                    + case((code_l == term, 5.0), else_=0.0)
+                    + case((code_l.like(f"{term}%"), 2.6), else_=0.0)
+                    + case((name_l.like(f"{term}%"), 1.2), else_=0.0)
+                    + case((source_l.like(f"{term}%"), 0.6), else_=0.0)
+                    + case((category_l.like(f"{term}%"), 0.5), else_=0.0)
+                )
+
+                timeseries_query = timeseries_query.order_by(
+                    rank_expr.desc(),
+                    Timeseries.favorite.desc(),
+                    Timeseries.code.asc(),
+                )
+            else:
+                # Fallback: token-aware LIKE ranking for non-PostgreSQL backends.
+                token_filters = []
+                for tok in tokens:
+                    tok_like = f"%{tok}%"
+                    token_columns = [
+                        code_l.like(tok_like),
+                        name_l.like(tok_like),
+                        source_l.like(tok_like),
+                        category_l.like(tok_like),
+                        provider_l.like(tok_like),
+                        asset_class_l.like(tok_like),
+                        country_l.like(tok_like),
+                    ]
+                    if len(tok) >= 3:
+                        token_columns.append(source_code_l.like(tok_like))
+                    token_filters.append(or_(*token_columns))
+
+                timeseries_query = timeseries_query.filter(and_(*token_filters))
+
+                rank_expr = (
+                    case((code_l == term, 1000), else_=0)
+                    + case((code_l.like(f"{term}%"), 600), else_=0)
+                    + case((name_l == term, 350), else_=0)
+                    + case((name_l.like(f"{term}%"), 220), else_=0)
+                    + case((source_code_l.like(f"{term}%"), 180), else_=0)
+                    + case((code_l.like(f"%{term}%"), 150), else_=0)
+                    + case((name_l.like(f"%{term}%"), 120), else_=0)
+                    + case((source_l.like(f"%{term}%"), 70), else_=0)
+                    + case((category_l.like(f"%{term}%"), 60), else_=0)
+                )
+
+                for tok in tokens:
+                    tok_like = f"%{tok}%"
+                    rank_expr = (
+                        rank_expr
+                        + case((code_l.like(tok_like), 70), else_=0)
+                        + case((name_l.like(tok_like), 45), else_=0)
+                        + case((source_l.like(tok_like), 25), else_=0)
+                        + case((category_l.like(tok_like), 20), else_=0)
+                        + case((provider_l.like(tok_like), 18), else_=0)
+                        + case((asset_class_l.like(tok_like), 15), else_=0)
+                        + case((country_l.like(tok_like), 12), else_=0)
+                    )
+                    if len(tok) >= 3:
+                        rank_expr = rank_expr + case(
+                            (source_code_l.like(tok_like), 10), else_=0
+                        )
+
+                timeseries_query = timeseries_query.order_by(
+                    rank_expr.desc(),
+                    Timeseries.favorite.desc(),
+                    Timeseries.code.asc(),
+                )
 
     # Apply filters
     if category:

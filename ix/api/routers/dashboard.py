@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi import Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
 from typing import List, Dict, Any
 from ix.db.conn import get_session
 from ix.db.models import CustomChart as Chart
@@ -20,6 +21,9 @@ class ChartMetaSchema(BaseModel):
     updated_at: datetime | None
     rank: int = 0
     export_pdf: bool = True
+    created_by_user_id: str | None = None
+    created_by_email: str | None = None
+    created_by_name: str | None = None
     code: str | None = None
     figure: Any | None = None  # Added figure data to bundle with summary
 
@@ -76,13 +80,29 @@ def get_dashboard_summary(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    query = db.query(Chart)
+    query = db.query(Chart).options(
+        joinedload(Chart.creator).load_only(
+            User.id,
+            User.email,
+            User.first_name,
+            User.last_name,
+        )
+    )
 
     current_user = _get_optional_user(request)
-    is_admin = bool(current_user and current_user.is_admin)
+    is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
+    current_uid = str(getattr(current_user, "id", "") or "") if current_user else None
 
     if not is_admin:
-        query = query.filter(Chart.export_pdf == True)
+        if current_uid:
+            query = query.filter(
+                or_(
+                    Chart.export_pdf == True,
+                    Chart.created_by_user_id == current_uid,
+                )
+            )
+        else:
+            query = query.filter(Chart.export_pdf == True)
 
     charts = query.all()
 
@@ -97,6 +117,15 @@ def get_dashboard_summary(
             categories_set.add(cat)
 
         meta = ChartMetaSchema.from_orm(chart)
+        creator = getattr(chart, "creator", None)
+        creator_id = getattr(chart, "created_by_user_id", None)
+        creator_email = getattr(creator, "email", None) if creator else None
+        creator_name = " ".join(
+            [x for x in [getattr(creator, "first_name", None), getattr(creator, "last_name", None)] if x]
+        ) or None
+        meta.created_by_user_id = str(creator_id) if creator_id else None
+        meta.created_by_email = str(creator_email) if creator_email else None
+        meta.created_by_name = creator_name
 
         # Security: Never leak logic to non-admins
         if not is_admin:
@@ -134,8 +163,10 @@ def get_chart_figure(
             raise HTTPException(status_code=404, detail="Chart not found")
 
     current_user = _get_optional_user(request)
-    is_admin = bool(current_user and current_user.is_admin)
-    if not is_admin and not bool(chart.export_pdf):
+    is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
+    current_uid = str(getattr(current_user, "id", "") or "") if current_user else ""
+    is_owner_chart = bool(current_uid and str(getattr(chart, "created_by_user_id", "") or "") == current_uid)
+    if not is_admin and not bool(chart.export_pdf) and not is_owner_chart:
         raise HTTPException(status_code=404, detail="Chart not found")
 
     if not chart.figure:

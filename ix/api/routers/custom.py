@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Response
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy.orm import Session, load_only, joinedload
+from sqlalchemy import func
 from typing import List, Optional, Any, Dict, Callable
 from pydantic import BaseModel
 from datetime import datetime
@@ -11,6 +11,7 @@ import plotly.express as px
 import plotly.io as pio
 import plotly.graph_objects as go
 import json
+import html
 import traceback
 import concurrent.futures
 import base64
@@ -49,6 +50,11 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
+try:
+    import orjson as _orjson
+except Exception:
+    _orjson = None
+
 
 def _theme_figure_for_delivery(figure: Any) -> Any:
     """Apply canonical misc theme when returning figures to dashboard/studio clients."""
@@ -57,10 +63,108 @@ def _theme_figure_for_delivery(figure: Any) -> Any:
     return chart_theme.apply_json(figure, mode="light")
 
 
+def _json_dumps_fast(payload: Any) -> str:
+    if _orjson is not None:
+        return _orjson.dumps(payload).decode("utf-8")
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+
+
+def _compact_figure_for_html(figure: Any) -> Dict[str, Any]:
+    if not isinstance(figure, dict):
+        return {"data": [], "layout": {}}
+    data = figure.get("data")
+    layout = figure.get("layout")
+    frames = figure.get("frames")
+    if not isinstance(data, list):
+        data = []
+    if not isinstance(layout, dict):
+        layout = {}
+    else:
+        layout = dict(layout)
+    # Keep template to preserve per-chart axis defaults in exported HTML.
+    layout.pop("uirevision", None)
+    layout.pop("width", None)
+    layout.pop("height", None)
+    compact = {"data": data, "layout": layout}
+    if isinstance(frames, list) and frames:
+        compact["frames"] = frames
+    return compact
+
+
+def _creator_metadata(chart: CustomChart) -> Dict[str, Optional[str]]:
+    creator = getattr(chart, "creator", None)
+    creator_id = getattr(chart, "created_by_user_id", None)
+    creator_email = getattr(creator, "email", None) if creator is not None else None
+    first_name = getattr(creator, "first_name", None) if creator is not None else None
+    last_name = getattr(creator, "last_name", None) if creator is not None else None
+    creator_name = " ".join([x for x in [first_name, last_name] if x]) or None
+    return {
+        "created_by_user_id": str(creator_id) if creator_id else None,
+        "created_by_email": str(creator_email) if creator_email else None,
+        "created_by_name": creator_name,
+    }
+
+
 def _to_custom_chart_response(chart: CustomChart):
     payload = CustomChartResponse.from_orm(chart)
     payload.figure = _theme_figure_for_delivery(chart.figure)
+    creator_meta = _creator_metadata(chart)
+    payload.created_by_user_id = creator_meta["created_by_user_id"]
+    payload.created_by_email = creator_meta["created_by_email"]
+    payload.created_by_name = creator_meta["created_by_name"]
     return payload
+
+
+def _user_role(user: User) -> str:
+    role = getattr(user, "effective_role", None)
+    if callable(role):
+        role = role()
+    if isinstance(role, str) and role:
+        return User.normalize_role(role)
+    return User.normalize_role(getattr(user, "role", None))
+
+
+def _is_owner(user: User) -> bool:
+    return _user_role(user) == User.ROLE_OWNER
+
+
+def _is_admin(user: User) -> bool:
+    return _user_role(user) in User.ADMIN_ROLES
+
+
+def _user_id(user: User) -> str:
+    return str(getattr(user, "id", "") or "")
+
+
+def _is_chart_owner(chart: CustomChart, user: User) -> bool:
+    chart_owner_id = str(getattr(chart, "created_by_user_id", "") or "")
+    return bool(chart_owner_id and chart_owner_id == _user_id(user))
+
+
+def _can_edit_chart(chart: CustomChart, user: User) -> bool:
+    if _is_owner(user):
+        return True
+    if _user_role(user) == User.ROLE_ADMIN:
+        return False
+    return _is_chart_owner(chart, user)
+
+
+def _can_view_chart(chart: CustomChart, user: User) -> bool:
+    return _is_owner(user) or _is_admin(user) or _is_chart_owner(chart, user)
+
+
+def _assert_owner_only(user: User, detail: str = "Only owner can perform this action.") -> None:
+    if not _is_owner(user):
+        raise HTTPException(status_code=403, detail=detail)
+
+
+def _assert_can_create_chart(user: User) -> None:
+    role = _user_role(user)
+    if role == User.ROLE_ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin role is refresh-only for chart operations.",
+        )
 
 # --- Pydantic Models ---
 
@@ -100,8 +204,31 @@ class CustomChartResponse(BaseModel):
     figure: Optional[Dict[str, Any]]
     export_pdf: bool = True
     rank: int = 0
+    created_by_user_id: Optional[str] = None
+    created_by_email: Optional[str] = None
+    created_by_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CustomChartListItemResponse(BaseModel):
+    id: str
+    name: Optional[str]
+    category: Optional[str]
+    description: Optional[str]
+    tags: List[str]
+    export_pdf: bool = True
+    rank: int = 0
+    created_by_user_id: Optional[str] = None
+    created_by_email: Optional[str] = None
+    created_by_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    code: Optional[str] = None
+    figure: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -124,6 +251,33 @@ class PDFExportRequest(BaseModel):
 
 
 # --- Helper Functions ---
+
+
+def _to_custom_chart_list_item(
+    chart: CustomChart,
+    include_code: bool = False,
+    include_figure: bool = False,
+) -> CustomChartListItemResponse:
+    creator_meta = _creator_metadata(chart)
+    payload: Dict[str, Any] = {
+        "id": str(chart.id),
+        "name": chart.name,
+        "category": chart.category,
+        "description": chart.description,
+        "tags": chart.tags or [],
+        "export_pdf": bool(chart.export_pdf),
+        "rank": int(chart.rank or 0),
+        "created_by_user_id": creator_meta["created_by_user_id"],
+        "created_by_email": creator_meta["created_by_email"],
+        "created_by_name": creator_meta["created_by_name"],
+        "created_at": chart.created_at,
+        "updated_at": chart.updated_at,
+    }
+    if include_code:
+        payload["code"] = chart.code
+    if include_figure:
+        payload["figure"] = _theme_figure_for_delivery(chart.figure)
+    return CustomChartListItemResponse(**payload)
 
 
 def execute_custom_code(code: str):
@@ -721,6 +875,7 @@ def create_custom_chart(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new custom chart."""
+    _assert_can_create_chart(current_user)
     logger.info(f"Creating new chart with name: '{chart_data.name}'")
 
     # Optional: Validate code by running it once?
@@ -744,6 +899,7 @@ def create_custom_chart(
         figure=figure_json,
         export_pdf=chart_data.export_pdf,
         rank=next_rank,
+        created_by_user_id=_user_id(current_user) or None,
     )
 
     db.add(new_chart)
@@ -753,9 +909,11 @@ def create_custom_chart(
     return _to_custom_chart_response(new_chart)
 
 
-@router.get("/custom", response_model=List[CustomChartResponse])
+@router.get("/custom", response_model=List[CustomChartListItemResponse])
 def list_custom_charts(
     response: Response,
+    include_code: bool = False,
+    include_figure: bool = False,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -763,12 +921,75 @@ def list_custom_charts(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    charts = (
-        db.query(CustomChart)
-        .order_by(CustomChart.rank.asc(), CustomChart.created_at.desc())
-        .all()
+    query = db.query(CustomChart).options(
+        joinedload(CustomChart.creator).load_only(
+            User.id,
+            User.email,
+            User.first_name,
+            User.last_name,
+        )
     )
-    return [_to_custom_chart_response(chart) for chart in charts]
+    if not (_is_owner(current_user) or _is_admin(current_user)):
+        query = query.filter(CustomChart.created_by_user_id == _user_id(current_user))
+
+    # Default list is metadata-only to keep studio opening fast.
+    if not include_code and not include_figure:
+        query = query.options(
+            load_only(
+                CustomChart.id,
+                CustomChart.name,
+                CustomChart.category,
+                CustomChart.description,
+                CustomChart.tags,
+                CustomChart.export_pdf,
+                CustomChart.rank,
+                CustomChart.created_by_user_id,
+                CustomChart.created_at,
+                CustomChart.updated_at,
+            )
+        )
+    elif include_code and not include_figure:
+        query = query.options(
+            load_only(
+                CustomChart.id,
+                CustomChart.name,
+                CustomChart.category,
+                CustomChart.description,
+                CustomChart.tags,
+                CustomChart.export_pdf,
+                CustomChart.rank,
+                CustomChart.created_by_user_id,
+                CustomChart.created_at,
+                CustomChart.updated_at,
+                CustomChart.code,
+            )
+        )
+    elif include_figure and not include_code:
+        query = query.options(
+            load_only(
+                CustomChart.id,
+                CustomChart.name,
+                CustomChart.category,
+                CustomChart.description,
+                CustomChart.tags,
+                CustomChart.export_pdf,
+                CustomChart.rank,
+                CustomChart.created_by_user_id,
+                CustomChart.created_at,
+                CustomChart.updated_at,
+                CustomChart.figure,
+            )
+        )
+
+    charts = query.order_by(CustomChart.rank.asc(), CustomChart.created_at.desc()).all()
+    return [
+        _to_custom_chart_list_item(
+            chart,
+            include_code=include_code,
+            include_figure=include_figure,
+        )
+        for chart in charts
+    ]
 
 
 @router.put("/custom/reorder")
@@ -778,6 +999,7 @@ def reorder_custom_charts(
     current_user: User = Depends(get_current_user),
 ):
     """Reorder custom charts based on list of IDs."""
+    _assert_owner_only(current_user)
 
     ids = [item.id for item in order_data.items]
 
@@ -800,6 +1022,7 @@ def toggle_export_pdf(
     current_user: User = Depends(get_current_user),
 ):
     """Toggle the export_pdf flag for one or more charts."""
+    _assert_owner_only(current_user)
     db.query(CustomChart).filter(CustomChart.id.in_(data.ids)).update(
         {CustomChart.export_pdf: data.export_pdf}, synchronize_session="fetch"
     )
@@ -893,8 +1116,6 @@ def export_custom_charts_html(
     current_user: User = Depends(get_current_user),
 ):
     """Generate a standalone HTML portfolio of charts marked for export."""
-    from fastapi.responses import Response
-
     # Import task registry lazily to avoid circular-import fallback to dummy handlers.
     from ix.api.routers.task import start_process as _start_process
     from ix.api.routers.task import update_process as _update_process
@@ -904,9 +1125,18 @@ def export_custom_charts_html(
     pid = _start_process("Export Interactive Portfolio", user_id=user_identifier)
 
     try:
+        chart_columns = (
+            CustomChart.id,
+            CustomChart.name,
+            CustomChart.category,
+            CustomChart.description,
+            CustomChart.updated_at,
+            CustomChart.figure,
+        )
+
         if request.items:
             charts = (
-                db.query(CustomChart).filter(CustomChart.id.in_(request.items)).all()
+                db.query(*chart_columns).filter(CustomChart.id.in_(request.items)).all()
             )
             chart_map = {str(c.id): c for c in charts}
             ordered_charts = [
@@ -914,8 +1144,8 @@ def export_custom_charts_html(
             ]
         else:
             ordered_charts = (
-                db.query(CustomChart)
-                .filter(CustomChart.export_pdf == True)
+                db.query(*chart_columns)
+                .filter(CustomChart.export_pdf.is_(True))
                 .order_by(CustomChart.rank.asc())
                 .all()
             )
@@ -975,17 +1205,24 @@ def export_custom_charts_html(
         """
         )
 
+        total_charts = len(ordered_charts)
+        progress_step = max(1, (total_charts + 11) // 12)
+
         for i, chart in enumerate(ordered_charts):
-            clean_name = (chart.name or "Untitled").replace('"', "&quot;")
-            category = (chart.category or "General").upper()
-            date_str = chart.updated_at.strftime("%Y-%m-%d %H:%M")
-            desc = chart.description or "Analysis pending."
+            clean_name = html.escape(chart.name or "Untitled", quote=True)
+            category = html.escape((chart.category or "General").upper(), quote=True)
+            date_str = (
+                chart.updated_at.strftime("%Y-%m-%d %H:%M")
+                if getattr(chart, "updated_at", None)
+                else "-"
+            )
+            desc = html.escape(chart.description or "Analysis pending.", quote=True).replace("\n", "<br/>")
 
             # Create a unique ID for Plotly div
             div_id = f"chart_{i}"
 
             # Get Plotly JSON
-            fig_json = json.dumps(chart.figure)
+            fig_json = _json_dumps_fast(_compact_figure_for_html(chart.figure))
 
             html_parts.append(
                 f"""
@@ -999,10 +1236,30 @@ def export_custom_charts_html(
                     <script type="text/javascript">
                         (function() {{
                             var fig = {fig_json};
+                            fig.layout = fig.layout || {{}};
                             fig.layout.paper_bgcolor = 'rgba(0,0,0,0)';
                             fig.layout.plot_bgcolor = 'rgba(0,0,0,0)';
                             fig.layout.font = {{ color: '#94a3b8', family: 'Inter' }};
                             fig.layout.autosize = true;
+                            var axisKeyRe = /^(xaxis|yaxis)(\\d+)?$/;
+                            Object.keys(fig.layout).forEach(function(key) {{
+                                if (!axisKeyRe.test(key)) return;
+                                var axis = Object.assign({{}}, fig.layout[key] || {{}});
+                                axis.linecolor = axis.linecolor || 'rgba(148,163,184,0.45)';
+                                axis.showline = axis.showline !== false;
+                                axis.mirror = axis.mirror !== false;
+                                axis.tickfont = Object.assign({{ color: '#cbd5e1', size: 11 }}, axis.tickfont || {{}});
+                                if (key.indexOf('yaxis') === 0) {{
+                                    axis.showticklabels = true;
+                                    axis.automargin = true;
+                                    axis.ticklabelposition = axis.ticklabelposition || 'outside';
+                                }}
+                                fig.layout[key] = axis;
+                            }});
+                            fig.layout.margin = Object.assign({{ l: 88, r: 20, t: 28, b: 32 }}, fig.layout.margin || {{}});
+                            if (typeof fig.layout.margin.l !== 'number' || fig.layout.margin.l < 88) {{
+                                fig.layout.margin.l = 88;
+                            }}
                             // Keep heatmap labels visible in exported HTML
                             (fig.data || []).forEach(function(t) {{
                                 if (t && t.type === 'heatmap') {{
@@ -1020,11 +1277,13 @@ def export_custom_charts_html(
                 </div>
             """
             )
-            _update_process(
-                pid,
-                message=f"Rendering section {i + 1}/{len(ordered_charts)}...",
-                progress=f"{i + 1}/{len(ordered_charts)}",
-            )
+            completed = i + 1
+            if completed == total_charts or completed % progress_step == 0:
+                _update_process(
+                    pid,
+                    message=f"Rendering section {completed}/{total_charts}...",
+                    progress=f"{completed}/{total_charts}",
+                )
 
         html_parts.append(
             f"""
@@ -1070,6 +1329,48 @@ def get_custom_chart(
 
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
+    if not _can_view_chart(chart, current_user):
+        raise HTTPException(status_code=404, detail="Chart not found")
+    return _to_custom_chart_response(chart)
+
+
+@router.post("/custom/{chart_id}/refresh", response_model=CustomChartResponse)
+def refresh_custom_chart(
+    chart_id: str,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Re-execute chart code and persist refreshed figure."""
+    chart = db.query(CustomChart).filter(CustomChart.id == chart_id).first()
+    if not chart:
+        raise HTTPException(status_code=404, detail="Chart not found")
+
+    # Owner can refresh everything, admin can refresh all, creators can refresh their own.
+    can_refresh = _is_owner(current_user) or _is_admin(current_user) or _is_chart_owner(chart, current_user)
+    if not can_refresh:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    if not chart.code:
+        raise HTTPException(status_code=400, detail="Chart code is missing")
+
+    try:
+        fig = execute_custom_code(chart.code)
+        chart.figure = get_clean_figure_json(fig)
+    except Exception as e:
+        logger.error(f"Failed to refresh figure for chart {chart_id}: {e}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Execution Error",
+                "message": str(e),
+                "traceback": traceback.format_exc(),
+            },
+        )
+
+    db.commit()
+    db.refresh(chart)
     return _to_custom_chart_response(chart)
 
 
@@ -1084,6 +1385,8 @@ def update_custom_chart(
     chart = db.query(CustomChart).filter(CustomChart.id == chart_id).first()
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
+    if not _can_edit_chart(chart, current_user):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
 
     old_code_len = len(chart.code) if chart.code else 0
     code_len = len(update_data.code) if update_data.code is not None else "N/A"
@@ -1151,6 +1454,8 @@ def delete_custom_chart(
 
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
+    if not _can_edit_chart(chart, current_user):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
 
     db.delete(chart)
     db.commit()

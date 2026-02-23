@@ -194,7 +194,7 @@ def update_insight(
 ):
     """Updates metadata for an insight. Restricted to admins."""
     try:
-        if not current_user.is_admin:
+        if current_user.effective_role not in User.ADMIN_ROLES:
             raise HTTPException(status_code=403, detail="Admin permissions required")
 
         insight = (
@@ -235,7 +235,7 @@ def delete_insight(
     current_user: User = Depends(get_current_user),
 ):
     """Deletes an insight from the database. Restricted to admins."""
-    if not current_user.is_admin:
+    if current_user.effective_role not in User.ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Admin permissions required")
 
     insight = (

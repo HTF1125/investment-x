@@ -25,7 +25,10 @@ const CustomChartEditor = dynamic(editorImport, {
 export default function DashboardContainer({ initialData }: { initialData?: any }) {
   const { token, user } = useAuth();
   const queryClient = useQueryClient();
-  const isAdmin = user?.is_admin;
+  const role = String(user?.role || '').toLowerCase();
+  const isOwner = !!user && role === 'owner';
+  const isAdminRole = !!user && (role === 'admin' || user.is_admin);
+  const canUseStudio = !!user && (isOwner || (!isAdminRole && role === 'general'));
 
   // Studio state — pure React state, no URL params
   const [studioOpen, setStudioOpen] = useState(false);
@@ -48,7 +51,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
   // This ensures zero JS download delay on first studio click.
   const preloaded = useRef(false);
   useEffect(() => {
-    if (!isAdmin || preloaded.current) return;
+    if (!canUseStudio || preloaded.current) return;
     preloaded.current = true;
 
     const preload = () => {
@@ -66,7 +69,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     } else {
       setTimeout(preload, 1000);
     }
-  }, [isAdmin, queryClient]);
+  }, [canUseStudio, queryClient]);
 
   const openStudio = useCallback((chartId: string | null = null) => {
     setStudioChartId(chartId);
@@ -228,7 +231,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
         </div>
 
         {/* Floating Toggle */}
-        {isAdmin && !studioOpen && (
+        {canUseStudio && !studioOpen && (
           <button
             className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 md:bottom-8 md:right-8 z-[110] p-3 sm:p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-2xl shadow-indigo-600/30 transition-all flex items-center gap-2 sm:gap-3 border border-indigo-400/20 group hover:scale-105 active:scale-95"
             onClick={() => openStudio()}

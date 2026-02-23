@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Timeseries Manager | Investment-X Admin',
-  description: 'Administrative interface for managing timeseries data sources and configurations.',
+  title: 'Admin Manager | Investment-X',
+  description: 'Administrative interface for managing timeseries and users.',
 };
 
 export default function AdminTimeseriesLayout({ children }: { children: React.ReactNode }) {

@@ -10,6 +10,11 @@ class User(Base):
     """User model for PostgreSQL."""
 
     __tablename__ = "user"
+    ROLE_OWNER = "owner"
+    ROLE_ADMIN = "admin"
+    ROLE_GENERAL = "general"
+    ADMIN_ROLES = {ROLE_OWNER, ROLE_ADMIN}
+    VALID_ROLES = {ROLE_OWNER, ROLE_ADMIN, ROLE_GENERAL}
 
     id = Column(
         UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
@@ -19,8 +24,36 @@ class User(Base):
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     disabled = Column(Boolean, default=False)
+    role = Column(String, nullable=False, default=ROLE_GENERAL, index=True)
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, nullable=True)
+
+    @classmethod
+    def normalize_role(cls, role: Optional[str]) -> str:
+        role_clean = (role or "").strip().lower()
+        if role_clean in cls.VALID_ROLES:
+            return role_clean
+        return cls.ROLE_GENERAL
+
+    @classmethod
+    def role_to_is_admin(cls, role: Optional[str]) -> bool:
+        return cls.normalize_role(role) in cls.ADMIN_ROLES
+
+    @property
+    def effective_role(self) -> str:
+        raw = getattr(self, "role", None)
+        if raw:
+            return self.normalize_role(raw)
+        # Backward-compat fallback for rows created before role backfill.
+        return self.ROLE_ADMIN if bool(getattr(self, "is_admin", False)) else self.ROLE_GENERAL
+
+    @property
+    def is_admin_role(self) -> bool:
+        return self.role_to_is_admin(self.effective_role)
+
+    @property
+    def is_owner_role(self) -> bool:
+        return self.effective_role == self.ROLE_OWNER
 
     def verify_password(self, password: str) -> bool:
         """Verify password against hashed password"""
@@ -61,19 +94,24 @@ class User(Base):
         password: str,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
+        role: Optional[str] = None,
         is_admin: bool = False,
     ):
         """Create a new user with hashed password"""
         from ix.db.conn import Session
 
         hashed_password = cls.hash_password(password)
+        resolved_role = cls.normalize_role(
+            role if role is not None else (cls.ROLE_ADMIN if is_admin else cls.ROLE_GENERAL)
+        )
         # Always store email as lowercase for consistency
         user = cls(
             email=email.strip().lower(),
             password=hashed_password,
             first_name=first_name,
             last_name=last_name,
-            is_admin=is_admin,
+            role=resolved_role,
+            is_admin=cls.role_to_is_admin(resolved_role),
             created_at=datetime.utcnow(),
         )
 

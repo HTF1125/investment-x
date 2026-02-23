@@ -655,7 +655,7 @@ def sync_youtube_intel(
     current_user: User = Depends(get_current_user),
 ):
     """Admin-only explicit YouTube sync trigger."""
-    if not bool(getattr(current_user, "is_admin", False)):
+    if not bool(getattr(current_user, "effective_role", User.ROLE_GENERAL) in User.ADMIN_ROLES):
         raise HTTPException(status_code=403, detail="Admin only")
     deleted_under_5m, sync_error = _sync_youtube_catalog(db=db, limit=50)
     return {
@@ -677,7 +677,7 @@ def add_youtube_video_for_intel(
     ingest metadata and persist it for manual admin summary workflow.
     """
     _ensure_youtube_intel_table()
-    if not bool(getattr(current_user, "is_admin", False)):
+    if not bool(getattr(current_user, "effective_role", User.ROLE_GENERAL) in User.ADMIN_ROLES):
         raise HTTPException(status_code=403, detail="Admin only")
     video_id = _extract_video_id_from_url(payload.url)
     if not video_id:
@@ -716,7 +716,7 @@ def update_youtube_video_summary(
     current_user: User = Depends(get_current_user),
 ):
     """Admin-only manual summary update."""
-    if not bool(getattr(current_user, "is_admin", False)):
+    if not bool(getattr(current_user, "effective_role", User.ROLE_GENERAL) in User.ADMIN_ROLES):
         raise HTTPException(status_code=403, detail="Admin only")
     _ensure_youtube_intel_table()
     row = db.query(YouTubeIntel).filter(YouTubeIntel.video_id == video_id).first()
@@ -737,7 +737,7 @@ def delete_youtube_video(
     current_user: User = Depends(get_current_user),
 ):
     """Admin-only soft delete; deleted videos are excluded from future syncs."""
-    if not bool(getattr(current_user, "is_admin", False)):
+    if not bool(getattr(current_user, "effective_role", User.ROLE_GENERAL) in User.ADMIN_ROLES):
         raise HTTPException(status_code=403, detail="Admin only")
     _ensure_youtube_intel_table()
     row = db.query(YouTubeIntel).filter(YouTubeIntel.video_id == video_id).first()

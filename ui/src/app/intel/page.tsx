@@ -23,6 +23,7 @@ interface ProcessInfo {
 
 export default function IntelPage() {
   const { user } = useAuth();
+  const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const queryClient = useQueryClient();
@@ -66,7 +67,7 @@ export default function IntelPage() {
     },
     refetchIntervalInBackground: false,
     staleTime: 3000,
-    enabled: !!user?.is_admin,
+    enabled: isAdmin,
   });
 
   const latestTelegram = allProcesses.find((p) => p.name.startsWith('Telegram Sync'));
@@ -218,7 +219,7 @@ export default function IntelPage() {
                 <BellRing className="w-3.5 h-3.5 text-primary" />
                 {syncing ? (syncMsg || 'Background sync running...') : 'System standing by for next sync event.'}
               </div>
-              {user?.is_admin && (
+              {isAdmin && (
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
                   <button
                     onClick={handleScrape}

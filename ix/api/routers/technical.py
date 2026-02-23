@@ -159,55 +159,93 @@ def _alternates_types(types: list[str]) -> bool:
     return all(types[i] != types[i - 1] for i in range(1, len(types)))
 
 
-def _valid_motive(prices: np.ndarray, types: list[str], bullish: bool) -> bool:
+def _score_to_target(value: float, target: float, spread: float) -> float:
+    if spread <= 0 or not np.isfinite(value):
+        return 0.0
+    return max(0.0, 1.0 - abs(value - target) / spread)
+
+
+def _evaluate_motive(prices: np.ndarray, types: list[str], bullish: bool) -> tuple[bool, float]:
     # Contiguous 6 pivots: p0..p5 define waves 1..5.
     p0, p1, p2, p3, p4, p5 = [float(x) for x in prices]
+    tol = max((max(prices) - min(prices)) * 0.005, 1e-9)
+
     if bullish:
         if types != ["L", "H", "L", "H", "L", "H"]:
-            return False
+            return False, float("-inf")
         w1 = p1 - p0
+        w2 = p1 - p2
         w3 = p3 - p2
+        w4 = p3 - p4
         w5 = p5 - p4
-        if min(w1, w3, w5) <= 0:
-            return False
-        if not (p0 < p2 < p1):
-            return False
-        if not (p2 < p4 < p3):
-            return False
-        if p4 <= p1:
-            return False
-        if p5 <= p3:
-            return False
-        if w3 <= min(w1, w5):
-            return False
-        return True
+        if min(w1, w2, w3, w4, w5) <= 0:
+            return False, float("-inf")
+        if p2 <= p0 + tol:
+            return False, float("-inf")
+        if p4 < p1 - tol:
+            return False, float("-inf")
+        if p5 <= p3 + tol * 0.3:
+            return False, float("-inf")
+        if w3 < min(w1, w5) + tol:
+            return False, float("-inf")
+    else:
+        if types != ["H", "L", "H", "L", "H", "L"]:
+            return False, float("-inf")
+        w1 = p0 - p1
+        w2 = p2 - p1
+        w3 = p2 - p3
+        w4 = p4 - p3
+        w5 = p4 - p5
+        if min(w1, w2, w3, w4, w5) <= 0:
+            return False, float("-inf")
+        if p2 >= p0 - tol:
+            return False, float("-inf")
+        if p4 > p1 + tol:
+            return False, float("-inf")
+        if p5 >= p3 - tol * 0.3:
+            return False, float("-inf")
+        if w3 < min(w1, w5) + tol:
+            return False, float("-inf")
 
-    if types != ["H", "L", "H", "L", "H", "L"]:
-        return False
-    w1 = p0 - p1
-    w3 = p2 - p3
-    w5 = p4 - p5
-    if min(w1, w3, w5) <= 0:
-        return False
-    if not (p1 < p2 < p0):
-        return False
-    if not (p3 < p4 < p2):
-        return False
-    if p4 >= p1:
-        return False
-    if p5 >= p3:
-        return False
-    if w3 <= min(w1, w5):
-        return False
-    return True
+    r2 = w2 / w1
+    r4 = w4 / w3
+    ext3 = w3 / w1
+    ext5 = w5 / w1
+    if not (0.15 <= r2 <= 0.95):
+        return False, float("-inf")
+    if not (0.10 <= r4 <= 0.90):
+        return False, float("-inf")
+    if ext3 < 1.0 or ext5 < 0.20:
+        return False, float("-inf")
+
+    impulse_legs = np.array([w1, w3, w5], dtype=float)
+    if impulse_legs.min() < impulse_legs.max() * 0.12:
+        return False, float("-inf")
+
+    displacement = abs(p5 - p0) / (impulse_legs.sum() + 1e-9)
+    score = 2.0
+    score += _score_to_target(r2, target=0.618, spread=0.50)
+    score += _score_to_target(r4, target=0.382, spread=0.35)
+    score += _score_to_target(ext3, target=1.618, spread=1.10)
+    score += _score_to_target(ext5, target=1.000, spread=0.90)
+    score += min(1.0, displacement)
+    return True, score
 
 
-def _find_motive_segment(piv: pd.DataFrame, max_lookback: int = 120) -> tuple[int, bool] | None:
+def _valid_motive(prices: np.ndarray, types: list[str], bullish: bool) -> bool:
+    valid, _ = _evaluate_motive(prices, types, bullish)
+    return valid
+
+
+def _find_motive_segment(piv: pd.DataFrame, max_lookback: int = 120) -> tuple[int, bool, float] | None:
     if len(piv) < 6:
         return None
     recent = piv.tail(max_lookback).reset_index(drop=True)
     offset = len(piv) - len(recent)
-    candidates: list[tuple[int, float, bool]] = []
+    pivot_scale = np.nanmedian(np.abs(np.diff(recent["Price"].to_numpy(dtype=float))))
+    if not np.isfinite(pivot_scale) or pivot_scale <= 0:
+        pivot_scale = 1.0
+    candidates: list[tuple[int, bool, float]] = []
     for i in range(0, len(recent) - 5):
         seg = recent.iloc[i : i + 6]
         types = seg["Type"].tolist()
@@ -215,51 +253,139 @@ def _find_motive_segment(piv: pd.DataFrame, max_lookback: int = 120) -> tuple[in
             continue
         prices = seg["Price"].to_numpy(dtype=float)
         for bullish in (True, False):
-            if _valid_motive(prices, types, bullish):
-                score = abs(float(prices[-1] - prices[0]))
-                candidates.append((i, score, bullish))
+            valid, base_score = _evaluate_motive(prices, types, bullish)
+            if valid:
+                displacement = abs(float(prices[-1] - prices[0])) / pivot_scale
+                recency = (i + 5) / max(6, len(recent))
+                total_score = base_score + min(3.0, displacement * 0.20) + recency * 0.60
+                candidates.append((i, bullish, total_score))
     if not candidates:
         return None
-    # Prefer the latest valid pattern, then larger price displacement.
-    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
-    start_idx, _, bullish = candidates[0]
-    return (start_idx + offset, bullish)
+    # Prefer strongest structure score, then latest start.
+    candidates.sort(key=lambda x: (x[2], x[0]), reverse=True)
+    start_idx, bullish, total_score = candidates[0]
+    return (start_idx + offset, bullish, total_score)
 
 
-def _valid_abc(prices: np.ndarray, types: list[str], bullish_motive: bool) -> bool:
+def _evaluate_abc(prices: np.ndarray, types: list[str], bullish_motive: bool) -> tuple[bool, float]:
     a, b, c, d = [float(x) for x in prices]  # d is prior wave-5 pivot
+    tol = max(abs(d - a) * 0.005, 1e-9)
     if bullish_motive:
         # after bullish motive ends at high d, correction is L-H-L
         if types != ["L", "H", "L"]:
-            return False
-        if not (a < d and b < d and c < b):
-            return False
-        return c <= a
-    # after bearish motive ends at low d, correction is H-L-H
-    if types != ["H", "L", "H"]:
-        return False
-    if not (a > d and b > d and c > b):
-        return False
-    return c >= a
+            return False, float("-inf")
+        if not (a < d - tol and b < d - tol and c < b - tol * 0.2):
+            return False, float("-inf")
+        if c > a + tol:
+            return False, float("-inf")
+        leg1 = d - a
+        leg2 = b - a
+        leg3 = b - c
+    else:
+        # after bearish motive ends at low d, correction is H-L-H
+        if types != ["H", "L", "H"]:
+            return False, float("-inf")
+        if not (a > d + tol and b > d + tol and c > b + tol * 0.2):
+            return False, float("-inf")
+        if c < a - tol:
+            return False, float("-inf")
+        leg1 = a - d
+        leg2 = a - b
+        leg3 = c - b
+
+    if min(leg1, leg2, leg3) <= 0:
+        return False, float("-inf")
+    retr_b = leg2 / leg1
+    ext_c = leg3 / leg2
+    if not (0.15 <= retr_b <= 0.95):
+        return False, float("-inf")
+    if not (0.40 <= ext_c <= 2.80):
+        return False, float("-inf")
+
+    score = 1.0
+    score += _score_to_target(retr_b, target=0.618, spread=0.45)
+    score += _score_to_target(ext_c, target=1.000, spread=0.90)
+    if bullish_motive and c <= a - tol:
+        score += 0.40
+    if (not bullish_motive) and c >= a + tol:
+        score += 0.40
+    return True, score
 
 
-def _extract_elliott_labels(piv: pd.DataFrame) -> tuple[pd.DataFrame | None, pd.DataFrame | None, bool | None]:
-    found = _find_motive_segment(piv)
-    if found is None:
-        return None, None, None
-    start, bullish = found
-    motive = piv.iloc[start : start + 6].copy()
-    correction = None
-    if start + 9 <= len(piv):
-        abc = piv.iloc[start + 6 : start + 9].copy()
-        last_p5 = float(motive["Price"].iloc[-1])
+def _valid_abc(prices: np.ndarray, types: list[str], bullish_motive: bool) -> bool:
+    valid, _ = _evaluate_abc(prices, types, bullish_motive)
+    return valid
+
+
+def _best_abc_after_motive(
+    piv: pd.DataFrame,
+    motive_end_idx: int,
+    bullish_motive: bool,
+    max_forward: int = 8,
+) -> tuple[pd.DataFrame | None, float]:
+    if motive_end_idx + 3 > len(piv):
+        return None, float("-inf")
+    start_min = motive_end_idx + 1
+    start_max = min(len(piv) - 3, motive_end_idx + max_forward)
+    if start_min > start_max:
+        return None, float("-inf")
+
+    last_p5 = float(piv["Price"].iloc[motive_end_idx])
+    best: tuple[pd.DataFrame, float] | None = None
+    for start in range(start_min, start_max + 1):
+        abc = piv.iloc[start : start + 3].copy()
         abc_prices = np.array(
             [float(abc["Price"].iloc[0]), float(abc["Price"].iloc[1]), float(abc["Price"].iloc[2]), last_p5]
         )
         abc_types = abc["Type"].tolist()
-        if _valid_abc(abc_prices, abc_types, bullish_motive=bullish):
-            correction = abc
-    return motive, correction, bullish
+        valid, base_score = _evaluate_abc(abc_prices, abc_types, bullish_motive=bullish_motive)
+        if not valid:
+            continue
+        delay_penalty = (start - start_min) * 0.08
+        total = base_score - delay_penalty
+        if best is None or total > best[1]:
+            best = (abc, total)
+
+    if best is None:
+        return None, float("-inf")
+    return best
+
+
+def _extract_elliott_labels(
+    piv: pd.DataFrame,
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None, bool | None, float]:
+    found = _find_motive_segment(piv)
+    if found is None:
+        return None, None, None, float("-inf")
+    start, bullish, motive_score = found
+    motive = piv.iloc[start : start + 6].copy()
+    correction, correction_score = _best_abc_after_motive(
+        piv=piv,
+        motive_end_idx=start + 5,
+        bullish_motive=bullish,
+    )
+    total_score = motive_score + (correction_score if correction is not None else 0.0)
+    return motive, correction, bullish, total_score
+
+
+def _extract_best_elliott(
+    swings_map: Dict[int, pd.DataFrame]
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None, bool | None, int | None]:
+    degree_bias = {4: 0.05, 8: 0.20, 16: 0.15}
+    best: tuple[float, int, pd.DataFrame, pd.DataFrame | None, bool] | None = None
+    for length, piv in swings_map.items():
+        if piv is None or len(piv) < 6:
+            continue
+        motive, correction, bullish, score = _extract_elliott_labels(piv)
+        if motive is None or bullish is None:
+            continue
+        adjusted = score + degree_bias.get(length, 0.0)
+        if best is None or adjusted > best[0]:
+            best = (adjusted, length, motive, correction, bullish)
+    if best is None:
+        return None, None, None, None
+    _, length, motive, correction, bullish = best
+    return motive, correction, bullish, length
 
 
 def _add_fib_zone(fig: go.Figure, piv: pd.DataFrame) -> None:
@@ -339,6 +465,29 @@ def _build_figure(
         col=1,
     )
 
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    ma_layers = [
+        ("SMA 5", 5, "#22c55e"),
+        ("SMA 20", 20, "#f59e0b"),
+        ("SMA 50", 50, "#38bdf8"),
+        ("SMA 200", 200, "#a78bfa"),
+    ]
+    for name, window, color in ma_layers:
+        ma = close.rolling(window=window, min_periods=window).mean()
+        if ma.notna().any():
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=ma,
+                    mode="lines",
+                    line=dict(color=color, width=1.8),
+                    name=name,
+                    hovertemplate=f"{name}: %{{y:.2f}}<extra></extra>",
+                ),
+                row=1,
+                col=1,
+            )
+
     swings_map: Dict[int, pd.DataFrame] = {4: _find_swings(df, 4), 8: _find_swings(df, 8), 16: _find_swings(df, 16)}
     layers = {4: ("#ef4444", 1.1), 8: ("#3b82f6", 1.6), 16: ("#e5e7eb", 1.2)}
     top_pos = "top center"
@@ -360,11 +509,10 @@ def _build_figure(
             row=1,
             col=1,
         )
-    zz8 = swings_map[8]
-    motive, correction, bullish = _extract_elliott_labels(zz8)
+    motive, correction, bullish, wave_degree = _extract_best_elliott(swings_map)
     if motive is not None:
         wave_color = "#3b82f6" if bullish else "#ef4444"
-        motive_labels = ["", "(1)", "(2)", "(3)", "(4)", "(5)"]
+        motive_labels = ["0", "(1)", "(2)", "(3)", "(4)", "(5)"]
         motive_pos = [top_pos if t == "H" else bottom_pos for t in motive["Type"].tolist()]
         fig.add_trace(
             go.Scatter(
@@ -376,7 +524,7 @@ def _build_figure(
                 text=motive_labels,
                 textposition=motive_pos,
                 textfont=dict(size=16, color=wave_color),
-                name="Elliott Motive",
+                name=f"Elliott Motive ({wave_degree}-ZZ)" if wave_degree else "Elliott Motive",
                 hovertemplate="Motive: %{y:.2f}<extra></extra>",
             ),
             row=1,
@@ -396,7 +544,7 @@ def _build_figure(
                 text=["(a)", "(b)", "(c)"],
                 textposition=corr_pos,
                 textfont=dict(size=15, color=corr_color),
-                name="Elliott Correction",
+                name=f"Elliott Correction ({wave_degree}-ZZ)" if wave_degree else "Elliott Correction",
                 hovertemplate="Correction: %{y:.2f}<extra></extra>",
             ),
             row=1,

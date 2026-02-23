@@ -112,17 +112,17 @@ export default function TechnicalPage() {
       <section className="h-[calc(100dvh-3rem)] min-h-[calc(100vh-3rem)] w-full overflow-hidden">
         <div className="h-full max-w-[1800px] mx-auto px-4 md:px-6 lg:px-8 pt-3 pb-3 flex flex-col gap-2 overflow-x-hidden overflow-y-auto md:overflow-hidden">
           <div className="rounded-2xl border border-border/50 bg-gradient-to-r from-indigo-500/10 to-sky-500/10 px-4 py-3 shrink-0">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between gap-3 flex-nowrap">
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center">
                   <CandlestickChart className="w-4 h-4 text-indigo-300" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="text-base font-semibold text-foreground">Technical</div>
-                  <div className="text-xs text-muted-foreground">Press Enter on ticker to refresh instantly</div>
+                  <div className="text-xs text-muted-foreground truncate">Press Enter on ticker to refresh instantly</div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex items-center gap-2 text-xs shrink-0">
                 <span className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-200 flex items-center gap-1">
                   <Activity className="w-3.5 h-3.5" />
                   {isFetching ? 'Updating' : 'Live'}
@@ -131,73 +131,73 @@ export default function TechnicalPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border/50 bg-card/20 backdrop-blur-sm p-3 md:p-4 shrink-0">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-              <div className="sm:col-span-2 lg:col-span-1">
-                <label className="block text-[11px] text-muted-foreground mb-1.5">Ticker</label>
-                <input
-                  value={tickerInput}
-                  onChange={(e) => setTickerInput(e.target.value.toUpperCase())}
-                  onBlur={commitTicker}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      commitTicker();
+          <div className="rounded-2xl border border-border/50 bg-card/20 backdrop-blur-sm p-2.5 md:p-3 shrink-0">
+              <div className="grid grid-cols-4 gap-1.5">
+                <div className="col-span-1">
+                  <label className="block text-[10px] text-muted-foreground mb-1">Ticker</label>
+                  <input
+                    value={tickerInput}
+                    onChange={(e) => setTickerInput(e.target.value.toUpperCase())}
+                    onBlur={commitTicker}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        commitTicker();
+                      }
+                    }}
+                    className="w-full px-2 py-1.5 rounded-lg border border-border/60 bg-background/40 text-xs font-semibold tracking-wide focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                    placeholder="SPY"
+                  />
+                </div>
+
+                <div className="col-span-1">
+                  <label className="block text-[10px] text-muted-foreground mb-1">Frequency</label>
+                  <select
+                    value={params.freq}
+                    onChange={(e) => onFreqChange(e.target.value as Frequency)}
+                    className="w-full px-2 py-1.5 rounded-lg border border-border/60 bg-background/40 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  >
+                    <option value="D">Daily (D)</option>
+                    <option value="W">Weekly (W)</option>
+                    <option value="M">Monthly (M)</option>
+                  </select>
+                </div>
+
+                <div className="col-span-1">
+                  <label className="block text-[10px] text-muted-foreground mb-1">Setup Filter</label>
+                  <select
+                    value={params.setupFrom}
+                    onChange={(e) =>
+                      setParams((prev) => ({ ...prev, setupFrom: Number(e.target.value) }))
                     }
-                  }}
-                  className="w-full px-3 py-2.5 rounded-xl border border-border/60 bg-background/40 text-sm font-semibold tracking-wide focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                  placeholder="SPY"
-                />
-              </div>
+                    className="w-full px-2 py-1.5 rounded-lg border border-border/60 bg-background/40 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  >
+                    {[1, 5, 7, 9].map((v) => (
+                      <option key={v} value={v}>
+                        Setup {v}+
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="col-span-1">
-                <label className="block text-[11px] text-muted-foreground mb-1.5">Frequency</label>
-                <select
-                  value={params.freq}
-                  onChange={(e) => onFreqChange(e.target.value as Frequency)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-border/60 bg-background/40 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                >
-                  <option value="D">Daily (D)</option>
-                  <option value="W">Weekly (W)</option>
-                  <option value="M">Monthly (M)</option>
-                </select>
-              </div>
+                <div className="col-span-1">
+                  <label className="block text-[10px] text-muted-foreground mb-1">Countdown Filter</label>
+                  <select
+                    value={params.countdownFrom}
+                    onChange={(e) =>
+                      setParams((prev) => ({ ...prev, countdownFrom: Number(e.target.value) }))
+                    }
+                    className="w-full px-2 py-1.5 rounded-lg border border-border/60 bg-background/40 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  >
+                    {[9, 10, 11, 12, 13].map((v) => (
+                      <option key={v} value={v}>
+                        CD {v}+
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="col-span-1">
-                <label className="block text-[11px] text-muted-foreground mb-1.5">Setup Filter</label>
-                <select
-                  value={params.setupFrom}
-                  onChange={(e) =>
-                    setParams((prev) => ({ ...prev, setupFrom: Number(e.target.value) }))
-                  }
-                  className="w-full px-3 py-2.5 rounded-xl border border-border/60 bg-background/40 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                >
-                  {[1, 5, 7, 9].map((v) => (
-                    <option key={v} value={v}>
-                      Setup {v}+
-                    </option>
-                  ))}
-                </select>
               </div>
-
-              <div className="col-span-1">
-                <label className="block text-[11px] text-muted-foreground mb-1.5">Countdown Filter</label>
-                <select
-                  value={params.countdownFrom}
-                  onChange={(e) =>
-                    setParams((prev) => ({ ...prev, countdownFrom: Number(e.target.value) }))
-                  }
-                  className="w-full px-3 py-2.5 rounded-xl border border-border/60 bg-background/40 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                >
-                  {[9, 10, 11, 12, 13].map((v) => (
-                    <option key={v} value={v}>
-                      CD {v}+
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-            </div>
           </div>
 
           <div className="rounded-xl border border-border/60 bg-black/20 overflow-hidden w-full flex-1 min-h-0">

@@ -299,7 +299,10 @@ def send_data_reports():
             # Filter for admins only
             admins = (
                 user_session.query(User)
-                .filter(User.disabled == False, User.is_admin == True)
+                .filter(
+                    User.disabled == False,
+                    User.role.in_(list(User.ADMIN_ROLES)),
+                )
                 .all()
             )
             recipients = [u.email for u in admins if u.email]

@@ -49,11 +49,40 @@ interface CustomChartEditorProps {
   onClose?: () => void;
 }
 
+interface TimeseriesLookupItem {
+  id: string;
+  code: string;
+  name?: string | null;
+  category?: string | null;
+  frequency?: string | null;
+  source?: string | null;
+}
+
+interface CustomChartListItem {
+  id: string;
+  name?: string | null;
+  category?: string | null;
+  description?: string | null;
+  tags?: string[];
+  export_pdf?: boolean;
+  rank?: number;
+  created_by_user_id?: string | null;
+  created_by_email?: string | null;
+  created_by_name?: string | null;
+  code?: string | null;
+  figure?: any;
+}
+
 export default function CustomChartEditor({ mode = 'standalone', initialChartId, onClose }: CustomChartEditorProps) {
-  const { token } = useAuth();
+  const { user } = useAuth();
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const queryClient = useQueryClient();
+  const role = String(user?.role || '').toLowerCase();
+  const isOwner = !!user && role === 'owner';
+  const isAdminRole = !!user && (role === 'admin' || user.is_admin);
+  const isGeneralRole = !!user && !isAdminRole && role === 'general';
+  const currentUserId = user?.id || null;
 
   // --- State ---
   const [code, setCode] = useState<string>(DEFAULT_CODE);
@@ -62,7 +91,10 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
   const [currentChartId, setCurrentChartId] = useState<string | null>(initialChartId || null);
+  const [currentChartOwnerId, setCurrentChartOwnerId] = useState<string | null>(null);
   const [exportPdf, setExportPdf] = useState(true);
+  const [createdByEmail, setCreatedByEmail] = useState<string | null>(null);
+  const [createdByName, setCreatedByName] = useState<string | null>(null);
 
   const [previewFigure, setPreviewFigure] = useState<any>(null);
   const [previewError, setPreviewError] = useState<any | null>(null);
@@ -79,6 +111,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const [userManuallyCollapsed, setUserManuallyCollapsed] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState({ current: 0, total: 0, name: '' });
+  const [loadingChartId, setLoadingChartId] = useState<string | null>(null);
 
   // Default library to open
   const [libraryOpen, setLibraryOpen] = useState(true);
@@ -95,10 +128,25 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const [editorFontSize, setEditorFontSize] = useState(13);
   const [editorFontFamily, setEditorFontFamily] = useState("'JetBrains Mono', monospace");
   const [isMounted, setIsMounted] = useState(false);
+  const [timeseriesSearch, setTimeseriesSearch] = useState('');
+  const [timeseriesQuery, setTimeseriesQuery] = useState('');
+  const createdByLabel = useMemo(
+    () => createdByName || createdByEmail || 'Unassigned',
+    [createdByName, createdByEmail]
+  );
   const loadedFromPropRef = useRef<string | null>(null);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(440);
+  const isChartOwner = useCallback(
+    (chart: { created_by_user_id?: string | null } | null | undefined) =>
+      !!currentUserId &&
+      !!chart?.created_by_user_id &&
+      String(chart.created_by_user_id) === String(currentUserId),
+    [currentUserId]
+  );
+  const canCreateChart = isOwner || isGeneralRole;
+  const canRefreshAllCharts = isOwner || isAdminRole;
 
   useEffect(() => { 
     setIsMounted(true); 
@@ -156,10 +204,30 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   }, [editorWidth]);
 
   // --- Queries & Mutations ---
-  const { data: savedCharts = [], refetch: refetchCharts } = useQuery({
+  const { data: savedCharts = [], refetch: refetchCharts } = useQuery<CustomChartListItem[]>({
     queryKey: ['custom-charts'],
-    queryFn: () => apiFetchJson('/api/custom'),
+    queryFn: () => apiFetchJson('/api/custom?include_code=false&include_figure=false'),
     enabled: true,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const runTimeseriesSearch = useCallback(() => {
+    setTimeseriesQuery(timeseriesSearch.trim());
+  }, [timeseriesSearch]);
+
+  const {
+    data: timeseriesMatches = [],
+    isLoading: timeseriesLoading,
+    isError: timeseriesError,
+    error: timeseriesErrorObj,
+  } = useQuery<TimeseriesLookupItem[]>({
+    queryKey: ['studio-timeseries-search', timeseriesQuery],
+    queryFn: () =>
+      apiFetchJson<TimeseriesLookupItem[]>(
+        `/api/timeseries?limit=25&offset=0&search=${encodeURIComponent(timeseriesQuery)}`
+      ),
+    enabled: timeseriesQuery.length > 0,
+    staleTime: 1000 * 60 * 2,
   });
 
   useEffect(() => {
@@ -168,30 +236,6 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       if (!isLoaded) setIsLoaded(true);
     }
   }, [savedCharts, isLoaded]);
-
-  // Handle loading chart from prop (state-based studio navigation)
-  useEffect(() => {
-    if (initialChartId && savedCharts.length > 0) {
-      const target = savedCharts.find((c: any) => c.id === initialChartId);
-      if (target && loadedFromPropRef.current !== initialChartId) {
-        loadChart(target);
-        loadedFromPropRef.current = initialChartId;
-      }
-    } else if (initialChartId === null && currentChartId !== null) {
-      // CREATE clicked — reset to blank state
-      setCode(DEFAULT_CODE);
-      setName('Untitled Analysis');
-      setCategory('Personal');
-      setDescription('');
-      setTags('');
-      setCurrentChartId(null);
-      setExportPdf(true);
-      setPreviewFigure(null);
-      setPreviewError(null);
-      setSuccessMsg(null);
-      loadedFromPropRef.current = null;
-    }
-  }, [initialChartId, savedCharts, currentChartId]);
 
   // Derive unique categories for the filter dropdown
   const categories = useMemo(() => {
@@ -218,6 +262,25 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     }
     return list;
   }, [orderedCharts, categoryFilter, searchQuery]);
+
+  const currentChartListItem = useMemo(
+    () => orderedCharts.find((c: any) => c.id === currentChartId) || null,
+    [orderedCharts, currentChartId]
+  );
+  const effectiveCurrentOwnerId = currentChartOwnerId || currentChartListItem?.created_by_user_id || null;
+  const canEditCurrentChart = useMemo(() => {
+    if (!currentChartId) return canCreateChart;
+    if (isOwner) return true;
+    if (isAdminRole) return false;
+    return !!effectiveCurrentOwnerId && !!currentUserId && String(effectiveCurrentOwnerId) === String(currentUserId);
+  }, [canCreateChart, currentChartId, currentUserId, effectiveCurrentOwnerId, isAdminRole, isOwner]);
+  const canToggleExport = isOwner;
+  const canReorderLibrary = isOwner;
+  const canDeleteChart = useCallback(
+    (chart: { created_by_user_id?: string | null } | null | undefined) =>
+      isOwner || (!isAdminRole && isChartOwner(chart)),
+    [isAdminRole, isChartOwner, isOwner]
+  );
 
   const isFiltering = useMemo(() => {
     return searchQuery.trim() !== '' || categoryFilter !== 'All';
@@ -317,6 +380,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       if (method === 'POST') setCurrentChartId(data.id);
       setSuccessMsg(method === 'POST' ? 'Analysis created.' : 'Analysis saved.');
       setPreviewError(null);
+      setCurrentChartOwnerId(data?.created_by_user_id || null);
+      setCreatedByEmail(data?.created_by_email || null);
+      setCreatedByName(data?.created_by_name || null);
       if (!userManuallyCollapsed) setConsoleExpanded(true);
 
       // CRITICAL: Update the preview figure immediately with the one from the server
@@ -360,6 +426,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
 
   // Toggle export_pdf for a single chart inline
   const toggleExportPdf = useCallback(async (chartId: string, newValue: boolean) => {
+    if (!canToggleExport) return;
     // Optimistic update
     setOrderedCharts(prev => prev.map(c => c.id === chartId ? { ...c, export_pdf: newValue } : c));
     if (currentChartId === chartId) setExportPdf(newValue);
@@ -374,7 +441,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       setOrderedCharts(prev => prev.map(c => c.id === chartId ? { ...c, export_pdf: !newValue } : c));
       if (currentChartId === chartId) setExportPdf(!newValue);
     }
-  }, [token, currentChartId]);
+  }, [canToggleExport, currentChartId]);
 
   // --- Handlers ---
   const handlePreview = useCallback(() => {
@@ -384,10 +451,18 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   }, [previewMutation]);
 
   const handleSave = useCallback(() => {
+    if (!canEditCurrentChart) {
+      setSuccessMsg(null);
+      setPreviewError({
+        error: 'Permission Denied',
+        message: 'You can only modify charts you created. Owners can modify all charts.',
+      });
+      return;
+    }
     setSuccessMsg(null);
     setPreviewError(null);
     saveMutation.mutate();
-  }, [saveMutation]);
+  }, [canEditCurrentChart, saveMutation]);
 
   // Stable refs for keyboard shortcuts
   const previewRef = React.useRef(handlePreview);
@@ -451,7 +526,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   };
 
   const handleRefreshAll = async () => {
-    if (refreshingAll || orderedCharts.length === 0) return;
+    if (!canRefreshAllCharts || refreshingAll || orderedCharts.length === 0) return;
     
     setRefreshingAll(true);
     setSuccessMsg(null);
@@ -465,10 +540,28 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       setRefreshProgress(prev => ({ ...prev, current: i + 1, name: chart.name || 'Untitled' }));
       
       try {
-        const res = await fetch('/api/custom/preview', {
+        let chartCode = chart.code;
+        if (!chartCode) {
+          const detail = await apiFetchJson(`/api/custom/${chart.id}`);
+          chartCode = detail?.code;
+          if (chartCode) {
+            setOrderedCharts((prev) =>
+              prev.map((item) =>
+                item.id === chart.id ? { ...item, code: chartCode } : item
+              )
+            );
+          }
+        }
+
+        if (!chartCode) {
+          errorCount++;
+          continue;
+        }
+
+        const res = await apiFetch('/api/custom/preview', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ code: chart.code }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: chartCode }),
         });
         
         if (!res.ok) errorCount++;
@@ -487,34 +580,148 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     }
   };
 
-  const loadChart = (chart: any) => {
+  const buildSeriesSnippet = useCallback((ts: TimeseriesLookupItem) => {
+    const alias = ts.code.replace(/[^A-Za-z0-9_]/g, '_').toLowerCase();
+    return [
+      `# ${ts.name || ts.code}`,
+      `${alias} = Series('${ts.code}')`,
+      '',
+    ].join('\n');
+  }, []);
+
+  const insertSeriesSnippet = useCallback((ts: TimeseriesLookupItem) => {
+    if (!canEditCurrentChart) {
+      setPreviewError({
+        error: 'Permission Denied',
+        message: 'You can only edit charts you created. Owners can edit all charts.',
+      });
+      return;
+    }
+    const snippet = buildSeriesSnippet(ts);
+    setCode((prev) => {
+      if (prev.includes(`Series('${ts.code}')`) || prev.includes(`Series("${ts.code}")`)) {
+        return prev;
+      }
+      const needsNewline = prev.length > 0 && !prev.endsWith('\n');
+      return `${prev}${needsNewline ? '\n' : ''}${snippet}`;
+    });
+    setSuccessMsg(`Inserted Series('${ts.code}') into code.`);
+    setPreviewError(null);
+  }, [buildSeriesSnippet, canEditCurrentChart]);
+
+  const copySeriesSnippet = useCallback(async (ts: TimeseriesLookupItem) => {
+    try {
+      await navigator.clipboard.writeText(buildSeriesSnippet(ts));
+      setSuccessMsg(`Copied snippet for ${ts.code}.`);
+      setPreviewError(null);
+    } catch {
+      setPreviewError({ error: 'Clipboard Error', message: 'Unable to copy snippet to clipboard.' });
+    }
+  }, [buildSeriesSnippet]);
+
+  const applyChartToEditor = useCallback((chart: any) => {
     setCurrentChartId(chart.id);
+    setCurrentChartOwnerId(chart.created_by_user_id || null);
     setName(chart.name || 'Untitled Analysis');
-    setCode(chart.code);
+    setCode(chart.code || DEFAULT_CODE);
     setCategory(chart.category || 'Personal');
     setDescription(chart.description || '');
     setTags(chart.tags ? chart.tags.join(', ') : '');
     setExportPdf(chart.export_pdf ?? true);
+    setCreatedByEmail(chart.created_by_email || null);
+    setCreatedByName(chart.created_by_name || null);
     setPreviewFigure(chart.figure || null);
     setSuccessMsg(`Loaded "${chart.name || 'Untitled'}".`);
     setPreviewError(null);
-    
+  }, []);
 
+  const loadChart = useCallback(async (chart: any) => {
+    const chartId = chart?.id;
+    if (!chartId) return;
+    setLoadingChartId(chartId);
+    try {
+      let fullChart = chart;
+      if (!chart.code || !chart.figure) {
+        fullChart = await apiFetchJson(`/api/custom/${chartId}`);
+      }
 
-  };
+      applyChartToEditor(fullChart);
+      setOrderedCharts((prev) =>
+        prev.map((item) =>
+          item.id === chartId
+            ? {
+                ...item,
+                code: fullChart.code,
+                figure: fullChart.figure,
+                name: fullChart.name ?? item.name,
+                category: fullChart.category ?? item.category,
+                description: fullChart.description ?? item.description,
+                tags: fullChart.tags ?? item.tags,
+                export_pdf: fullChart.export_pdf ?? item.export_pdf,
+                created_by_user_id: fullChart.created_by_user_id ?? item.created_by_user_id,
+                created_by_email: fullChart.created_by_email ?? item.created_by_email,
+                created_by_name: fullChart.created_by_name ?? item.created_by_name,
+              }
+            : item
+        )
+      );
+    } catch (err: any) {
+      setPreviewError(err);
+      setSuccessMsg(null);
+    } finally {
+      setLoadingChartId(null);
+    }
+  }, [applyChartToEditor]);
 
   const clearEditor = () => {
     setCurrentChartId(null);
+    setCurrentChartOwnerId(null);
     setName('Untitled Analysis');
     setCode(DEFAULT_CODE);
     setCategory('Personal');
     setDescription('');
     setTags('');
     setExportPdf(true);
+    setCreatedByEmail(null);
+    setCreatedByName(null);
     setPreviewFigure(null);
     setSuccessMsg(null);
     setPreviewError(null);
   };
+
+  // Handle loading chart from prop (state-based studio navigation)
+  useEffect(() => {
+    if (initialChartId) {
+      if (loadedFromPropRef.current !== initialChartId) {
+        const target = savedCharts.find((c: any) => c.id === initialChartId);
+        if (target) {
+          void loadChart(target);
+        } else {
+          void loadChart({ id: initialChartId });
+        }
+        loadedFromPropRef.current = initialChartId;
+      }
+      return;
+    }
+
+    if (initialChartId === null && currentChartId !== null) {
+      // CREATE clicked — reset to blank state
+      setCode(DEFAULT_CODE);
+      setName('Untitled Analysis');
+      setCategory('Personal');
+      setDescription('');
+      setTags('');
+      setCurrentChartId(null);
+      setCurrentChartOwnerId(null);
+      setExportPdf(true);
+      setCreatedByEmail(null);
+      setCreatedByName(null);
+      setPreviewFigure(null);
+      setPreviewError(null);
+      setSuccessMsg(null);
+      loadedFromPropRef.current = null;
+    }
+  }, [initialChartId, currentChartId, savedCharts, loadChart]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -620,7 +827,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
             </div>
             <button
                 onClick={() => setLibraryOpen(false)}
-                className="p-1 text-slate-500 hover:text-white hover:bg-white/5 rounded transition-colors lg:hidden"
+                className={`p-1 rounded transition-colors lg:hidden ${isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}
             >
                 <PanelLeftClose className="w-4 h-4" />
             </button>
@@ -632,27 +839,32 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
             <div className="p-3 border-b border-white/5 flex gap-2">
               <button
                 onClick={clearEditor}
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-indigo-600/90 hover:bg-indigo-500 rounded-xl shadow-lg shadow-indigo-500/10 transition-all"
+                disabled={!canCreateChart}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-indigo-600/90 hover:bg-indigo-500 rounded-xl shadow-lg shadow-indigo-500/10 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Plus className="w-4 h-4" /> New Analysis
               </button>
-              <button
-                onClick={handleRefreshAll}
-                disabled={refreshingAll}
-                className={`p-2 rounded-xl transition-all border ${
-                  refreshingAll 
-                    ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' 
-                    : 'text-slate-500 hover:text-white bg-white/[0.03] border-white/10'
-                }`}
-                title="Refresh all data"
-              >
-                {refreshingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-              </button>
+              {canRefreshAllCharts && (
+                <button
+                  onClick={handleRefreshAll}
+                  disabled={refreshingAll}
+                  className={`p-2 rounded-xl transition-all border ${
+                    refreshingAll 
+                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' 
+                      : isLight
+                        ? 'text-slate-500 hover:text-slate-900 bg-white border-slate-200'
+                        : 'text-slate-500 hover:text-white bg-white/[0.03] border-white/10'
+                  }`}
+                  title="Refresh all data"
+                >
+                  {refreshingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                </button>
+              )}
             </div>
 
             {/* Refresh All Progress Bar */}
             <AnimatePresence>
-              {refreshingAll && (
+              {canRefreshAllCharts && refreshingAll && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
@@ -704,7 +916,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                     // Update the global orderedCharts. 
                     // If filtering is on, reordering is disabled by isFiltering hook anyway,
                     // but we ensure here that we only update the full list.
-                    if (!isFiltering) {
+                    if (!isFiltering && canReorderLibrary) {
                         setOrderedCharts(newItems);
                     }
                 }}
@@ -714,7 +926,8 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                   <Reorder.Item
                     key={chart.id}
                     value={chart}
-                    onClick={() => loadChart(chart)}
+                    dragListener={canReorderLibrary && !isFiltering}
+                    onClick={() => void loadChart(chart)}
                     className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 ${
                       currentChartId === chart.id
                         ? 'bg-indigo-500/10 border border-indigo-500/20 shadow-inner'
@@ -722,7 +935,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                        {!isFiltering && (
+                        {!isFiltering && canReorderLibrary && (
                             <div className="flex flex-col items-center gap-1">
                                 <GripVertical className="w-3 h-3 text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing" />
                                 <button 
@@ -735,12 +948,16 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                             </div>
                         )}
                         <div className={`p-1.5 rounded-lg ${currentChartId === chart.id ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 text-slate-500'} group-hover:scale-110 transition-transform`}>
-                          <Activity className="w-3.5 h-3.5" />
+                          {loadingChartId === chart.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Activity className="w-3.5 h-3.5" />
+                          )}
                         </div>
                     </div>
                     
                     <div className="flex-grow min-w-0">
-                        <div className={`text-[11px] font-semibold truncate ${currentChartId === chart.id ? 'text-indigo-200' : 'text-slate-300 group-hover:text-white'}`}>
+                        <div className={`text-[11px] font-semibold truncate ${currentChartId === chart.id ? (isLight ? 'text-indigo-700' : 'text-indigo-200') : (isLight ? 'text-slate-700 group-hover:text-slate-900' : 'text-slate-300 group-hover:text-white')}`}>
                           {chart.name || 'Untitled Analysis'}
                         </div>
                         <div className="text-[9px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5">
@@ -750,13 +967,15 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                     </div>
 
                     <div className="flex items-center gap-1">
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm(chart.id); }}
-                            className="p-1.5 text-slate-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all"
-                            title="Delete Analysis"
-                        >
-                            <Trash2 className="w-3 h-3" />
-                        </button>
+                        {canDeleteChart(chart) && (
+                          <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm(chart.id); }}
+                              className="p-1.5 text-slate-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all"
+                              title="Delete Analysis"
+                          >
+                              <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
                         {currentChartId === chart.id && (
                           <motion.div layoutId="active-indicator" className="absolute left-0 w-1 h-5 bg-indigo-500 rounded-r-full" />
                         )}
@@ -783,7 +1002,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
         )}
 
         {activeTab === 'data' && (
-           <div className="flex flex-col h-full bg-[#05070c]/20">
+           <div className={`flex flex-col h-full ${isLight ? 'bg-slate-50/80' : 'bg-[#05070c]/20'}`}>
               <div className="p-4 border-b border-white/5">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
@@ -800,7 +1019,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                       <div key={symbol} className="group flex items-center justify-between px-3 py-2 rounded-lg hover:bg-white/[0.03] transition-colors border border-transparent hover:border-white/5 cursor-pointer">
                           <div className="flex items-center gap-2.5">
                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                              <span className="text-[11px] font-mono font-bold text-slate-400 group-hover:text-white uppercase">{symbol}</span>
+                              <span className={`text-[11px] font-mono font-bold uppercase ${isLight ? 'text-slate-600 group-hover:text-slate-900' : 'text-slate-400 group-hover:text-white'}`}>{symbol}</span>
                           </div>
                           <span className="text-[10px] text-slate-600 font-mono tracking-tighter">Live</span>
                       </div>
@@ -814,7 +1033,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
         )}
 
         {activeTab === 'settings' && (
-           <div className="flex flex-col h-full bg-[#05070c]/20">
+           <div className={`flex flex-col h-full ${isLight ? 'bg-slate-50/80' : 'bg-[#05070c]/20'}`}>
               <div className="px-6 py-8 space-y-8">
                   <div className="space-y-4">
                       <div className="flex items-center gap-2">
@@ -881,13 +1100,16 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="bg-transparent text-[13px] font-bold text-foreground placeholder-muted-foreground focus:outline-none truncate w-full"
+                        readOnly={!canEditCurrentChart}
+                        className="bg-transparent text-[13px] font-bold text-foreground placeholder-muted-foreground focus:outline-none truncate w-full read-only:opacity-70"
                         placeholder="Untitled Analysis"
                     />
                     <div className="flex items-center gap-2 text-[9px] font-mono text-slate-500 uppercase tracking-tighter">
                         <span>{category || 'Uncategorized'}</span>
                         <span>/</span>
                         <span className="truncate">{tags || 'No Tags'}</span>
+                        <span>/</span>
+                        <span className="truncate" title={`Created by ${createdByLabel}`}>By {createdByLabel}</span>
                     </div>
                 </div>
             </div>
@@ -901,16 +1123,16 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                     {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current group-hover:scale-110 transition-transform" />}
                     <span>Run</span>
                 </button>
-                <div className="w-px h-5 bg-white/10 mx-1" />
+                <div className={`w-px h-5 mx-1 ${isLight ? 'bg-slate-200' : 'bg-white/10'}`} />
                 <button
                     onClick={handleSave}
-                    disabled={saving}
+                    disabled={saving || !canEditCurrentChart}
                     className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all active:scale-95 disabled:opacity-30"
                 >
                     {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                     <span>Save</span>
                 </button>
-                <div className="w-px h-5 bg-white/10 mx-1" />
+                <div className={`w-px h-5 mx-1 ${isLight ? 'bg-slate-200' : 'bg-white/10'}`} />
                 <button
                     onClick={() => setShowMeta(!showMeta)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${showMeta ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-muted-foreground hover:text-foreground bg-card/60 border border-transparent hover:border-border/50'}`}
@@ -946,12 +1168,17 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                     type="text"
                                     value={category}
                                     onChange={(e) => setCategory(e.target.value)}
-                                    className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 outline-none focus:border-indigo-500/50 transition-all font-semibold"
+                                    readOnly={!canEditCurrentChart}
+                                    className={`w-full border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500/50 transition-all font-semibold ${
+                                      isLight
+                                        ? 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'
+                                        : 'bg-white/[0.03] border-white/10 text-slate-300'
+                                    }`}
                                     placeholder="Enter category..."
                                 />
                             </div>
                             
-                            <div className="lg:col-span-4 space-y-2">
+                            <div className="lg:col-span-3 space-y-2">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
                                     <Search className="w-3 h-3 text-indigo-500" /> Metadata Tags
                                 </label>
@@ -959,20 +1186,46 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                     type="text"
                                     value={tags}
                                     onChange={(e) => setTags(e.target.value)}
-                                    className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 outline-none focus:border-indigo-500/50 transition-all font-mono placeholder:text-slate-700"
+                                    readOnly={!canEditCurrentChart}
+                                    className={`w-full border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500/50 transition-all font-mono ${
+                                      isLight
+                                        ? 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'
+                                        : 'bg-white/[0.03] border-white/10 text-slate-300 placeholder:text-slate-700'
+                                    }`}
                                     placeholder="Volatility, Strategy, 2025..."
                                 />
                             </div>
 
-                            <div className="lg:col-span-5 space-y-2">
+                            <div className="lg:col-span-2 space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <Activity className="w-3 h-3 text-indigo-500" /> Created By
+                                </label>
+                                <input
+                                    type="text"
+                                    value={createdByLabel}
+                                    readOnly
+                                    className={`w-full border rounded-xl px-4 py-2.5 text-xs font-mono ${
+                                      isLight
+                                        ? 'bg-slate-50 border-slate-200 text-slate-600'
+                                        : 'bg-white/[0.02] border-white/10 text-slate-400'
+                                    }`}
+                                />
+                            </div>
+
+                            <div className="lg:col-span-4 space-y-2">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
                                     <FileText className="w-3 h-3 text-indigo-500" /> Description
                                 </label>
                                 <textarea
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
+                                    readOnly={!canEditCurrentChart}
                                     rows={1}
-                                    className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 outline-none focus:border-indigo-500/50 transition-all resize-none font-medium custom-scrollbar min-h-[42px]"
+                                    className={`w-full border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500/50 transition-all resize-none font-medium custom-scrollbar min-h-[42px] ${
+                                      isLight
+                                        ? 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'
+                                        : 'bg-white/[0.03] border-white/10 text-slate-300'
+                                    }`}
                                     placeholder="Briefly describe the analytical protocol..."
                                 />
                             </div>
@@ -986,10 +1239,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                 </div>
                                 <button
                                     onClick={() => currentChartId ? toggleExportPdf(currentChartId, !exportPdf) : setExportPdf(!exportPdf)}
+                                    disabled={!canToggleExport}
                                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold ${exportPdf ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-slate-600 border-white/10 bg-white/5'}`}
                                 >
                                     <CheckCircle2 className="w-3.5 h-3.5" />
-                                    {exportPdf ? 'ACTIVE' : 'DISABLED'}
+                                    {canToggleExport ? (exportPdf ? 'ACTIVE' : 'DISABLED') : 'OWNER ONLY'}
                                 </button>
                             </div>
                         )}
@@ -1002,7 +1256,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
         <div className="flex-grow flex flex-col relative min-h-0 overflow-hidden">
 
             {/* Main Visualizer */}
-            <div className="flex-grow relative bg-[#010205] flex flex-col min-h-0">
+            <div className={`flex-grow relative flex flex-col min-h-0 ${isLight ? 'bg-slate-100' : 'bg-[#010205]'}`}>
                 <div className="flex-grow relative overflow-hidden">
                     {themedPreviewFigure ? (
                         <Plot
@@ -1021,12 +1275,14 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                             <div className="relative">
                                 <div className="absolute inset-0 blur-3xl bg-indigo-500/20 rounded-full" />
-                                <div className="relative w-24 h-24 rounded-3xl bg-white/[0.03] border border-white/10 flex items-center justify-center backdrop-blur-sm">
-                                    <Activity className="w-10 h-10 text-slate-700" />
+                                <div className={`relative w-24 h-24 rounded-3xl flex items-center justify-center backdrop-blur-sm ${
+                                  isLight ? 'bg-white border border-slate-200 shadow-sm' : 'bg-white/[0.03] border border-white/10'
+                                }`}>
+                                    <Activity className={`w-10 h-10 ${isLight ? 'text-slate-400' : 'text-slate-700'}`} />
                                 </div>
                             </div>
-                            <h3 className="text-sm font-bold text-slate-400 mt-6 uppercase tracking-[0.2em]">IDE Forge Ready</h3>
-                            <p className="text-[10px] text-slate-600 font-mono mt-2">Initialize analysis or select from library</p>
+                            <h3 className={`text-sm font-bold mt-6 uppercase tracking-[0.2em] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>IDE Forge Ready</h3>
+                            <p className={`text-[10px] font-mono mt-2 ${isLight ? 'text-slate-500' : 'text-slate-600'}`}>Initialize analysis or select from library</p>
                         </div>
                     )}
 
@@ -1035,7 +1291,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                         <div className="absolute top-4 right-4 flex gap-2">
                             <button
                                 onClick={handleCopyChart}
-                                className="p-2 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all"
+                                className={`p-2 rounded-xl backdrop-blur-xl border transition-all ${
+                                  isLight
+                                    ? 'bg-white/90 border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 shadow-sm'
+                                    : 'bg-black/40 border-white/10 text-slate-400 hover:text-white hover:border-white/20'
+                                }`}
                                 title="Copy Image"
                             >
                                 {copying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
@@ -1045,21 +1305,21 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                 </div>
 
                 {/* Console Drawer (Bottom) */}
-                <div className={`shrink-0 border-t border-white/5 bg-[#05070c]/80 backdrop-blur-xl transition-all duration-300 ${consoleExpanded ? 'h-[250px]' : 'h-10'}`}>
-                    <div className="h-10 shrink-0 flex items-center justify-between px-6 cursor-pointer hover:bg-white/[0.02]" onClick={() => {
+                <div className={`shrink-0 border-t backdrop-blur-xl transition-all duration-300 ${isLight ? 'border-slate-200 bg-white/95' : 'border-white/5 bg-[#05070c]/80'} ${consoleExpanded ? 'h-[250px]' : 'h-10'}`}>
+                    <div className={`h-10 shrink-0 flex items-center justify-between px-6 cursor-pointer ${isLight ? 'hover:bg-slate-100/80' : 'hover:bg-white/[0.02]'}`} onClick={() => {
                         const next = !consoleExpanded;
                         setConsoleExpanded(next);
                         setUserManuallyCollapsed(!next); // If we are closing it, mark as manual collapse
                     }}>
                         <div className="flex items-center gap-3">
                             <Terminal className={`w-4 h-4 ${error ? 'text-rose-400' : 'text-slate-500'}`} />
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Execution Log</span>
+                            <span className={`text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-600' : 'text-slate-500'}`}>Execution Log</span>
                             {loading && <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" />}
                         </div>
                         <div className="flex items-center gap-2">
                             {error && <span className="text-[9px] font-mono text-rose-500 px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20">ERROR</span>}
                             {successMsg && !error && <span className="text-[9px] font-mono text-emerald-500 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">SUCCESS</span>}
-                            <button className="text-slate-600 hover:text-white">
+                            <button className={isLight ? 'text-slate-500 hover:text-slate-900' : 'text-slate-600 hover:text-white'}>
                                 {consoleExpanded ? <ChevronDown className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
                         </div>
@@ -1073,11 +1333,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                             <AlertCircle className="w-4 h-4" />
                                             <span className="font-bold underline uppercase tracking-tighter">System Interrupt / Fault</span>
                                         </div>
-                                        <div className="p-4 bg-rose-500/5 border border-rose-500/10 rounded-xl text-rose-200/90 whitespace-pre-wrap font-mono text-[10px] leading-relaxed">
+                                        <div className={`p-4 bg-rose-500/5 border border-rose-500/10 rounded-xl whitespace-pre-wrap font-mono text-[10px] leading-relaxed ${isLight ? 'text-rose-700' : 'text-rose-200/90'}`}>
                                             {typeof error === 'object' ? error.message : String(error)}
                                         </div>
                                         {typeof error === 'object' && error.traceback && (
-                                            <pre className="p-4 bg-black/40 rounded-xl border border-white/5 text-[10px] text-slate-500 overflow-x-auto whitespace-pre-wrap">
+                                            <pre className={`p-4 rounded-xl text-[10px] overflow-x-auto whitespace-pre-wrap ${isLight ? 'bg-slate-100 border border-slate-200 text-slate-600' : 'bg-black/40 border border-white/5 text-slate-500'}`}>
                                                 {error.traceback}
                                             </pre>
                                         )}
@@ -1088,7 +1348,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                         <span>{successMsg}</span>
                                     </motion.div>
                                 ) : (
-                                    <div className="text-slate-700 italic">&gt; Kernel idle. Ready for instruction.</div>
+                                    <div className={`italic ${isLight ? 'text-slate-500' : 'text-slate-700'}`}>&gt; Kernel idle. Ready for instruction.</div>
                                 )}
                            </AnimatePresence>
                         </div>
@@ -1109,20 +1369,108 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       {/* ═══════════════ RIGHT — Editor ═══════════════ */}
       <div
         className={`
-          flex-col bg-[#0d0f14] relative z-20 border-l border-white/5
+          flex-col relative z-20 border-l ${isLight ? 'bg-white border-slate-200/90' : 'bg-[#0d0f14] border-white/5'}
           ${mobilePanel === 'editor' ? 'fixed inset-0 pt-16 z-50 flex shadow-2xl' : 'hidden lg:flex'}
           ${showCodePanel ? 'lg:flex' : 'lg:hidden'}
         `}
         style={{ width: isMounted && showCodePanel && window.innerWidth >= 1024 ? editorWidth : '100%' }}
       >
-        <div className="h-12 shrink-0 flex items-center justify-between px-4 bg-[#0d0f14] border-b border-white/5">
+        <div className={`h-12 shrink-0 flex items-center justify-between px-4 border-b ${isLight ? 'bg-white border-slate-200/90' : 'bg-[#0d0f14] border-white/5'}`}>
             <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest opacity-50">analysis.py</span>
+                <span className={`text-[10px] font-mono uppercase tracking-widest opacity-70 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>analysis.py</span>
             </div>
             <div className="flex items-center gap-3">
-                <span className="text-[9px] text-slate-600 font-mono">Kernel: Python 3.12</span>
+                <span className={`text-[9px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-600'}`}>Kernel: Python 3.12</span>
             </div>
+        </div>
+
+        <div className={`shrink-0 border-b px-3 py-3 ${isLight ? 'border-slate-200/90 bg-slate-50' : 'border-white/5 bg-[#0a0c12]'}`}>
+            <div className="flex items-center justify-between gap-2 mb-2">
+                <label className={`text-[10px] font-bold uppercase tracking-[0.18em] flex items-center gap-2 ${isLight ? 'text-slate-600' : 'text-slate-500'}`}>
+                    <Database className="w-3 h-3 text-indigo-500" /> Timeseries Lookup
+                </label>
+                <span className={`text-[9px] font-mono hidden md:inline ${isLight ? 'text-slate-500' : 'text-slate-600'}`}>Insert `Series('CODE')`</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${isLight ? 'text-slate-500' : 'text-slate-600'}`} />
+                    <input
+                        type="text"
+                        value={timeseriesSearch}
+                        onChange={(e) => setTimeseriesSearch(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            runTimeseriesSearch();
+                          }
+                        }}
+                        placeholder="Search code/name/source..."
+                        className={`w-full pl-9 pr-3 py-2 border rounded-xl text-xs outline-none focus:border-indigo-500/50 transition-all ${
+                          isLight
+                            ? 'bg-white border-slate-200 text-slate-700 placeholder:text-slate-400'
+                            : 'bg-white/[0.03] border-white/10 text-slate-300'
+                        }`}
+                    />
+                </div>
+                <button
+                    onClick={runTimeseriesSearch}
+                    disabled={!timeseriesSearch.trim() || timeseriesLoading}
+                    className={`px-3 py-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-[10px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}
+                >
+                    Search
+                </button>
+            </div>
+
+            {timeseriesQuery.length > 0 && (
+                <div className="mt-2 max-h-44 overflow-y-auto custom-scrollbar space-y-1.5">
+                    {timeseriesLoading && (
+                        <div className={`px-3 py-2.5 rounded-lg text-[10px] flex items-center gap-2 ${isLight ? 'bg-white border border-slate-200 text-slate-500' : 'bg-white/[0.02] border border-white/10 text-slate-500'}`}>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                            Searching timeseries...
+                        </div>
+                    )}
+                    {timeseriesError && !timeseriesLoading && (
+                        <div className={`px-3 py-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] ${isLight ? 'text-rose-700' : 'text-rose-300'}`}>
+                            {(timeseriesErrorObj as Error)?.message || 'Timeseries search failed.'}
+                        </div>
+                    )}
+                    {!timeseriesLoading && !timeseriesError && timeseriesMatches.length === 0 && (
+                        <div className={`px-3 py-2.5 rounded-lg text-[10px] ${isLight ? 'bg-white border border-slate-200 text-slate-500' : 'bg-white/[0.02] border border-white/10 text-slate-600'}`}>
+                            No timeseries matched your search.
+                        </div>
+                    )}
+                    {!timeseriesLoading && !timeseriesError && timeseriesMatches.map((ts) => (
+                        <div
+                            key={ts.id}
+                            className={`flex items-start justify-between gap-2 px-3 py-2 rounded-lg border ${isLight ? 'border-slate-200 bg-white' : 'border-white/8 bg-white/[0.02]'}`}
+                        >
+                            <div className="min-w-0">
+                                <div className={`text-[11px] font-mono font-bold truncate ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>{ts.code}</div>
+                                <div className={`text-[10px] truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{ts.name || 'Unnamed'}</div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                    onClick={() => copySeriesSnippet(ts)}
+                                    className={`px-2 py-1 rounded-md border text-[9px] font-bold transition-colors ${isLight ? 'border-slate-200 bg-white hover:bg-slate-100 text-slate-600' : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.08] text-slate-300'}`}
+                                    title="Copy snippet"
+                                >
+                                    Copy
+                                </button>
+                                <button
+                                    onClick={() => insertSeriesSnippet(ts)}
+                                    disabled={!canEditCurrentChart}
+                                    className={`px-2 py-1 rounded-md border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-[9px] font-bold transition-colors ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}
+                                    title="Insert snippet into editor"
+                                >
+                                    Insert
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
         
         <div className="flex-grow flex flex-col min-h-0 bg-background">
@@ -1144,6 +1492,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                 smoothScrolling: true,
                 cursorBlinking: 'smooth',
                 wordWrap: 'on',
+                readOnly: !canEditCurrentChart,
                 }}
             />
         </div>

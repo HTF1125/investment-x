@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy import text
 
 from ix.db.conn import ensure_connection, conn
 from ix.misc import get_logger
@@ -24,6 +25,134 @@ logger = setup_antigravity_logging(service_name="backend")
 KST = pytz.timezone("Asia/Seoul")
 
 scheduler = AsyncIOScheduler()
+
+
+def _ensure_user_role_schema() -> None:
+    """Idempotent runtime migration for user role-based authorization."""
+    if not ensure_connection():
+        logger.warning("Skipping user role schema check because DB connection is unavailable.")
+        return
+
+    try:
+        with conn.engine.begin() as db_conn:
+            user_table = db_conn.execute(text("SELECT to_regclass('public.\"user\"')")).scalar()
+            if not user_table:
+                logger.info("Skipping user role schema check because user table does not exist.")
+                return
+
+            db_conn.execute(
+                text(
+                    "ALTER TABLE \"user\" "
+                    "ADD COLUMN IF NOT EXISTS role VARCHAR(32)"
+                )
+            )
+            db_conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_user_role "
+                    "ON \"user\" (role)"
+                )
+            )
+            db_conn.execute(
+                text(
+                    """
+                    UPDATE "user"
+                    SET role = CASE
+                        WHEN role IN ('owner', 'admin', 'general') THEN role
+                        WHEN is_admin = TRUE THEN 'admin'
+                        ELSE 'general'
+                    END
+                    """
+                )
+            )
+            # Keep legacy compatibility flag in sync with role semantics.
+            db_conn.execute(
+                text(
+                    """
+                    UPDATE "user"
+                    SET is_admin = CASE
+                        WHEN role IN ('owner', 'admin') THEN TRUE
+                        ELSE FALSE
+                    END
+                    """
+                )
+            )
+            db_conn.execute(
+                text(
+                    "ALTER TABLE \"user\" "
+                    "ALTER COLUMN role SET DEFAULT 'general'"
+                )
+            )
+
+        logger.info("User role schema check completed.")
+    except Exception as exc:
+        logger.warning(f"User role schema check failed: {exc}")
+
+
+def _ensure_custom_chart_owner_schema() -> None:
+    """Idempotent runtime migration for custom chart creator ownership fields."""
+    if not ensure_connection():
+        logger.warning(
+            "Skipping custom chart owner schema check because DB connection is unavailable."
+        )
+        return
+
+    try:
+        with conn.engine.begin() as db_conn:
+            table_exists = db_conn.execute(
+                text("SELECT to_regclass('public.custom_charts')")
+            ).scalar()
+            if not table_exists:
+                logger.info(
+                    "Skipping custom chart owner schema check because custom_charts table does not exist."
+                )
+                return
+
+            db_conn.execute(
+                text(
+                    "ALTER TABLE custom_charts "
+                    "ADD COLUMN IF NOT EXISTS created_by_user_id UUID"
+                )
+            )
+            db_conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_custom_charts_created_by_user_id "
+                    "ON custom_charts (created_by_user_id)"
+                )
+            )
+
+            fk_exists = db_conn.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM pg_constraint con
+                    JOIN pg_class rel ON rel.oid = con.conrelid
+                    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                    JOIN pg_attribute att ON att.attrelid = rel.oid
+                        AND att.attnum = ANY(con.conkey)
+                    WHERE con.contype = 'f'
+                      AND nsp.nspname = 'public'
+                      AND rel.relname = 'custom_charts'
+                      AND att.attname = 'created_by_user_id'
+                    LIMIT 1
+                    """
+                )
+            ).first()
+
+            if not fk_exists:
+                db_conn.execute(
+                    text(
+                        """
+                        ALTER TABLE custom_charts
+                        ADD CONSTRAINT fk_custom_charts_created_by_user_id
+                        FOREIGN KEY (created_by_user_id) REFERENCES "user"(id)
+                        ON DELETE SET NULL
+                        """
+                    )
+                )
+
+        logger.info("Custom chart owner schema check completed.")
+    except Exception as exc:
+        logger.warning(f"Custom chart owner schema check failed: {exc}")
 
 
 @asynccontextmanager
@@ -68,6 +197,9 @@ async def lifespan(app: FastAPI):
     #     misfire_grace_time=300,
     # )
     # logger.info("Scheduled 'send_daily_market_brief' for every 6 hours (1, 7, 13, 19 KST)")
+
+    _ensure_user_role_schema()
+    _ensure_custom_chart_owner_schema()
 
     scheduler.start()
 
@@ -180,6 +312,7 @@ async def global_exception_handler(request, exc):
 try:
     from ix.api.routers import (
         auth,
+        admin,
         timeseries,
         series,
         evaluation,
@@ -193,6 +326,7 @@ try:
 
     logger.info("Importing routers...")
     app.include_router(auth.router, prefix="/api", tags=["Authentication"])
+    app.include_router(admin.router, prefix="/api", tags=["Admin"])
     app.include_router(timeseries.router, prefix="/api", tags=["Timeseries"])
     app.include_router(series.router, prefix="/api", tags=["Series"])
     app.include_router(evaluation.router, prefix="/api", tags=["Evaluation"])

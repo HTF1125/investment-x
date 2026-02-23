@@ -58,7 +58,10 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_user_token(str(user.email), bool(user.is_admin))
+    access_token = create_user_token(
+        str(user.email),
+        role=getattr(user, "effective_role", User.ROLE_GENERAL),
+    )
     set_auth_cookie(response, access_token)
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -79,7 +82,9 @@ def login_json(response: Response, credentials: UserLogin):
 
     expires_delta = timedelta(days=30) if credentials.remember_me else None
     access_token = create_user_token(
-        str(user.email), bool(user.is_admin), expires_delta=expires_delta
+        str(user.email),
+        role=getattr(user, "effective_role", User.ROLE_GENERAL),
+        expires_delta=expires_delta,
     )
     set_auth_cookie(response, access_token, expires_delta=expires_delta)
     return {"access_token": access_token, "token_type": "bearer"}
@@ -111,15 +116,17 @@ async def register(user_data: UserRegister):
             password=user_data.password,
             first_name=user_data.first_name,
             last_name=user_data.last_name,
-            is_admin=False,
+            role=User.ROLE_GENERAL,
         )
         logger.info(f"New user registered: {user.email}")
+        role = getattr(user, "effective_role", User.ROLE_GENERAL)
         return UserResponse(
             id=str(user.id),
             email=str(user.email),
             first_name=user.first_name,
             last_name=user.last_name,
-            is_admin=bool(user.is_admin),
+            role=role,
+            is_admin=bool(role in User.ADMIN_ROLES),
             disabled=bool(user.disabled),
             created_at=user.created_at,
         )
@@ -143,7 +150,8 @@ async def get_current_user_info(
         email=str(current_user.email),
         first_name=current_user.first_name,
         last_name=current_user.last_name,
-        is_admin=bool(current_user.is_admin),
+        role=current_user.effective_role,
+        is_admin=bool(current_user.effective_role in User.ADMIN_ROLES),
         disabled=bool(current_user.disabled),
         created_at=current_user.created_at,
     )
@@ -157,7 +165,8 @@ async def refresh_token(
     Refresh access token and update cookie.
     """
     access_token = create_user_token(
-        str(current_user.email), bool(current_user.is_admin)
+        str(current_user.email),
+        role=current_user.effective_role,
     )
     set_auth_cookie(response, access_token)
     return {"access_token": access_token, "token_type": "bearer"}

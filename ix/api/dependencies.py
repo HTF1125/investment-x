@@ -77,7 +77,12 @@ def get_current_admin_user(
     Raises:
         HTTPException: If user is not an admin
     """
-    if not getattr(current_user, "is_admin", False):
+    role = getattr(current_user, "effective_role", None)
+    if callable(role):
+        role = role()
+    if role is None:
+        role = User.normalize_role(getattr(current_user, "role", None))
+    if role not in User.ADMIN_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
