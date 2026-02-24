@@ -155,6 +155,22 @@ def _ensure_custom_chart_owner_schema() -> None:
         logger.warning(f"Custom chart owner schema check failed: {exc}")
 
 
+def _ensure_investment_notes_schema() -> None:
+    """Idempotent runtime migration for investment notes tables."""
+    if not ensure_connection():
+        logger.warning("Skipping investment notes schema check because DB connection is unavailable.")
+        return
+
+    try:
+        from ix.db.models.investment_note import InvestmentNote, InvestmentNoteImage
+
+        InvestmentNote.__table__.create(bind=conn.engine, checkfirst=True)
+        InvestmentNoteImage.__table__.create(bind=conn.engine, checkfirst=True)
+        logger.info("Investment notes schema check completed.")
+    except Exception as exc:
+        logger.warning(f"Investment notes schema check failed: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -200,6 +216,7 @@ async def lifespan(app: FastAPI):
 
     _ensure_user_role_schema()
     _ensure_custom_chart_owner_schema()
+    _ensure_investment_notes_schema()
 
     scheduler.start()
 
@@ -322,6 +339,7 @@ try:
         custom,
         insights,
         technical,
+        notes,
     )
 
     logger.info("Importing routers...")
@@ -336,6 +354,7 @@ try:
     app.include_router(custom.router, prefix="/api", tags=["Custom"])
     app.include_router(insights.router, prefix="/api", tags=["Insights"])
     app.include_router(technical.router, prefix="/api", tags=["Technical"])
+    app.include_router(notes.router, prefix="/api", tags=["Notes"])
     from ix.api.routers import dashboard
 
     app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])

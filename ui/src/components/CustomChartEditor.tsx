@@ -105,6 +105,8 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const [exporting, setExporting] = useState(false);
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'exporting' | 'complete' | 'error'>('idle');
   const [graphDiv, setGraphDiv] = useState<HTMLElement | null>(null);
+  const [plotRenderError, setPlotRenderError] = useState<string | null>(null);
+  const [plotRetryNonce, setPlotRetryNonce] = useState(0);
   const [copying, setCopying] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [consoleExpanded, setConsoleExpanded] = useState(true);
@@ -753,6 +755,15 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     [previewFigure, theme]
   );
 
+  useEffect(() => {
+    setPlotRenderError(null);
+  }, [previewFigure, theme, plotRetryNonce]);
+
+  const handlePlotError = useCallback((err: any) => {
+    const message = err?.message || 'Plot rendering failed.';
+    setPlotRenderError(message);
+  }, []);
+
   // ─────────────────────────────────────────────────────────
   // RENDER — 3-panel: [Library sidebar] | [Preview] | [Editor]
   // ─────────────────────────────────────────────────────────
@@ -1262,8 +1273,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                     ? 'border-slate-200 bg-white/80 shadow-sm'
                     : 'border-sky-500/20 bg-[#020711] shadow-[inset_0_0_0_1px_rgba(14,165,233,0.08)]'
                 }`}>
-                    {themedPreviewFigure ? (
+                    {themedPreviewFigure && !plotRenderError ? (
                         <Plot
+                        key={`${currentChartId || 'draft'}-${theme}-${plotRetryNonce}`}
                         data={themedPreviewFigure.data}
                         layout={{ 
                             ...themedPreviewFigure.layout, 
@@ -1274,7 +1286,25 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                         useResizeHandler={true}
                         className="w-full h-full"
                         onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
+                        onError={handlePlotError}
                         />
+                    ) : plotRenderError ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+                            <div className="text-xs font-semibold text-rose-400">Chart Render Error</div>
+                            <div className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                                {plotRenderError}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                  setPlotRenderError(null);
+                                  setPlotRetryNonce((n) => n + 1);
+                                }}
+                                className="h-8 px-3 rounded-md border border-border/60 text-xs text-muted-foreground hover:text-foreground"
+                            >
+                                Retry Render
+                            </button>
+                        </div>
                     ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                             <div className="relative">

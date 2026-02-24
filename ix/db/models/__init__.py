@@ -22,6 +22,7 @@ from .custom_chart import CustomChart
 from .financial_news import FinancialNews
 from .youtube_intel import YouTubeIntel
 from .task_process import TaskProcess
+from .investment_note import InvestmentNote, InvestmentNoteImage
 import pandas as pd
 
 # Re-export Base for convenience
@@ -39,6 +40,8 @@ __all__ = [
     "FinancialNews",
     "YouTubeIntel",
     "TaskProcess",
+    "InvestmentNote",
+    "InvestmentNoteImage",
 ]
 
 
@@ -54,6 +57,8 @@ def all():
         FinancialNews,
         YouTubeIntel,
         TaskProcess,
+        InvestmentNote,
+        InvestmentNoteImage,
     ]
 
 

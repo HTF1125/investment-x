@@ -54,6 +54,8 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
   const { theme } = useTheme();
   const queryClient = useQueryClient();
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
+  const [plotRenderError, setPlotRenderError] = React.useState<string | null>(null);
+  const [plotRetryNonce, setPlotRetryNonce] = React.useState(0);
   const [copyState, setCopyState] = React.useState<'idle' | 'copying' | 'done'>('idle');
   const [isVisible, setIsVisible] = React.useState(true);
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -77,7 +79,7 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
       );
     }
   }, [id, initialFigure, queryClient, theme, safelyThemeFigure]);
-  
+
   const { data: figure, isLoading, error } = useQuery({
     queryKey: ['chart-figure', id, theme],
     queryFn: async () => {
@@ -94,6 +96,10 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
     staleTime: 1000 * 60 * 10, // 10 minutes cache
     enabled: !!id && isVisible,
   });
+
+  React.useEffect(() => {
+    setPlotRenderError(null);
+  }, [id, theme, figure]);
 
   const handleCopy = React.useCallback(async () => {
     if (!graphDiv || copyState !== 'idle') return;
@@ -155,21 +161,40 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
             transition={{ duration: 0.5, ease: 'easeOut' }}
             className="w-full h-full"
           >
-            <Plot
-              data={figure.data}
-              layout={{
-                ...figure.layout,
-                autosize: true
-              }}
-              config={{
-                responsive: true,
-                displayModeBar: false,
-                displaylogo: false,
-              }}
-              style={{ width: '100%', height: '100%' }}
-              useResizeHandler={true}
-              onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
-            />
+            {!plotRenderError ? (
+              <Plot
+                key={`${id}-${theme}-${plotRetryNonce}`}
+                data={figure.data}
+                layout={{
+                  ...figure.layout,
+                  autosize: true
+                }}
+                config={{
+                  responsive: true,
+                  displayModeBar: false,
+                  displaylogo: false,
+                }}
+                style={{ width: '100%', height: '100%' }}
+                useResizeHandler={true}
+                onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
+                onError={(err: any) => setPlotRenderError(err?.message || 'Chart render failed.')}
+              />
+            ) : (
+              <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-4 text-center">
+                <div className="text-xs text-rose-400 font-semibold">Chart Render Error</div>
+                <div className="text-[11px] text-muted-foreground">{plotRenderError}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlotRenderError(null);
+                    setPlotRetryNonce((n) => n + 1);
+                  }}
+                  className="h-7 px-3 rounded-md border border-border/60 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

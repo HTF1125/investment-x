@@ -12,6 +12,7 @@ const TITLE_Y = 0.98;
 const LEGEND_X = 0.01;
 const LEGEND_Y = 0.99;
 const LEGEND_GAP = 2;
+const AXIS_KEY_REGEX = /^(x|y)axis(\d*)$/;
 
 const THEME_TOKENS: Record<UiTheme, {
   text: string;
@@ -45,6 +46,89 @@ const THEME_TOKENS: Record<UiTheme, {
   },
 };
 
+function axisKeyToTraceRef(axisKey: string): string | null {
+  const match = axisKey.match(AXIS_KEY_REGEX);
+  if (!match) return null;
+  return `${match[1]}${match[2] || ''}`;
+}
+
+function traceTargetsAxis(trace: any, axisRef: string, axisLetter: 'x' | 'y'): boolean {
+  const traceAxis = typeof trace?.[`${axisLetter}axis`] === 'string' ? trace[`${axisLetter}axis`] : axisLetter;
+  return traceAxis === axisRef;
+}
+
+function hasPositiveFiniteValue(values: unknown): boolean {
+  if (values == null) return false;
+  if (typeof values === 'number') return Number.isFinite(values) && values > 0;
+  if (typeof values === 'string') {
+    const num = Number(values);
+    return Number.isFinite(num) && num > 0;
+  }
+  if (Array.isArray(values) || ArrayBuffer.isView(values)) {
+    for (const value of values as Iterable<unknown>) {
+      if (hasPositiveFiniteValue(value)) return true;
+    }
+  }
+  return false;
+}
+
+function axisHasPositiveData(data: any[], axisKey: string): boolean {
+  const axisRef = axisKeyToTraceRef(axisKey);
+  if (!axisRef) return true;
+  const axisLetter = axisRef.startsWith('x') ? 'x' : 'y';
+
+  for (const trace of data) {
+    if (!traceTargetsAxis(trace, axisRef, axisLetter)) continue;
+
+    if (axisLetter === 'x') {
+      if (hasPositiveFiniteValue(trace?.x)) return true;
+      continue;
+    }
+
+    if (
+      hasPositiveFiniteValue(trace?.y) ||
+      hasPositiveFiniteValue(trace?.open) ||
+      hasPositiveFiniteValue(trace?.high) ||
+      hasPositiveFiniteValue(trace?.low) ||
+      hasPositiveFiniteValue(trace?.close)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function sanitizeAxisRange(axis: any) {
+  if (!Array.isArray(axis?.range)) return;
+  if (axis.range.length < 2) {
+    delete axis.range;
+    axis.autorange = true;
+    return;
+  }
+
+  const [start, end] = axis.range;
+  let isValid = true;
+
+  if (axis.type === 'date') {
+    isValid =
+      !Number.isNaN(Date.parse(String(start))) &&
+      !Number.isNaN(Date.parse(String(end))) &&
+      String(start) !== String(end);
+  } else if (axis.type === 'category' || axis.type === 'multicategory') {
+    isValid = true;
+  } else {
+    const min = Number(start);
+    const max = Number(end);
+    isValid = Number.isFinite(min) && Number.isFinite(max) && min !== max;
+  }
+
+  if (!isValid) {
+    delete axis.range;
+    axis.autorange = true;
+  }
+}
+
 export function applyChartTheme(
   figure: any,
   theme: UiTheme,
@@ -59,6 +143,7 @@ export function applyChartTheme(
       : JSON.parse(JSON.stringify(figure));
   const tokens = THEME_TOKENS[theme];
   const transparent = options.transparentBackground ?? false;
+  const data = Array.isArray(cleaned.data) ? cleaned.data : [];
 
   if (!cleaned.layout) {
     cleaned.layout = {};
@@ -104,6 +189,20 @@ export function applyChartTheme(
   axisKeys.forEach((axisKey) => {
     const axis = cleaned.layout[axisKey];
     if (!axis || typeof axis !== 'object' || Array.isArray(axis)) return;
+
+    // Scale-linked axes are a common source of Plotly relayout crashes.
+    // Drop hard constraints and keep responsive autoscaling stable.
+    delete axis.scaleanchor;
+    delete axis.scaleratio;
+
+    sanitizeAxisRange(axis);
+
+    if (axis.type === 'log' && !axisHasPositiveData(data, axisKey)) {
+      axis.type = 'linear';
+      delete axis.range;
+      axis.autorange = true;
+    }
+
     axis.gridcolor = axis.gridcolor || tokens.grid;
     axis.zerolinecolor = axis.zerolinecolor || tokens.grid;
     axis.showline = true;

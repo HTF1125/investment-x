@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { 
   User as UserIcon, LogOut, LogIn, Database, Radio, 
   Menu, X, Layout, Cpu, Hexagon, Bell, ChevronDown,
-  Settings, Shield, Sun, Moon, CandlestickChart
+  Settings, Shield, Sun, Moon, CandlestickChart, FileText
 } from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
 import { useTheme } from '@/context/ThemeContext';
@@ -204,6 +204,10 @@ export default function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
   const { theme } = useTheme();
   const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
+  const role = String(user?.role || '').toLowerCase();
+  const isOwner = !!user && role === 'owner';
+  const isAdminRole = !!user && (role === 'admin' || user.is_admin);
+  const canUseStudio = !!user && (isOwner || (!isAdminRole && role === 'general'));
   const [menuOpen, setMenuOpen] = React.useState(false);
   const pathname = usePathname();
 
@@ -232,8 +236,10 @@ export default function Navbar() {
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-1 p-0.5 rounded-lg">
                 <NavLink href="/" icon={<Layout className="w-3 h-3" />}>Dashboard</NavLink>
+                {canUseStudio && <NavLink href="/studio" icon={<Hexagon className="w-3 h-3" />}>Studio</NavLink>}
                 <NavLink href="/intel" icon={<Radio className="w-3 h-3" />}>Intel</NavLink>
                 <NavLink href="/technical" icon={<CandlestickChart className="w-3 h-3" />}>Technical</NavLink>
+                <NavLink href="/notes" icon={<FileText className="w-3 h-3" />}>Notes</NavLink>
                 {isAdmin && (
                   <NavLink href="/admin/timeseries" icon={<Database className="w-3 h-3" />}>System</NavLink>
                 )}
@@ -284,8 +290,10 @@ export default function Navbar() {
           >
                <div className="flex flex-col gap-2">
                   <MobileNavLink href="/" icon={<Layout className="w-4 h-4" />}>Dashboard</MobileNavLink>
+                  {canUseStudio && <MobileNavLink href="/studio" icon={<Hexagon className="w-4 h-4" />}>Studio</MobileNavLink>}
                   <MobileNavLink href="/intel" icon={<Radio className="w-4 h-4" />}>Intel Feed</MobileNavLink>
                   <MobileNavLink href="/technical" icon={<CandlestickChart className="w-4 h-4" />}>Technical</MobileNavLink>
+                  <MobileNavLink href="/notes" icon={<FileText className="w-4 h-4" />}>Investment Notes</MobileNavLink>
                   {isAdmin && (
                     <MobileNavLink href="/admin/timeseries" icon={<Database className="w-4 h-4" />}>System Admin</MobileNavLink>
                   )}

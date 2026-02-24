@@ -749,14 +749,14 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
   }
 
   return (
-    <div className="space-y-6 min-h-[800px]">
+    <div className="space-y-1.5 min-h-[800px]">
       {/* 🧭 Fixed Navigator Controls */}
       <div
         className="fixed top-12 left-0 right-0 z-50 border-b border-slate-200/80 dark:border-border/50 shadow-2xl bg-white/95 dark:bg-black/95 backdrop-blur-md"
       >
-        <div className="mx-auto w-full max-w-[1800px] px-2 sm:px-4 md:px-6 py-2.5 md:py-3">
+        <div className="mx-auto w-full max-w-[1800px] px-2 sm:px-4 md:px-6 py-1 md:py-1.5">
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
-            <div className="min-w-0 flex-1 rounded-2xl border border-sky-300/70 dark:border-sky-500/20 bg-gradient-to-r from-sky-100/85 via-indigo-100/65 to-cyan-100/85 dark:from-sky-500/10 dark:via-indigo-500/10 dark:to-cyan-500/10 px-2.5 sm:px-3 py-2.5 flex items-center gap-2 shadow-lg shadow-sky-900/5 dark:shadow-black/20">
+            <div className="min-w-0 flex-1 rounded-2xl border border-sky-300/70 dark:border-sky-500/20 bg-gradient-to-r from-sky-100/85 via-indigo-100/65 to-cyan-100/85 dark:from-sky-500/10 dark:via-indigo-500/10 dark:to-cyan-500/10 px-2.5 sm:px-3 py-1.5 flex items-center gap-2 shadow-lg shadow-sky-900/5 dark:shadow-black/20">
               <div className="hidden lg:flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300 font-bold shrink-0">
                 <ListIcon className="w-3.5 h-3.5" />
                 Navigator
@@ -927,7 +927,7 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
         </div>
       </div>
 
-      <div className="h-[84px] md:h-[92px]" />
+      <div className="h-[50px] md:h-[56px]" />
 
       {/* 🖼️ Grid Display */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-8">
