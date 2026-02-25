@@ -49,7 +49,7 @@
     --secondary: 241 245 249;
     --secondary-foreground: 15 23 42;
     --muted: 241 245 249;
-    --muted-foreground: 100 116, 139;
+    --muted-foreground: 100 116 139;
     --accent: 241 245 249;
     --accent-foreground: 15 23 42;
     --destructive: 239 68 68;
@@ -292,6 +292,73 @@ h1, h2, h3, h4 {
 .notes-editor .notes-image-node.is-dragging .notes-image-handle {
   opacity: 1;
   pointer-events: auto;
+}
+
+.notes-editor .notes-chart-node {
+  display: block;
+  width: 100%;
+  margin: 0.8rem 0;
+  padding: 0.6rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgb(var(--border));
+  background: rgb(var(--card) / 0.35);
+}
+
+.notes-editor .notes-chart-node.is-selected {
+  outline: 2px solid rgb(var(--primary));
+  outline-offset: 2px;
+}
+
+.notes-editor .notes-chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.notes-editor .notes-chart-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgb(var(--foreground));
+}
+
+.notes-editor .notes-chart-remove {
+  height: 1.35rem;
+  padding: 0 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgb(var(--border));
+  background: rgb(var(--background) / 0.45);
+  color: rgb(var(--muted-foreground));
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.notes-editor .notes-chart-remove:hover {
+  color: rgb(var(--foreground));
+  border-color: rgb(var(--primary) / 0.4);
+}
+
+.notes-editor .notes-chart-frame {
+  min-height: 290px;
+}
+
+.notes-editor .notes-chart-empty {
+  min-height: 120px;
+  border-radius: 0.55rem;
+  border: 1px dashed rgb(var(--border));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(var(--muted-foreground));
+  font-size: 0.75rem;
+}
+
+.notes-editor .notes-chart-description {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  color: rgb(var(--muted-foreground));
 }
 
 .notes-editor .ProseMirror a {

@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     Float,
     text,
+    func,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -74,11 +75,11 @@ class Timeseries(Base):
     name = Column(String, nullable=True)
     provider = Column(String, nullable=True)
     asset_class = Column(String, nullable=True)
-    category = Column(String, nullable=True)
+    category = Column(String, nullable=True, index=True)
     start = Column(Date, nullable=True)
     end = Column(Date, nullable=True)
     num_data = Column(Integer, nullable=True)
-    source = Column(String, nullable=True)
+    source = Column(String, nullable=True, index=True)
     source_code = Column(String, nullable=True)
     frequency = Column(String, nullable=True)
     unit = Column(String, nullable=True)
@@ -91,9 +92,9 @@ class Timeseries(Base):
     latest_value = Column(Float, nullable=True)
 
     # Legacy JSONB column retained for migration/backward compatibility.
-    created = Column(DateTime, default=datetime.now, nullable=False)
+    created = Column(DateTime, default=func.now(), nullable=False)
     updated = Column(
-        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
     num_data_queried = Column(Integer, default=0, nullable=False)
 
@@ -582,9 +583,9 @@ class TimeseriesData(Base):
         primary_key=True,
     )
     data = Column(JSONB, default=dict, nullable=False)
-    created = Column(DateTime, default=datetime.now, nullable=False)
+    created = Column(DateTime, default=func.now(), nullable=False)
     updated = Column(
-        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
 
     timeseries = relationship(
@@ -734,7 +735,7 @@ class TacticalView(Base):
         UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
     )
     views = Column(JSONB, default=dict)  # Store tactical views as JSONB
-    published_date = Column(DateTime, default=datetime.now, nullable=False)
+    published_date = Column(DateTime, default=func.now(), nullable=False)
 
     def __repr__(self):
         return f"<TacticalView(id={self.id}, published_date={self.published_date})>"
@@ -755,4 +756,4 @@ class Insights(Base):
     summary = Column(Text, nullable=True)
     pdf_content = Column(LargeBinary, nullable=True)
     hash = Column(String, nullable=True)
-    created = Column(DateTime, default=datetime.now, nullable=False)
+    created = Column(DateTime, default=func.now(), nullable=False)

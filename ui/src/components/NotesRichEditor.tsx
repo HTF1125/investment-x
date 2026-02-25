@@ -45,11 +45,18 @@ type UploadResult = {
   filename?: string | null;
 };
 
+type ExternalImageInsertRequest = {
+  token: string;
+  url: string;
+  alt?: string;
+};
+
 interface NotesRichEditorProps {
   value: string;
   onChange: (html: string) => void;
   disabled?: boolean;
   onImageUpload: (file: File) => Promise<UploadResult>;
+  externalImageInsertRequest?: ExternalImageInsertRequest | null;
   minHeightClassName?: string;
   toolbarStickyTopClassName?: string;
 }
@@ -343,11 +350,13 @@ export default function NotesRichEditor({
   onChange,
   disabled = false,
   onImageUpload,
+  externalImageInsertRequest = null,
   minHeightClassName = 'min-h-[48vh]',
   toolbarStickyTopClassName = 'top-0',
 }: NotesRichEditorProps) {
   const editorRef = useRef<Editor | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const lastExternalImageInsertTokenRef = useRef<string | null>(null);
 
   const uploadAndInsertImages = useCallback(
     async (files: File[]) => {
@@ -452,6 +461,23 @@ export default function NotesRichEditor({
     if (!editor) return;
     editor.setEditable(!disabled);
   }, [editor, disabled]);
+
+  useEffect(() => {
+    if (!editor || !externalImageInsertRequest) return;
+    if (lastExternalImageInsertTokenRef.current === externalImageInsertRequest.token) return;
+    lastExternalImageInsertTokenRef.current = externalImageInsertRequest.token;
+
+    editor
+      .chain()
+      .focus()
+      .setImage({
+        src: externalImageInsertRequest.url,
+        alt: externalImageInsertRequest.alt || 'chart snapshot',
+        width: 100,
+      })
+      .insertContent('<p></p>')
+      .run();
+  }, [editor, externalImageInsertRequest]);
 
   const setLink = () => {
     if (!editor || disabled) return;

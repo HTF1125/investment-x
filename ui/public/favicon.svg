@@ -1,16 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <!-- Deep Obsidian Circular Base -->
-  <circle cx="64" cy="64" r="64" fill="#020617"/>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .bg { fill: #ca1c4f; }
+      .letter { fill: #ffffff; }
+    </style>
+  </defs>
   
-  <!-- Centered "IX" Mark (Investment-X) -->
-  <!-- "I" Pillar -->
-  <path d="M38 38V90" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <!-- Background -->
+  <rect width="32" height="32" rx="4" class="bg"/>
   
-  <!-- "X" Symbol -->
-  <path d="M66 38L106 90" stroke="#ca1c4f" stroke-width="14" stroke-linecap="round"/>
-  <path d="M106 38L66 90" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <!-- Stylized X -->
+  <path class="letter" d="M 8 8 L 14 16 L 8 24 L 11.5 24 L 16 18 L 20.5 24 L 24 24 L 18 16 L 24 8 L 20.5 8 L 16 14 L 11.5 8 Z"/>
 </svg>
-
-
-
-

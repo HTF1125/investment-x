@@ -3,13 +3,13 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 import { applyChartTheme } from '@/lib/chartTheme';
 
 const ChartSkeleton = () => (
-  <div className="w-full h-full p-6 flex flex-col gap-4 bg-[#0a0a0a]/40 rounded-xl animate-pulse overflow-hidden relative min-h-[290px]">
+  <div className="w-full h-full p-6 flex flex-col gap-4 bg-background/80 rounded-xl animate-pulse overflow-hidden relative min-h-[290px]">
     {/* Grid Lines Pattern */}
     <div className="absolute inset-x-8 inset-y-12 flex flex-col justify-between opacity-10">
       {[...Array(8)].map((_, i) => (
@@ -30,7 +30,7 @@ const ChartSkeleton = () => (
 
     {/* Center Glow */}
     <div className="absolute inset-0 flex items-center justify-center z-20">
-      <div className="p-4 bg-background/60 backdrop-blur-xl rounded-2xl border border-white/5 shadow-2xl">
+      <div className="p-4 bg-background/60 backdrop-blur-xl rounded-2xl border border-border/20 shadow-2xl">
         <Loader2 className="w-6 h-6 text-sky-500 animate-spin" />
       </div>
     </div>
@@ -40,7 +40,7 @@ const ChartSkeleton = () => (
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
   loading: () => <ChartSkeleton />,
-}) as any;
+}) as React.ComponentType<Record<string, unknown>>;
 
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -52,7 +52,6 @@ interface ChartProps {
 
 export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps) {
   const { theme } = useTheme();
-  const queryClient = useQueryClient();
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
   const [plotRenderError, setPlotRenderError] = React.useState<string | null>(null);
   const [plotRetryNonce, setPlotRetryNonce] = React.useState(0);
@@ -70,18 +69,8 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
     [theme]
   );
 
-  // Sync internal cache when initialFigure prop changes
-  React.useEffect(() => {
-    if (initialFigure && id) {
-      queryClient.setQueryData(
-        ['chart-figure', id, theme],
-        safelyThemeFigure(initialFigure)
-      );
-    }
-  }, [id, initialFigure, queryClient, theme, safelyThemeFigure]);
-
-  const { data: figure, isLoading, error } = useQuery({
-    queryKey: ['chart-figure', id, theme],
+  const { data: rawFigure, isLoading, error } = useQuery({
+    queryKey: ['chart-figure', id],
     queryFn: async () => {
       const res = await apiFetch(`/api/v1/dashboard/charts/${id}/figure`);
       
@@ -89,17 +78,48 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
         throw new Error('Failed to load chart data');
       }
       
-      const data = await res.json();
-      return safelyThemeFigure(data);
+      return res.json();
     },
-    initialData: () => safelyThemeFigure(initialFigure),
-    staleTime: 1000 * 60 * 10, // 10 minutes cache
+    initialData: initialFigure ?? undefined,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
     enabled: !!id && isVisible,
   });
 
+  const figure = React.useMemo(
+    () => safelyThemeFigure(rawFigure),
+    [rawFigure, safelyThemeFigure]
+  );
+
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      { rootMargin: '500px 0px 500px 0px', threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [id]);
+
+  React.useEffect(() => {
+    if (!isVisible) {
+      setGraphDiv(null);
+      setPlotRenderError(null);
+    }
+  }, [isVisible]);
+
   React.useEffect(() => {
     setPlotRenderError(null);
-  }, [id, theme, figure]);
+  }, [id, theme, rawFigure]);
 
   const handleCopy = React.useCallback(async () => {
     if (!graphDiv || copyState !== 'idle') return;
@@ -176,7 +196,7 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
                 }}
                 style={{ width: '100%', height: '100%' }}
                 useResizeHandler={true}
-                onInitialized={(_: any, gd: any) => setGraphDiv(gd)}
+                onInitialized={(_figure: Readonly<{data: any[]; layout: any; frames: any}>, gd: Readonly<HTMLElement>) => setGraphDiv(gd as HTMLElement)}
                 onError={(err: any) => setPlotRenderError(err?.message || 'Chart render failed.')}
               />
             ) : (

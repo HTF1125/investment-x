@@ -2,6 +2,7 @@
 Authentication utilities for JWT token management and session handling
 """
 
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 import jwt
@@ -10,12 +11,17 @@ from typing import cast
 
 logger = get_logger(__name__)
 
-# Secret key for JWT - In production, this should be an environment variable
-SECRET_KEY = (
-    "your-secret-key-change-this-in-production"  # TODO: Move to environment variable
-)
+_PLACEHOLDER = "your-secret-key-change-this-in-production"
+
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+if not SECRET_KEY or SECRET_KEY == _PLACEHOLDER:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set or is still the placeholder value. "
+        "Set a strong random secret in your .env file."
+    )
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

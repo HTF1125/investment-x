@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // TODO: re-enable once eslint-plugin-react is compatible with eslint 8
+  // (eslint-plugin-react@7.37.5 crashes with "Cannot read properties of undefined (reading 'deprecated')")
   eslint: {
     ignoreDuringBuilds: true,
   },

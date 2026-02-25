@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body, Response
+from fastapi import APIRouter, Depends, HTTPException, Body, Response, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, load_only, joinedload
 from sqlalchemy import func
@@ -22,6 +22,8 @@ from reportlab.lib import utils
 import textwrap
 import sys
 import threading
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ix.db.conn import get_session
 from ix.db.models import CustomChart, User
@@ -49,6 +51,8 @@ except ImportError:
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+_limiter = Limiter(key_func=get_remote_address)
 
 try:
     import orjson as _orjson
@@ -248,6 +252,7 @@ class ReorderRequest(BaseModel):
 
 class PDFExportRequest(BaseModel):
     items: List[str]  # List of IDs in order
+    theme: str = "light"  # "light" or "dark"
 
 
 # --- Helper Functions ---
@@ -575,8 +580,13 @@ def get_clean_figure_json(fig: Any) -> Any:
         return json.loads(clean_json_str)
 
 
-def render_chart_image(figure_data: Dict[str, Any]) -> Optional[bytes]:
+def render_chart_image(figure_data: Dict[str, Any], theme: str = "light") -> Optional[bytes]:
     """Helper to render a single chart figure to PNG bytes using Kaleido PlotlyScope."""
+    # Apply the requested theme before rendering (overrides stored theme)
+    try:
+        figure_data = chart_theme.apply_json(figure_data, mode=theme)
+    except Exception as e:
+        logger.warning(f"Theme application skipped in render_chart_image: {e}")
     decoded_figure = decode_plotly_binary_arrays(figure_data)
 
     def _build_figure(raw: Any) -> go.Figure:
@@ -679,11 +689,19 @@ def render_chart_image(figure_data: Dict[str, Any]) -> Optional[bytes]:
 def generate_pdf_buffer(
     charts: List[CustomChart],
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
+    theme: str = "light",
 ) -> BytesIO:
     buffer = BytesIO()
     # Use landscape for charts usually
     c = canvas.Canvas(buffer, pagesize=landscape(letter))
     width, height = landscape(letter)
+
+    is_dark = theme.lower() == "dark"
+    # Theme-based colors for PDF pages
+    page_bg_rgb = (11/255, 14/255, 20/255) if is_dark else None   # #0B0E14
+    title_rgb = (0.898, 0.914, 0.945) if is_dark else (0.0, 0.0, 0.0)
+    meta_rgb = (0.580, 0.639, 0.722) if is_dark else (0.3, 0.3, 0.3)
+    desc_rgb = (0.392, 0.455, 0.549) if is_dark else (0.45, 0.45, 0.45)
 
     # 1. Pre-fetch/Filter valid charts
     valid_charts = []
@@ -702,7 +720,7 @@ def generate_pdf_buffer(
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         # Submit all render tasks
         future_to_index = {
-            executor.submit(render_chart_image, chart.figure): i
+            executor.submit(render_chart_image, chart.figure, theme): i
             for i, chart in enumerate(valid_charts)
         }
 
@@ -752,18 +770,26 @@ def generate_pdf_buffer(
     # 3. Construct PDF page by page
     for i, chart in enumerate(valid_charts):
         try:
+            # Fill page background for dark theme
+            if is_dark and page_bg_rgb:
+                c.setFillColorRGB(*page_bg_rgb)
+                c.rect(0, 0, width, height, fill=1, stroke=0)
+
             # 1. Render title
+            c.setFillColorRGB(*title_rgb)
             c.setFont("Helvetica-Bold", 22)
             title = chart.name or "Untitled Analysis"
             c.drawString(50, height - 50, title)
 
             # 2. Render meta
+            c.setFillColorRGB(*meta_rgb)
             c.setFont("Helvetica", 13)
             meta = f"Category: {chart.category} | Updated: {chart.updated_at.strftime('%Y-%m-%d')}"
             c.drawString(50, height - 70, meta)
 
             # 3. Render description (wrapped)
             if chart.description:
+                c.setFillColorRGB(*desc_rgb)
                 c.setFont("Helvetica-Oblique", 12)
                 desc_lines = textwrap.wrap(chart.description, width=120)
                 y_desc = height - 90
@@ -817,8 +843,9 @@ def generate_pdf_buffer(
 
 
 @router.post("/custom/preview")
+@_limiter.limit("10/minute")
 def preview_custom_chart(
-    request: CodePreviewRequest, current_user: User = Depends(get_current_user)
+    request: Request, body: CodePreviewRequest, current_user: User = Depends(get_current_user)
 ):
     """
     Executes code and returns the figure JSON without saving.
@@ -827,9 +854,9 @@ def preview_custom_chart(
     from fastapi.responses import Response
 
     start_time = time.time()
-    logger.info(f"Previewing custom chart. Code length: {len(request.code)}")
+    logger.info(f"Previewing custom chart. Code length: {len(body.code)}")
     try:
-        fig = execute_custom_code(request.code)
+        fig = execute_custom_code(body.code)
     except BaseException as e:
         if isinstance(e, HTTPException):
             raise e
@@ -1088,7 +1115,7 @@ def export_custom_charts_pdf(
                 progress=f"{current}/{max(1, total)}",
             )
 
-        pdf_buffer = generate_pdf_buffer(ordered_charts, progress_cb=_on_pdf_progress)
+        pdf_buffer = generate_pdf_buffer(ordered_charts, progress_cb=_on_pdf_progress, theme=request.theme)
 
         filename = f"InvestmentX_Report_{datetime.now().strftime('%Y%m%d')}.pdf"
         _update_process(
@@ -1156,10 +1183,27 @@ def export_custom_charts_html(
 
         _update_process(pid, message="Composing HTML bundle...", progress=f"0/{len(ordered_charts)}")
 
+        is_dark_html = request.theme.lower() == "dark"
+        # Theme-dependent CSS values
+        _body_bg = "#02040a" if is_dark_html else "#f8fafc"
+        _body_color = "#94a3b8" if is_dark_html else "#475569"
+        _header_border = "rgba(255,255,255,0.05)" if is_dark_html else "rgba(0,0,0,0.07)"
+        _h1_color = "#f8fafc" if is_dark_html else "#0f172a"
+        _card_bg = "rgba(255,255,255,0.02)" if is_dark_html else "#ffffff"
+        _card_border = "rgba(255,255,255,0.05)" if is_dark_html else "rgba(0,0,0,0.08)"
+        _card_shadow = "0 10px 30px -10px rgba(0,0,0,0.5)" if is_dark_html else "0 2px 12px -4px rgba(0,0,0,0.08)"
+        _chart_hdr_bg = "rgba(0,0,0,0.2)" if is_dark_html else "#f1f5f9"
+        _chart_hdr_border = "rgba(255,255,255,0.03)" if is_dark_html else "rgba(0,0,0,0.06)"
+        _chart_title_color = "#e2e8f0" if is_dark_html else "#0f172a"
+        # JS chart theme values
+        _js_font_color = "#94a3b8" if is_dark_html else "#334155"
+        _js_axis_line = "rgba(148,163,184,0.45)" if is_dark_html else "rgba(71,85,105,0.35)"
+        _js_tick_color = "#cbd5e1" if is_dark_html else "#475569"
+
         # Build premium HTML bundle
         html_parts = []
         html_parts.append(
-            """
+            f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -1168,32 +1212,32 @@ def export_custom_charts_html(
             <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
             <style>
-                body {
-                    background-color: #02040a;
-                    color: #94a3b8;
+                body {{
+                    background-color: {_body_bg};
+                    color: {_body_color};
                     font-family: 'Inter', sans-serif;
                     margin: 0;
                     padding: 40px 20px;
                     line-height: 1.6;
-                }
-                .container { max-width: 1200px; margin: 0 auto; }
-                header { margin-bottom: 60px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 30px; }
-                h1 { color: #f8fafc; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
-                .subtitle { font-family: 'JetBrains Mono'; font-size: 11px; text-transform: uppercase; letter-spacing: 0.2em; color: #6366f1; margin-top: 8px; }
-                .chart-card {
-                    background: rgba(255, 255, 255, 0.02);
-                    border: 1px solid rgba(255, 255, 255, 0.05);
+                }}
+                .container {{ max-width: 1200px; margin: 0 auto; }}
+                header {{ margin-bottom: 60px; border-bottom: 1px solid {_header_border}; padding-bottom: 30px; }}
+                h1 {{ color: {_h1_color}; font-weight: 800; letter-spacing: -0.02em; margin: 0; }}
+                .subtitle {{ font-family: 'JetBrains Mono'; font-size: 11px; text-transform: uppercase; letter-spacing: 0.2em; color: #6366f1; margin-top: 8px; }}
+                .chart-card {{
+                    background: {_card_bg};
+                    border: 1px solid {_card_border};
                     border-radius: 20px;
                     margin-bottom: 40px;
                     overflow: hidden;
-                    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
-                }
-                .chart-header { padding: 24px 30px; border-bottom: 1px solid rgba(255,255,255,0.03); background: rgba(0,0,0,0.2); }
-                .chart-title { font-size: 18px; font-weight: 600; color: #e2e8f0; margin: 0; }
-                .chart-meta { font-size: 11px; color: #64748b; margin-top: 4px; font-mono; }
-                .chart-body { padding: 20px; min-height: 500px; }
-                .chart-desc { padding: 0 30px 30px 30px; font-size: 14px; font-weight: 300; color: #64748b; }
-                footer { text-align: center; margin-top: 100px; font-size: 10px; opacity: 0.4; font-family: 'JetBrains Mono'; }
+                    box-shadow: {_card_shadow};
+                }}
+                .chart-header {{ padding: 24px 30px; border-bottom: 1px solid {_chart_hdr_border}; background: {_chart_hdr_bg}; }}
+                .chart-title {{ font-size: 18px; font-weight: 600; color: {_chart_title_color}; margin: 0; }}
+                .chart-meta {{ font-size: 11px; color: #64748b; margin-top: 4px; }}
+                .chart-body {{ padding: 20px; min-height: 500px; }}
+                .chart-desc {{ padding: 0 30px 30px 30px; font-size: 14px; font-weight: 300; color: #64748b; }}
+                footer {{ text-align: center; margin-top: 100px; font-size: 10px; opacity: 0.4; font-family: 'JetBrains Mono'; }}
             </style>
         </head>
         <body>
@@ -1221,8 +1265,9 @@ def export_custom_charts_html(
             # Create a unique ID for Plotly div
             div_id = f"chart_{i}"
 
-            # Get Plotly JSON
-            fig_json = _json_dumps_fast(_compact_figure_for_html(chart.figure))
+            # Apply canonical theme then compact for HTML delivery
+            themed_figure = chart_theme.apply_json(chart.figure, mode=request.theme)
+            fig_json = _json_dumps_fast(_compact_figure_for_html(themed_figure))
 
             html_parts.append(
                 f"""
@@ -1239,16 +1284,16 @@ def export_custom_charts_html(
                             fig.layout = fig.layout || {{}};
                             fig.layout.paper_bgcolor = 'rgba(0,0,0,0)';
                             fig.layout.plot_bgcolor = 'rgba(0,0,0,0)';
-                            fig.layout.font = {{ color: '#94a3b8', family: 'Inter' }};
+                            fig.layout.font = {{ color: '{_js_font_color}', family: 'Inter' }};
                             fig.layout.autosize = true;
                             var axisKeyRe = /^(xaxis|yaxis)(\\d+)?$/;
                             Object.keys(fig.layout).forEach(function(key) {{
                                 if (!axisKeyRe.test(key)) return;
                                 var axis = Object.assign({{}}, fig.layout[key] || {{}});
-                                axis.linecolor = axis.linecolor || 'rgba(148,163,184,0.45)';
+                                axis.linecolor = '{_js_axis_line}';
                                 axis.showline = axis.showline !== false;
                                 axis.mirror = axis.mirror !== false;
-                                axis.tickfont = Object.assign({{ color: '#cbd5e1', size: 11 }}, axis.tickfont || {{}});
+                                axis.tickfont = Object.assign({{ color: '{_js_tick_color}', size: 11 }}, axis.tickfont || {{}});
                                 if (key.indexOf('yaxis') === 0) {{
                                     axis.showticklabels = true;
                                     axis.automargin = true;
@@ -1264,13 +1309,13 @@ def export_custom_charts_html(
                             (fig.data || []).forEach(function(t) {{
                                 if (t && t.type === 'heatmap') {{
                                     if (!t.texttemplate && t.text) t.texttemplate = '<b>%{{text}}</b>';
-                                    t.textfont = Object.assign({{color: '#e2e8f0', size: 10, family: 'Inter, sans-serif'}}, t.textfont || {{}});
+                                    t.textfont = Object.assign({{color: '{_js_font_color}', size: 10, family: 'Inter, sans-serif'}}, t.textfont || {{}});
                                 }}
                             }});
-                            Plotly.newPlot('{div_id}', fig.data, fig.layout, {{ 
-                                responsive: true, 
+                            Plotly.newPlot('{div_id}', fig.data, fig.layout, {{
+                                responsive: true,
                                 displayModeBar: 'hover',
-                                displaylogo: false 
+                                displaylogo: false
                             }});
                         }})();
                     </script>

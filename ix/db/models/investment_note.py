@@ -18,7 +18,7 @@ class InvestmentNote(Base):
     title = Column(String(255), nullable=False, default="Untitled Note")
     content = Column(Text, nullable=False, default="")
     links = Column(JSONB, nullable=False, default=list)
-    pinned = Column(Boolean, nullable=False, default=False)
+    pinned = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 

@@ -153,131 +153,103 @@ export default function IntelPage() {
   };
 
   return (
-    <AppShell>
-      <div className="relative overflow-hidden">
-        <div className={`absolute inset-0 pointer-events-none ${
-          isLight
-            ? 'bg-[radial-gradient(circle_at_20%_0%,rgba(14,165,233,0.07),transparent_38%),radial-gradient(circle_at_80%_0%,rgba(16,185,129,0.05),transparent_34%)]'
-            : 'bg-[radial-gradient(circle_at_20%_0%,rgba(14,165,233,0.14),transparent_38%),radial-gradient(circle_at_80%_0%,rgba(16,185,129,0.08),transparent_34%)]'
-        }`} />
-
-        <div className="relative p-4 md:p-8 lg:p-10 max-w-[1680px] mx-auto space-y-6">
-          <section className="rounded-3xl border border-border/60 bg-card/[0.28] backdrop-blur-xl p-5 md:p-7 overflow-hidden">
-            <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-5">
-              <div className="space-y-3">
-                <div className="inline-flex items-center gap-2 rounded-full border border-primary/35 bg-primary/10 px-3 py-1 text-[10px] font-mono tracking-[0.18em] uppercase text-primary">
-                  <ScanLine className="w-3.5 h-3.5" />
-                  Multi-Source Signal Desk
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center mt-0.5">
-                    <Radio className="w-4.5 h-4.5 text-primary" />
+    <AppShell hideFooter>
+      <div className="flex h-[calc(100vh-48px)] relative bg-background overflow-hidden">
+        {/* Main Content Area */}
+        <main className="flex-1 min-w-0 h-full overflow-y-auto custom-scrollbar relative flex flex-col bg-background">
+          <div className="p-4 md:p-6 lg:p-8 space-y-6">
+            {/* Header Card */}
+            <div className="glass-card p-4 md:p-5 border border-border/50">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 shrink-0">
+                    <Radio className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Intel Feed</h1>
-                    <p className="text-[12px] md:text-[13px] text-muted-foreground font-mono tracking-wider uppercase mt-1">
-                      YouTube + Telegram Channel Aggregator
+                  <div className="min-w-0">
+                    <h1 className="text-lg font-bold text-foreground">Intel Feed</h1>
+                    <p className="text-[10px] font-mono text-muted-foreground/60 uppercase tracking-wider">
+                      YouTube + Telegram Aggregator
                     </p>
                   </div>
                 </div>
-                <p className="text-sm text-foreground/70 max-w-3xl leading-relaxed">
-                  Central stream for macro, market, and thematic intelligence. Unsummarized and new videos are prioritized,
-                  and Telegram items are rolled from the latest 24 hours.
-                </p>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono ${
+                    syncing
+                      ? 'border-sky-500/40 bg-sky-500/10 text-sky-400'
+                      : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                  }`}>
+                    <Activity className={`w-3 h-3 ${syncing ? 'animate-pulse' : ''}`} />
+                    <span className="font-bold">{syncing ? 'SYNCING' : 'IDLE'}</span>
+                  </div>
+
+                  {isAdmin && (
+                    <>
+                      <button
+                        onClick={handleScrape}
+                        disabled={syncing}
+                        className="p-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all disabled:opacity-50"
+                        title="Sync Telegram"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                      </button>
+                      <button
+                        onClick={handleYouTubeSync}
+                        disabled={syncingYoutube}
+                        className="p-2 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-all disabled:opacity-50"
+                        title="Sync YouTube"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${syncingYoutube ? 'animate-spin' : ''}`} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full xl:w-auto xl:min-w-[340px]">
-                <div className={`rounded-xl border px-3 py-2.5 ${
-                  syncing
-                    ? 'border-sky-500/40 bg-sky-500/10'
-                    : 'border-emerald-500/40 bg-emerald-500/10'
-                }`}>
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Sync Status</div>
-                  <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold">
-                    <Activity className={`w-3.5 h-3.5 ${syncing ? 'animate-pulse text-primary' : 'text-emerald-500 dark:text-emerald-300'}`} />
-                    <span className={syncing ? 'text-primary' : 'text-emerald-600 dark:text-emerald-200'}>{syncing ? 'Live Sync' : 'Idle'}</span>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-2.5">
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Progress</div>
-                  <div className="mt-1 text-xs font-semibold text-foreground/85">
-                    {latestTelegram?.progress || 'n/a'}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-2.5">
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Pipeline</div>
-                  <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-foreground/85">
-                    <LayoutGrid className="w-3.5 h-3.5 text-primary" />
-                    Video + Text
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 pt-4 border-t border-border/40 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div className="text-[11px] font-mono text-muted-foreground inline-flex items-center gap-2">
-                <BellRing className="w-3.5 h-3.5 text-primary" />
-                {syncing ? (syncMsg || 'Background sync running...') : 'System standing by for next sync event.'}
-              </div>
-              {isAdmin && (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-                  <button
-                    onClick={handleScrape}
-                    disabled={syncing}
-                    className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-xl border border-sky-500/45 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 transition-colors disabled:opacity-50 text-sm font-semibold w-full sm:w-auto"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                    {syncing ? 'Syncing Telegram...' : 'Sync Telegram'}
-                  </button>
-                  <button
-                    onClick={handleYouTubeSync}
-                    disabled={syncingYoutube}
-                    className="inline-flex items-center justify-center gap-2 px-4 h-10 rounded-xl border border-primary/45 bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-50 text-sm font-semibold w-full sm:w-auto"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${syncingYoutube ? 'animate-spin' : ''}`} />
-                    {syncingYoutube ? 'Syncing YouTube...' : 'Sync YouTube'}
-                  </button>
+              {syncing && syncMsg && (
+                <div className="mt-3 pt-3 border-t border-border/30 flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
+                  <BellRing className="w-3 h-3 text-primary" />
+                  {syncMsg}
                 </div>
               )}
             </div>
-          </section>
 
-          <section className="grid grid-cols-1 gap-6">
-            <YouTubeIntelFeed />
-            <NewsFeed />
-          </section>
-        </div>
+            {/* Feed Content */}
+            <div className="space-y-6">
+              <YouTubeIntelFeed />
+              <NewsFeed />
+            </div>
+          </div>
+        </main>
       </div>
 
-        {/* Animated Toast */}
-        <AnimatePresence>
-          {toast && (
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-              className={`fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-[60] flex items-start sm:items-center gap-3 px-4 sm:px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border ${
-                toast.type === 'success'
-                  ? 'bg-emerald-500/15 border-emerald-500/20 text-emerald-300'
-                  : 'bg-rose-500/15 border-rose-500/20 text-rose-300'
-              }`}
-            >
-              {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-              <div className="flex items-start sm:items-center gap-2 sm:gap-3 min-w-0">
-                <span className="text-sm font-medium break-words">{toast.msg}</span>
-                {toast.sticky && (
-                  <button
-                    onClick={() => setToast(null)}
-                    className="px-2 py-1 rounded-lg border border-current/30 text-[11px] font-semibold hover:bg-white/10 transition-colors"
-                  >
-                    OK
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </AppShell>
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md border ${
+              toast.type === 'success'
+                ? 'bg-emerald-500/15 border-emerald-500/20 text-emerald-300'
+                : 'bg-rose-500/15 border-rose-500/20 text-rose-300'
+            }`}
+          >
+            {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            <span className="text-sm font-medium">{toast.msg}</span>
+            {toast.sticky && (
+              <button
+                onClick={() => setToast(null)}
+                className="px-2 py-1 rounded-lg border border-current/30 text-[10px] font-bold hover:bg-white/10 transition-colors"
+              >
+                OK
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </AppShell>
   );
 }

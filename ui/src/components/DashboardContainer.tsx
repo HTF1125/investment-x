@@ -19,7 +19,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard-summary'],
-    queryFn: () => apiFetchJson('/api/v1/dashboard/summary'),
+    queryFn: () => apiFetchJson('/api/v1/dashboard/summary?include_figures=false'),
     initialData: initialData || undefined,
     staleTime: 1000 * 60 * 2,
     refetchOnWindowFocus: false,
@@ -43,8 +43,8 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
   }, [canUseStudio, router]);
 
   const openStudio = useCallback((chartId: string | null = null) => {
-    const target = chartId ? `/studio?chartId=${encodeURIComponent(chartId)}` : '/studio';
-    router.push(target);
+    const target = chartId ? `?chartId=${encodeURIComponent(chartId)}` : '?new=true';
+    router.push(target, { scroll: false });
   }, [router]);
 
   if (isError) {
@@ -121,14 +121,12 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
   }
 
   return (
-    <AppShell>
-      <div className="relative min-h-screen">
-        {/* 📚 Base Dashboard Layer */}
-        <div className="px-4 md:px-8 lg:px-12 pb-4 md:pb-8 lg:pb-12 pt-0 md:pt-1 lg:pt-2">
-          <div className="w-full max-w-[1400px] mx-auto">
+    <AppShell hideFooter>
+      <div className="relative h-[calc(100vh-48px)] overflow-hidden">
+        <div className="h-full">
+          <div className="w-full h-full">
              {data.charts_by_category ? (
-                <DashboardGallery 
-                    categories={data.categories || []} 
+                <DashboardGallery
                     chartsByCategory={data.charts_by_category}
                     onOpenStudio={canUseStudio ? openStudio : undefined}
                 />

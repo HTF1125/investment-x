@@ -1,18 +1,21 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { 
-  Layers, 
-  Plus, Edit2, CheckCircle2, Eye, EyeOff, Loader2, RotateCcw, Copy,
-  MoreVertical, ArrowUp, ArrowDown,
-  FileDown, Monitor, Check, Info, RefreshCw, LayoutGrid, List as ListIcon, Trash2,
-  ChevronDown
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  Layers,
+  Plus, Eye, EyeOff, Loader2, Copy,
+  ArrowUp, ArrowDown, Search,
+  Info, RefreshCw, LayoutGrid, Trash2,
+  X, Filter, PanelLeftClose, PanelLeftOpen, Save, RotateCcw, FileDown,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import Chart from './Chart';
+import CustomChartEditor from './CustomChartEditor';
 
 interface ChartMeta {
   id: string;
@@ -81,16 +84,18 @@ const ChartCard = React.memo(function ChartCard({
   useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsInView(true);
+      return;
+    }
+
     const observer = new IntersectionObserver(
-      ([entry]) => { 
-        if (entry.isIntersecting) { 
-          // Add a small randomized delay to prevent CPU spikes when multiple cards intersect
-          const delay = Math.random() * 200;
-          setTimeout(() => setIsInView(true), delay);
-          observer.disconnect(); 
-        } 
+      ([entry]) => {
+        // Keep charts mounted slightly before/after viewport, then unmount once far away.
+        setIsInView(entry.isIntersecting);
       },
-      { rootMargin: '400px', threshold: 0.01 } // Proactive loading
+      { rootMargin: '500px 0px 500px 0px', threshold: 0 }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -113,7 +118,7 @@ const ChartCard = React.memo(function ChartCard({
 
   const renderRankInput = () => (
     isReorderable && (
-      <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-mono shrink-0 transition-colors ${
+      <div className={`flex items-center gap-0.5 px-1 py-0.5 rounded border text-[10px] font-mono shrink-0 transition-colors ${
         isModified ? 'bg-amber-500/20 border-amber-500/40' : 'bg-sky-500/10 border-sky-500/20'
       }`}>
         <input
@@ -123,12 +128,10 @@ const ChartCard = React.memo(function ChartCard({
           onBlur={handleRankSubmit}
           onKeyDown={(e) => e.key === 'Enter' && handleRankSubmit()}
           onClick={(e) => e.stopPropagation()}
-          className={`w-8 bg-transparent focus:outline-none text-center font-bold appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+          className={`w-5 bg-transparent focus:outline-none text-center font-bold appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
             isModified ? 'text-amber-400' : 'text-sky-400'
           }`}
         />
-        <span className="text-slate-600">/</span>
-        <span className="text-slate-500">{totalCharts}</span>
       </div>
     )
   );
@@ -154,7 +157,7 @@ const ChartCard = React.memo(function ChartCard({
       <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMoveUp?.(chart.id); }}
-          className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors"
+          className="p-1 rounded hover:bg-accent/30 text-muted-foreground/60 hover:text-sky-400 transition-colors"
           title="Move up"
           aria-label="Move chart up"
           disabled={index === 0}
@@ -163,7 +166,7 @@ const ChartCard = React.memo(function ChartCard({
         </button>
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMoveDown?.(chart.id); }}
-          className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors"
+          className="p-1 rounded hover:bg-accent/30 text-muted-foreground/60 hover:text-sky-400 transition-colors"
           title="Move down"
           aria-label="Move chart down"
           disabled={index === totalCharts - 1}
@@ -178,15 +181,15 @@ const ChartCard = React.memo(function ChartCard({
     canEdit ? (
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenStudio?.(chart.id); }}
-        className="group/name flex items-center gap-2 min-w-0 overflow-hidden text-left"
+        className="group/name flex items-center gap-2 min-w-0 text-left"
         title="Edit in Studio"
       >
-        <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/20 group-hover/name:bg-sky-500/20 group-hover/name:text-sky-300 transition-all truncate max-w-[130px] sm:max-w-[190px] md:max-w-[250px]">
+        <span className="text-[10px] font-mono text-foreground/80 group-hover/name:text-foreground transition-all leading-tight">
           {chart.name}
         </span>
       </button>
     ) : (
-      <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest px-2 py-0.5 bg-sky-500/10 rounded border border-sky-500/10 truncate max-w-[130px] sm:max-w-[190px] md:max-w-[250px]">
+      <span className="text-[10px] font-mono text-foreground/80 leading-tight">
         {chart.name}
       </span>
     )
@@ -194,93 +197,118 @@ const ChartCard = React.memo(function ChartCard({
 
     const className = `glass-card overflow-hidden flex flex-col group transition-all duration-300 hover:border-sky-500/30 hover:shadow-sky-500/5 relative h-full min-h-[380px]`;
 
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!infoOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (infoRef.current && !infoRef.current.contains(e.target as Node)) setInfoOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [infoOpen]);
+
   // Grid View Content (Hardcoded)
   return (
     <div className={className}>
       {/* Card Header */}
-      <div className="px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 border-b border-border/50 bg-card/10 relative">
-         <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2 min-w-0 flex-1 overflow-hidden z-10">
+      <div className="px-3 py-1.5 flex items-center justify-between gap-2 border-b border-border/50 bg-card/10 relative">
+         <div className="flex items-center gap-1.5 min-w-0 flex-1 z-10">
             {renderRankInput()}
             {renderOrderButtons()}
             {renderVisibilityToggle()}
             {renderName()}
          </div>
 
-         <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
-            {(canRefresh || canDelete || !!onCopyChart) && (
-              <div className="flex items-center gap-1">
-                {canRefresh && (
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRefreshChart?.(chart.id); }}
-                    disabled={!!isRefreshingChart}
-                    className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors disabled:opacity-50"
-                    title="Rerun and save chart"
-                    aria-label="Refresh chart"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingChart ? 'animate-spin text-sky-400' : ''}`} />
-                  </button>
-                )}
-                <button
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); }}
-                  className="p-1 rounded hover:bg-white/5 text-slate-500 hover:text-sky-300 transition-colors"
-                  title="Copy chart image"
-                  aria-label="Copy chart"
+         <div className="relative shrink-0" ref={infoRef}>
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setInfoOpen(v => !v); }}
+              className={`p-1 rounded transition-colors ${infoOpen ? 'text-sky-400 bg-sky-500/10' : 'text-muted-foreground/50 hover:text-foreground'}`}
+              title="Chart info & actions"
+              aria-label="Chart info and actions"
+            >
+              <Info className="w-3.5 h-3.5" />
+            </button>
+            <AnimatePresence>
+              {infoOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.96 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded-lg shadow-xl z-50 overflow-hidden"
                 >
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
-                {canDelete && (
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteChart?.(chart.id); }}
-                    disabled={!!isDeletingChart}
-                    className="p-1 rounded hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 transition-colors disabled:opacity-50"
-                    title="Delete chart"
-                    aria-label="Delete chart"
-                  >
-                    <Trash2 className={`w-3.5 h-3.5 ${isDeletingChart ? 'animate-pulse text-rose-400' : ''}`} />
-                  </button>
-                )}
-              </div>
-            )}
-            {chart.description && (
-              <div className="relative group/tip">
-                <Info className="w-3.5 h-3.5 text-slate-600 hover:text-sky-400 transition-colors cursor-help" />
-                <div className="absolute right-0 top-full mt-1 w-56 px-3 py-2 bg-popover border border-border rounded-lg text-[10px] text-muted-foreground leading-relaxed opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-50 shadow-xl">
-                  {chart.description}
-                </div>
-              </div>
-            )}
-            <div className="text-[9px] text-slate-600 font-mono hidden sm:flex items-center gap-2">
-                <span className="max-w-[120px] truncate" title={`Created by ${creatorLabel}`}>
-                  by {creatorLabel}
-                </span>
-                {isSyncing && <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />}
-                {chart.updated_at ? new Date(chart.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '---'}
-            </div>
+                  {chart.description && (
+                    <div className="px-3 py-2 text-[10px] text-muted-foreground leading-relaxed border-b border-border/50">
+                      {chart.description}
+                    </div>
+                  )}
+                  <div className="px-3 py-1.5 text-[9px] text-muted-foreground/70 font-mono border-b border-border/50">
+                    <span title={`Created by ${creatorLabel}`}>by {creatorLabel}</span>
+                    {chart.updated_at && (
+                      <span className="ml-2">{new Date(chart.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    )}
+                  </div>
+                  {(canRefresh || canDelete || !!onCopyChart) && (
+                    <div className="p-1.5 flex flex-col gap-0.5">
+                      {canRefresh && (
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRefreshChart?.(chart.id); setInfoOpen(false); }}
+                          disabled={!!isRefreshingChart}
+                          className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isRefreshingChart ? 'animate-spin text-sky-400' : ''}`} />
+                          Refresh
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); setInfoOpen(false); }}
+                        className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                        Copy image
+                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteChart?.(chart.id); setInfoOpen(false); }}
+                          disabled={!!isDeletingChart}
+                          className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-[11px] text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className={`w-3 h-3 ${isDeletingChart ? 'animate-pulse text-rose-400' : ''}`} />
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
          </div>
       </div>
 
       <div ref={cardRef} className="flex flex-col flex-1">
         {/* Chart Area — only render Plotly when in viewport */}
-        <div className="bg-slate-950/20 relative w-full p-4 h-[290px] min-h-[290px] flex-1">
+        <div className="bg-background/80 dark:bg-slate-950/20 relative w-full p-4 h-[290px] min-h-[290px] flex-1">
           {isInView ? (
             <Chart id={chart.id} initialFigure={chart.figure} copySignal={copySignal} />
           ) : (
-            <div className="relative h-full w-full overflow-hidden rounded-lg border border-sky-500/10 bg-[linear-gradient(120deg,rgba(8,12,20,0.95),rgba(10,16,28,0.95),rgba(8,12,20,0.95))]">
+            <div className="relative h-full w-full overflow-hidden rounded-lg border border-border/20 bg-background/90">
               <motion.div
-                className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-sky-400/10 to-transparent"
+                className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-primary/5 to-transparent"
                 animate={{ x: ['0%', '360%'] }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
               />
               <div className="absolute inset-0 p-6 flex flex-col justify-between">
                 <div className="space-y-3">
-                  <div className="h-4 w-40 rounded bg-sky-500/15 animate-pulse" />
-                  <div className="h-3 w-24 rounded bg-slate-500/20 animate-pulse" />
+                  <div className="h-4 w-40 rounded bg-primary/10 animate-pulse" />
+                  <div className="h-3 w-24 rounded bg-muted/50 animate-pulse" />
                 </div>
                 <div className="grid grid-cols-8 gap-2 items-end h-32">
                   {Array.from({ length: 8 }).map((_, i) => (
                     <div
                       key={i}
-                      className="rounded-sm bg-cyan-500/20 animate-pulse"
+                      className="rounded-sm bg-primary/15 animate-pulse"
                       style={{ height: `${25 + ((i * 13) % 60)}%`, animationDelay: `${i * 80}ms` }}
                     />
                   ))}
@@ -299,13 +327,13 @@ const ChartCard = React.memo(function ChartCard({
 
 
 interface DashboardGalleryProps {
-  categories: string[];
   chartsByCategory: Record<string, ChartMeta[]>;
   onOpenStudio?: (chartId: string | null) => void;
 }
 
-export default function DashboardGallery({ chartsByCategory, onOpenStudio }: DashboardGalleryProps) {
+export default function DashboardGallery({ chartsByCategory }: DashboardGalleryProps) {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const role = String(user?.role || '').toLowerCase();
   const isOwner = !!user && role === 'owner';
   const isAdminRole = !!user && (role === 'admin' || user.is_admin);
@@ -330,20 +358,63 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
   const [copySignals, setCopySignals] = useState<Record<string, number>>({});
 
   const [mounted, setMounted] = useState(false);
-  const [showActionMenu, setShowActionMenu] = useState(false);
   const [quickJumpId, setQuickJumpId] = useState('');
   const [showQuickJumpMenu, setShowQuickJumpMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  // Expanded by default for large screens
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeStudioChartId, setActiveStudioChartId] = useState<string | null>(null);
+
+  // Initial Sync from URL
+  useEffect(() => {
+    const chartId = searchParams.get('chartId');
+    const isNew = searchParams.get('new') === 'true';
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
+
+    if (isNew) {
+        setActiveStudioChartId('');
+        if (!sidebarOpen && isDesktop) setSidebarOpen(true);
+    } else if (chartId) {
+        setActiveStudioChartId(chartId);
+        setQuickJumpId(chartId);
+        if (!sidebarOpen && isDesktop) setSidebarOpen(true);
+    } else {
+        setActiveStudioChartId(null);
+    }
+  }, [searchParams, sidebarOpen]);
+
+  // Override onOpenStudio to stay in this page
+  const handleOpenInStudio = useCallback((chartId: string | null) => {
+    if (chartId) {
+        router.push(`?chartId=${encodeURIComponent(chartId)}`, { scroll: false });
+    } else {
+        router.push('?new=true', { scroll: false });
+    }
+  }, [router]);
   
-  const actionRef = useRef<HTMLDivElement>(null);
+  const handleCloseStudio = useCallback(() => {
+    router.push('/', { scroll: false });
+  }, [router]);
+
   const quickJumpRef = useRef<HTMLDivElement>(null);
   const chartAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const mainScrollRef = useRef<HTMLElement>(null);
+  const isAutoScrolling = useRef(false);
 
-  // Close menus on outside click
+  // Initial Sidebar State for Mobile
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  }, []);
+
+  // Close quick-jump menu on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (actionRef.current && !actionRef.current.contains(event.target as Node)) {
-        setShowActionMenu(false);
-      }
       if (quickJumpRef.current && !quickJumpRef.current.contains(event.target as Node)) {
         setShowQuickJumpMenu(false);
       }
@@ -399,13 +470,15 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
     setExporting(true);
     setExportStatus('idle');
     try {
-      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
       const res = await apiFetch('/api/custom/pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [] }),
+        body: JSON.stringify({ items: [], theme }),
       });
-      if (!res.ok) throw new Error('PDF failed');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'PDF export failed');
+      }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -417,7 +490,8 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
       window.URL.revokeObjectURL(url);
       setExportStatus('success');
       setTimeout(() => setExportStatus('idle'), 3000);
-    } catch {
+    } catch (err: any) {
+      console.error('PDF export error:', err);
       setExportStatus('error');
       setTimeout(() => setExportStatus('idle'), 3000);
     } finally {
@@ -431,13 +505,15 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
     setExportingHtml(true);
     setExportHtmlStatus('idle');
     try {
-      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
       const res = await apiFetch('/api/custom/html', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [] }),
+        body: JSON.stringify({ items: [], theme }),
       });
-      if (!res.ok) throw new Error('HTML failed');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'HTML export failed');
+      }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -449,7 +525,8 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
       window.URL.revokeObjectURL(url);
       setExportHtmlStatus('success');
       setTimeout(() => setExportHtmlStatus('idle'), 3000);
-    } catch {
+    } catch (err: any) {
+      console.error('HTML export error:', err);
       setExportHtmlStatus('error');
       setTimeout(() => setExportHtmlStatus('idle'), 3000);
     } finally {
@@ -478,19 +555,69 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
     setMounted(true);
   }, []);
 
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim().toLowerCase()), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
   // 🔍 Filter & Sort charts (Memoized)
   const allFilteredCharts = useMemo(() => {
     let result = [...localCharts];
 
+    if (debouncedSearch) {
+      result = result.filter(c =>
+        `${c.name || ''}|${c.category || ''}|${c.description || ''}`.toLowerCase().includes(debouncedSearch)
+      );
+    }
+
     if (!isOwner && !isAdminRole) {
       result = result.filter((c) => c.export_pdf !== false || isChartOwner(c));
     }
-    
+
     return result;
-  }, [localCharts, isOwner, isAdminRole, isChartOwner]);
+  }, [localCharts, isOwner, isAdminRole, isChartOwner, debouncedSearch]);
 
   // No pagination: render all charts at once
   const filteredCharts = allFilteredCharts;
+
+  // Group filtered charts by category (preserving rank order within each group)
+  const groupedCharts = useMemo(() => {
+    const groups = new Map<string, ChartMeta[]>();
+    for (const chart of filteredCharts) {
+      const cat = chart.category || 'Uncategorized';
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat)!.push(chart);
+    }
+    return Array.from(groups.entries()).map(([category, charts]) => ({ category, charts }));
+  }, [filteredCharts]);
+
+  // 📡 Active Chart Tracking (Scroll Spy)
+  useEffect(() => {
+    if (filteredCharts.length === 0) return;
+
+    const observerOptions = {
+      root: mainScrollRef.current, // scroll spy against the actual scroll container
+      rootMargin: '-10% 0px -70% 0px',
+      threshold: 0
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      if (isAutoScrolling.current) return;
+      
+      const intersecting = entries.find(e => e.isIntersecting);
+      if (intersecting) {
+        setQuickJumpId(intersecting.target.id.replace('chart-anchor-', ''));
+      }
+    }, observerOptions);
+
+    filteredCharts.forEach(chart => {
+      const el = document.getElementById(`chart-anchor-${chart.id}`);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [filteredCharts]);
   const quickJumpIndex = useMemo(
     () => filteredCharts.findIndex((c) => c.id === quickJumpId),
     [filteredCharts, quickJumpId]
@@ -519,9 +646,20 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
       chartAnchorRefs.current[chartId] ||
       document.getElementById(`chart-anchor-${chartId}`);
     if (!target) return;
-    const stickyOffset = 120;
-    const y = target.getBoundingClientRect().top + window.scrollY - stickyOffset;
-    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+
+    const container = mainScrollRef.current;
+    if (!container) return;
+
+    isAutoScrolling.current = true;
+    const stickyOffset = 16;
+    const y = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - stickyOffset;
+
+    container.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+
+    // Clear auto-scroll flag after animation
+    setTimeout(() => {
+      isAutoScrolling.current = false;
+    }, 800);
   }, []);
 
   useEffect(() => {
@@ -539,9 +677,20 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
     (chartId: string) => {
       setQuickJumpId(chartId);
       setShowQuickJumpMenu(false);
-      scrollToChart(chartId);
+
+      // Close navigator on mobile when selecting a chart
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        setSidebarOpen(false);
+      }
+
+      // If we are in Studio view, switch the active chart via URL
+      if (activeStudioChartId !== null) {
+        router.push(`?chartId=${encodeURIComponent(chartId)}`, { scroll: false });
+      } else {
+        scrollToChart(chartId);
+      }
     },
-    [scrollToChart]
+    [scrollToChart, activeStudioChartId, router]
   );
 
   const handleQuickJumpStep = useCallback(
@@ -607,9 +756,8 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
       });
     },
     onSuccess: (_data, chartId) => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['custom-charts'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-figure', chartId], exact: false });
+      // Refetch only the specific chart figure — not all of them
+      queryClient.invalidateQueries({ queryKey: ['chart-figure', chartId], exact: true });
       setRefreshingChartIds((prev) => {
         const next = { ...prev };
         delete next[chartId];
@@ -633,7 +781,21 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
     onSuccess: (chartId) => {
       setLocalCharts((prev) => prev.filter((c) => c.id !== chartId));
       setOriginalCharts((prev) => prev.filter((c) => c.id !== chartId));
-      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      // Remove the deleted chart from cache directly — no need to refetch all figures
+      queryClient.removeQueries({ queryKey: ['chart-figure', chartId] });
+      queryClient.setQueryData(['dashboard-summary'], (old: any) => {
+        if (!old?.charts_by_category) return old;
+        const updated: Record<string, any[]> = {};
+        for (const [cat, charts] of Object.entries(old.charts_by_category as Record<string, any[]>)) {
+          const filtered = charts.filter((c: any) => c.id !== chartId);
+          if (filtered.length > 0) updated[cat] = filtered;
+        }
+        return {
+          ...old,
+          charts_by_category: updated,
+          categories: Object.keys(updated),
+        };
+      });
       queryClient.invalidateQueries({ queryKey: ['custom-charts'] });
       setDeletingChartIds((prev) => {
         const next = { ...prev };
@@ -749,249 +911,322 @@ export default function DashboardGallery({ chartsByCategory, onOpenStudio }: Das
   }
 
   return (
-    <div className="space-y-1.5 min-h-[800px]">
-      {/* 🧭 Fixed Navigator Controls */}
-      <div
-        className="fixed top-12 left-0 right-0 z-50 border-b border-slate-200/80 dark:border-border/50 shadow-2xl bg-white/95 dark:bg-black/95 backdrop-blur-md"
+    <div className="flex h-[calc(100vh-48px)] relative bg-background overflow-hidden">
+      {/* 🧭 Sidebar Navigator - Now a Flex Sibling for Desktop */}
+      <aside
+        className={`
+          shrink-0 transition-all duration-300 flex flex-col border-r border-border/50 bg-background backdrop-blur-2xl z-[95] overflow-hidden
+          ${sidebarOpen ? 'w-80 border-r' : 'w-0 border-r-0'}
+          fixed inset-y-0 left-0 top-12 md:relative md:top-0 h-[calc(100vh-48px)]
+        `}
       >
-        <div className="mx-auto w-full max-w-[1800px] px-2 sm:px-4 md:px-6 py-1 md:py-1.5">
-          <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
-            <div className="min-w-0 flex-1 rounded-2xl border border-sky-300/70 dark:border-sky-500/20 bg-gradient-to-r from-sky-100/85 via-indigo-100/65 to-cyan-100/85 dark:from-sky-500/10 dark:via-indigo-500/10 dark:to-cyan-500/10 px-2.5 sm:px-3 py-1.5 flex items-center gap-2 shadow-lg shadow-sky-900/5 dark:shadow-black/20">
-              <div className="hidden lg:flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300 font-bold shrink-0">
-                <ListIcon className="w-3.5 h-3.5" />
-                Navigator
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowQuickJumpMenu(false);
-                  handleQuickJumpStep(-1);
-                }}
-                disabled={quickJumpIndex <= 0}
-                className="px-2.5 py-1.5 rounded-lg border border-sky-300/80 dark:border-sky-500/25 bg-white/90 dark:bg-black/20 text-[11px] text-slate-700 dark:text-slate-300 hover:text-sky-900 dark:hover:text-white hover:bg-sky-100/80 dark:hover:bg-sky-500/10 disabled:opacity-55 disabled:cursor-not-allowed transition-colors"
+        <div className="h-12 shrink-0 flex items-center justify-between px-3 border-b border-border/20 bg-foreground/[0.02]">
+            <div className="flex items-center gap-1.5">
+              <button 
+                onClick={handleCloseStudio}
+                className={`p-1.5 rounded-lg transition-all ${!activeStudioChartId ? 'bg-sky-500/10 text-sky-400' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Dashboard View"
               >
-                Prev
+                <LayoutGrid className="w-3.5 h-3.5" />
               </button>
-              <div className="relative min-w-0 flex-1" ref={quickJumpRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowQuickJumpMenu((prev) => !prev)}
-                  className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl border text-[11px] transition-all ${
-                    showQuickJumpMenu
-                      ? 'border-sky-500/60 bg-white text-slate-900 shadow-lg shadow-sky-200/60 dark:border-sky-400/50 dark:bg-sky-500/10 dark:text-white dark:shadow-sky-500/20'
-                      : 'border-sky-300/80 bg-white/90 text-slate-800 hover:bg-sky-100/70 dark:border-sky-500/25 dark:bg-black/25 dark:text-slate-100 dark:hover:bg-sky-500/10'
-                  }`}
-                >
-                  <span className="truncate">{quickJumpLabel}</span>
-                  <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${showQuickJumpMenu ? 'rotate-180 text-sky-700 dark:text-sky-300' : 'text-slate-500 dark:text-slate-400'}`} />
-                </button>
-                <AnimatePresence>
-                  {showQuickJumpMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 6, scale: 0.98 }}
-                      className="absolute left-0 right-0 top-full mt-2 z-50 rounded-xl border border-sky-300/80 dark:border-sky-500/25 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md shadow-2xl shadow-slate-900/10 dark:shadow-black/40 p-1.5"
-                    >
-                      <div className="max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
-                        {filteredCharts.map((chart, idx) => {
-                          const isActive = chart.id === quickJumpId;
-                          return (
-                            <button
-                              key={chart.id}
-                              type="button"
-                              onClick={() => handleQuickJumpSelect(chart.id)}
-                              className={`w-full text-left px-2.5 py-2 rounded-lg text-[11px] transition-colors ${
-                                isActive
-                                  ? 'bg-sky-100 text-sky-900 border border-sky-300 dark:bg-sky-500/20 dark:text-sky-200 dark:border-sky-400/30'
-                                  : 'text-slate-700 hover:bg-sky-50 dark:text-slate-200 dark:hover:bg-white/5'
-                              }`}
-                            >
-                              <span className="font-semibold text-sky-700 dark:text-sky-300/90 mr-1">{idx + 1}.</span>
-                              <span className="align-middle">{chart.name || `Chart ${idx + 1}`}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowQuickJumpMenu(false);
-                  handleQuickJumpStep(1);
-                }}
-                disabled={quickJumpIndex < 0 || quickJumpIndex >= filteredCharts.length - 1}
-                className="px-2.5 py-1.5 rounded-lg border border-sky-300/80 dark:border-sky-500/25 bg-white/90 dark:bg-black/20 text-[11px] text-slate-700 dark:text-slate-300 hover:text-sky-900 dark:hover:text-white hover:bg-sky-100/80 dark:hover:bg-sky-500/10 disabled:opacity-55 disabled:cursor-not-allowed transition-colors"
+              <div className="h-4 w-px bg-border/30 mx-0.5" />
+              <button 
+                onClick={() => handleOpenInStudio(null)}
+                className={`p-1.5 rounded-lg transition-all ${activeStudioChartId === null && sidebarOpen ? 'text-emerald-400 hover:text-emerald-300' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Create New Analysis"
               >
-                Next
+                <Plus className="w-3.5 h-3.5" />
               </button>
-              <div className="text-[10px] font-mono text-slate-700 dark:text-slate-300/80 shrink-0 rounded-md px-2 py-1 bg-white/90 dark:bg-black/20 border border-sky-300/70 dark:border-sky-500/15">
-                {quickJumpIndex >= 0 ? `${quickJumpIndex + 1}/${filteredCharts.length}` : `0/${filteredCharts.length}`}
-              </div>
             </div>
 
-            <div className="flex items-center justify-end gap-1.5 sm:gap-3 shrink-0 w-auto">
-              {isReorderEnabled && isOrderDirty && (
-                <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                  <button
-                    onClick={handleSaveOrder}
-                    disabled={reorderMutation.isPending}
-                    className="flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95 whitespace-nowrap"
-                  >
-                    {reorderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    <span className="hidden sm:inline">SAVE RANK</span>
-                  </button>
-                </div>
-              )}
-
-              <div className="relative" ref={actionRef}>
-                <button
-                  onClick={() => setShowActionMenu(!showActionMenu)}
-                  className={`
-                    flex items-center gap-1.5 sm:gap-2 p-2 sm:p-2.5 bg-white/85 dark:bg-secondary/10 border rounded-xl transition-all duration-300
-                    ${showActionMenu ? 'border-sky-500/60 bg-sky-100/70 dark:bg-sky-500/5 shadow-lg shadow-sky-500/10' : 'border-sky-300/70 dark:border-border/50 hover:bg-sky-100/70 dark:hover:bg-accent/10'}
-                  `}
-                >
-                  <div className="relative">
-                    <RefreshCw className={`w-4 h-4 transition-colors ${isRefreshing ? 'animate-spin text-sky-400' : showActionMenu ? 'text-sky-400' : 'text-muted-foreground'}`} />
-                    {(exporting || exportingHtml) && (
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-sky-500 rounded-full animate-pulse" />
-                    )}
-                  </div>
-                  <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform duration-300 ${showActionMenu ? 'rotate-180 text-foreground' : ''}`} />
-                </button>
-
-                <AnimatePresence>
-                  {showActionMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute right-0 top-full mt-2 w-52 !bg-white dark:!bg-slate-900 border border-border/50 rounded-xl shadow-2xl p-1 z-50 overflow-hidden !opacity-100"
-                      style={{ backgroundColor: 'rgb(var(--background))' }}
-                    >
-                      {canRefreshAllCharts && (
-                        <>
-                          <button
-                            onClick={() => { handleRefreshAll(); setShowActionMenu(false); }}
-                            disabled={isRefreshing}
-                            className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-all group/opt disabled:opacity-30"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-6 h-6 rounded-md bg-sky-500/10 flex items-center justify-center border border-sky-500/20 group-hover/opt:border-sky-500/40">
-                                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-400' : 'text-sky-400'}`} />
-                              </div>
-                              <span>Refresh Charts</span>
-                            </div>
-                            {isRefreshing && <span className="text-[9px] text-sky-500 animate-pulse font-mono font-bold tracking-tighter">LIVE</span>}
-                          </button>
-
-                          <div className="h-px bg-border/20 my-1 mx-1" />
-                        </>
-                      )}
-
-                      <button
-                        onClick={() => { handleExportPDF(); setShowActionMenu(false); }}
-                        disabled={exporting}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-all group/opt disabled:opacity-30"
-                      >
-                        <div className="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover/opt:border-emerald-500/40">
-                          <FileDown className={`w-3.5 h-3.5 ${exporting ? 'animate-pulse text-emerald-400' : 'text-emerald-400'}`} />
-                        </div>
-                        <span>
-                          {exporting ? 'Processing PDF...' : 'To PDF'}
-                        </span>
-                      </button>
-
-                      <button
-                        onClick={() => { handleExportHTML(); setShowActionMenu(false); }}
-                        disabled={exportingHtml}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold text-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-all group/opt disabled:opacity-30"
-                      >
-                        <div className="w-6 h-6 rounded-md bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 group-hover/opt:border-indigo-500/40">
-                          <Monitor className={`w-3.5 h-3.5 ${exportingHtml ? 'animate-pulse text-indigo-400' : 'text-indigo-400'}`} />
-                        </div>
-                        <span>
-                          {exportingHtml ? 'Packaging...' : 'To HTML'}
-                        </span>
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+            <div className="flex items-center gap-2">
+               <span className="text-[9px] font-bold text-muted-foreground/70 uppercase tracking-widest">Navigator</span>
+               <span className="text-[8px] tabular-nums px-1.5 py-0.5 rounded-full bg-sky-500/5 text-muted-foreground font-mono border border-border/20">
+                  {filteredCharts.length}
+               </span>
             </div>
+
+            <button 
+              onClick={() => setSidebarOpen(false)}
+              className="p-1.5 rounded-lg hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors"
+              title="Close Sidebar"
+            >
+              <PanelLeftClose className="w-3.5 h-3.5" />
+            </button>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="shrink-0 border-t border-border/20 p-2 flex gap-1">
+          {canRefreshAllCharts && (
+            <button
+              onClick={handleRefreshAll}
+              disabled={isRefreshing}
+              className="flex-1 flex items-center justify-center p-1.5 rounded-lg text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 transition-all disabled:opacity-50"
+              title="Refresh all charts"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+          {isOwner && (
+            <>
+              <button
+                onClick={handleExportPDF}
+                disabled={exporting}
+                className="flex-1 flex items-center justify-center p-1.5 rounded-lg text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all disabled:opacity-50"
+                title={exporting ? 'Generating PDF...' : 'Download PDF'}
+              >
+                <FileDown className={`w-3.5 h-3.5 ${exporting ? 'animate-pulse' : ''}`} />
+              </button>
+              <button
+                onClick={handleExportHTML}
+                disabled={exportingHtml}
+                className="flex-1 flex items-center justify-center p-1.5 rounded-lg text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all disabled:opacity-50"
+                title={exportingHtml ? 'Generating HTML...' : 'Download HTML'}
+              >
+                <FileDown className={`w-3.5 h-3.5 ${exportingHtml ? 'animate-pulse' : ''}`} />
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Search - Ultra Compact */}
+        <div className="px-3 py-2 border-b border-border/20 bg-foreground/[0.01]">
+          <div className="relative group">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 group-focus-within:text-sky-500 transition-colors" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search..."
+              className="w-full pl-7 pr-3 py-1 bg-secondary/30 border border-border/30 rounded text-[9px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0 transition-all"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-accent/30 text-muted-foreground/60"
+              >
+                <X className="w-2 h-2" />
+              </button>
+            )}
           </div>
         </div>
-      </div>
 
-      <div className="h-[50px] md:h-[56px]" />
+        {/* Scrollable Indicator List - Compact Items */}
+        <div className="flex-grow overflow-y-auto custom-scrollbar px-1.5 py-2 space-y-px">
+          {filteredCharts.map((chart, idx) => {
+            const isActive = chart.id === quickJumpId;
+            return (
+              <button
+                key={chart.id}
+                onClick={() => handleQuickJumpSelect(chart.id)}
+                className={`w-full group relative flex items-start gap-2 px-2 py-1 rounded cursor-pointer transition-all duration-150 border ${
+                  isActive
+                    ? 'bg-sky-500/10 border-sky-500/10'
+                    : 'border-transparent hover:bg-accent/20'
+                }`}
+              >
+                {/* 🔢 Index Number - Smaller */}
+                <div className={`mt-0.5 text-[8px] font-mono shrink-0 w-5 h-3 flex items-center justify-center rounded border transition-colors ${
+                  isActive ? 'bg-sky-500/20 text-sky-400 border-sky-500/20' : 'bg-foreground/5 text-muted-foreground/70 border-border/20'
+                }`}>
+                  {idx + 1}
+                </div>
 
-      {/* 🖼️ Grid Display */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-8">
-        {filteredCharts.map((chart, idx) => (
-          <motion.div
-            key={chart.id}
-            id={`chart-anchor-${chart.id}`}
-            ref={setChartAnchorRef(chart.id)}
-            className="h-full flex flex-col"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ 
-              duration: 0.5, 
-              ease: [0.23, 1, 0.32, 1],
-              delay: idx % 6 * 0.05
-            }}
-          >
-            <ChartCard
-              chart={chart}
-              canEdit={canEditChart(chart)}
-              canRefresh={canRefreshChart(chart)}
-              canDelete={canDeleteChart(chart)}
-              canManageVisibility={canManageVisibility}
-              isReorderable={isReorderEnabled}
-              onTogglePdf={handleTogglePdf}
-              onRefreshChart={handleRefreshChart}
-              onCopyChart={handleCopyFromHeader}
-              onDeleteChart={handleDeleteChart}
-              isRefreshingChart={!!refreshingChartIds[chart.id]}
-              isDeletingChart={!!deletingChartIds[chart.id]}
-              isSyncing={reorderMutation.isPending}
-              onRankChange={handleRankChange}
-              onMoveUp={(id) => handleMoveBy(id, -1)}
-              onMoveDown={(id) => handleMoveBy(id, 1)}
-              copySignal={copySignals[chart.id] || 0}
-              index={idx}
-              totalCharts={filteredCharts.length}
-              onOpenStudio={onOpenStudio}
-            />
-          </motion.div>
-        ))}
-      </div>
+                {/* 📝 Content - Smaller */}
+                <div className="flex-1 min-w-0 flex flex-col items-start text-left">
+                  <span className={`text-[9px] font-medium leading-tight truncate w-full ${isActive ? 'text-sky-300' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                    {chart.name || 'Untitled'}
+                  </span>
+                  <div className="flex items-center gap-1 opacity-50">
+                    <span className="text-[7px] font-mono uppercase tracking-tighter text-muted-foreground/60">
+                      {chart.category || 'ANALYSIS'}
+                    </span>
+                    {chart.export_pdf && <div className="w-0.5 h-0.5 rounded-full bg-emerald-500" />}
+                  </div>
+                </div>
 
-      {/* 📭 Empty State */}
-      {filteredCharts.length === 0 && (
-        <div className="py-32 text-center glass-card border-dashed border-white/10 bg-transparent animate-in zoom-in-95 duration-500">
-          <Layers className="w-12 h-12 text-slate-700 mx-auto mb-4 opacity-20" />
-          <h3 className="text-xl font-medium text-slate-500">No matching indicators</h3>
-          <p className="text-slate-600 mt-2 text-sm font-light">No charts available with your current access.</p>
+                {isActive && (
+                   <motion.div layoutId="sidebar-active" className="absolute left-0 w-0.5 h-2.5 bg-sky-500/60 rounded-r-full" />
+                )}
+              </button>
+            );
+          })}
+          {filteredCharts.length === 0 && (
+            <div className="py-6 px-4 text-center">
+               <Filter className="w-4 h-4 text-slate-900 mx-auto mb-1 opacity-10" />
+               <p className="text-[8px] text-slate-700 font-medium tracking-tight">NO MATCHES</p>
+            </div>
+          )}
         </div>
-      )}
+      </aside>
+
+      {/* 🧭 Mobile Overlay Backdrop - Below Sidebar but Above Content */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSidebarOpen(false)}
+            className="md:hidden fixed inset-0 top-12 z-[90] bg-foreground/40 dark:bg-black/60 backdrop-blur-sm"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Main Content Area - Scrollable Flex Child */}
+      <main ref={mainScrollRef} className="flex-1 min-w-0 h-full overflow-y-auto custom-scrollbar relative flex flex-col bg-background">
+        {activeStudioChartId !== null ? (
+          <div className="h-full w-full relative">
+             {!sidebarOpen && (
+               <button
+                 onClick={() => setSidebarOpen(true)}
+                 className="absolute left-3 top-3 z-[40] p-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all active:scale-95"
+                 title="Open Navigator"
+               >
+                 <PanelLeftOpen className="w-4 h-4" />
+               </button>
+             )}
+             <CustomChartEditor
+                mode="integrated"
+                initialChartId={activeStudioChartId === '' ? null : activeStudioChartId}
+                onClose={handleCloseStudio}
+             />
+          </div>
+        ) : (
+          <div className={`transition-all duration-300 p-4 md:p-8 xl:p-10 ${sidebarOpen ? 'xl:pr-16 2xl:pr-24' : ''}`}>
+            {/* Toggle Button (when sidebar is closed) */}
+            {!sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="fixed left-4 top-16 z-[40] p-3 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 shadow-xl shadow-sky-500/10 transition-all active:scale-95"
+                title="Open Navigator"
+              >
+                <PanelLeftOpen className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* 🖼️ Grid Display — grouped by category */}
+            <div className={`space-y-8 mx-auto ${sidebarOpen ? 'max-w-[1400px]' : 'max-w-[1600px]'}`}>
+            {groupedCharts.map(({ category, charts: groupCharts }) => {
+              const globalOffset = filteredCharts.indexOf(groupCharts[0]);
+              return (
+                <div key={category}>
+                  {/* Category Section Header */}
+                  {groupedCharts.length > 1 && (
+                    <div className="flex items-center gap-3 mb-4 px-1">
+                      <div className="h-px flex-1 bg-border/30" />
+                      <span className="text-[9px] font-mono font-bold uppercase tracking-[0.25em] text-muted-foreground/50 px-2 shrink-0">
+                        {category}
+                      </span>
+                      <span className="text-[8px] font-mono text-muted-foreground/30 shrink-0">
+                        {groupCharts.length}
+                      </span>
+                      <div className="h-px flex-1 bg-border/30" />
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 lg:gap-10">
+                    {groupCharts.map((chart, localIdx) => {
+                      const idx = globalOffset + localIdx;
+                      return (
+                        <motion.div
+                          key={chart.id}
+                          id={`chart-anchor-${chart.id}`}
+                          ref={setChartAnchorRef(chart.id)}
+                          className="h-full flex flex-col"
+                          initial={{ opacity: 0, y: 20 }}
+                          whileInView={{ opacity: 1, y: 0 }}
+                          viewport={{ once: true, margin: "-50px" }}
+                          transition={{
+                            duration: 0.5,
+                            ease: [0.23, 1, 0.32, 1],
+                            delay: localIdx % 4 * 0.05
+                          }}
+                        >
+                          <ChartCard
+                            chart={chart}
+                            canEdit={canEditChart(chart)}
+                            canRefresh={canRefreshChart(chart)}
+                            canDelete={canDeleteChart(chart)}
+                            canManageVisibility={canManageVisibility}
+                            isReorderable={isReorderEnabled}
+                            onTogglePdf={handleTogglePdf}
+                            onRefreshChart={handleRefreshChart}
+                            onCopyChart={handleCopyFromHeader}
+                            onDeleteChart={handleDeleteChart}
+                            isRefreshingChart={!!refreshingChartIds[chart.id]}
+                            isDeletingChart={!!deletingChartIds[chart.id]}
+                            isSyncing={reorderMutation.isPending}
+                            onRankChange={handleRankChange}
+                            onMoveUp={(id) => handleMoveBy(id, -1)}
+                            onMoveDown={(id) => handleMoveBy(id, 1)}
+                            copySignal={copySignals[chart.id] || 0}
+                            index={idx}
+                            totalCharts={filteredCharts.length}
+                            onOpenStudio={handleOpenInStudio}
+                          />
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 📭 Empty State */}
+          {filteredCharts.length === 0 && (
+            <div className="py-32 text-center glass-card border-dashed border-border/20 bg-transparent animate-in zoom-in-95 duration-500">
+              <Layers className="w-12 h-12 text-slate-700 mx-auto mb-4 opacity-20" />
+              <h3 className="text-xl font-medium text-slate-500">No matching indicators</h3>
+              <p className="text-slate-600 mt-2 text-sm font-light">No charts available with your current access.</p>
+            </div>
+          )}
+          </div>
+        )}
+      </main>
+      {/* 💾 Save Order Floating Bar */}
+      <AnimatePresence>
+        {isReorderEnabled && isOrderDirty && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-4 py-2.5 bg-popover border border-amber-500/30 rounded-2xl shadow-2xl shadow-amber-500/10"
+          >
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-[11px] font-mono text-amber-300 uppercase tracking-widest">Unsaved order changes</span>
+            <div className="flex items-center gap-2 ml-2">
+              <button
+                onClick={handleResetOrder}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/10 text-slate-400 hover:text-white text-[10px] font-bold transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" /> Reset
+              </button>
+              <button
+                onClick={handleSaveOrder}
+                disabled={reorderMutation.isPending}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-bold transition-colors disabled:opacity-50"
+              >
+                {reorderMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Save Order
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {deleteTarget && (
           <motion.div
-            className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+            className="fixed inset-0 z-[220] flex items-center justify-center bg-foreground/40 dark:bg-black/60 backdrop-blur-sm px-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setDeleteTarget(null)}
           >
             <motion.div
-              className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-slate-950 shadow-2xl shadow-rose-900/20 p-5"
+              className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-popover shadow-2xl shadow-rose-900/20 p-5"
               initial={{ y: 16, scale: 0.97, opacity: 0 }}
               animate={{ y: 0, scale: 1, opacity: 1 }}
               exit={{ y: 10, scale: 0.98, opacity: 0 }}

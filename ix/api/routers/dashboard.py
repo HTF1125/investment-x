@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi import Request
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, load_only
 from sqlalchemy import or_
 from typing import List, Dict, Any
 from ix.db.conn import get_session
@@ -71,27 +71,46 @@ def get_dashboard_summary(
     request: Request,
     response: Response,
     db: Session = Depends(get_session),
-    include_figures: bool = True,  # Default to true for fast dashboard load
+    include_figures: bool = False,
+    include_code: bool = False,
 ):
     """
     Returns a summary of all categories and chart metadata.
-    Includes figure data by default to prevent client-side fetching waterfalls.
+    Figure/code payloads are excluded by default to reduce response size and RAM usage.
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
+
+    current_user = _get_optional_user(request)
+    is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
+    current_uid = str(getattr(current_user, "id", "") or "") if current_user else None
+    include_code_for_user = bool(include_code and is_admin)
+
+    chart_columns = [
+        Chart.id,
+        Chart.name,
+        Chart.category,
+        Chart.description,
+        Chart.updated_at,
+        Chart.rank,
+        Chart.export_pdf,
+        Chart.created_by_user_id,
+    ]
+    if include_figures:
+        chart_columns.append(Chart.figure)
+    if include_code_for_user:
+        chart_columns.append(Chart.code)
+
     query = db.query(Chart).options(
+        load_only(*chart_columns),
         joinedload(Chart.creator).load_only(
             User.id,
             User.email,
             User.first_name,
             User.last_name,
-        )
+        ),
     )
-
-    current_user = _get_optional_user(request)
-    is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
-    current_uid = str(getattr(current_user, "id", "") or "") if current_user else None
 
     if not is_admin:
         if current_uid:
@@ -116,24 +135,26 @@ def get_dashboard_summary(
             summary["charts_by_category"][cat] = []
             categories_set.add(cat)
 
-        meta = ChartMetaSchema.from_orm(chart)
         creator = getattr(chart, "creator", None)
         creator_id = getattr(chart, "created_by_user_id", None)
         creator_email = getattr(creator, "email", None) if creator else None
         creator_name = " ".join(
             [x for x in [getattr(creator, "first_name", None), getattr(creator, "last_name", None)] if x]
         ) or None
-        meta.created_by_user_id = str(creator_id) if creator_id else None
-        meta.created_by_email = str(creator_email) if creator_email else None
-        meta.created_by_name = creator_name
-
-        # Security: Never leak logic to non-admins
-        if not is_admin:
-            meta.code = None
-
-        # Include figure for all charts
-        if include_figures:
-            meta.figure = _theme_figure_for_delivery(chart.figure)
+        meta = ChartMetaSchema(
+            id=str(chart.id),
+            name=chart.name or "Untitled",
+            category=chart.category,
+            description=chart.description,
+            updated_at=chart.updated_at,
+            rank=int(chart.rank or 0),
+            export_pdf=bool(chart.export_pdf),
+            created_by_user_id=str(creator_id) if creator_id else None,
+            created_by_email=str(creator_email) if creator_email else None,
+            created_by_name=creator_name,
+            code=chart.code if include_code_for_user else None,
+            figure=_theme_figure_for_delivery(chart.figure) if include_figures else None,
+        )
 
         summary["charts_by_category"][cat].append(meta)
 
@@ -155,10 +176,17 @@ def get_chart_figure(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    chart = db.query(Chart).filter(Chart.id == chart_id).first()
+    chart_fields = [
+        Chart.id,
+        Chart.name,
+        Chart.figure,
+        Chart.export_pdf,
+        Chart.created_by_user_id,
+    ]
+    chart = db.query(Chart).options(load_only(*chart_fields)).filter(Chart.id == chart_id).first()
     if not chart:
         # Try finding by name if ID fails (less preferred but helps migration)
-        chart = db.query(Chart).filter(Chart.name == chart_id).first()
+        chart = db.query(Chart).options(load_only(*chart_fields)).filter(Chart.name == chart_id).first()
         if not chart:
             raise HTTPException(status_code=404, detail="Chart not found")
 

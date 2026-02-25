@@ -129,8 +129,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await meRes.json();
         setUser(normalizeUser(userData));
       }
-      // Always redirect — initAuth on reload will re-validate
-      window.location.href = '/';
+      // Redirect to dashboard without full page reload
+      router.push('/');
     } catch (err) {
       throw err;
     } finally {

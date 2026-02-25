@@ -13,11 +13,11 @@ numpy>=1.24.0,<2.1.0
 pandas>=2.0.0,<2.3.0
 scipy
 plotly
-streamlit
 cachetools
 yfinance
 pandas-datareader==0.10.0
 apscheduler
+slowapi
 pytz
 scikit-learn
 setuptools
@@ -26,7 +26,5 @@ google-genai
 markdown
 xlsxwriter
 openpyxl
-dash
-dash-bootstrap-components
 reportlab
 kaleido==0.2.1

@@ -32,7 +32,7 @@ class CustomChart(Base):
     # Since we added column "order", we map it here.
     from sqlalchemy import Integer
 
-    rank = Column("order", Integer, default=0)
+    rank = Column("order", Integer, default=0, index=True)
 
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(

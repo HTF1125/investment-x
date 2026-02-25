@@ -49,6 +49,121 @@ interface NoteDetail {
   images: NoteImageMeta[];
 }
 
+interface CustomChartListItem {
+  id: string;
+  name?: string | null;
+  category?: string | null;
+  description?: string | null;
+  updated_at?: string | null;
+}
+
+interface ExternalImageInsertRequest {
+  token: string;
+  url: string;
+  alt?: string;
+}
+
+const NOTE_IMAGE_MAX_BYTES = 7_700_000;
+const SNAPSHOT_PROFILES = [
+  { width: 1400, height: 840, scale: 2, format: 'webp' as const },
+  { width: 1280, height: 760, scale: 1.6, format: 'webp' as const },
+  { width: 1200, height: 720, scale: 1.5, format: 'png' as const },
+];
+
+function sanitizeFilenameBase(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || 'chart-snapshot';
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  if (!res.ok) {
+    throw new Error('Failed to convert chart image.');
+  }
+  return res.blob();
+}
+
+async function renderFigureToSnapshotFile(figure: any, fileLabel: string): Promise<File> {
+  if (typeof window === 'undefined' || !document?.body) {
+    throw new Error('Chart snapshots are only available in the browser.');
+  }
+
+  const PlotlyModule = await import('plotly.js-dist-min');
+  const Plotly = (PlotlyModule.default || PlotlyModule) as any;
+
+  const mount = document.createElement('div');
+  mount.style.position = 'fixed';
+  mount.style.left = '-20000px';
+  mount.style.top = '0';
+  mount.style.width = `${SNAPSHOT_PROFILES[0].width}px`;
+  mount.style.height = `${SNAPSHOT_PROFILES[0].height}px`;
+  mount.style.pointerEvents = 'none';
+  mount.style.opacity = '0';
+  document.body.appendChild(mount);
+
+  try {
+    const data = Array.isArray(figure?.data) ? figure.data : [];
+    const layout = figure?.layout && typeof figure.layout === 'object' ? figure.layout : {};
+    await Plotly.newPlot(
+      mount,
+      data,
+      {
+        ...layout,
+        width: SNAPSHOT_PROFILES[0].width,
+        height: SNAPSHOT_PROFILES[0].height,
+        paper_bgcolor: '#ffffff',
+        plot_bgcolor: '#ffffff',
+      },
+      {
+        displayModeBar: false,
+        staticPlot: true,
+        responsive: false,
+      }
+    );
+
+    const safeBase = sanitizeFilenameBase(fileLabel);
+    let lastBlob: Blob | null = null;
+    let lastFormat: 'png' | 'webp' = 'png';
+
+    for (const profile of SNAPSHOT_PROFILES) {
+      const dataUrl = await Plotly.toImage(mount, {
+        format: profile.format,
+        width: profile.width,
+        height: profile.height,
+        scale: profile.scale,
+      });
+      const blob = await dataUrlToBlob(dataUrl);
+      if (!blob.size) continue;
+
+      lastBlob = blob;
+      lastFormat = profile.format;
+      if (blob.size <= NOTE_IMAGE_MAX_BYTES) {
+        const extension = profile.format === 'webp' ? 'webp' : 'png';
+        const contentType = profile.format === 'webp' ? 'image/webp' : 'image/png';
+        return new File([blob], `${safeBase}.${extension}`, { type: contentType });
+      }
+    }
+
+    if (lastBlob) {
+      const extension = lastFormat === 'webp' ? 'webp' : 'png';
+      const contentType = lastFormat === 'webp' ? 'image/webp' : 'image/png';
+      return new File([lastBlob], `${safeBase}.${extension}`, { type: contentType });
+    }
+
+    throw new Error('Unable to render chart image.');
+  } finally {
+    try {
+      Plotly.purge(mount);
+    } catch {
+      // no-op
+    }
+    mount.remove();
+  }
+}
+
 function sortNoteSummaries(notes: NoteSummary[]): NoteSummary[] {
   return [...notes].sort((a, b) => {
     if (a.pinned !== b.pinned) {
@@ -112,8 +227,13 @@ export default function NotesPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [chartSearchQuery, setChartSearchQuery] = useState('');
+  const [insertingChartId, setInsertingChartId] = useState<string | null>(null);
+  const [externalImageInsertRequest, setExternalImageInsertRequest] =
+    useState<ExternalImageInsertRequest | null>(null);
   const originalRef = useRef<{ title: string; content: string; pinned: boolean } | null>(null);
   const hydratedNoteIdRef = useRef<string | null>(null);
+  const lastServerUpdatedAtRef = useRef<string | null>(null);
   const titleRef = useRef('');
   const contentRef = useRef('');
   const pinnedRef = useRef(false);
@@ -132,7 +252,15 @@ export default function NotesPage() {
     staleTime: 120_000,
   });
 
+  const chartLibraryQuery = useQuery({
+    queryKey: ['report-chart-library'],
+    enabled: isAuthenticated,
+    queryFn: () => apiFetchJson<CustomChartListItem[]>('/api/custom?include_code=false&include_figure=false'),
+    staleTime: 120_000,
+  });
+
   const notes = notesQuery.data || [];
+  const chartLibrary = chartLibraryQuery.data || [];
 
   useEffect(() => {
     if (!notes.length) {
@@ -147,6 +275,7 @@ export default function NotesPage() {
       contentRef.current = '';
       pinnedRef.current = false;
       hydratedNoteIdRef.current = null;
+      lastServerUpdatedAtRef.current = null;
       originalRef.current = null;
       return;
     }
@@ -169,11 +298,24 @@ export default function NotesPage() {
     );
   }, [notes, searchQuery]);
 
+  const filteredChartLibrary = useMemo(() => {
+    const q = chartSearchQuery.trim().toLowerCase();
+    if (!q) return chartLibrary;
+    return chartLibrary.filter((chart) => {
+      const name = String(chart.name || '').toLowerCase();
+      const category = String(chart.category || '').toLowerCase();
+      const description = String(chart.description || '').toLowerCase();
+      return name.includes(q) || category.includes(q) || description.includes(q);
+    });
+  }, [chartLibrary, chartSearchQuery]);
+
   const noteQuery = useQuery({
     queryKey: ['investment-note', selectedNoteId],
     enabled: isAuthenticated && !!selectedNoteId,
     queryFn: () => apiFetchJson<NoteDetail>(`/api/notes/${selectedNoteId}`),
     staleTime: 15_000,
+    refetchInterval: selectedNoteId ? 30_000 : false,
+    refetchOnWindowFocus: true,
   });
   const noteLoading = Boolean(selectedNoteId) && noteQuery.isLoading;
 
@@ -190,14 +332,11 @@ export default function NotesPage() {
     return dirty;
   }, [selectedNoteId]);
 
-  useEffect(() => {
-    const note = noteQuery.data;
-    if (!note) return;
-    if (hydratedNoteIdRef.current === note.id) return;
-    hydratedNoteIdRef.current = note.id;
+  const hydrateFromNote = useCallback((note: NoteDetail) => {
     const nextTitle = note.title || '';
     const nextContent = note.content || '';
     const nextPinned = !!note.pinned;
+
     titleRef.current = nextTitle;
     contentRef.current = nextContent;
     pinnedRef.current = nextPinned;
@@ -216,7 +355,34 @@ export default function NotesPage() {
       content: nextContent,
       pinned: nextPinned,
     };
-  }, [noteQuery.data]);
+  }, []);
+
+  useEffect(() => {
+    const note = noteQuery.data;
+    if (!note) return;
+
+    const incomingUpdatedAt = note.updated_at || null;
+    const isFirstHydrationForNote = hydratedNoteIdRef.current !== note.id;
+
+    if (isFirstHydrationForNote) {
+      hydratedNoteIdRef.current = note.id;
+      lastServerUpdatedAtRef.current = incomingUpdatedAt;
+      hydrateFromNote(note);
+      return;
+    }
+
+    if (!incomingUpdatedAt || incomingUpdatedAt === lastServerUpdatedAtRef.current) return;
+    lastServerUpdatedAtRef.current = incomingUpdatedAt;
+    if (incomingUpdatedAt === lastSavedAt) return;
+
+    if (recomputeDirty()) {
+      setStatus('This report changed on another session. Save to overwrite, or refresh to sync.');
+      return;
+    }
+
+    hydrateFromNote(note);
+    setStatus('Synced latest collaborator updates.');
+  }, [noteQuery.data, hydrateFromNote, recomputeDirty, lastSavedAt]);
 
   useEffect(
     () => () => {
@@ -375,6 +541,35 @@ export default function NotesPage() {
     [selectedNoteId, uploadMutation, queryClient]
   );
 
+  const handleInsertChartBlock = useCallback(
+    async (chart: CustomChartListItem) => {
+      if (!selectedNoteId) {
+        setStatus('Create or select a report first.');
+        return;
+      }
+
+      setInsertingChartId(chart.id);
+      setStatus(`Rendering chart image: ${chart.name || chart.id}...`);
+      try {
+        const figure = await apiFetchJson<any>(`/api/v1/dashboard/charts/${chart.id}/figure`);
+        const snapshotFile = await renderFigureToSnapshotFile(figure, chart.name || chart.id);
+        const image = await handleImageUpload(snapshotFile);
+        setExternalImageInsertRequest({
+          token: `${chart.id}-${Date.now()}`,
+          url: image.url,
+          alt: chart.name || chart.id || 'Chart image',
+        });
+        setStatus(`Chart inserted into report: ${chart.name || chart.id}`);
+      } catch (err: any) {
+        setSaveState('error');
+        setStatus(err?.message || 'Failed to insert chart image.');
+      } finally {
+        setInsertingChartId(null);
+      }
+    },
+    [selectedNoteId, handleImageUpload]
+  );
+
   const saveNow = useCallback(() => {
     if (!selectedNoteId) return;
     if (uploadMutation.isPending || updateMutation.isPending) return;
@@ -466,7 +661,7 @@ export default function NotesPage() {
   const handleCreateNote = () => {
     setStatus(null);
     createMutation.mutate({
-      title: 'New Investment Note',
+      title: 'New Report Draft',
       content: '',
       links: [],
       pinned: false,
@@ -496,7 +691,7 @@ export default function NotesPage() {
       <AppShell hideFooter>
         <div className="h-[calc(100vh-3rem)] flex items-center justify-center text-muted-foreground">
           <Loader2 className="w-5 h-5 animate-spin mr-2" />
-          Loading notes...
+          Loading reports...
         </div>
       </AppShell>
     );
@@ -509,7 +704,7 @@ export default function NotesPage() {
           <div className="h-10 px-3 border-b border-border/50 flex items-center justify-between">
             <div className="text-[12px] font-semibold tracking-wide flex items-center gap-2">
               <FileText className="w-4 h-4 text-sky-400" />
-              Notes
+              Reports
             </div>
             <button
               onClick={handleCreateNote}
@@ -526,7 +721,7 @@ export default function NotesPage() {
               <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search notes..."
+                placeholder="Search reports..."
                 className="w-full h-8 pl-8 pr-2.5 rounded-md border border-border/50 bg-background/50 text-xs outline-none focus:ring-2 focus:ring-sky-500/25"
               />
             </div>
@@ -534,10 +729,10 @@ export default function NotesPage() {
 
           <div className="min-h-0 flex-1 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
             {notesQuery.isLoading && (
-              <div className="text-xs text-muted-foreground px-2 py-3">Loading notes...</div>
+              <div className="text-xs text-muted-foreground px-2 py-3">Loading reports...</div>
             )}
             {!notesQuery.isLoading && filteredNotes.length === 0 && (
-              <div className="text-xs text-muted-foreground px-2 py-3">No notes yet.</div>
+              <div className="text-xs text-muted-foreground px-2 py-3">No reports yet.</div>
             )}
             {filteredNotes.map((note) => {
               const active = note.id === selectedNoteId;
@@ -566,7 +761,10 @@ export default function NotesPage() {
 
         <section className="min-h-0 flex flex-col bg-background">
           <div className="h-10 px-3 border-b border-border/50 flex items-center justify-between gap-2 shrink-0">
-            <div className="text-xs text-muted-foreground">{saveHint}</div>
+            <div className="text-xs text-muted-foreground inline-flex items-center gap-2">
+              {selectedNoteId && noteQuery.isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />}
+              {saveHint}
+            </div>
             <div className="flex items-center gap-1.5">
               <button
                 onClick={handlePinnedToggle}
@@ -574,7 +772,7 @@ export default function NotesPage() {
                 className="h-6 px-2 rounded-md border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 disabled:opacity-40"
               >
                 {pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
-                {pinned ? 'Unpin' : 'Pin'}
+                {pinned ? 'Unpublish' : 'Publish'}
               </button>
               <button
                 onClick={saveNow}
@@ -599,7 +797,7 @@ export default function NotesPage() {
             <div className="w-full px-3 py-3 md:px-4 md:py-4 lg:px-5 lg:py-5">
               {!selectedNoteId && (
                 <div className="h-[48vh] rounded-lg border border-border/50 bg-card/25 flex items-center justify-center text-sm text-muted-foreground">
-                  Create a note to start writing.
+                  Create a report to start writing.
                 </div>
               )}
 
@@ -609,13 +807,76 @@ export default function NotesPage() {
                     <input
                       value={title}
                       onChange={handleTitleChange}
-                      placeholder="Note title"
+                      placeholder="Report title"
                       disabled={noteLoading}
                       className="w-full bg-transparent text-2xl md:text-3xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground/55 disabled:opacity-50"
                     />
 
                     <div className="mt-1 text-[11px] text-muted-foreground">
-                      Paste links/images directly. Images render inline while editing.
+                      Compose report text and insert custom chart blocks as inline visuals.
+                    </div>
+                  </div>
+
+                  <div className="mt-2 rounded-md border border-border/40 bg-card/15 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Chart Blocks</div>
+                      <div className="text-[10px] text-muted-foreground">{filteredChartLibrary.length}</div>
+                    </div>
+                    <div className="mt-1.5 relative">
+                      <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        value={chartSearchQuery}
+                        onChange={(e) => setChartSearchQuery(e.target.value)}
+                        placeholder="Search custom charts..."
+                        className="w-full h-7 pl-7 pr-2 rounded-md border border-border/50 bg-background/50 text-[11px] outline-none focus:ring-2 focus:ring-sky-500/25"
+                      />
+                    </div>
+                    <div className="mt-1.5 max-h-28 overflow-y-auto custom-scrollbar space-y-1">
+                      {chartLibraryQuery.isLoading && (
+                        <div className="text-[10px] text-muted-foreground px-2 py-1.5 inline-flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Loading chart library...
+                        </div>
+                      )}
+                      {chartLibraryQuery.isError && (
+                        <div className="text-[10px] text-rose-300 px-2 py-1.5">
+                          Unable to load chart library.
+                        </div>
+                      )}
+                      {!chartLibraryQuery.isLoading && !chartLibraryQuery.isError && filteredChartLibrary.length === 0 && (
+                        <div className="text-[10px] text-muted-foreground px-2 py-1.5">
+                          No charts found.
+                        </div>
+                      )}
+                      {!chartLibraryQuery.isLoading &&
+                        !chartLibraryQuery.isError &&
+                        filteredChartLibrary.slice(0, 18).map((chart) => {
+                          const isAdding = insertingChartId === chart.id;
+                          return (
+                            <div
+                              key={chart.id}
+                              className="rounded border border-border/30 bg-background/35 px-2 py-1 flex items-center justify-between gap-2"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-[10px] font-medium truncate">
+                                  {chart.name || chart.id}
+                                </div>
+                                <div className="text-[10px] text-muted-foreground truncate">
+                                  {chart.category || 'Uncategorized'}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleInsertChartBlock(chart)}
+                                disabled={!!insertingChartId || noteLoading}
+                                className="h-5 px-2 rounded border border-sky-500/35 bg-sky-500/12 text-[10px] font-semibold text-sky-300 hover:bg-sky-500/20 disabled:opacity-40 inline-flex items-center gap-1"
+                              >
+                                {isAdding ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : null}
+                                Add
+                              </button>
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
 
@@ -623,13 +884,14 @@ export default function NotesPage() {
                     {noteLoading ? (
                       <div className="h-[48vh] rounded-lg border border-border/50 bg-card/25 flex items-center justify-center text-sm text-muted-foreground">
                         <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Loading note...
+                        Loading report...
                       </div>
                     ) : (
                       <NotesRichEditor
                         value={editorValue}
                         onChange={handleEditorChange}
                         onImageUpload={handleImageUpload}
+                        externalImageInsertRequest={externalImageInsertRequest}
                         disabled={!selectedNoteId}
                         minHeightClassName="min-h-[48vh]"
                         toolbarStickyTopClassName="top-0"

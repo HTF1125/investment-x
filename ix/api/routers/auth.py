@@ -2,6 +2,7 @@
 Authentication router for login, registration, and token management.
 """
 
+import os
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Annotated
@@ -22,6 +23,15 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
+_COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
+
+# Rate limiter — instance is attached to app.state by main.py
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from fastapi import Request
+
+_limiter = Limiter(key_func=get_remote_address)
+
 
 def set_auth_cookie(
     response: Response, token: str, expires_delta: timedelta | None = None
@@ -37,14 +47,15 @@ def set_auth_cookie(
         max_age=max_age,
         expires=max_age,
         samesite="lax",
-        secure=False,  # Set to True in production with HTTPS
+        secure=_COOKIE_SECURE,
         path="/",
     )
 
 
 @router.post("/auth/login", response_model=Token)
+@_limiter.limit("20/minute")
 def login(
-    response: Response, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+    request: Request, response: Response, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ):
     """
     Login endpoint - OAuth2 compatible.
@@ -67,7 +78,8 @@ def login(
 
 
 @router.post("/auth/login/json", response_model=Token)
-def login_json(response: Response, credentials: UserLogin):
+@_limiter.limit("20/minute")
+def login_json(request: Request, response: Response, credentials: UserLogin):
     """
     Login endpoint - JSON body format.
     Sets HttpOnly cookie for SSR support.

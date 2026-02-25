@@ -328,22 +328,6 @@ def send_data_reports():
     logger.info("Data reports sent successfully.")
 
 
-def send_price_data():
-    """
-    Legacy function - now calls send_data_reports.
-    Kept for backward compatibility.
-    """
-    send_data_reports()
-
-
-def send_timeseries():
-    """
-    Legacy function - now calls send_data_reports.
-    Kept for backward compatibility.
-    """
-    send_data_reports()
-
-
 def daily():
     update_yahoo_data()
     update_fred_data()

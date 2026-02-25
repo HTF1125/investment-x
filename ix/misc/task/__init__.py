@@ -36,9 +36,9 @@ logger = get_logger(__name__)
 #     EconomicCalendar.insert_many(objs)
 
 
-def update_yahoo_data(progress_cb=None, start_index: int = 0, total_count: int | None = None):
-
-    logger.info("Starting Yahoo data update process.")
+def _update_source_data(source_name, fetcher, progress_cb=None, start_index: int = 0, total_count: int | None = None):
+    """Generic update function for a given data source."""
+    logger.info(f"Starting {source_name} data update process.")
 
     count_total = 0
     count_skipped_no_ticker = 0
@@ -49,10 +49,9 @@ def update_yahoo_data(progress_cb=None, start_index: int = 0, total_count: int |
 
     with Session() as session:
         timeseries_list = (
-            session.query(Timeseries).filter(Timeseries.source == "Yahoo").all()
+            session.query(Timeseries).filter(Timeseries.source == source_name).all()
         )
 
-        # Extract all attributes immediately to avoid detached instance errors
         ts_data_list = []
         for ts in timeseries_list:
             ts_data_list.append(
@@ -78,7 +77,7 @@ def update_yahoo_data(progress_cb=None, start_index: int = 0, total_count: int |
 
             logger.debug(f"Fetching data for {ticker} (field: {field}).")
             try:
-                _data = get_yahoo_data(code=ticker)[field]
+                _data = fetcher(code=ticker)[field]
             except Exception as e:
                 logger.warning(f"Error fetching data for {ts_source_code}: {e}")
                 continue
@@ -88,7 +87,6 @@ def update_yahoo_data(progress_cb=None, start_index: int = 0, total_count: int |
                 count_skipped_empty_data += 1
                 continue
 
-            # Reload the object and set data within session
             ts_reloaded = (
                 session.query(Timeseries).filter(Timeseries.id == ts_id).first()
             )
@@ -98,148 +96,24 @@ def update_yahoo_data(progress_cb=None, start_index: int = 0, total_count: int |
                 count_updated += 1
 
     logger.info(
-        f"Yahoo data update complete: "
+        f"{source_name} data update complete: "
         f"{count_total} total, "
         f"{count_updated} updated, "
         f"{count_skipped_no_ticker} skipped (no ticker), "
         f"{count_skipped_empty_data} skipped (empty data)."
     )
+
+
+def update_yahoo_data(progress_cb=None, start_index: int = 0, total_count: int | None = None):
+    _update_source_data("Yahoo", get_yahoo_data, progress_cb, start_index, total_count)
 
 
 def update_fred_data(progress_cb=None, start_index: int = 0, total_count: int | None = None):
-
-    logger.info("Starting Fred data update process.")
-
-    count_total = 0
-    count_skipped_no_ticker = 0
-    count_skipped_empty_data = 0
-    count_updated = 0
-
-    from ix.db.conn import Session
-
-    with Session() as session:
-        timeseries_list = (
-            session.query(Timeseries).filter(Timeseries.source == "Fred").all()
-        )
-
-        # Extract all attributes immediately to avoid detached instance errors
-        ts_data_list = []
-        for ts in timeseries_list:
-            ts_data_list.append(
-                {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
-            )
-
-        for idx, ts_data in enumerate(ts_data_list, start=1):
-            ts_id = ts_data["id"]
-            ts_code = ts_data["code"]
-            ts_source_code = ts_data["source_code"]
-
-            count_total += 1
-            if progress_cb:
-                current = start_index + idx
-                total = total_count if total_count is not None else len(ts_data_list)
-                progress_cb(current, total, ts_code)
-            if ts_source_code is None:
-                logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
-                count_skipped_no_ticker += 1
-                continue
-            ticker, field = str(ts_source_code).split(":")
-            logger.debug(f"Fetching data for {ticker} (field: {field}).")
-            try:
-                _data = get_fred_data(ticker)[field]
-            except Exception as e:
-                logger.warning(f"Error fetching data for {ts_source_code}: {e}")
-                continue
-
-            if _data.empty:
-                logger.debug(f"No data returned for {ts_source_code}. Skipping.")
-                count_skipped_empty_data += 1
-                continue
-
-            # Reload the object and set data within session
-            ts_reloaded = (
-                session.query(Timeseries).filter(Timeseries.id == ts_id).first()
-            )
-            if ts_reloaded is not None:
-                ts_reloaded.data = _data
-                logger.info(f"Updated data for {ts_code} from {ts_source_code}.")
-                count_updated += 1
-
-    logger.info(
-        f"Fred data update complete: "
-        f"{count_total} total, "
-        f"{count_updated} updated, "
-        f"{count_skipped_no_ticker} skipped (no ticker), "
-        f"{count_skipped_empty_data} skipped (empty data)."
-    )
+    _update_source_data("Fred", get_fred_data, progress_cb, start_index, total_count)
 
 
 def update_naver_data(progress_cb=None, start_index: int = 0, total_count: int | None = None):
-
-    logger.info("Starting Naver data update process.")
-
-    count_total = 0
-    count_skipped_no_ticker = 0
-    count_skipped_empty_data = 0
-    count_updated = 0
-
-    from ix.db.conn import Session
-
-    with Session() as session:
-        timeseries_list = (
-            session.query(Timeseries).filter(Timeseries.source == "Naver").all()
-        )
-
-        # Extract all attributes immediately to avoid detached instance errors
-        ts_data_list = []
-        for ts in timeseries_list:
-            ts_data_list.append(
-                {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
-            )
-
-        for idx, ts_data in enumerate(ts_data_list, start=1):
-            ts_id = ts_data["id"]
-            ts_code = ts_data["code"]
-            ts_source_code = ts_data["source_code"]
-
-            count_total += 1
-            if progress_cb:
-                current = start_index + idx
-                total = total_count if total_count is not None else len(ts_data_list)
-                progress_cb(current, total, ts_code)
-            if ts_source_code is None:
-                logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
-                count_skipped_no_ticker += 1
-                continue
-            ticker, field = str(ts_source_code).split(":")
-            logger.debug(f"Fetching data for {ticker} (field: {field}).")
-            try:
-                _data = get_naver_data(ticker)[field]
-            except Exception as e:
-                logger.warning(f"Error fetching data for {ts_source_code}: {e}")
-                continue
-
-            if _data.empty:
-                logger.debug(f"No data returned for {ts_source_code}. Skipping.")
-                count_skipped_empty_data += 1
-                continue
-
-            # Reload the object and set data within session
-            ts_reloaded = (
-                session.query(Timeseries).filter(Timeseries.id == ts_id).first()
-            )
-            if ts_reloaded is not None:
-                ts_reloaded.data = _data
-                logger.info(f"Updated data for {ts_code} from {ts_source_code}.")
-                count_updated += 1
-
-    logger.info(
-        f"Fred data update complete: "
-        f"{count_total} total, "
-        f"{count_updated} updated, "
-        f"{count_skipped_no_ticker} skipped (no ticker), "
-        f"{count_skipped_empty_data} skipped (empty data)."
-    )
+    _update_source_data("Naver", get_naver_data, progress_cb, start_index, total_count)
 
 
 def send_data_reports():
@@ -375,22 +249,6 @@ def send_data_reports():
     email_sender.attach(file_buffer=price_buffer, filename="Data.xlsx")
     email_sender.attach(file_buffer=timeseries_buffer, filename="Timeseries.xlsx")
     email_sender.send()
-
-
-def send_price_data():
-    """
-    Legacy function - now calls send_data_reports.
-    Kept for backward compatibility.
-    """
-    send_data_reports()
-
-
-def send_timeseries():
-    """
-    Legacy function - now calls send_data_reports.
-    Kept for backward compatibility.
-    """
-    send_data_reports()
 
 
 def daily():

@@ -2,15 +2,20 @@
 Main FastAPI application.
 """
 
+import os
 from contextlib import asynccontextmanager
 import pytz
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import text
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from ix.db.conn import ensure_connection, conn
 from ix.misc import get_logger
@@ -191,29 +196,6 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Scheduled 'run_daily_tasks' for 07:00 KST")
 
-    # Telegram Scraping is now triggered manually via the app button
-    # from ix.misc.telegram import scrape_all_channels
-    #
-    # scheduler.add_job(
-    #     scrape_all_channels,
-    #     CronTrigger(minute="*/30", timezone=KST),  # Run every 30 minutes
-    #     id="telegram_scrape_routine",
-    #     replace_existing=True,
-    #     misfire_grace_time=300,
-    # )
-    # logger.info("Scheduled 'scrape_all_channels' for every 30 minutes")
-
-    # from ix.misc.task import send_daily_market_brief
-
-    # scheduler.add_job(
-    #     send_daily_market_brief,
-    #     CronTrigger(hour="1,7,13,19", minute=0, timezone=KST),
-    #     id="market_brief_6h",
-    #     replace_existing=True,
-    #     misfire_grace_time=300,
-    # )
-    # logger.info("Scheduled 'send_daily_market_brief' for every 6 hours (1, 7, 13, 19 KST)")
-
     _ensure_user_role_schema()
     _ensure_custom_chart_owner_schema()
     _ensure_investment_notes_schema()
@@ -237,10 +219,31 @@ app = FastAPI(
 
 logger.info("FastAPI app created successfully")
 
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Rate limit exceeded", "detail": str(exc.detail)},
+    )
+
+
+# GZip compress responses >= 1KB (Plotly JSON typically 50-500KB)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # Configure CORS
+_cors_origins = [
+    o.strip()
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -267,10 +270,14 @@ async def health_check():
     return {"status": "healthy", "service": "Investment-X API"}
 
 
-@app.get("/api/test-error")
-async def test_error():
-    """Endpoint to test error handling."""
-    raise Exception("Critical test failure")
+_DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
+
+if _DEBUG_MODE:
+
+    @app.get("/api/test-error")
+    async def test_error():
+        """Endpoint to test error handling."""
+        raise Exception("Critical test failure")
 
 
 @app.get("/api/jobs")
@@ -405,24 +412,23 @@ if static_dir:
     async def serve_root():
         return FileResponse(os.path.join(static_dir, "index.html"))
 
-    @app.get("/api/debug-fs")
-    async def debug_fs():
-        import subprocess
+    if _DEBUG_MODE:
 
-        try:
-            # Safe ls listing
-            files = os.listdir(os.getcwd())
-            static_exists = os.path.exists(static_dir)
-            static_content = os.listdir(static_dir) if static_exists else []
-            return {
-                "cwd": os.getcwd(),
-                "static_dir": static_dir,
-                "exists": static_exists,
-                "root_files": files,
-                "static_files": static_content,
-            }
-        except Exception as e:
-            return {"error": str(e)}
+        @app.get("/api/debug-fs")
+        async def debug_fs():
+            try:
+                files = os.listdir(os.getcwd())
+                static_exists = os.path.exists(static_dir)
+                static_content = os.listdir(static_dir) if static_exists else []
+                return {
+                    "cwd": os.getcwd(),
+                    "static_dir": static_dir,
+                    "exists": static_exists,
+                    "root_files": files,
+                    "static_files": static_content,
+                }
+            except Exception as e:
+                return {"error": str(e)}
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
@@ -446,27 +452,6 @@ if static_dir:
 
 else:
     logger.info("Static directory not found, running API only mode")
-
-
-# Debug Endpoint - Keep GLOBAL so it always works
-@app.get("/api/debug-fs")
-async def debug_fs():
-    import os
-
-    try:
-        # Safe ls listing
-        files = os.listdir(os.getcwd())
-        static_exists = static_dir and os.path.exists(static_dir)
-        static_content = os.listdir(static_dir) if static_exists else []
-        return {
-            "cwd": os.getcwd(),
-            "static_dir": static_dir,
-            "exists": static_exists,
-            "root_files": files,
-            "static_files": static_content,
-        }
-    except Exception as e:
-        return {"error": str(e)}
 
 
 if __name__ == "__main__":

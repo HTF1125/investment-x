@@ -27,7 +27,7 @@ export default async function Home() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-    const res = await fetch('http://127.0.0.1:8000/api/v1/dashboard/summary', {
+    const res = await fetch('http://127.0.0.1:8000/api/v1/dashboard/summary?include_figures=false', {
       headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       cache: 'no-store',
       signal: controller.signal

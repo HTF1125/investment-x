@@ -3,6 +3,7 @@ import "./globals.css";
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import QueryProvider from '@/providers/QueryProvider';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 export const viewport: Viewport = {
   themeColor: "#020617",
@@ -34,7 +35,9 @@ export default function RootLayout({
         <QueryProvider>
           <AuthProvider>
             <ThemeProvider>
-              {children}
+              <ErrorBoundary>
+                {children}
+              </ErrorBoundary>
             </ThemeProvider>
           </AuthProvider>
         </QueryProvider>

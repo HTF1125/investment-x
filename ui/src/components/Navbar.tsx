@@ -5,9 +5,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { 
-  User as UserIcon, LogOut, LogIn, Database, Radio, 
-  Menu, X, Layout, Cpu, Hexagon, Bell, ChevronDown,
+import {
+  User as UserIcon, LogOut, LogIn, Database, Radio,
+  Menu, X, Layout, Cpu, Bell, ChevronDown,
   Settings, Shield, Sun, Moon, CandlestickChart, FileText
 } from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
@@ -58,8 +58,13 @@ function NavLink({ href, children, onClick, className = '', icon }: NavLinkProps
  * Live status indicators — pipeline, region, time.
  */
 function StatusIndicators() {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const [time, setTime] = useState('');
+  useEffect(() => {
+    const fmt = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    setTime(fmt());
+    const id = setInterval(() => setTime(fmt()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div className="hidden xl:flex items-center gap-3 text-[10px] font-mono">
@@ -69,12 +74,10 @@ function StatusIndicators() {
       </div>
       <div className="w-px h-3 bg-border" />
       <span className="text-muted-foreground uppercase">Seoul</span>
-      {mounted && (
+      {time && (
         <>
           <div className="w-px h-3 bg-border" />
-          <span className="text-foreground tabular-nums font-semibold">
-            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
-          </span>
+          <span className="text-foreground tabular-nums font-semibold">{time}</span>
         </>
       )}
     </div>
@@ -204,10 +207,6 @@ export default function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
   const { theme } = useTheme();
   const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
-  const role = String(user?.role || '').toLowerCase();
-  const isOwner = !!user && role === 'owner';
-  const isAdminRole = !!user && (role === 'admin' || user.is_admin);
-  const canUseStudio = !!user && (isOwner || (!isAdminRole && role === 'general'));
   const [menuOpen, setMenuOpen] = React.useState(false);
   const pathname = usePathname();
 
@@ -220,14 +219,14 @@ export default function Navbar() {
       <div className="max-w-[1920px] mx-auto px-2 sm:px-4 h-full flex items-center justify-between gap-2 sm:gap-4 min-w-0">
         
         {/* LEFT: Logo + Nav Links */}
-        <div className="flex items-center gap-2 sm:gap-4 shrink min-w-0">
-            <Link href="/" className="flex items-center group py-1 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0 min-w-0">
+            <Link href="/" className="flex items-center group py-1 shrink-0 mr-4 sm:mr-10">
                 <Image 
                     src={theme === 'dark' ? '/investment-x-logo-light.svg' : '/investment-x-logo-dark.svg'}
                     alt="Investment-X Logo"
-                    width={220}
-                    height={22}
-                    className="h-4 sm:h-5 w-auto max-w-[140px] sm:max-w-[220px] transition-opacity"
+                    width={180}
+                    height={18}
+                    className="h-3.5 sm:h-4 w-auto object-contain transition-opacity"
                     priority
                     unoptimized
                 />
@@ -236,10 +235,9 @@ export default function Navbar() {
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-1 p-0.5 rounded-lg">
                 <NavLink href="/" icon={<Layout className="w-3 h-3" />}>Dashboard</NavLink>
-                {canUseStudio && <NavLink href="/studio" icon={<Hexagon className="w-3 h-3" />}>Studio</NavLink>}
                 <NavLink href="/intel" icon={<Radio className="w-3 h-3" />}>Intel</NavLink>
                 <NavLink href="/technical" icon={<CandlestickChart className="w-3 h-3" />}>Technical</NavLink>
-                <NavLink href="/notes" icon={<FileText className="w-3 h-3" />}>Notes</NavLink>
+                <NavLink href="/notes" icon={<FileText className="w-3 h-3" />}>Reports</NavLink>
                 {isAdmin && (
                   <NavLink href="/admin/timeseries" icon={<Database className="w-3 h-3" />}>System</NavLink>
                 )}
@@ -247,7 +245,7 @@ export default function Navbar() {
         </div>
 
         {/* CENTER: Status */}
-        <div className="hidden md:flex items-center gap-4 flex-1 justify-center">
+        <div className="hidden xl:flex items-center gap-4 flex-1 justify-center">
           <StatusIndicators />
         </div>
 
@@ -269,9 +267,11 @@ export default function Navbar() {
           )}
 
           {/* Mobile Menu Button */}
-          <button 
+          <button
               className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg border border-border/50 bg-secondary/20 hover:bg-accent/10 hover:border-border transition-all text-muted-foreground hover:text-foreground shadow-sm"
               onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="Toggle navigation menu"
+              aria-expanded={menuOpen}
           >
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -290,10 +290,9 @@ export default function Navbar() {
           >
                <div className="flex flex-col gap-2">
                   <MobileNavLink href="/" icon={<Layout className="w-4 h-4" />}>Dashboard</MobileNavLink>
-                  {canUseStudio && <MobileNavLink href="/studio" icon={<Hexagon className="w-4 h-4" />}>Studio</MobileNavLink>}
                   <MobileNavLink href="/intel" icon={<Radio className="w-4 h-4" />}>Intel Feed</MobileNavLink>
                   <MobileNavLink href="/technical" icon={<CandlestickChart className="w-4 h-4" />}>Technical</MobileNavLink>
-                  <MobileNavLink href="/notes" icon={<FileText className="w-4 h-4" />}>Investment Notes</MobileNavLink>
+                  <MobileNavLink href="/notes" icon={<FileText className="w-4 h-4" />}>Reports</MobileNavLink>
                   {isAdmin && (
                     <MobileNavLink href="/admin/timeseries" icon={<Database className="w-4 h-4" />}>System Admin</MobileNavLink>
                   )}

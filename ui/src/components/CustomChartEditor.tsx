@@ -8,11 +8,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { applyChartTheme } from '@/lib/chartTheme';
 import {
-  Loader2, Play, Save, Code, FileText, 
+  Loader2, Play, Save, Code, FileText,
   Download, Copy, Trash2, Plus, Terminal, Search,
   Maximize2, Minimize2, AlertCircle, CheckCircle2,
   Eye, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, FileDown, ChevronDown,
-  GripVertical, RotateCcw, Layout, Settings, Database, Activity, Layers,
+  GripVertical, RotateCcw, Layout, Settings, Database, Activity, Layers, X, Filter,
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import Editor from '@monaco-editor/react';
@@ -24,7 +24,7 @@ const Plot = dynamic(() => import('react-plotly.js'), {
       <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
     </div>
   ),
-}) as any;
+}) as React.ComponentType<Record<string, unknown>>;
 
 const DEFAULT_CODE = `# Investment-X Analysis Studio
 # Available: pd, px, go, np, Series, MultiSeries, apply_theme(fig)
@@ -109,7 +109,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const [plotRetryNonce, setPlotRetryNonce] = useState(0);
   const [copying, setCopying] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [consoleExpanded, setConsoleExpanded] = useState(true);
+  const [consoleExpanded, setConsoleExpanded] = useState(false);
   const [userManuallyCollapsed, setUserManuallyCollapsed] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState({ current: 0, total: 0, name: '' });
@@ -126,7 +126,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
 
   const [editorWidth, setEditorWidth] = useState(440);
   const [showCodePanel, setShowCodePanel] = useState(false);
-  const [showMeta, setShowMeta] = useState(true);
+  const [showMeta, setShowMeta] = useState(mode !== 'integrated');
   const [editorFontSize, setEditorFontSize] = useState(13);
   const [editorFontFamily, setEditorFontFamily] = useState("'JetBrains Mono', monospace");
   const [isMounted, setIsMounted] = useState(false);
@@ -772,27 +772,27 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       {/* ═══════════════ ACTIVITY BAR (VS Code Style) ═══════════════ */}
       {mode === 'standalone' && (
         <aside className="hidden lg:flex w-14 shrink-0 flex-col items-center py-4 gap-4 bg-card border-r border-border/50 z-20">
-          <button 
+          <button
             onClick={() => { setActiveTab('library'); setLibraryOpen(true); }}
             className={`p-2 rounded-xl transition-all ${activeTab === 'library' && libraryOpen ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
             title="Library"
           >
-            <Layout className="w-6 h-6" />
+            <Layout className="w-4 h-4" />
           </button>
-          <button 
+          <button
             onClick={() => { setActiveTab('data'); setLibraryOpen(true); }}
             className={`p-2 rounded-xl transition-all ${activeTab === 'data' && libraryOpen ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
             title="Variables & Data"
           >
-            <Database className="w-6 h-6" />
+            <Database className="w-4 h-4" />
           </button>
           <div className="mt-auto flex flex-col gap-4 items-center">
-              <button 
+              <button
                 onClick={() => { setActiveTab('settings'); setLibraryOpen(true); }}
                 className={`p-2 rounded-xl transition-all ${activeTab === 'settings' && libraryOpen ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
                 title="Studio Settings"
               >
-                <Settings className="w-6 h-6" />
+                <Settings className="w-4 h-4" />
               </button>
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-sky-600 flex items-center justify-center text-[10px] font-bold text-white mb-4">
                 {name.charAt(0)}
@@ -801,78 +801,63 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
         </aside>
       )}
 
-      {/* ═══════════════ MOBILE TAB BAR ═══════════════ */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-12 bg-card border-t border-border/50 flex items-center justify-around px-2">
-        <button
-          onClick={() => setMobilePanel('workspace')}
-          className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-colors ${mobilePanel === 'workspace' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500'}`}
-        >
-          <Eye className="w-4 h-4" />
-          <span className="text-[9px] font-medium">Workspace</span>
-        </button>
-        <button
-          onClick={() => setMobilePanel('editor')}
-          className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-colors ${mobilePanel === 'editor' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500'}`}
-        >
-          <Code className="w-4 h-4" />
-          <span className="text-[9px] font-medium">Code</span>
-        </button>
-      </div>
-
       {/* ═══════════════ SIDEBAR PANEL ═══════════════ */}
       {mode === 'standalone' && (
         <aside className={`
           ${libraryOpen ? 'w-80' : 'w-0'} shrink-0 flex flex-col border-r border-border/50 bg-card/70 backdrop-blur-xl transition-all duration-300 overflow-hidden relative z-10
         `}>
         {/* Sidebar Header */}
-        <div className="h-12 shrink-0 flex items-center justify-between px-4 border-b border-white/5 bg-white/[0.02]">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                {activeTab === 'library' ? 'Research Library' : activeTab === 'data' ? 'Data Pipeline' : 'Preferences'}
-              </span>
+        <div className="h-10 shrink-0 flex items-center justify-between px-3 border-b border-border/20 bg-foreground/[0.02]">
+            <div className="flex items-center gap-1.5">
               {activeTab === 'library' && (
-                <span className="text-[9px] tabular-nums px-1.5 py-0.5 rounded-full bg-white/[0.06] text-slate-500 font-mono">
-                    {orderedCharts.length}
-                </span>
+                <>
+                  <button
+                    onClick={clearEditor}
+                    disabled={!canCreateChart}
+                    className="p-1.5 rounded-lg transition-all text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="New Analysis"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  {canRefreshAllCharts && (
+                    <button
+                      onClick={handleRefreshAll}
+                      disabled={refreshingAll}
+                      className={`p-1.5 rounded-lg transition-all ${
+                        refreshingAll
+                          ? 'text-amber-400 bg-amber-500/10'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
+                      }`}
+                      title="Refresh all data"
+                    >
+                      {refreshingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+                </>
               )}
             </div>
+
+            <div className="flex items-center gap-2">
+               <span className="text-[9px] font-bold text-muted-foreground/70 uppercase tracking-widest">
+                 {activeTab === 'library' ? 'Library' : activeTab === 'data' ? 'Data' : 'Settings'}
+               </span>
+               {activeTab === 'library' && (
+                 <span className="text-[8px] tabular-nums px-1.5 py-0.5 rounded-full bg-sky-500/5 text-muted-foreground font-mono border border-border/20">
+                     {orderedCharts.length}
+                 </span>
+               )}
+            </div>
+
             <button
                 onClick={() => setLibraryOpen(false)}
-                className={`p-1 rounded transition-colors lg:hidden ${isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}
+                className="p-1.5 rounded-lg hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors lg:hidden"
             >
-                <PanelLeftClose className="w-4 h-4" />
+                <PanelLeftClose className="w-3.5 h-3.5" />
             </button>
         </div>
 
         {activeTab === 'library' && (
           <>
-            {/* New + Export */}
-            <div className="p-3 border-b border-white/5 flex gap-2">
-              <button
-                onClick={clearEditor}
-                disabled={!canCreateChart}
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-indigo-600/90 hover:bg-indigo-500 rounded-xl shadow-lg shadow-indigo-500/10 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-4 h-4" /> New Analysis
-              </button>
-              {canRefreshAllCharts && (
-                <button
-                  onClick={handleRefreshAll}
-                  disabled={refreshingAll}
-                  className={`p-2 rounded-xl transition-all border ${
-                    refreshingAll 
-                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' 
-                      : isLight
-                        ? 'text-slate-500 hover:text-slate-900 bg-white border-slate-200'
-                        : 'text-slate-500 hover:text-white bg-white/[0.03] border-white/10'
-                  }`}
-                  title="Refresh all data"
-                >
-                  {refreshingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                </button>
-              )}
-            </div>
-
             {/* Refresh All Progress Bar */}
             <AnimatePresence>
               {canRefreshAllCharts && refreshingAll && (
@@ -880,19 +865,19 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="px-3 pb-3 overflow-hidden"
+                  className="px-3 py-2 overflow-hidden border-b border-border/20"
                 >
-                  <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-3">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-[10px] font-mono text-amber-500/80 uppercase tracking-tight truncate max-w-[150px]">
+                  <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-2">
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="text-[9px] font-mono text-amber-500/80 uppercase tracking-tight truncate max-w-[150px]">
                         {refreshProgress.name}
                       </span>
-                      <span className="text-[10px] font-mono text-amber-500/60">
+                      <span className="text-[9px] font-mono text-amber-500/60">
                         {Math.round((refreshProgress.current / refreshProgress.total) * 100)}%
                       </span>
                     </div>
                     <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                      <motion.div 
+                      <motion.div
                         className="h-full bg-gradient-to-r from-amber-600 to-amber-400"
                         initial={{ width: 0 }}
                         animate={{ width: `${(refreshProgress.current / refreshProgress.total) * 100}%` }}
@@ -905,108 +890,118 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
             </AnimatePresence>
 
             {/* Search */}
-            <div className="px-3 py-3 border-b border-white/5 bg-white/[0.01]">
+            <div className="px-3 py-2 border-b border-border/20 bg-foreground/[0.01]">
               <div className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 group-focus-within:text-sky-500 transition-colors" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Filter charts..."
-                  className="w-full pl-9 pr-3 py-2 bg-white/[0.03] border border-white/5 rounded-xl text-xs text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/30 transition-all"
+                  placeholder="Search..."
+                  className="w-full pl-7 pr-3 py-1 bg-secondary/30 border border-border/30 rounded text-[9px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0 transition-all"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-accent/30 text-muted-foreground/60"
+                  >
+                    <X className="w-2 h-2" />
+                  </button>
+                )}
               </div>
             </div>
 
             {/* Chart list */}
-            <div className="flex-grow overflow-y-auto custom-scrollbar">
-              <Reorder.Group 
-                axis="y" 
-                values={filteredCharts} 
+            <div className="flex-grow overflow-y-auto custom-scrollbar px-1.5 py-2 space-y-px">
+              <Reorder.Group
+                axis="y"
+                values={filteredCharts}
                 onReorder={(newItems) => {
-                    // Update the global orderedCharts. 
-                    // If filtering is on, reordering is disabled by isFiltering hook anyway,
-                    // but we ensure here that we only update the full list.
                     if (!isFiltering && canReorderLibrary) {
                         setOrderedCharts(newItems);
                     }
                 }}
-                className="py-2 space-y-0.5 px-2"
+                className="space-y-px"
               >
-                {filteredCharts.map((chart: any) => (
+                {filteredCharts.map((chart: any, idx: number) => (
                   <Reorder.Item
                     key={chart.id}
                     value={chart}
                     dragListener={canReorderLibrary && !isFiltering}
                     onClick={() => void loadChart(chart)}
-                    className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 ${
+                    className={`w-full group relative flex items-start gap-2 px-2 py-1 rounded cursor-pointer transition-all duration-150 border ${
                       currentChartId === chart.id
-                        ? 'bg-indigo-500/10 border border-indigo-500/20 shadow-inner'
-                        : 'border border-transparent hover:bg-white/[0.03] hover:border-white/5'
+                        ? 'bg-sky-500/10 border-sky-500/10'
+                        : 'border-transparent hover:bg-accent/20'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                        {!isFiltering && canReorderLibrary && (
-                            <div className="flex flex-col items-center gap-1">
-                                <GripVertical className="w-3 h-3 text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing" />
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); toggleExportPdf(chart.id, !chart.export_pdf); }}
-                                    className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${chart.export_pdf ? 'bg-indigo-500 border-indigo-400 text-white' : 'border-white/10 hover:border-white/30 text-transparent'}`}
-                                    title={chart.export_pdf ? "Included in PDF" : "Excluded from PDF"}
-                                >
-                                    <CheckCircle2 className="w-2.5 h-2.5" />
-                                </button>
-                            </div>
-                        )}
-                        <div className={`p-1.5 rounded-lg ${currentChartId === chart.id ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 text-slate-500'} group-hover:scale-110 transition-transform`}>
-                          {loadingChartId === chart.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Activity className="w-3.5 h-3.5" />
-                          )}
-                        </div>
-                    </div>
-                    
-                    <div className="flex-grow min-w-0">
-                        <div className={`text-[11px] font-semibold truncate ${currentChartId === chart.id ? (isLight ? 'text-indigo-700' : 'text-indigo-200') : (isLight ? 'text-slate-700 group-hover:text-slate-900' : 'text-slate-300 group-hover:text-white')}`}>
-                          {chart.name || 'Untitled Analysis'}
-                        </div>
-                        <div className="text-[9px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5">
-                            <span className="px-1 py-0.5 bg-white/5 rounded uppercase tracking-tighter">{chart.category}</span>
-                            {chart.export_pdf && <span className="text-emerald-500/80">• PDF</span>}
-                        </div>
+                    {/* Index Number */}
+                    <div className={`mt-0.5 text-[8px] font-mono shrink-0 w-5 h-3 flex items-center justify-center rounded border transition-colors ${
+                      currentChartId === chart.id ? 'bg-sky-500/20 text-sky-400 border-sky-500/20' : 'bg-foreground/5 text-muted-foreground/70 border-border/20'
+                    }`}>
+                      {idx + 1}
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    {/* Content */}
+                    <div className="flex-1 min-w-0 flex flex-col items-start text-left">
+                      <span className={`text-[9px] font-medium leading-tight truncate w-full ${currentChartId === chart.id ? 'text-sky-300' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                        {chart.name || 'Untitled Analysis'}
+                      </span>
+                      <div className="flex items-center gap-1 opacity-50">
+                        <span className="text-[7px] font-mono uppercase tracking-tighter text-muted-foreground/60">
+                          {chart.category || 'ANALYSIS'}
+                        </span>
+                        {chart.export_pdf && <div className="w-0.5 h-0.5 rounded-full bg-emerald-500" />}
+                      </div>
+                    </div>
+
+                    {/* Actions on hover */}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {canToggleExport && (
+                          <button
+                              onClick={(e) => { e.stopPropagation(); toggleExportPdf(chart.id, !chart.export_pdf); }}
+                              className={`w-2.5 h-2.5 rounded-sm border flex items-center justify-center transition-all ${chart.export_pdf ? 'bg-emerald-500 border-emerald-400' : 'border-muted-foreground/30 hover:border-muted-foreground/50'}`}
+                              title={chart.export_pdf ? "Included in PDF" : "Excluded from PDF"}
+                          >
+                              {chart.export_pdf && <CheckCircle2 className="w-2 h-2 text-white" />}
+                          </button>
+                        )}
                         {canDeleteChart(chart) && (
                           <button
                               onClick={(e) => { e.stopPropagation(); setDeleteConfirm(chart.id); }}
-                              className="p-1.5 text-slate-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all"
+                              className="p-0.5 text-muted-foreground/60 hover:text-rose-400 transition-all"
                               title="Delete Analysis"
                           >
-                              <Trash2 className="w-3 h-3" />
+                              <Trash2 className="w-2.5 h-2.5" />
                           </button>
                         )}
-                        {currentChartId === chart.id && (
-                          <motion.div layoutId="active-indicator" className="absolute left-0 w-1 h-5 bg-indigo-500 rounded-r-full" />
-                        )}
                     </div>
+
+                    {currentChartId === chart.id && (
+                      <motion.div layoutId="sidebar-active" className="absolute left-0 w-0.5 h-2.5 bg-sky-500/60 rounded-r-full" />
+                    )}
                   </Reorder.Item>
                 ))}
               </Reorder.Group>
+              {filteredCharts.length === 0 && (
+                <div className="py-6 px-4 text-center">
+                   <Filter className="w-4 h-4 text-muted-foreground/20 mx-auto mb-1" />
+                   <p className="text-[8px] text-muted-foreground font-medium tracking-tight">NO MATCHES</p>
+                </div>
+              )}
             </div>
-            
-            <div className="p-3 bg-white/[0.02] border-t border-white/5">
+
+            <div className="p-2 bg-foreground/[0.02] border-t border-border/20">
                 <button
                     onClick={handleExportPDF}
                     disabled={exporting || pdfCount === 0}
-                    className="w-full flex items-center justify-between px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-semibold text-slate-300 disabled:opacity-30 transition-all"
+                    className="w-full flex items-center justify-between px-3 py-1.5 bg-secondary/30 hover:bg-secondary/50 rounded-lg text-[10px] font-semibold text-foreground disabled:opacity-30 transition-all"
                 >
                     <div className="flex items-center gap-2">
-                        <FileDown className="w-4 h-4" />
+                        <FileDown className="w-3 h-3" />
                         Generate Report
                     </div>
-                <span className="bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded-md text-[9px] font-mono tabular-nums">{pdfCount}</span>
+                <span className="bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded text-[8px] font-mono tabular-nums">{pdfCount}</span>
               </button>
             </div>
           </>
@@ -1101,61 +1096,58 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       {/* ═══════════════ CENTER — Workspace ═══════════════ */}
       <main className="flex-grow flex flex-col min-w-0 bg-background relative">
         {/* Workspace Header / Breadcrumbs */}
-        <header className="h-12 shrink-0 flex items-center justify-between px-6 border-b border-border/50 bg-card/70 backdrop-blur-md relative z-20">
-            <div className="flex items-center gap-3 min-w-0">
-                <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
+        <header className="h-10 shrink-0 flex items-center justify-between px-4 border-b border-border/50 bg-card/70 backdrop-blur-md relative z-20">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 shrink-0">
                     <Activity className="w-4 h-4" />
                 </div>
-                <div className="flex flex-col min-w-0">
-                    <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        readOnly={!canEditCurrentChart}
-                        className="bg-transparent text-[13px] font-bold text-foreground placeholder-muted-foreground focus:outline-none truncate w-full read-only:opacity-70"
-                        placeholder="Untitled Analysis"
-                    />
-                    <div className="flex items-center gap-2 text-[9px] font-mono text-slate-500 uppercase tracking-tighter">
-                        <span>{category || 'Uncategorized'}</span>
-                        <span>/</span>
-                        <span className="truncate">{tags || 'No Tags'}</span>
-                        <span>/</span>
-                        <span className="truncate" title={`Created by ${createdByLabel}`}>By {createdByLabel}</span>
-                    </div>
+                <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    readOnly={!canEditCurrentChart}
+                    className="bg-transparent text-[13px] font-bold text-foreground placeholder-muted-foreground focus:outline-none truncate min-w-0 flex-shrink read-only:opacity-70"
+                    placeholder="Untitled Analysis"
+                />
+                <div className="hidden sm:flex items-center gap-1.5 text-[9px] font-mono text-muted-foreground/60 shrink-0">
+                    <span>{category || 'Uncategorized'}</span>
+                    <span className="opacity-40">/</span>
+                    <span className="truncate max-w-[80px]">{tags || 'No Tags'}</span>
+                    <span className="opacity-40">/</span>
+                    <span className="truncate max-w-[80px]" title={`Created by ${createdByLabel}`}>{createdByLabel}</span>
                 </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
                 <button
                     onClick={handlePreview}
                     disabled={loading}
-                    className="group relative flex items-center gap-2 px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50"
+                    className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50"
+                    title="Run (Ctrl+Enter)"
                 >
-                    {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current group-hover:scale-110 transition-transform" />}
-                    <span>Run</span>
+                    {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
                 </button>
-                <div className={`w-px h-5 mx-1 ${isLight ? 'bg-slate-200' : 'bg-white/10'}`} />
                 <button
                     onClick={handleSave}
                     disabled={saving || !canEditCurrentChart}
-                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all active:scale-95 disabled:opacity-30"
+                    className="p-2 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg transition-all active:scale-95 disabled:opacity-30"
+                    title="Save (Ctrl+S)"
                 >
                     {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    <span>Save</span>
                 </button>
-                <div className={`w-px h-5 mx-1 ${isLight ? 'bg-slate-200' : 'bg-white/10'}`} />
                 <button
                     onClick={() => setShowMeta(!showMeta)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${showMeta ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-muted-foreground hover:text-foreground bg-card/60 border border-transparent hover:border-border/50'}`}
+                    className={`p-2 rounded-lg transition-all ${showMeta ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-muted-foreground hover:text-foreground bg-card/60 border border-transparent hover:border-border/50'}`}
+                    title="Properties"
                 >
-                    <Settings className={`w-4 h-4 ${showMeta ? 'animate-spin-slow' : ''}`} />
-                    <span className="text-xs font-bold">Properties</span>
+                    <Settings className="w-3.5 h-3.5" />
                 </button>
                 <button
                     onClick={toggleCodePanel}
-                    className={`p-2.5 rounded-xl transition-all ${showCodePanel ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-muted-foreground hover:text-foreground bg-card/60 border border-transparent hover:border-border/50'}`}
+                    className={`p-2 rounded-lg transition-all ${showCodePanel ? 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20' : 'text-muted-foreground hover:text-foreground bg-card/60 border border-transparent hover:border-border/50'}`}
+                    title={showCodePanel ? 'Show Chart' : 'Show Code'}
                 >
-                    <Code className="w-4 h-4" />
+                    <Code className="w-3.5 h-3.5" />
                 </button>
             </div>
         </header>
@@ -1169,18 +1161,18 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                     exit={{ height: 0, opacity: 0 }}
                     className="shrink-0 bg-card border-b border-border/50 overflow-hidden z-10"
                 >
-                    <div className="flex flex-col gap-5 px-8 py-6 max-w-7xl mx-auto">
-                        <div className="grid grid-cols-4 gap-3 items-start">
-                            <div className="col-span-1 min-w-0 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <Layers className="w-3 h-3 text-indigo-500" /> Category
+                    <div className="flex flex-col gap-2 px-4 py-2 max-w-7xl mx-auto">
+                        <div className="grid grid-cols-4 gap-2 items-start">
+                            <div className="col-span-1 min-w-0 space-y-1">
+                                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                                    <Layers className="w-2.5 h-2.5 text-indigo-500" /> Category
                                 </label>
                                 <input
                                     type="text"
                                     value={category}
                                     onChange={(e) => setCategory(e.target.value)}
                                     readOnly={!canEditCurrentChart}
-                                    className={`w-full border rounded-xl px-3 py-2 text-[11px] outline-none focus:border-indigo-500/50 transition-all font-semibold ${
+                                    className={`w-full border rounded-lg px-2 py-1 text-[10px] outline-none focus:border-indigo-500/50 transition-all font-semibold ${
                                       isLight
                                         ? 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'
                                         : 'bg-white/[0.03] border-white/10 text-slate-300'
@@ -1188,34 +1180,34 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                     placeholder="ChartPack"
                                 />
                             </div>
-                            
-                            <div className="col-span-1 min-w-0 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <Search className="w-3 h-3 text-indigo-500" /> Tags
+
+                            <div className="col-span-1 min-w-0 space-y-1">
+                                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                                    <Search className="w-2.5 h-2.5 text-indigo-500" /> Tags
                                 </label>
                                 <input
                                     type="text"
                                     value={tags}
                                     onChange={(e) => setTags(e.target.value)}
                                     readOnly={!canEditCurrentChart}
-                                    className={`w-full border rounded-xl px-3 py-2 text-[11px] outline-none focus:border-indigo-500/50 transition-all font-mono ${
+                                    className={`w-full border rounded-lg px-2 py-1 text-[10px] outline-none focus:border-indigo-500/50 transition-all font-mono ${
                                       isLight
                                         ? 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'
                                         : 'bg-white/[0.03] border-white/10 text-slate-300 placeholder:text-slate-700'
                                     }`}
-                                    placeholder="Volatility, Strategy, 2025..."
+                                    placeholder="Volatility, Strategy..."
                                 />
                             </div>
 
-                            <div className="col-span-1 min-w-0 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <Activity className="w-3 h-3 text-indigo-500" /> Created By
+                            <div className="col-span-1 min-w-0 space-y-1">
+                                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                                    <Activity className="w-2.5 h-2.5 text-indigo-500" /> Created By
                                 </label>
                                 <input
                                     type="text"
                                     value={createdByLabel}
                                     readOnly
-                                    className={`w-full border rounded-xl px-3 py-2 text-[11px] font-mono ${
+                                    className={`w-full border rounded-lg px-2 py-1 text-[10px] font-mono ${
                                       isLight
                                         ? 'bg-slate-50 border-slate-200 text-slate-600'
                                         : 'bg-white/[0.02] border-white/10 text-slate-400'
@@ -1223,38 +1215,38 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                 />
                             </div>
 
-                            <div className="col-span-1 min-w-0 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <FileText className="w-3 h-3 text-indigo-500" /> Description
+                            <div className="col-span-1 min-w-0 space-y-1">
+                                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                                    <FileText className="w-2.5 h-2.5 text-indigo-500" /> Description
                                 </label>
                                 <input
                                     type="text"
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
                                     readOnly={!canEditCurrentChart}
-                                    className={`w-full border rounded-xl px-3 py-2 text-[11px] outline-none focus:border-indigo-500/50 transition-all font-medium ${
+                                    className={`w-full border rounded-lg px-2 py-1 text-[10px] outline-none focus:border-indigo-500/50 transition-all font-medium ${
                                       isLight
                                         ? 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'
                                         : 'bg-white/[0.03] border-white/10 text-slate-300'
                                     }`}
-                                    placeholder="Briefly describe the analytical protocol..."
+                                    placeholder="Describe the protocol..."
                                 />
                             </div>
                         </div>
 
                         {mode === 'standalone' && (
-                            <div className="flex items-center justify-between p-3 bg-indigo-500/[0.02] border border-indigo-500/10 rounded-xl">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-2 h-2 rounded-full ${exportPdf ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`} />
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global Report Sync</span>
+                            <div className="flex items-center justify-between p-2 bg-indigo-500/[0.02] border border-indigo-500/10 rounded-lg">
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${exportPdf ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`} />
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Report Sync</span>
                                 </div>
                                 <button
                                     onClick={() => currentChartId ? toggleExportPdf(currentChartId, !exportPdf) : setExportPdf(!exportPdf)}
                                     disabled={!canToggleExport}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold ${exportPdf ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-slate-600 border-white/10 bg-white/5'}`}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded border transition-all text-[9px] font-bold ${exportPdf ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-slate-600 border-white/10 bg-white/5'}`}
                                 >
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    {canToggleExport ? (exportPdf ? 'ACTIVE' : 'DISABLED') : 'OWNER ONLY'}
+                                    <CheckCircle2 className="w-2.5 h-2.5" />
+                                    {canToggleExport ? (exportPdf ? 'ON' : 'OFF') : 'OWNER'}
                                 </button>
                             </div>
                         )}
@@ -1267,13 +1259,27 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
         <div className="flex-grow flex flex-col relative min-h-0 overflow-hidden">
 
             {/* Main Visualizer */}
-            <div className={`flex-grow relative flex flex-col min-h-0 ${isLight ? 'bg-slate-100' : 'bg-[#010205]'}`}>
-                <div className={`flex-grow relative overflow-hidden m-2 md:m-3 rounded-2xl border ${
+            {(mode === 'integrated' || !showCodePanel) ? (
+            <div className={`flex-grow relative flex flex-col min-h-0 p-3 md:p-4 ${isLight ? 'bg-slate-100' : 'bg-[#010205]'}`}>
+                <div className={`flex-grow relative overflow-hidden rounded-2xl border ${
                   isLight
                     ? 'border-slate-200 bg-white/80 shadow-sm'
-                    : 'border-sky-500/20 bg-[#020711] shadow-[inset_0_0_0_1px_rgba(14,165,233,0.08)]'
+                    : 'border-border/40 bg-[#020711]'
                 }`}>
-                    {themedPreviewFigure && !plotRenderError ? (
+                    {loadingChartId ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-10">
+                            <div className="relative">
+                                <div className="absolute inset-0 blur-3xl bg-indigo-500/20 rounded-full" />
+                                <div className={`relative w-20 h-20 rounded-3xl flex items-center justify-center backdrop-blur-sm ${
+                                  isLight ? 'bg-white border border-slate-200 shadow-sm' : 'bg-white/[0.03] border border-white/10'
+                                }`}>
+                                    <Loader2 className={`w-8 h-8 animate-spin ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`} />
+                                </div>
+                            </div>
+                            <h3 className={`text-sm font-bold mt-6 uppercase tracking-[0.2em] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Loading Chart</h3>
+                            <p className={`text-[10px] font-mono mt-2 ${isLight ? 'text-slate-500' : 'text-slate-600'}`}>Fetching analysis data...</p>
+                        </div>
+                    ) : themedPreviewFigure && !plotRenderError ? (
                         <Plot
                         key={`${currentChartId || 'draft'}-${theme}-${plotRetryNonce}`}
                         data={themedPreviewFigure.data}
@@ -1337,200 +1343,12 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                         </div>
                     )}
                 </div>
-
-                {/* Console Drawer (Bottom) */}
-                <div className={`shrink-0 border-t backdrop-blur-xl transition-all duration-300 ${isLight ? 'border-slate-200 bg-white/95' : 'border-white/5 bg-[#05070c]/80'} ${consoleExpanded ? 'h-[250px]' : 'h-10'}`}>
-                    <div className={`h-10 shrink-0 flex items-center justify-between px-6 cursor-pointer ${isLight ? 'hover:bg-slate-100/80' : 'hover:bg-white/[0.02]'}`} onClick={() => {
-                        const next = !consoleExpanded;
-                        setConsoleExpanded(next);
-                        setUserManuallyCollapsed(!next); // If we are closing it, mark as manual collapse
-                    }}>
-                        <div className="flex items-center gap-3">
-                            <Terminal className={`w-4 h-4 ${error ? 'text-rose-400' : 'text-slate-500'}`} />
-                            <span className={`text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-600' : 'text-slate-500'}`}>Execution Log</span>
-                            {loading && <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" />}
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {error && <span className="text-[9px] font-mono text-rose-500 px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20">ERROR</span>}
-                            {successMsg && !error && <span className="text-[9px] font-mono text-emerald-500 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">SUCCESS</span>}
-                            <button className={isLight ? 'text-slate-500 hover:text-slate-900' : 'text-slate-600 hover:text-white'}>
-                                {consoleExpanded ? <ChevronDown className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                        </div>
-                    </div>
-                    {consoleExpanded && (
-                        <div className="flex-grow h-[210px] overflow-y-auto px-6 py-4 font-mono text-[11px] leading-relaxed custom-scrollbar">
-                           <AnimatePresence mode="wait">
-                                {error ? (
-                                    <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-3">
-                                        <div className="flex items-center gap-2 text-rose-400">
-                                            <AlertCircle className="w-4 h-4" />
-                                            <span className="font-bold underline uppercase tracking-tighter">System Interrupt / Fault</span>
-                                        </div>
-                                        <div className={`p-4 bg-rose-500/5 border border-rose-500/10 rounded-xl whitespace-pre-wrap font-mono text-[10px] leading-relaxed ${isLight ? 'text-rose-700' : 'text-rose-200/90'}`}>
-                                            {typeof error === 'object' ? error.message : String(error)}
-                                        </div>
-                                        {typeof error === 'object' && error.traceback && (
-                                            <pre className={`p-4 rounded-xl text-[10px] overflow-x-auto whitespace-pre-wrap ${isLight ? 'bg-slate-100 border border-slate-200 text-slate-600' : 'bg-black/40 border border-white/5 text-slate-500'}`}>
-                                                {error.traceback}
-                                            </pre>
-                                        )}
-                                    </motion.div>
-                                ) : successMsg ? (
-                                    <motion.div key="success" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 text-emerald-400/80">
-                                        <CheckCircle2 className="w-4 h-4" />
-                                        <span>{successMsg}</span>
-                                    </motion.div>
-                                ) : (
-                                    <div className={`italic ${isLight ? 'text-slate-500' : 'text-slate-700'}`}>&gt; Kernel idle. Ready for instruction.</div>
-                                )}
-                           </AnimatePresence>
-                        </div>
-                    )}
-                </div>
             </div>
-        </div>
-      </main>
-
-      {/* ═══════════════ RESIZE HANDLE ═══════════════ */}
-      {showCodePanel && (
-        <div
-          onMouseDown={startResize}
-          className="hidden lg:flex w-1 shrink-0 cursor-col-resize hover:bg-indigo-500/50 transition-colors z-30"
-        />
-      )}
-
-      {/* ═══════════════ RIGHT — Editor ═══════════════ */}
-      <div
-        className={`
-          flex-col relative z-20 border-l ${isLight ? 'bg-white border-slate-200/90' : 'bg-[#0d0f14] border-white/5'}
-          ${mobilePanel === 'editor' ? 'fixed inset-0 pt-16 z-50 flex shadow-2xl' : 'hidden lg:flex'}
-          ${showCodePanel ? 'lg:flex' : 'lg:hidden'}
-        `}
-        style={{ width: isMounted && showCodePanel && window.innerWidth >= 1024 ? editorWidth : '100%' }}
-      >
-        <div className={`h-12 shrink-0 flex items-center justify-between px-4 border-b ${isLight ? 'bg-white border-slate-200/90' : 'bg-[#0d0f14] border-white/5'}`}>
-            <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                <span className={`text-[10px] font-mono uppercase tracking-widest opacity-70 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>analysis.py</span>
-            </div>
-            <div className="flex items-center gap-3">
-                <span className={`text-[9px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-600'}`}>Kernel: Python 3.12</span>
-            </div>
-        </div>
-
-        <div className={`shrink-0 border-b px-3 py-3 ${isLight ? 'border-slate-200/90 bg-slate-50' : 'border-white/5 bg-[#0a0c12]'}`}>
-            <div className="flex items-center justify-between gap-2 mb-2">
-                <label className={`text-[10px] font-bold uppercase tracking-[0.18em] flex items-center gap-2 ${isLight ? 'text-slate-600' : 'text-slate-500'}`}>
-                    <Database className="w-3 h-3 text-indigo-500" /> Timeseries Lookup
-                </label>
-                <span className={`text-[9px] font-mono hidden md:inline ${isLight ? 'text-slate-500' : 'text-slate-600'}`}>Insert `Series('CODE')`</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${isLight ? 'text-slate-500' : 'text-slate-600'}`} />
-                    <input
-                        type="text"
-                        value={timeseriesSearch}
-                        onChange={(e) => setTimeseriesSearch(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            runTimeseriesSearch();
-                          }
-                        }}
-                        placeholder="Search code/name/source..."
-                        className={`w-full pl-9 pr-3 py-2 border rounded-xl text-xs outline-none focus:border-indigo-500/50 transition-all ${
-                          isLight
-                            ? 'bg-white border-slate-200 text-slate-700 placeholder:text-slate-400'
-                            : 'bg-white/[0.03] border-white/10 text-slate-300'
-                        }`}
-                    />
-                </div>
-                <button
-                    onClick={runTimeseriesSearch}
-                    disabled={!timeseriesSearch.trim() || timeseriesLoading}
-                    className={`px-3 py-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-[10px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}
-                >
-                    Search
-                </button>
-            </div>
-
-            {timeseriesQuery.length > 0 && (
-                <div className="mt-2 max-h-44 overflow-y-auto custom-scrollbar space-y-1.5">
-                    {timeseriesLoading && (
-                        <div className={`px-3 py-2.5 rounded-lg text-[10px] flex items-center gap-2 ${isLight ? 'bg-white border border-slate-200 text-slate-500' : 'bg-white/[0.02] border border-white/10 text-slate-500'}`}>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                            Searching timeseries...
-                        </div>
-                    )}
-                    {timeseriesError && !timeseriesLoading && (
-                        <div className={`px-3 py-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] ${isLight ? 'text-rose-700' : 'text-rose-300'}`}>
-                            {(timeseriesErrorObj as Error)?.message || 'Timeseries search failed.'}
-                        </div>
-                    )}
-                    {!timeseriesLoading && !timeseriesError && timeseriesMatches.length === 0 && (
-                        <div className={`px-3 py-2.5 rounded-lg text-[10px] ${isLight ? 'bg-white border border-slate-200 text-slate-500' : 'bg-white/[0.02] border border-white/10 text-slate-600'}`}>
-                            No timeseries matched your search.
-                        </div>
-                    )}
-                    {!timeseriesLoading && !timeseriesError && timeseriesMatches.map((ts) => (
-                        <div
-                            key={ts.id}
-                            className={`flex items-start justify-between gap-2 px-3 py-2 rounded-lg border ${isLight ? 'border-slate-200 bg-white' : 'border-white/8 bg-white/[0.02]'}`}
-                        >
-                            <div className="min-w-0">
-                                <div className={`text-[11px] font-mono font-bold truncate ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>{ts.code}</div>
-                                <div className={`text-[10px] truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{ts.name || 'Unnamed'}</div>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                    onClick={() => copySeriesSnippet(ts)}
-                                    className={`px-2 py-1 rounded-md border text-[9px] font-bold transition-colors ${isLight ? 'border-slate-200 bg-white hover:bg-slate-100 text-slate-600' : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.08] text-slate-300'}`}
-                                    title="Copy snippet"
-                                >
-                                    Copy
-                                </button>
-                                <button
-                                    onClick={() => insertSeriesSnippet(ts)}
-                                    disabled={!canEditCurrentChart}
-                                    className={`px-2 py-1 rounded-md border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-[9px] font-bold transition-colors ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}
-                                    title="Insert snippet into editor"
-                                >
-                                    Insert
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+            ) : (
+                <div>Code editor placeholder - should not appear in integrated mode</div>
             )}
         </div>
-        
-        <div className="flex-grow flex flex-col min-h-0 bg-background">
-            <Editor
-                height="100%"
-                defaultLanguage="python"
-                value={code}
-                theme={isLight ? 'vs' : 'vs-dark'}
-                onChange={(value: string | undefined) => setCode(value || '')}
-                options={{
-                minimap: { enabled: false },
-                fontSize: editorFontSize,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                padding: { top: 12, bottom: 12 },
-                fontFamily: editorFontFamily,
-                renderLineHighlight: 'gutter',
-                bracketPairColorization: { enabled: true },
-                smoothScrolling: true,
-                cursorBlinking: 'smooth',
-                wordWrap: 'on',
-                readOnly: !canEditCurrentChart,
-                }}
-            />
-        </div>
-      </div>
+      </main>
 
 
       {/* Notification Layer */}
@@ -1566,7 +1384,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                animate={{ opacity: 1 }} 
                exit={{ opacity: 0 }}
                onClick={() => setDeleteConfirm(null)}
-               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+               className={`absolute inset-0 backdrop-blur-sm ${isLight ? 'bg-slate-900/40' : 'bg-black/60'}`}
             />
             <motion.div
                initial={{ scale: 0.9, opacity: 0, y: 20 }}

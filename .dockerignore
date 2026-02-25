@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+__pycache__
+*.pyc
+node_modules
+ui/.next
+ui/out
+.claude/
+*.md
+.vscode
+.idea

@@ -64,9 +64,16 @@ function hasPositiveFiniteValue(values: unknown): boolean {
     const num = Number(values);
     return Number.isFinite(num) && num > 0;
   }
-  if (Array.isArray(values) || ArrayBuffer.isView(values)) {
-    for (const value of values as Iterable<unknown>) {
-      if (hasPositiveFiniteValue(value)) return true;
+  if (Array.isArray(values)) {
+    for (let i = 0; i < values.length; i += 1) {
+      if (hasPositiveFiniteValue(values[i])) return true;
+    }
+    return false;
+  }
+  if (ArrayBuffer.isView(values)) {
+    const view = values as unknown as ArrayLike<unknown>;
+    for (let i = 0; i < view.length; i += 1) {
+      if (hasPositiveFiniteValue(view[i])) return true;
     }
   }
   return false;
@@ -203,8 +210,8 @@ export function applyChartTheme(
       axis.autorange = true;
     }
 
-    axis.gridcolor = axis.gridcolor || tokens.grid;
-    axis.zerolinecolor = axis.zerolinecolor || tokens.grid;
+    axis.gridcolor = tokens.grid;
+    axis.zerolinecolor = tokens.grid;
     axis.showline = true;
     axis.linecolor = tokens.chartBorder;
     axis.linewidth = axis.linewidth || 1;

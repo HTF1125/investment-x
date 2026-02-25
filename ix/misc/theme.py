@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -66,19 +67,33 @@ class Color:
         return self.ASSET_MAP.get(name.lower().strip())
 
 
+# Trace types that manage their own internal color schemes.
+# Explicitly excluded from palette assignment.
+_SKIP_COLOR_TYPES = frozenset({
+    "candlestick", "ohlc",
+    "heatmap", "heatmapgl",
+    "choropleth", "choroplethmapbox", "densitymapbox",
+    "parcats", "parcoords",
+    "sunburst", "treemap", "icicle", "funnelarea",
+    "pie",
+})
+
+
 @dataclass(frozen=True)
 class ChartTheme:
     """
     Canonical chart theme used by dashboard/studio delivery.
-    Includes:
-    - Date axis detection with right-side breathing room
+
+    Covers:
+    - Responsive sizing (autosize, no fixed width/height)
+    - Dark / light mode tokens for all layout properties
     - Automatic legend visibility decision
-    - Consistent title/axis/hover readability
+    - Index-based palette assignment with asset-name overrides
+    - Axis sanitization: invalid ranges, log-scale safety, scaleanchor removal
+    - Date axis right-side breathing room
     """
 
     palette: Color = field(default_factory=Color)
-    width: int = 1000
-    height: int = 600
     margin: Dict[str, int] = field(default_factory=lambda: dict(t=50, l=0, r=0, b=0))
     font_main: str = "Arial, Helvetica, sans-serif"
     font_mono: str = "Inter, SF Mono, monospace"
@@ -89,6 +104,10 @@ class ChartTheme:
     legend_x: float = 0.01
     legend_y: float = 0.98
     legend_gap: int = 0
+
+    # ------------------------------------------------------------------ #
+    # Internal helpers                                                     #
+    # ------------------------------------------------------------------ #
 
     @staticmethod
     def _is_datetime_values(values: Any) -> bool:
@@ -125,36 +144,33 @@ class ChartTheme:
 
     @staticmethod
     def _axis_names(fig: go.Figure, prefix: str) -> list[str]:
-        # Always include primary axis even if not explicitly present in layout.
         base = [prefix]
         try:
             layout_dict = fig.layout.to_plotly_json()
             for k in layout_dict.keys():
                 if k.startswith(prefix) and k != prefix:
-                    suffix = k[len(prefix) :]
+                    suffix = k[len(prefix):]
                     if suffix.isdigit():
                         base.append(k)
         except Exception:
             pass
 
         def _key(name: str) -> int:
-            suffix = name[len(prefix) :]
+            suffix = name[len(prefix):]
             return int(suffix) if suffix.isdigit() else 1
 
         return sorted(list(set(base)), key=_key)
 
     @staticmethod
     def _axis_ref_from_name(axis_name: str, axis_prefix: str) -> str:
-        # xaxis -> x, xaxis2 -> x2, yaxis -> y, ...
         if axis_name == axis_prefix:
             return axis_prefix[0]
-        suffix = axis_name[len(axis_prefix) :]
+        suffix = axis_name[len(axis_prefix):]
         return f"{axis_prefix[0]}{suffix}"
 
     def _x_values_for_axis(self, fig: go.Figure, axis_name: str) -> list[Any]:
         axis_ref = self._axis_ref_from_name(axis_name, "xaxis")
         values: list[Any] = []
-
         for trace in fig.data:
             trace_axis = getattr(trace, "xaxis", None) or "x"
             if trace_axis != axis_ref:
@@ -165,7 +181,6 @@ class ChartTheme:
             try:
                 values.extend([x for x in xs if x is not None])
             except Exception:
-                # Fallback for non-iterable/scalar values.
                 if xs is not None:
                     values.append(xs)
         return values
@@ -177,6 +192,20 @@ class ChartTheme:
             return True
         marker = getattr(trace, "marker", None)
         if marker is not None and isinstance(getattr(marker, "color", None), str):
+            return True
+        return False
+
+    @staticmethod
+    def _marker_is_array_colored(trace: go.BaseTraceType) -> bool:
+        """True when marker.color is an array or uses a colorscale — don't override."""
+        marker = getattr(trace, "marker", None)
+        if marker is None:
+            return False
+        color = getattr(marker, "color", None)
+        if isinstance(color, (list, tuple)):
+            return True
+        colorscale = getattr(marker, "colorscale", None)
+        if colorscale is not None:
             return True
         return False
 
@@ -194,7 +223,7 @@ class ChartTheme:
                 return True
 
         count = 0
-        names = set()
+        names: set[str] = set()
         for trace in fig.data:
             if getattr(trace, "visible", None) is False:
                 continue
@@ -211,11 +240,199 @@ class ChartTheme:
             return False
         return True
 
+    # ------------------------------------------------------------------ #
+    # Axis sanitization                                                    #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _axis_has_positive_data(data: list[Any], axis_key: str) -> bool:
+        """
+        Return True if any trace targeting the given y-axis has at least one
+        positive finite value. Used to decide whether log scale is safe.
+        """
+        prefix = "yaxis"
+        suffix = axis_key[len(prefix):]
+        axis_ref = f"y{suffix}" if suffix else "y"
+
+        for trace in data:
+            trace_axis = getattr(trace, "yaxis", None) or "y"
+            if trace_axis != axis_ref:
+                continue
+            for attr in ("y", "open", "high", "low", "close"):
+                vals = getattr(trace, attr, None)
+                if vals is None:
+                    continue
+                try:
+                    for v in vals:
+                        if v is not None:
+                            fv = float(v)
+                            if math.isfinite(fv) and fv > 0:
+                                return True
+                except Exception:
+                    pass
+        return False
+
+    def _sanitize_axes(self, fig: go.Figure) -> None:
+        """
+        Remove axis properties that cause Plotly crashes or render incorrectly:
+        - scaleanchor / scaleratio (can prevent responsive layout)
+        - Invalid ranges (NaN, identical endpoints, unparseable dates)
+        - Log scale when the axis has no positive data (falls back to linear)
+        """
+        try:
+            layout_json = fig.layout.to_plotly_json()
+        except Exception:
+            return
+
+        data = list(fig.data)
+
+        # Collect all axis keys; always include primaries even if absent from layout.
+        axis_keys: list[str] = []
+        for k in layout_json:
+            if k.startswith("xaxis") or k.startswith("yaxis"):
+                axis_keys.append(k)
+        for primary in ("xaxis", "yaxis"):
+            if primary not in axis_keys:
+                axis_keys.append(primary)
+
+        for key in axis_keys:
+            axis_obj = getattr(fig.layout, key, None)
+            if axis_obj is None:
+                continue
+
+            updates: Dict[str, Any] = {}
+
+            # Remove scale anchors that can cause relayout crashes.
+            if getattr(axis_obj, "scaleanchor", None) is not None:
+                updates["scaleanchor"] = None
+            if getattr(axis_obj, "scaleratio", None) is not None:
+                updates["scaleratio"] = None
+
+            axis_type = getattr(axis_obj, "type", None)
+            axis_range = getattr(axis_obj, "range", None)
+
+            # Validate explicit range; fall back to autorange if invalid.
+            if axis_range is not None and len(axis_range) >= 2:
+                start, end = axis_range[0], axis_range[1]
+                valid = True
+
+                if axis_type == "date":
+                    try:
+                        ts0 = pd.Timestamp(str(start))
+                        ts1 = pd.Timestamp(str(end))
+                        valid = pd.notna(ts0) and pd.notna(ts1) and ts0 != ts1
+                    except Exception:
+                        valid = False
+                elif axis_type in ("category", "multicategory"):
+                    valid = True  # label-based ranges are always valid
+                else:
+                    try:
+                        mn, mx = float(start), float(end)
+                        valid = math.isfinite(mn) and math.isfinite(mx) and mn != mx
+                    except Exception:
+                        valid = False
+
+                if not valid:
+                    updates["range"] = None
+                    updates["autorange"] = True
+
+            # Log-scale safety: if no positive data exists, fall back to linear.
+            if axis_type == "log" and key.startswith("yaxis"):
+                if not self._axis_has_positive_data(data, key):
+                    updates["type"] = "linear"
+                    updates["range"] = None
+                    updates["autorange"] = True
+
+            if updates:
+                fig.update_layout({key: updates})
+
+    # ------------------------------------------------------------------ #
+    # Trace coloring                                                       #
+    # ------------------------------------------------------------------ #
+
+    def _color_traces(self, fig: go.Figure) -> None:
+        """
+        Assign palette colors to all uncolored traces.
+
+        Priority:
+          1. Trace already has an explicit color → skip (preserve author intent).
+          2. Trace name matches ASSET_MAP → use its signature color.
+          3. Fallback → assign next palette color by index.
+
+        Skips trace types that manage their own color scheme (candlestick,
+        heatmap, pie, etc.) and traces with array/colorscale marker coloring.
+        """
+        palette = self.palette.colorway
+        palette_idx = 0
+
+        for trace in fig.data:
+            trace_type = getattr(trace, "type", "") or ""
+
+            if trace_type in _SKIP_COLOR_TYPES:
+                palette_idx += 1
+                continue
+
+            if self._trace_has_explicit_color(trace):
+                palette_idx += 1
+                continue
+
+            if self._marker_is_array_colored(trace):
+                palette_idx += 1
+                continue
+
+            # Resolve color: named asset first, then palette index.
+            name = str(getattr(trace, "name", "") or "").strip()
+            color = self.palette.get_asset(name) or palette[palette_idx % len(palette)]
+            palette_idx += 1
+
+            line = getattr(trace, "line", None)
+            marker = getattr(trace, "marker", None)
+
+            if trace_type in ("scatter", "scattergl", "scatter3d", "scatterpolar", "scattermapbox"):
+                mode = str(getattr(trace, "mode", "") or "lines")
+                if line is not None:
+                    try:
+                        line.color = color
+                    except Exception:
+                        pass
+                if marker is not None and not self._marker_is_array_colored(trace):
+                    try:
+                        marker.color = color
+                    except Exception:
+                        pass
+
+            elif trace_type in ("bar", "histogram", "waterfall", "funnel"):
+                if marker is not None and not self._marker_is_array_colored(trace):
+                    try:
+                        marker.color = color
+                    except Exception:
+                        pass
+
+            elif trace_type in ("box", "violin"):
+                if marker is not None:
+                    try:
+                        marker.color = color
+                    except Exception:
+                        pass
+                if line is not None:
+                    try:
+                        line.color = color
+                    except Exception:
+                        pass
+
+            elif trace_type == "area":
+                if line is not None:
+                    try:
+                        line.color = color
+                    except Exception:
+                        pass
+
+    # ------------------------------------------------------------------ #
+    # Date axis padding                                                    #
+    # ------------------------------------------------------------------ #
+
     def _apply_datetime_right_padding(self, fig: go.Figure) -> None:
-        """
-        If an X-axis is date-like, add right-side breathing room.
-        If not date-like, skip (per user requirement).
-        """
+        """Add right-side breathing room on date x-axes."""
         for axis_name in self._axis_names(fig, "xaxis"):
             axis_obj = getattr(fig.layout, axis_name, None)
             axis_type = getattr(axis_obj, "type", None) if axis_obj else None
@@ -234,14 +451,16 @@ class ChartTheme:
             if pad <= pd.Timedelta(0):
                 continue
 
-            updates: Dict[str, Any] = {"range": [x0, x1 + pad], "tickformat": self.datetime_tickformat}
+            fig.update_layout({axis_name: {"range": [x0.isoformat(), (x1 + pad).isoformat()], "tickformat": self.datetime_tickformat}})
 
-            fig.update_layout({axis_name: updates})
+    # ------------------------------------------------------------------ #
+    # Public API                                                           #
+    # ------------------------------------------------------------------ #
 
     def apply(self, fig: Any, mode: str = "light") -> go.Figure:
         """
-        Apply theme to a Plotly figure object.
-        This mutates and returns the same figure instance.
+        Apply the full theme to a Plotly figure object.
+        Mutates and returns the same figure instance.
         """
         fig_obj = fig if isinstance(fig, go.Figure) else go.Figure(fig, skip_invalid=True)
         is_dark = str(mode).lower() == "dark"
@@ -258,8 +477,15 @@ class ChartTheme:
 
         show_legend = self._should_show_legend(fig_obj)
 
+        # --- Core layout ---
+        # NOTE: Deliberately no `template` here. Setting a Plotly built-in template
+        # (plotly_dark / simple_white) serialises template defaults into the JSON,
+        # which the browser then applies on top of our client-side dark/light switch
+        # in chartTheme.ts — causing text/axis colours to bleed from the wrong theme.
         fig_obj.update_layout(
-            template="plotly_dark" if is_dark else "simple_white",
+            autosize=True,
+            width=None,
+            height=None,
             paper_bgcolor=bg_color,
             plot_bgcolor=bg_color,
             font=dict(family=self.font_main, color=text_color, size=base_font_size),
@@ -295,7 +521,7 @@ class ChartTheme:
             ),
         )
 
-        # Axis styling: horizontal grids emphasized, boxed readability.
+        # --- Axis styling ---
         x_axis_style = dict(
             showline=True,
             linewidth=1,
@@ -328,40 +554,35 @@ class ChartTheme:
         fig_obj.update_xaxes(**x_axis_style)
         fig_obj.update_yaxes(**y_axis_style)
 
-        # Ensure annotation text remains readable (subplot titles, text labels, etc).
+        # --- Annotations ---
         if fig_obj.layout.annotations:
             for ann in fig_obj.layout.annotations:
-                existing_font = getattr(ann, "font", None) or {}
+                existing_font = dict(getattr(ann, "font", None) or {})
                 ann.update(font=dict(**existing_font, color=text_color, size=base_font_size))
 
-        # Apply signature colors where trace color is unspecified.
-        for trace in fig_obj.data:
-            if self._trace_has_explicit_color(trace):
-                continue
-            mapped_color = self.palette.get_asset(str(getattr(trace, "name", "") or ""))
-            if not mapped_color:
-                continue
-            if hasattr(trace, "line") and trace.line is not None:
-                trace.line.color = mapped_color
-            if hasattr(trace, "marker") and trace.marker is not None:
-                try:
-                    trace.marker.color = mapped_color
-                except Exception:
-                    pass
-
+        # --- Trace colors, axis sanitization, date padding ---
+        self._color_traces(fig_obj)
+        self._sanitize_axes(fig_obj)
         self._apply_datetime_right_padding(fig_obj)
+
         return fig_obj
 
     def apply_json(self, figure: Any, mode: str = "light") -> Any:
         """
         Apply theme to a Plotly JSON-like figure and return themed JSON.
-        Safe fallback: returns original payload if rehydration/themeing fails.
+        Uses pio.to_json + json.loads to guarantee all Plotly-internal types
+        (Timestamps, numpy scalars, etc.) are serialized correctly.
+        Safe fallback: returns original payload if rehydration/theming fails.
         """
         if figure is None:
             return figure
         try:
+            import json as _json
+            import plotly.io as _pio
+
             fig_obj = figure if isinstance(figure, go.Figure) else go.Figure(figure, skip_invalid=True)
-            return self.apply(fig_obj, mode=mode).to_plotly_json()
+            fig_themed = self.apply(fig_obj, mode=mode)
+            return _json.loads(_pio.to_json(fig_themed, engine="json"))
         except Exception:
             return figure
 
@@ -378,7 +599,7 @@ class Theme:
         self.colors = self.palette.ASSET_MAP
         self.font = chart_theme.font_main
 
-    def apply(self, fig, mode: str = "light"):
+    def apply(self, fig: Any, mode: str = "light") -> go.Figure:
         return chart_theme.apply(fig, mode=mode)
 
     @staticmethod
@@ -412,6 +633,4 @@ class Theme:
         return min(all_x), max(all_x)
 
     def format_chart(self, fig: go.Figure) -> go.Figure:
-        # Backward-compatible entry point.
-        # Keep light as default so title/axis remain black for presentation views.
         return chart_theme.apply(fig, mode="light")

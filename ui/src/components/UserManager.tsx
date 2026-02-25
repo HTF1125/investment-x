@@ -157,54 +157,65 @@ export default function UserManager() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-border/60 bg-card/70 backdrop-blur-sm p-4 md:p-5">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="space-y-6">
+      {/* Header Card */}
+      <div className="rounded-3xl border border-border/50 bg-gradient-to-br from-card/80 via-card/60 to-card/40 backdrop-blur-xl p-6 md:p-8 shadow-xl">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
-              <Users className="w-6 h-6 text-indigo-400" /> User Manager
-            </h1>
-            <p className="text-xs text-muted-foreground font-mono tracking-wider uppercase">
-              Admin Panel • Roles, Access, and Account Status
+            <h2 className="text-2xl font-bold text-foreground tracking-tight flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              User Management
+            </h2>
+            <p className="text-xs text-muted-foreground font-mono tracking-wider uppercase mt-1">
+              Roles • Permissions • Account Control
             </p>
           </div>
           <button
             onClick={() => setShowCreate((p) => !p)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-semibold"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-400 hover:to-violet-400 text-white text-sm font-semibold shadow-lg shadow-indigo-500/20 transition-all"
           >
-            <Plus className="w-4 h-4" /> {showCreate ? 'Close' : 'New User'}
+            <Plus className="w-4 h-4" /> {showCreate ? 'Close Form' : 'New User'}
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
-            Total Users: <span className="font-bold text-foreground">{totals.all}</span>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-border/50 bg-gradient-to-br from-background/60 to-background/40 backdrop-blur-sm px-4 py-3">
+            <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Total Users</div>
+            <div className="text-2xl font-bold text-foreground">{totals.all}</div>
           </div>
-          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
-            Admin/Owner: <span className="font-bold text-emerald-800 dark:text-emerald-200">{totals.admins}</span>
+          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 backdrop-blur-sm px-4 py-3">
+            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">Admin/Owner</div>
+            <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{totals.admins}</div>
           </div>
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-            Disabled: <span className="font-bold text-amber-800 dark:text-amber-200">{totals.disabled}</span>
+          <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-amber-500/5 backdrop-blur-sm px-4 py-3">
+            <div className="text-[10px] font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-1">Disabled</div>
+            <div className="text-2xl font-bold text-amber-700 dark:text-amber-300">{totals.disabled}</div>
           </div>
         </div>
       </div>
 
       {showCreate && (
-        <div className="rounded-2xl border border-border/60 bg-card/70 backdrop-blur-sm p-4 md:p-5 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Create User</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="rounded-3xl border border-border/50 bg-gradient-to-br from-card/80 via-card/60 to-card/40 backdrop-blur-xl p-6 md:p-8 shadow-xl">
+          <h3 className="text-lg font-bold text-foreground uppercase tracking-wider mb-6 flex items-center gap-2">
+            <Plus className="w-5 h-5 text-indigo-500" />
+            Create New User
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <Field label="Email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
             <Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
             <Field label="First Name" value={form.first_name} onChange={(v) => setForm({ ...form, first_name: v })} />
             <Field label="Last Name" value={form.last_name} onChange={(v) => setForm({ ...form, last_name: v })} />
           </div>
-          <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-wrap items-end gap-4 mb-6">
             <label className="text-xs text-muted-foreground">
-              <div className="mb-1">Role</div>
+              <div className="mb-2 font-semibold uppercase tracking-wider">Role</div>
               <select
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value as CreateUserForm['role'] })}
-                className="px-3 py-2 rounded-lg bg-background/60 border border-border text-sm text-foreground outline-none focus:border-indigo-500/40"
+                className="px-4 py-2.5 rounded-xl bg-background/60 border border-border text-sm text-foreground outline-none focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/20 transition-all"
               >
                 <option value="general">General</option>
                 <option value="admin">Admin</option>
@@ -217,21 +228,21 @@ export default function UserManager() {
               onChange={(checked) => setForm({ ...form, disabled: checked })}
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
               onClick={handleCreate}
               disabled={createUserMutation.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white text-sm font-semibold shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all"
             >
               {createUserMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Create
+              Create User
             </button>
             <button
               onClick={() => {
                 setShowCreate(false);
                 setForm(EMPTY_FORM);
               }}
-              className="px-4 py-2 rounded-lg border border-border/60 bg-background/40 hover:bg-accent/40 text-xs text-foreground"
+              className="px-6 py-2.5 rounded-xl border border-border/60 bg-background/40 hover:bg-accent/40 text-sm text-foreground font-semibold transition-all"
             >
               Cancel
             </button>
@@ -239,49 +250,51 @@ export default function UserManager() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-border/60 bg-card/70 backdrop-blur-sm p-4 md:p-5">
-        <div className="mb-3 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <div className="rounded-3xl border border-border/50 bg-gradient-to-br from-card/80 via-card/60 to-card/40 backdrop-blur-xl p-6 md:p-8 shadow-xl">
+        <div className="mb-4 relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by email or name..."
-            className="w-full pl-9 pr-3 py-2 rounded-lg bg-background/60 border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-indigo-500/40"
+            className="w-full pl-12 pr-4 py-3 rounded-xl bg-background/60 border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/20 transition-all"
           />
         </div>
 
         {flash && (
           <div
-            className={`mb-3 rounded-lg px-3 py-2 text-xs ${
+            className={`mb-4 rounded-xl px-4 py-3 text-sm font-medium flex items-center gap-2 ${
               flash.type === 'success'
                 ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
                 : 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
             }`}
           >
-            {flash.text}
+            {flash.type === 'success' ? '✓' : '⚠'} {flash.text}
           </div>
         )}
 
         {isLoading ? (
-          <div className="py-16 text-center">
-            <Loader2 className="w-6 h-6 animate-spin text-indigo-400 mx-auto mb-2" />
-            <p className="text-xs text-muted-foreground">Loading users...</p>
+          <div className="py-20 text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Loading users...</p>
           </div>
         ) : isError ? (
-          <div className="py-16 text-center text-xs text-rose-700 dark:text-rose-300">
-            {(error as Error)?.message || 'Failed to load users.'}
+          <div className="py-20 text-center">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-sm text-rose-300">
+              ⚠ {(error as Error)?.message || 'Failed to load users.'}
+            </div>
           </div>
         ) : (
-          <div className="overflow-x-auto border border-border/70 rounded-xl bg-background/40">
+          <div className="overflow-x-auto border border-border/50 rounded-2xl bg-background/40 backdrop-blur-sm">
             <table className="w-full min-w-[880px] text-left">
-              <thead className="bg-muted/20 border-b border-border text-[11px] uppercase tracking-wider text-muted-foreground">
+              <thead className="bg-gradient-to-r from-muted/30 to-muted/20 border-b border-border text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Email</th>
-                  <th className="px-3 py-2">Role</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Created</th>
-                  <th className="px-3 py-2">Actions</th>
+                  <th className="px-4 py-3 font-bold">Name</th>
+                  <th className="px-4 py-3 font-bold">Email</th>
+                  <th className="px-4 py-3 font-bold">Role</th>
+                  <th className="px-4 py-3 font-bold">Status</th>
+                  <th className="px-4 py-3 font-bold">Created</th>
+                  <th className="px-4 py-3 font-bold">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -293,45 +306,45 @@ export default function UserManager() {
                     updateUserMutation.isPending ||
                     deleteUserMutation.isPending;
                   return (
-                    <tr key={u.id} className="border-b border-border/40 text-sm text-foreground hover:bg-accent/10 transition-colors">
-                      <td className="px-3 py-2">
-                        <div className="font-medium">
+                    <tr key={u.id} className="border-b border-border/30 text-sm text-foreground hover:bg-accent/10 transition-colors group">
+                      <td className="px-4 py-3">
+                        <div className="font-semibold">
                           {[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'}
                         </div>
-                        {isSelf && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 font-mono">You</div>}
+                        {isSelf && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 font-mono mt-0.5">You</div>}
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{u.email}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{u.email}</td>
+                      <td className="px-4 py-3">
                         {role === 'owner' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                            <Crown className="w-3 h-3" /> Owner
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-amber-500/15 to-orange-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                            <Crown className="w-3.5 h-3.5" /> Owner
                           </span>
                         ) : role === 'admin' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                            <Shield className="w-3 h-3" /> Admin
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-emerald-500/15 to-teal-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                            <Shield className="w-3.5 h-3.5" /> Admin
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] bg-muted text-muted-foreground border border-border/70">
-                            <ShieldOff className="w-3 h-3" /> General
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-muted/50 text-muted-foreground border border-border/70">
+                            <ShieldOff className="w-3.5 h-3.5" /> General
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-4 py-3">
                         {u.disabled ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                            <UserX className="w-3 h-3" /> Disabled
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30">
+                            <UserX className="w-3.5 h-3.5" /> Disabled
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/30">
-                            <UserCheck className="w-3 h-3" /> Active
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/30">
+                            <UserCheck className="w-3.5 h-3.5" /> Active
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground font-mono">
+                      <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
                         {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
                       </td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                           <button
                             disabled={rowBusy || isSelf}
                             onClick={() =>
@@ -356,7 +369,7 @@ export default function UserManager() {
                                     : 'Owner role changed to admin.'
                               )
                             }
-                            className="px-2 py-1 text-[10px] rounded-md border border-border/70 text-foreground hover:bg-accent/30 disabled:opacity-40"
+                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-border/70 text-foreground hover:bg-accent/30 disabled:opacity-40 transition-all"
                           >
                             {role === 'general' ? 'Make Admin' : role === 'admin' ? 'Make General' : 'Set Admin'}
                           </button>
@@ -373,9 +386,9 @@ export default function UserManager() {
                                 'User promoted to owner.'
                               )
                             }
-                            className="px-2 py-1 text-[10px] rounded-md border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 inline-flex items-center gap-1"
+                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 inline-flex items-center gap-1 transition-all"
                           >
-                            <Crown className="w-3 h-3" /> Make Owner
+                            <Crown className="w-3 h-3" /> Owner
                           </button>
                           <button
                             disabled={rowBusy || isSelf}
@@ -390,7 +403,7 @@ export default function UserManager() {
                                 u.disabled ? 'User enabled.' : 'User disabled.'
                               )
                             }
-                            className="px-2 py-1 text-[10px] rounded-md border border-border/70 text-foreground hover:bg-accent/30 disabled:opacity-40"
+                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-border/70 text-foreground hover:bg-accent/30 disabled:opacity-40 transition-all"
                           >
                             {u.disabled ? 'Enable' : 'Disable'}
                           </button>
@@ -413,7 +426,7 @@ export default function UserManager() {
                                 'Password updated.'
                               );
                             }}
-                            className="px-2 py-1 text-[10px] rounded-md border border-indigo-500/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 disabled:opacity-40 inline-flex items-center gap-1"
+                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-indigo-500/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 disabled:opacity-40 inline-flex items-center gap-1 transition-all"
                           >
                             <KeyRound className="w-3 h-3" /> Password
                           </button>
@@ -428,7 +441,7 @@ export default function UserManager() {
                                 'User deleted.'
                               );
                             }}
-                            className="px-2 py-1 text-[10px] rounded-md border border-rose-500/40 text-rose-700 dark:text-rose-300 hover:bg-rose-500/10 disabled:opacity-40 inline-flex items-center gap-1"
+                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-rose-500/40 text-rose-700 dark:text-rose-300 hover:bg-rose-500/10 disabled:opacity-40 inline-flex items-center gap-1 transition-all"
                           >
                             <Trash2 className="w-3 h-3" /> Delete
                           </button>
@@ -442,7 +455,10 @@ export default function UserManager() {
           </div>
         )}
         {isFetching && !isLoading && (
-          <div className="mt-2 text-[10px] text-muted-foreground font-mono">Refreshing user list...</div>
+          <div className="mt-3 text-[10px] text-muted-foreground font-mono flex items-center gap-2">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Refreshing user list...
+          </div>
         )}
       </div>
     </div>
@@ -462,12 +478,12 @@ function Field({
 }) {
   return (
     <label className="text-xs text-muted-foreground">
-      <div className="mb-1">{label}</div>
+      <div className="mb-2 font-semibold uppercase tracking-wider">{label}</div>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-lg bg-background/60 border border-border text-sm text-foreground outline-none focus:border-indigo-500/40"
+        className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border text-sm text-foreground outline-none focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/20 transition-all"
       />
     </label>
   );
@@ -483,14 +499,18 @@ function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="inline-flex items-center gap-2 text-xs text-foreground cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="rounded border-input bg-background text-indigo-500 focus:ring-indigo-500/40"
-      />
-      {label}
+    <label className="inline-flex items-center gap-3 text-sm text-foreground cursor-pointer">
+      <div className="relative">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="sr-only peer"
+        />
+        <div className="w-11 h-6 bg-muted rounded-full peer peer-checked:bg-indigo-500 transition-colors" />
+        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+      </div>
+      <span className="font-medium">{label}</span>
     </label>
   );
 }
