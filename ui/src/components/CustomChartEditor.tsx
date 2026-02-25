@@ -137,6 +137,8 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     [createdByName, createdByEmail]
   );
   const loadedFromPropRef = useRef<string | null>(null);
+  const codeEditorRef = useRef<any>(null);
+  const savedCursorPos = useRef<{ lineNumber: number; column: number } | null>(null);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(440);
@@ -600,6 +602,36 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       return;
     }
     const snippet = buildSeriesSnippet(ts);
+    const editor = codeEditorRef.current;
+
+    if (editor) {
+      const model = editor.getModel();
+      const currentValue: string = model?.getValue() ?? '';
+      if (currentValue.includes(`Series('${ts.code}')`) || currentValue.includes(`Series("${ts.code}")`)) {
+        setSuccessMsg(`Series('${ts.code}') already in code.`);
+        return;
+      }
+      const position = editor.getPosition() ?? savedCursorPos.current;
+      if (position && model) {
+        const lineContent: string = model.getLineContent(position.lineNumber);
+        const needsLeadingNewline = position.column > 1 || lineContent.trim().length > 0;
+        editor.executeEdits('insert-series', [{
+          range: {
+            startLineNumber: position.lineNumber,
+            startColumn: position.column,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column,
+          },
+          text: (needsLeadingNewline ? '\n' : '') + snippet,
+        }]);
+        editor.focus();
+        setSuccessMsg(`Inserted Series('${ts.code}') at cursor.`);
+        setPreviewError(null);
+        return;
+      }
+    }
+
+    // Fallback: append to end
     setCode((prev) => {
       if (prev.includes(`Series('${ts.code}')`) || prev.includes(`Series("${ts.code}")`)) {
         return prev;
@@ -1259,7 +1291,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
         <div className="flex-grow flex flex-col relative min-h-0 overflow-hidden">
 
             {/* Main Visualizer */}
-            {(mode === 'integrated' || !showCodePanel) ? (
+            {!showCodePanel ? (
             <div className={`flex-grow relative flex flex-col min-h-0 p-3 md:p-4 ${isLight ? 'bg-slate-100' : 'bg-[#010205]'}`}>
                 <div className={`flex-grow relative overflow-hidden rounded-2xl border ${
                   isLight
@@ -1345,7 +1377,133 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                 </div>
             </div>
             ) : (
-                <div>Code editor placeholder - should not appear in integrated mode</div>
+                <div className={`flex-grow flex flex-col min-h-0 gap-2 p-3 md:p-4 ${isLight ? 'bg-slate-100' : 'bg-[#010205]'}`}>
+
+                    {/* Timeseries Search — top bar */}
+                    <div className={`shrink-0 rounded-xl border overflow-hidden ${
+                      isLight ? 'border-slate-200 bg-white shadow-sm' : 'border-border/40 bg-[#020711]'
+                    }`}>
+                        {/* Search row */}
+                        <div className={`flex items-center gap-2 px-3 py-2 border-b ${isLight ? 'border-slate-200' : 'border-border/40'}`}>
+                            <span className={`text-[10px] font-semibold uppercase tracking-widest shrink-0 ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
+                                Timeseries
+                            </span>
+                            <input
+                                value={timeseriesSearch}
+                                onChange={(e) => setTimeseriesSearch(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); runTimeseriesSearch(); } }}
+                                placeholder="Search series… (Enter)"
+                                className={`flex-1 min-w-0 px-2 py-1 rounded text-[11px] font-mono focus:outline-none transition-colors ${
+                                  isLight
+                                    ? 'bg-slate-100 border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:border-indigo-400'
+                                    : 'bg-white/5 border border-white/10 text-slate-300 placeholder:text-slate-600 focus:border-indigo-500/50'
+                                }`}
+                            />
+                            <button
+                                onClick={runTimeseriesSearch}
+                                className={`shrink-0 px-3 py-1 rounded text-[11px] font-semibold transition-colors ${
+                                  isLight
+                                    ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200'
+                                    : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20'
+                                }`}
+                            >
+                                Go
+                            </button>
+                            {timeseriesLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />}
+                        </div>
+
+                        {/* Results — compact scrollable list, max ~4 rows */}
+                        {(timeseriesQuery.length > 0 || timeseriesMatches.length > 0) && (
+                            <div className="max-h-40 overflow-y-auto">
+                                {!timeseriesLoading && timeseriesQuery.length > 0 && timeseriesMatches.length === 0 && (
+                                    <div className={`px-3 py-3 text-center text-[11px] ${isLight ? 'text-slate-400' : 'text-slate-600'}`}>
+                                        No results for &ldquo;{timeseriesQuery}&rdquo;
+                                    </div>
+                                )}
+                                {timeseriesMatches.map((ts) => (
+                                    <div
+                                        key={ts.id}
+                                        className={`flex items-center gap-2 px-3 py-1.5 border-b ${
+                                          isLight ? 'border-slate-100 hover:bg-slate-50' : 'border-border/20 hover:bg-white/[0.03]'
+                                        }`}
+                                    >
+                                        <div className="flex-1 min-w-0">
+                                            <div className={`text-[11px] font-semibold truncate ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                                                {ts.name || ts.code}
+                                            </div>
+                                            <div className={`text-[10px] font-mono truncate ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
+                                                {ts.code}{ts.frequency ? ` · ${ts.frequency}` : ''}
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1 shrink-0">
+                                            <button
+                                                onClick={() => insertSeriesSnippet(ts)}
+                                                className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                                                  isLight
+                                                    ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200'
+                                                    : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20'
+                                                }`}
+                                                title="Insert Series() into code"
+                                            >
+                                                Insert
+                                            </button>
+                                            <button
+                                                onClick={() => copySeriesSnippet(ts)}
+                                                className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                                                  isLight
+                                                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200'
+                                                    : 'bg-white/5 hover:bg-white/10 text-slate-400 border border-white/10'
+                                                }`}
+                                                title="Copy snippet"
+                                            >
+                                                Copy
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Monaco Editor — takes remaining space */}
+                    <div className={`flex-grow relative overflow-hidden rounded-xl border ${
+                      isLight ? 'border-slate-200 bg-white shadow-sm' : 'border-border/40 bg-[#020711]'
+                    }`}>
+                        {isMounted ? (
+                            <Editor
+                                height="100%"
+                                language="python"
+                                value={code}
+                                onChange={(v) => setCode(v ?? '')}
+                                onMount={(editor) => {
+                                    codeEditorRef.current = editor;
+                                    // Save cursor position on every change so Insert works after blur
+                                    editor.onDidChangeCursorPosition((e) => {
+                                        savedCursorPos.current = { lineNumber: e.position.lineNumber, column: e.position.column };
+                                    });
+                                }}
+                                theme={isLight ? 'vs' : 'vs-dark'}
+                                options={{
+                                    readOnly: false,
+                                    fontSize: editorFontSize,
+                                    fontFamily: editorFontFamily,
+                                    minimap: { enabled: false },
+                                    scrollBeyondLastLine: false,
+                                    lineNumbers: 'on',
+                                    wordWrap: 'on',
+                                    padding: { top: 16, bottom: 16 },
+                                    renderLineHighlight: 'none',
+                                    contextmenu: true,
+                                }}
+                            />
+                        ) : (
+                            <div className="h-full w-full flex items-center justify-center">
+                                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                            </div>
+                        )}
+                    </div>
+
+                </div>
             )}
         </div>
       </main>

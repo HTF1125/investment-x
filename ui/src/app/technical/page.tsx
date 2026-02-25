@@ -240,8 +240,12 @@ export default function TechnicalPage() {
   }, [fig, isLight]);
 
   // ── Render ───────────────────────────────────────────────────────────────
-  const formStyle: React.CSSProperties = { colorScheme: isLight ? 'light' : 'dark' };
-  const inputCls = 'bg-background border border-border/50 rounded px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/30 transition-colors';
+  const formStyle: React.CSSProperties = {
+    colorScheme: isLight ? 'light' : 'dark',
+    backgroundColor: isLight ? '#ffffff' : '#050505',
+    color: isLight ? '#0f172a' : '#f8fafc',
+  };
+  const inputCls = 'border border-border/50 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/30 transition-colors';
   const selectCls = inputCls + ' cursor-pointer';
 
   return (
