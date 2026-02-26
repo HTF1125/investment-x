@@ -23,6 +23,8 @@ interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   token: string | null;
+  viewAsUser: boolean;
+  toggleViewAsUser: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,7 +34,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   // Store token in state to avoid direct localStorage reads during render (SSR hydration safety)
   const [token, setToken] = useState<string | null>(null);
+  const [viewAsUser, setViewAsUser] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    if (localStorage.getItem('viewAsUser') === 'true') setViewAsUser(true);
+  }, []);
+
+  const toggleViewAsUser = useCallback(() => {
+    setViewAsUser(v => {
+      const next = !v;
+      localStorage.setItem('viewAsUser', String(next));
+      return next;
+    });
+  }, []);
 
   const normalizeUser = useCallback((raw: any): User => {
     const roleRaw = String(raw?.role || '').toLowerCase();
@@ -183,14 +198,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [router, updateToken]);
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      loading, 
-      login, 
-      register, 
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      login,
+      register,
       logout,
       isAuthenticated: !!user,
       token,
+      viewAsUser,
+      toggleViewAsUser,
     }}>
       {children}
     </AuthContext.Provider>

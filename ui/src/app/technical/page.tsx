@@ -40,70 +40,6 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// ─── Signal Extraction ───────────────────────────────────────────────────────
-
-interface Signals {
-  rsi: number | null;
-  rsiLabel: 'Overbought' | 'Neutral' | 'Oversold';
-  macdBullish: boolean | null;
-  aboveMA200: boolean | null;
-}
-
-function lastOf(arr: any): number | undefined {
-  if (arr == null || typeof arr.length !== 'number' || arr.length === 0) return undefined;
-  return arr[arr.length - 1];
-}
-
-function extractSignals(fig: any): Signals {
-  const traces: any[] = fig?.data ?? [];
-  const candlestick = traces.find((t) => t.type === 'candlestick');
-  const ma200 = traces.find((t) => t.name?.includes('200'));
-  const rsiTrace = traces.find((t) => {
-    const n = t.name?.toLowerCase() ?? '';
-    return n.includes('rsi') && !n.includes('mean');
-  });
-  const macdHist = traces.find((t) => {
-    const n = t.name?.toLowerCase() ?? '';
-    return n.includes('macd') && n.includes('hist');
-  }) ?? traces.find((t) => t.name?.toLowerCase().includes('hist'));
-
-  const lastClose = lastOf(candlestick?.close);
-  const lastMA200 = lastOf(ma200?.y);
-  const lastRSI = lastOf(rsiTrace?.y);
-  const lastMACDHist = lastOf(macdHist?.y);
-
-  const rsi = lastRSI != null ? Math.round(lastRSI * 10) / 10 : null;
-  return {
-    rsi,
-    rsiLabel: rsi == null ? 'Neutral' : rsi > 70 ? 'Overbought' : rsi < 30 ? 'Oversold' : 'Neutral',
-    macdBullish: lastMACDHist != null ? lastMACDHist > 0 : null,
-    aboveMA200: lastClose != null && lastMA200 != null ? lastClose > lastMA200 : null,
-  };
-}
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-function SignalCard({ label, value, subLabel, color }: {
-  label: string;
-  value: string;
-  subLabel: string;
-  color: 'green' | 'red' | 'sky' | 'muted';
-}) {
-  const colorMap = {
-    green: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/8',
-    red: 'text-rose-400 border-rose-500/30 bg-rose-500/8',
-    sky: 'text-sky-400 border-sky-500/30 bg-sky-500/8',
-    muted: 'text-muted-foreground border-border/50 bg-card/30',
-  };
-  return (
-    <div className={`rounded-lg border px-3 py-2 flex flex-col gap-0.5 ${colorMap[color]}`}>
-      <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{label}</div>
-      <div className="text-sm font-bold font-mono">{value}</div>
-      <div className="text-[10px] text-muted-foreground">{subLabel}</div>
-    </div>
-  );
-}
-
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function TechnicalPage() {
@@ -113,18 +49,27 @@ export default function TechnicalPage() {
   const addInputRef = useRef<HTMLInputElement>(null);
 
   // ── Watchlist (localStorage-persisted) ──────────────────────────────────
-  const [watchlist, setWatchlist] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem(WATCHLIST_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return DEFAULT_WATCHLIST;
-  });
+  const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_WATCHLIST);
+  const [watchlistReady, setWatchlistReady] = useState(false);
   const [addInput, setAddInput] = useState('');
 
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem(WATCHLIST_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+          setWatchlist(parsed);
+        }
+      }
+    } catch {}
+    setWatchlistReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!watchlistReady) return;
     try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist)); } catch {}
-  }, [watchlist]);
+  }, [watchlist, watchlistReady]);
 
   const addTicker = useCallback(() => {
     const t = addInput.trim().toUpperCase();
@@ -156,6 +101,14 @@ export default function TechnicalPage() {
     countdownFrom: 13,
     cooldown: 0,
   });
+
+  useEffect(() => {
+    if (!watchlist.includes(activeTicker)) {
+      const nextTicker = watchlist[0] ?? 'SPY';
+      setActiveTicker(nextTicker);
+      setParams((prev) => ({ ...prev, ticker: nextTicker }));
+    }
+  }, [watchlist, activeTicker]);
 
   const commit = useCallback(() => {
     setParams({
@@ -201,9 +154,6 @@ export default function TechnicalPage() {
     staleTime: 60_000,
   });
 
-  // ── Signal cards ─────────────────────────────────────────────────────────
-  const signals = useMemo(() => (fig ? extractSignals(fig) : null), [fig]);
-
   // ── Chart theming ─────────────────────────────────────────────────────────
   const cleanedFigure = useMemo(() => {
     if (!fig) return null;
@@ -215,18 +165,25 @@ export default function TechnicalPage() {
       ...cloned.layout,
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { ...(cloned.layout?.font || {}), color: fg, family: 'Ubuntu, Inter, Roboto, sans-serif' },
+      font: { ...(cloned.layout?.font || {}), color: fg, family: 'Inter, sans-serif' },
       legend: {
         ...(cloned.layout?.legend || {}),
-        bgcolor: panelBg,
-        bordercolor: isLight ? 'rgba(15,23,42,0.14)' : 'rgba(148,163,184,0.35)',
-        font: { ...(cloned.layout?.legend?.font || {}), color: fg },
+        orientation: 'h',
+        x: 0,
+        xanchor: 'left',
+        y: 1.05,
+        yanchor: 'bottom',
+        itemsizing: 'constant',
+        traceorder: 'normal',
+        bgcolor: 'rgba(0,0,0,0)',
+        borderwidth: 0,
+        font: { ...(cloned.layout?.legend?.font || {}), color: fg, family: 'Inter, sans-serif', size: 11 },
       },
       hoverlabel: {
         ...(cloned.layout?.hoverlabel || {}),
         bgcolor: isLight ? 'rgba(255,255,255,0.96)' : 'rgba(15,23,42,0.92)',
         bordercolor: isLight ? 'rgba(15,23,42,0.18)' : 'rgba(148,163,184,0.35)',
-        font: { ...(cloned.layout?.hoverlabel?.font || {}), color: fg },
+        font: { ...(cloned.layout?.hoverlabel?.font || {}), color: fg, family: 'Inter, sans-serif' },
       },
     };
     ['xaxis', 'yaxis', 'xaxis2', 'yaxis2', 'xaxis3', 'yaxis3'].forEach((ax) => {
@@ -245,17 +202,19 @@ export default function TechnicalPage() {
     backgroundColor: isLight ? '#ffffff' : '#050505',
     color: isLight ? '#0f172a' : '#f8fafc',
   };
-  const inputCls = 'border border-border/50 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/30 transition-colors';
+  const inputCls = 'border border-border/50 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:border-border transition-colors';
   const selectCls = inputCls + ' cursor-pointer';
 
   return (
     <AppShell hideFooter>
-      <section className="h-[calc(100dvh-3rem)] flex overflow-hidden font-mono">
+      <section className="h-[calc(100vh-40px)] flex overflow-hidden">
 
         {/* ── Left Sidebar: Watchlist ───────────────────────────────────── */}
-        <aside className="w-44 shrink-0 border-r border-border/40 flex flex-col overflow-hidden bg-card/20">
-          <div className="px-3 pt-3 pb-2 border-b border-border/40 shrink-0">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">Watchlist</div>
+        <aside className="w-44 shrink-0 border-r border-border/60 flex flex-col overflow-hidden bg-background">
+          <div className="h-11 flex items-center px-3 border-b border-border/60 shrink-0">
+            <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Watchlist</span>
+          </div>
+          <div className="px-2 py-2 border-b border-border/60 shrink-0">
             <div className="flex gap-1">
               <input
                 ref={addInputRef}
@@ -264,11 +223,11 @@ export default function TechnicalPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTicker(); } }}
                 placeholder="Add ticker…"
                 maxLength={10}
-                className="flex-1 min-w-0 bg-transparent border border-border/40 rounded px-2 py-1 text-[11px] font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-sky-500/50 transition-colors"
+                className="flex-1 min-w-0 bg-transparent border border-border/50 rounded-md px-2 py-1.5 text-[11px] font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:border-border transition-colors"
               />
               <button
                 onClick={addTicker}
-                className="shrink-0 w-6 h-6 flex items-center justify-center rounded border border-border/40 hover:border-sky-500/50 hover:text-sky-400 text-muted-foreground transition-colors"
+                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md border border-border/50 text-muted-foreground/40 hover:text-muted-foreground hover:border-border transition-colors"
                 title="Add ticker"
               >
                 <Plus className="w-3 h-3" />
@@ -278,7 +237,7 @@ export default function TechnicalPage() {
 
           <div className="flex-1 overflow-y-auto py-1">
             {watchlist.length === 0 && (
-              <div className="px-3 py-4 text-[11px] text-muted-foreground/60 text-center">No tickers</div>
+              <div className="px-3 py-4 text-[11px] text-muted-foreground/50 text-center">No tickers</div>
             )}
             {watchlist.map((ticker) => {
               const isActive = ticker === params.ticker;
@@ -291,17 +250,17 @@ export default function TechnicalPage() {
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectTicker(ticker); }}
                   className={`group w-full flex items-center justify-between px-3 py-1.5 text-left cursor-pointer transition-colors ${
                     isActive
-                      ? 'bg-sky-500/10 border-l-2 border-sky-500 pl-[10px] text-sky-300'
-                      : 'border-l-2 border-transparent hover:bg-white/5 text-muted-foreground hover:text-foreground'
+                      ? 'bg-foreground/[0.06] text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.03]'
                   }`}
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-sky-400' : 'bg-border'}`} />
-                    <span className={`text-xs font-semibold font-mono truncate ${isActive ? 'text-sky-200' : ''}`}>{ticker}</span>
+                    <span className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-foreground' : 'bg-border/60'}`} />
+                    <span className="text-xs truncate">{ticker}</span>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); removeTicker(ticker); }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:text-rose-400 text-muted-foreground/70 shrink-0"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:text-rose-400 text-muted-foreground/50 shrink-0"
                     title="Remove"
                   >
                     <X className="w-3 h-3" />
@@ -313,18 +272,18 @@ export default function TechnicalPage() {
         </aside>
 
         {/* ── Main Content ─────────────────────────────────────────────────── */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden p-2.5 gap-2">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden p-3 gap-2">
 
           {/* Controls bar */}
-          <div className="shrink-0 rounded-lg border border-border/40 bg-card/20 px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="shrink-0 rounded-xl border border-border/60 bg-background px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-2">
             {/* Active ticker */}
             <div className="flex items-center gap-2 min-w-fit">
-              <span className="text-base font-bold font-mono text-foreground tracking-widest">{params.ticker}</span>
-              <span className="text-[10px] text-muted-foreground font-sans">·</span>
+              <span className="text-sm font-bold text-foreground">{params.ticker}</span>
+              <span className="text-muted-foreground/40 text-[11px]">·</span>
               <span className="text-[11px] text-muted-foreground">{FREQ_CONFIG[freq].label}</span>
             </div>
 
-            <div className="h-4 w-px bg-border/50 hidden sm:block" />
+            <div className="h-4 w-px bg-border/60 hidden sm:block" />
 
             {/* Frequency toggle */}
             <div className="flex items-center gap-0.5">
@@ -332,10 +291,10 @@ export default function TechnicalPage() {
                 <button
                   key={f}
                   onClick={() => changeFreq(f)}
-                  className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
                     freq === f
-                      ? 'bg-sky-500/20 border border-sky-500/50 text-sky-300'
-                      : 'border border-transparent hover:border-border/60 text-muted-foreground hover:text-foreground'
+                      ? 'bg-foreground/[0.07] text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
                   }`}
                 >
                   {f}
@@ -343,11 +302,11 @@ export default function TechnicalPage() {
               ))}
             </div>
 
-            <div className="h-4 w-px bg-border/50 hidden sm:block" />
+            <div className="h-4 w-px bg-border/60 hidden sm:block" />
 
             {/* Date range */}
             <div className="flex items-center gap-1.5 text-[11px]">
-              <span className="text-muted-foreground shrink-0">Start</span>
+              <span className="text-muted-foreground/60 shrink-0">Start</span>
               <input
                 type="date"
                 value={startDate}
@@ -355,7 +314,7 @@ export default function TechnicalPage() {
                 className={inputCls}
                 style={formStyle}
               />
-              <span className="text-muted-foreground shrink-0">End</span>
+              <span className="text-muted-foreground/60 shrink-0">End</span>
               <input
                 type="date"
                 value={endDate}
@@ -366,76 +325,49 @@ export default function TechnicalPage() {
               />
             </div>
 
-            <div className="h-4 w-px bg-border/50 hidden lg:block" />
+            <div className="h-4 w-px bg-border/60 hidden lg:block" />
 
             {/* Indicator filters */}
             <div className="flex items-center gap-1.5 text-[11px]">
-              <span className="text-muted-foreground shrink-0">Setup</span>
+              <span className="text-muted-foreground/60 shrink-0">Setup</span>
               <select value={setupFrom} onChange={(e) => setSetupFrom(Number(e.target.value))} className={selectCls} style={formStyle}>
                 {[1, 5, 7, 9].map((v) => <option key={v} value={v}>{v}+</option>)}
               </select>
-              <span className="text-muted-foreground shrink-0">CD</span>
+              <span className="text-muted-foreground/60 shrink-0">CD</span>
               <select value={countdownFrom} onChange={(e) => setCountdownFrom(Number(e.target.value))} className={selectCls} style={formStyle}>
                 {[9, 10, 11, 12, 13].map((v) => <option key={v} value={v}>{v}+</option>)}
               </select>
-              <span className="text-muted-foreground shrink-0">Cool</span>
+              <span className="text-muted-foreground/60 shrink-0">Cool</span>
               <select value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} className={selectCls} style={formStyle}>
                 {[0, 5, 10, 15, 20].map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
 
-            <div className="ml-auto flex items-center gap-2">
+            <div className="flex items-center gap-2">
               {isFetching && !isLoading && (
-                <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   <Activity className="w-3 h-3" />
                   Updating
                 </span>
               )}
               <button
                 onClick={commit}
-                className="px-3 py-1 rounded border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-[11px] font-semibold transition-colors"
+                className="h-7 px-3 bg-foreground text-background rounded-md text-[11px] font-medium hover:opacity-80 transition-opacity"
               >
                 Refresh
               </button>
             </div>
           </div>
 
-          {/* Signal cards */}
-          <div className="shrink-0 grid grid-cols-3 gap-2">
-            <SignalCard
-              label="RSI 14"
-              value={signals?.rsi != null ? String(signals.rsi) : '─'}
-              subLabel={signals ? signals.rsiLabel : 'Loading…'}
-              color={
-                signals?.rsi == null ? 'muted'
-                : signals.rsi > 70 ? 'red'
-                : signals.rsi < 30 ? 'green'
-                : 'sky'
-              }
-            />
-            <SignalCard
-              label="MACD"
-              value={signals?.macdBullish == null ? '─' : signals.macdBullish ? 'Bullish' : 'Bearish'}
-              subLabel={signals?.macdBullish == null ? 'Loading…' : signals.macdBullish ? 'Histogram above zero' : 'Histogram below zero'}
-              color={signals?.macdBullish == null ? 'muted' : signals.macdBullish ? 'green' : 'red'}
-            />
-            <SignalCard
-              label="MA 200"
-              value={signals?.aboveMA200 == null ? '─' : signals.aboveMA200 ? 'Above' : 'Below'}
-              subLabel={signals?.aboveMA200 == null ? 'Loading…' : signals.aboveMA200 ? 'Price above 200-period MA' : 'Price below 200-period MA'}
-              color={signals?.aboveMA200 == null ? 'muted' : signals.aboveMA200 ? 'green' : 'red'}
-            />
-          </div>
-
           {/* Chart panel */}
-          <div className="flex-1 min-h-0 rounded-lg border border-border/40 bg-card/20 flex flex-col overflow-hidden">
-            <div className="px-3 py-1.5 border-b border-border/40 flex items-center justify-between text-[11px] shrink-0">
-              <span className="font-semibold text-foreground font-mono">
+          <div className="flex-1 min-h-0 rounded-xl border border-border/60 bg-background flex flex-col overflow-hidden">
+            <div className="h-9 px-3 border-b border-border/60 flex items-center justify-between shrink-0">
+              <span className="text-[11px] font-medium text-foreground">
                 {params.ticker} · {FREQ_CONFIG[freq].label} · Elliott + MACD + RSI
               </span>
               {!isFetching && !isLoading && fig && (
-                <span className="flex items-center gap-1 text-emerald-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live
                 </span>
               )}
@@ -443,9 +375,9 @@ export default function TechnicalPage() {
 
             <div className="flex-1 min-h-0">
               {isLoading && (
-                <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin text-sky-400" />
-                  <span className="text-xs">Loading {params.ticker}…</span>
+                <div className="h-full w-full flex flex-col items-center justify-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Loading {params.ticker}…</span>
                 </div>
               )}
               {!isLoading && error && (

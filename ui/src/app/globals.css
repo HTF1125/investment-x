@@ -118,8 +118,18 @@
   background: rgba(155, 155, 155, 0.4);
 }
 
+/* Monaco editor scrollbar — match navigator style */
+.monaco-scrollable-element > .scrollbar > .slider {
+  border-radius: 9999px !important;
+  background: rgba(155, 155, 155, 0.2) !important;
+}
+.monaco-scrollable-element > .scrollbar > .slider:hover,
+.monaco-scrollable-element > .scrollbar > .slider.active {
+  background: rgba(155, 155, 155, 0.4) !important;
+}
+
 h1, h2, h3, h4 {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 
 /* Notes editor */

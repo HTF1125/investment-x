@@ -122,7 +122,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
 
   return (
     <AppShell hideFooter>
-      <div className="relative h-[calc(100vh-48px)] overflow-hidden">
+      <div className="relative h-[calc(100vh-40px)] overflow-hidden">
         <div className="h-full">
           <div className="w-full h-full">
              {data.charts_by_category ? (

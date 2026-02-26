@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Radio, RefreshCw, Check, AlertTriangle, Activity, BellRing, ScanLine, LayoutGrid } from 'lucide-react';
+import { Radio, RefreshCw, Check, AlertTriangle } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -154,68 +154,48 @@ export default function IntelPage() {
 
   return (
     <AppShell hideFooter>
-      <div className="flex h-[calc(100vh-48px)] relative bg-background overflow-hidden">
-        {/* Main Content Area */}
-        <main className="flex-1 min-w-0 h-full overflow-y-auto custom-scrollbar relative flex flex-col bg-background">
-          <div className="p-4 md:p-6 lg:p-8 space-y-6">
-            {/* Header Card */}
-            <div className="glass-card p-4 md:p-5 border border-border/50">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 shrink-0">
-                    <Radio className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h1 className="text-lg font-bold text-foreground">Intel Feed</h1>
-                    <p className="text-[10px] font-mono text-muted-foreground/60 uppercase tracking-wider">
-                      YouTube + Telegram Aggregator
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono ${
-                    syncing
-                      ? 'border-sky-500/40 bg-sky-500/10 text-sky-400'
-                      : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                  }`}>
-                    <Activity className={`w-3 h-3 ${syncing ? 'animate-pulse' : ''}`} />
-                    <span className="font-bold">{syncing ? 'SYNCING' : 'IDLE'}</span>
-                  </div>
-
-                  {isAdmin && (
-                    <>
-                      <button
-                        onClick={handleScrape}
-                        disabled={syncing}
-                        className="p-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all disabled:opacity-50"
-                        title="Sync Telegram"
-                      >
-                        <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                      </button>
-                      <button
-                        onClick={handleYouTubeSync}
-                        disabled={syncingYoutube}
-                        className="p-2 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-all disabled:opacity-50"
-                        title="Sync YouTube"
-                      >
-                        <RefreshCw className={`w-4 h-4 ${syncingYoutube ? 'animate-spin' : ''}`} />
-                      </button>
-                    </>
-                  )}
-                </div>
+      <div className="flex h-[calc(100vh-40px)] relative bg-background overflow-hidden">
+        <main className="flex-1 min-w-0 h-full flex flex-col bg-background">
+          {/* Inner header bar */}
+          <div className="h-11 flex items-center justify-between px-4 border-b border-border/60 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <Radio className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
+              <span className="text-sm font-semibold text-foreground">Intel Feed</span>
+              <span className="text-muted-foreground/30 text-[11px]">·</span>
+              <span className="text-[11px] text-muted-foreground/60">YouTube + Telegram</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className={`w-1.5 h-1.5 rounded-full ${syncing ? 'bg-sky-400 animate-pulse' : 'bg-emerald-500'}`} />
+                <span>{syncing ? (syncMsg || 'Syncing…') : 'Live'}</span>
               </div>
-
-              {syncing && syncMsg && (
-                <div className="mt-3 pt-3 border-t border-border/30 flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
-                  <BellRing className="w-3 h-3 text-primary" />
-                  {syncMsg}
-                </div>
+              {isAdmin && (
+                <>
+                  <div className="w-px h-4 bg-border/60 mx-1" />
+                  <button
+                    onClick={handleScrape}
+                    disabled={syncing}
+                    className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
+                    title="Sync Telegram"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                  </button>
+                  <button
+                    onClick={handleYouTubeSync}
+                    disabled={syncingYoutube}
+                    className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
+                    title="Sync YouTube"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingYoutube ? 'animate-spin' : ''}`} />
+                  </button>
+                </>
               )}
             </div>
+          </div>
 
-            {/* Feed Content */}
-            <div className="space-y-6">
+          {/* Scrollable feed content */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="p-4 md:p-6 space-y-4">
               <YouTubeIntelFeed />
               <NewsFeed />
             </div>
@@ -231,18 +211,16 @@ export default function IntelPage() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md border ${
-              toast.type === 'success'
-                ? 'bg-emerald-500/15 border-emerald-500/20 text-emerald-300'
-                : 'bg-rose-500/15 border-rose-500/20 text-rose-300'
+            className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-4 py-2.5 rounded-xl shadow-xl border border-border/60 bg-background ${
+              toast.type === 'success' ? 'text-emerald-500' : 'text-rose-400'
             }`}
           >
-            {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-            <span className="text-sm font-medium">{toast.msg}</span>
+            {toast.type === 'success' ? <Check className="w-3.5 h-3.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+            <span className="text-[13px] font-medium text-foreground">{toast.msg}</span>
             {toast.sticky && (
               <button
                 onClick={() => setToast(null)}
-                className="px-2 py-1 rounded-lg border border-current/30 text-[10px] font-bold hover:bg-white/10 transition-colors"
+                className="ml-1 px-2 py-0.5 rounded-md border border-border/60 text-[10px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
               >
                 OK
               </button>

@@ -18,8 +18,8 @@ export default function AppShell({
   return (
     <main className="min-h-screen flex flex-col relative overflow-x-hidden">
       <Navbar />
-      {/* Match fixed navbar height (h-12) with minimal extra offset */}
-      <div className="pt-12 flex-grow">
+      {/* Match fixed navbar height (40px) */}
+      <div className="pt-[40px] flex-grow">
         {children}
       </div>
       {!hideFooter && <Footer />}

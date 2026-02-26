@@ -18,8 +18,8 @@ export default function AdminTimeseriesPage() {
 
   const tabs = useMemo(
     () => [
-      { id: 'timeseries' as const, label: 'Timeseries', icon: Database, description: 'Manage data sources' },
-      { id: 'users' as const, label: 'Users', icon: Users, description: 'User management' },
+      { id: 'timeseries' as const, label: 'Timeseries', icon: Database },
+      { id: 'users' as const, label: 'Users', icon: Users },
     ],
     []
   );
@@ -27,50 +27,46 @@ export default function AdminTimeseriesPage() {
   return (
     <AuthGuard>
       <AppShell>
-        <div className="min-h-screen bg-gradient-to-br from-background via-background to-indigo-950/5">
+        <div className="min-h-screen bg-background">
           {isAdmin ? (
-            <div className="max-w-[1800px] mx-auto p-4 md:p-6 lg:p-8 space-y-6">
+            <div className="max-w-[1800px] mx-auto p-3 md:p-4 lg:p-5 space-y-3">
               {/* Header Section */}
-              <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-card/80 via-card/60 to-card/40 backdrop-blur-xl p-6 md:p-8 shadow-2xl">
-                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-violet-500/5 pointer-events-none" />
-                <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-violet-500/10 rounded-full blur-3xl pointer-events-none" />
-
-                <div className="relative z-10">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+              <div className="rounded-xl border border-border/60 bg-background p-4 md:p-5">
+                <div>
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                     <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                          <Server className="w-6 h-6 text-white" />
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className="w-9 h-9 rounded-lg bg-foreground/[0.08] border border-border/60 flex items-center justify-center">
+                          <Server className="w-4 h-4 text-foreground" />
                         </div>
                         <div>
-                          <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">
+                          <h1 className="text-xl md:text-2xl font-semibold text-foreground tracking-tight">
                             System Control
                           </h1>
-                          <p className="text-sm text-muted-foreground font-mono tracking-wider">
-                            Admin Dashboard • {user?.email}
+                          <p className="text-xs text-muted-foreground">
+                            Admin Dashboard · {user?.email}
                           </p>
                         </div>
                       </div>
                     </div>
 
                     {/* Quick Stats */}
-                    <div className="flex flex-wrap gap-3">
-                      <div className="px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-sm">
+                    <div className="flex flex-wrap gap-2">
+                      <div className="px-3 py-2 rounded-lg bg-background border border-border/60">
                         <div className="flex items-center gap-2">
-                          <Activity className="w-4 h-4 text-emerald-500" />
+                          <Activity className="w-3.5 h-3.5 text-emerald-400" />
                           <div>
-                            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Status</div>
-                            <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">Online</div>
+                            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Status</div>
+                            <div className="text-xs font-semibold text-foreground">Online</div>
                           </div>
                         </div>
                       </div>
-                      <div className="px-4 py-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 backdrop-blur-sm">
+                      <div className="px-3 py-2 rounded-lg bg-background border border-border/60">
                         <div className="flex items-center gap-2">
-                          <BarChart3 className="w-4 h-4 text-indigo-500" />
+                          <BarChart3 className="w-3.5 h-3.5 text-sky-400" />
                           <div>
-                            <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Role</div>
-                            <div className="text-sm font-bold text-indigo-700 dark:text-indigo-300 capitalize">{user?.role || 'Admin'}</div>
+                            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Role</div>
+                            <div className="text-xs font-semibold text-foreground capitalize">{user?.role || 'Admin'}</div>
                           </div>
                         </div>
                       </div>
@@ -78,7 +74,7 @@ export default function AdminTimeseriesPage() {
                   </div>
 
                   {/* Tab Navigation */}
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1 p-1 rounded-lg border border-border/60 bg-background w-fit">
                     {tabs.map((tab) => {
                       const Icon = tab.icon;
                       const active = activeTab === tab.id;
@@ -86,25 +82,22 @@ export default function AdminTimeseriesPage() {
                         <button
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
-                          className={`relative group px-5 py-3 rounded-xl text-sm font-semibold border transition-all duration-200 ${
+                          className={`relative group px-3 py-1.5 rounded-md text-xs font-medium border transition-all duration-200 ${
                             active
-                              ? 'bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border-indigo-500/40 text-indigo-700 dark:text-indigo-300 shadow-lg shadow-indigo-500/10'
-                              : 'bg-card/40 border-border/60 text-muted-foreground hover:text-foreground hover:bg-card/60 hover:border-border hover:shadow-md'
+                              ? 'bg-foreground/[0.08] border-border text-foreground'
+                              : 'bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5">
-                            <Icon className={`w-4 h-4 transition-transform ${active ? 'scale-110' : 'group-hover:scale-105'}`} />
-                            <div className="text-left">
-                              <div className="font-bold">{tab.label}</div>
-                              <div className={`text-[10px] font-normal ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-muted-foreground'}`}>
-                                {tab.description}
-                              </div>
+                          <div className="flex items-center gap-1.5">
+                            <Icon className="w-3.5 h-3.5" />
+                            <div className="text-left leading-none">
+                              <div>{tab.label}</div>
                             </div>
                           </div>
                           {active && (
                             <motion.div
                               layoutId="activeTab"
-                              className="absolute inset-0 rounded-xl bg-gradient-to-br from-indigo-500/10 to-violet-500/10 -z-10"
+                              className="absolute inset-0 rounded-md bg-foreground/[0.05] -z-10"
                               transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
                             />
                           )}
@@ -127,13 +120,13 @@ export default function AdminTimeseriesPage() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center min-h-[80vh] text-muted-foreground px-4">
-              <div className="max-w-md w-full rounded-3xl border border-rose-500/20 bg-rose-500/5 backdrop-blur-sm p-12 text-center">
-                <ShieldAlert className="w-20 h-20 mb-6 text-rose-500/60 mx-auto" />
-                <h2 className="text-2xl font-bold text-foreground mb-3">Access Denied</h2>
+              <div className="max-w-md w-full rounded-xl border border-border/60 bg-background p-10 text-center">
+                <ShieldAlert className="w-16 h-16 mb-5 text-rose-500/70 mx-auto" />
+                <h2 className="text-xl font-semibold text-foreground mb-2">Access Denied</h2>
                 <p className="text-sm text-muted-foreground mb-6">
                   This page is restricted to administrators only. Please contact your system administrator if you believe you should have access.
                 </p>
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-mono text-rose-600 dark:text-rose-400">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-rose-500/10 border border-rose-500/30 text-xs text-rose-400">
                   <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
                   Unauthorized Access Attempt
                 </div>

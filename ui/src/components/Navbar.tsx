@@ -6,58 +6,33 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
-  User as UserIcon, LogOut, LogIn, Database, Radio,
-  Menu, X, Layout, Cpu, Bell, ChevronDown,
-  Settings, Shield, Sun, Moon, CandlestickChart, FileText
+  LogOut, LogIn, Database, Radio,
+  Menu, X, Layout, ChevronDown,
+  Shield, Sun, Moon, CandlestickChart, FileText, Users
 } from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
 import { useTheme } from '@/context/ThemeContext';
 import { AnimatePresence, motion } from 'framer-motion';
 
-interface NavLinkProps {
-  href: string;
-  children: React.ReactNode;
-  onClick?: () => void;
-  className?: string;
-  icon?: React.ReactNode;
-}
-
-/**
- * Terminal-style NavLink with hover glow and monospace font.
- */
-function NavLink({ href, children, onClick, className = '', icon }: NavLinkProps) {
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   const pathname = usePathname();
   const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
 
   return (
     <Link
       href={href}
-      onClick={onClick}
-      className={`
-        px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-2 group relative
-        ${isActive
-          ? 'text-foreground'
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent/10 border border-transparent'
-        }
-        ${className}
-      `}
+      className={`relative px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 after:absolute after:left-2 after:right-2 after:-bottom-[2px] after:h-[1.5px] after:rounded-full after:transition-all after:duration-200 ${
+        isActive
+          ? 'text-foreground bg-foreground/[0.07] after:bg-sky-400/90'
+          : 'text-muted-foreground after:bg-transparent hover:text-foreground hover:bg-foreground/[0.04] hover:after:bg-foreground/30'
+      }`}
     >
-      {icon && <span className={`${isActive ? 'text-indigo-400' : 'text-slate-600 group-hover:text-slate-400'} transition-colors`}>{icon}</span>}
       {children}
-      {isActive && (
-        <motion.span 
-            layoutId="nav-glow"
-            className="absolute -bottom-1 left-3 right-3 h-[1px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50"
-        />
-      )}
     </Link>
   );
 }
 
-/**
- * Live status indicators — pipeline, region, time.
- */
-function StatusIndicators() {
+function LiveBadge() {
   const [time, setTime] = useState('');
   useEffect(() => {
     const fmt = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -67,111 +42,96 @@ function StatusIndicators() {
   }, []);
 
   return (
-    <div className="hidden xl:flex items-center gap-3 text-[10px] font-mono">
+    <div className="hidden xl:flex items-center gap-2.5 text-[12px] text-muted-foreground">
       <div className="flex items-center gap-1.5">
-        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
-        <span className="text-emerald-500/80 uppercase">Live</span>
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        <span className="text-emerald-600 dark:text-emerald-400 font-medium">Live</span>
       </div>
-      <div className="w-px h-3 bg-border" />
-      <span className="text-muted-foreground uppercase">Seoul</span>
+      <span className="text-border/80">·</span>
+      <span>Seoul</span>
       {time && (
         <>
-          <div className="w-px h-3 bg-border" />
-          <span className="text-foreground tabular-nums font-semibold">{time}</span>
+          <span className="text-border/80">·</span>
+          <span className="text-foreground tabular-nums">{time}</span>
         </>
       )}
     </div>
   );
 }
 
-/**
- * User profile dropdown with notifications, settings, and logout.
- */
-function UserDropdown() {
-  const { user, logout } = useAuth();
-  const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
+function UserMenu() {
+  const { user, logout, viewAsUser } = useAuth();
+  const isRealAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on click outside
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
   }, []);
 
   const initials = [user?.first_name?.[0], user?.last_name?.[0]]
-    .filter(Boolean)
-    .join('')
-    .toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U';
+    .filter(Boolean).join('').toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U';
 
   return (
     <div className="relative" ref={ref}>
-      {/* Trigger button */}
       <button
-        onClick={() => setOpen((v) => !v)}
-        className={`
-          flex items-center gap-1 sm:gap-2 px-1 sm:px-1.5 py-1 rounded-lg border transition-all h-8
-          ${open
-            ? 'bg-accent/10 text-black border-black/30 dark:text-white dark:border-white/30'
-            : 'bg-secondary/20 text-black border-black/20 hover:bg-accent/10 dark:text-white dark:border-white/20'
-          }
-        `}
+        onClick={() => setOpen(v => !v)}
+        className={`flex items-center gap-1.5 h-7 pl-1 pr-2 rounded-lg transition-colors ${
+          open ? 'bg-foreground/[0.07]' : 'hover:bg-foreground/[0.05]'
+        }`}
       >
-        {/* Avatar */}
-        <div className="w-6 h-6 rounded-md bg-black text-white dark:bg-white dark:text-black flex items-center justify-center text-[10px] font-bold">
+        <div className="w-5 h-5 rounded-md bg-foreground text-background flex items-center justify-center text-[9px] font-bold shrink-0">
           {initials}
         </div>
-        <div className="hidden sm:flex flex-col items-start leading-none pr-1">
-          <span className="text-[11px] font-bold text-current">{user?.first_name || 'Operator'}</span>
-          <span className="text-[9px] font-mono text-black/60 dark:text-white/60 uppercase tracking-tighter">{user?.email?.split('@')[0]}</span>
-        </div>
-        <ChevronDown className={`hidden sm:block w-3 h-3 text-current/70 transition-transform ${open ? 'rotate-180 text-current' : ''}`} />
+        <span className="hidden sm:block text-[12px] font-medium text-foreground leading-none">
+          {user?.first_name || 'User'}
+        </span>
+        <ChevronDown className={`hidden sm:block w-3 h-3 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {/* Dropdown */}
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            initial={{ opacity: 0, y: 6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.96 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="absolute right-0 top-full mt-2 w-80 !bg-white dark:!bg-slate-950 border border-border rounded-2xl shadow-2xl z-[200] overflow-hidden !opacity-100"
-            style={{ backgroundColor: 'rgb(var(--background))' }}
+            exit={{ opacity: 0, y: 6, scale: 0.97 }}
+            transition={{ duration: 0.12, ease: 'easeOut' }}
+            className="absolute right-0 top-full mt-1.5 w-60 bg-background border border-border rounded-xl shadow-xl z-[200] overflow-hidden"
           >
-            {/* User header */}
-            <div className="p-4 border-b border-border/50 bg-gradient-to-r from-primary/5 to-secondary/5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-indigo-500/20">
+            <div className="px-3.5 py-3 border-b border-border/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-foreground text-background flex items-center justify-center text-xs font-bold shrink-0">
                   {initials}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-foreground truncate">
-                    {user?.first_name || 'Operator'} {user?.last_name || ''}
+                  <div className="text-[13px] font-semibold text-foreground truncate">
+                    {user?.first_name} {user?.last_name}
                   </div>
-                  <div className="text-[11px] text-muted-foreground font-mono truncate">{user?.email}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">{user?.email}</div>
                 </div>
-                {isAdmin && (
-                  <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md flex items-center gap-1">
-                    <Shield className="w-2.5 h-2.5" /> Admin
+                {isRealAdmin && !viewAsUser && (
+                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded shrink-0">
+                    Admin
+                  </span>
+                )}
+                {isRealAdmin && viewAsUser && (
+                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 bg-sky-500/10 text-sky-500 border border-sky-500/20 rounded shrink-0">
+                    User
                   </span>
                 )}
               </div>
             </div>
-
-            {/* Actions */}
-            <div className="p-2">
+            <div className="p-1.5">
               <button
                 onClick={() => { setOpen(false); logout(); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all group"
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] text-muted-foreground hover:text-rose-500 hover:bg-rose-500/[0.07] transition-all"
               >
-                <LogOut className="w-4 h-4 group-hover:text-rose-400 transition-colors" />
-                <span className="text-xs font-mono font-bold uppercase tracking-wider">Terminate Session</span>
+                <LogOut className="w-3.5 h-3.5" />
+                Sign out
               </button>
             </div>
           </motion.div>
@@ -185,136 +145,143 @@ function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  
-  if (!mounted) return <div className="w-8 h-8" />; // Placeholder to avoid hydration mismatch
+  if (!mounted) return <div className="w-7 h-7" />;
 
   return (
     <button
       onClick={toggleTheme}
-      className="flex items-center justify-center w-8 h-8 rounded-lg border border-border/50 bg-secondary/20 hover:bg-accent/10 hover:border-border transition-all text-muted-foreground hover:text-foreground shadow-sm"
+      className="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-all"
       title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
     >
-      {theme === 'dark' ? (
-        <Sun className="w-4 h-4" />
-      ) : (
-        <Moon className="w-4 h-4" />
-      )}
+      {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
     </button>
   );
 }
 
 export default function Navbar() {
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout, isAuthenticated, viewAsUser, toggleViewAsUser } = useAuth();
   const { theme } = useTheme();
-  const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
+  const isRealAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const pathname = usePathname();
 
-  React.useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
+  React.useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[100] h-12 bg-white dark:bg-black border-b border-border/50">
-      <div className="max-w-[1920px] mx-auto px-2 sm:px-4 h-full flex items-center justify-between gap-2 sm:gap-4 min-w-0">
-        
-        {/* LEFT: Logo + Nav Links */}
-        <div className="flex items-center gap-2 sm:gap-4 shrink-0 min-w-0">
-            <Link href="/" className="flex items-center group py-1 shrink-0 mr-4 sm:mr-10">
-                <Image 
-                    src={theme === 'dark' ? '/investment-x-logo-light.svg' : '/investment-x-logo-dark.svg'}
-                    alt="Investment-X Logo"
-                    width={180}
-                    height={18}
-                    className="h-3.5 sm:h-4 w-auto object-contain transition-opacity"
-                    priority
-                    unoptimized
-                />
-            </Link>
+    <nav className="fixed top-0 left-0 right-0 z-[100] h-[40px] bg-background border-b border-border/60">
+      <div className="max-w-[1920px] mx-auto px-3 sm:px-4 h-full flex items-center gap-1.5 sm:gap-3">
 
-            {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1 p-0.5 rounded-lg">
-                <NavLink href="/" icon={<Layout className="w-3 h-3" />}>Dashboard</NavLink>
-                <NavLink href="/intel" icon={<Radio className="w-3 h-3" />}>Intel</NavLink>
-                <NavLink href="/technical" icon={<CandlestickChart className="w-3 h-3" />}>Technical</NavLink>
-                <NavLink href="/notes" icon={<FileText className="w-3 h-3" />}>Reports</NavLink>
-                {isAdmin && (
-                  <NavLink href="/admin/timeseries" icon={<Database className="w-3 h-3" />}>System</NavLink>
-                )}
-            </div>
+        {/* Logo */}
+        <Link href="/" className="shrink-0 mr-1 sm:mr-2">
+          <Image
+            src={theme === 'dark' ? '/investment-x-logo-light.svg' : '/investment-x-logo-dark.svg'}
+            alt="Investment-X"
+            width={160}
+            height={16}
+            className="h-[12px] w-auto"
+            priority
+            unoptimized
+          />
+        </Link>
+
+        {/* Separator */}
+        <div className="hidden md:block w-px h-3.5 bg-border/70 shrink-0" />
+
+        {/* Desktop nav links */}
+        <div className="hidden md:flex items-center gap-2 flex-1 min-w-0 max-w-max">
+          <NavLink href="/">Dashboard</NavLink>
+          <NavLink href="/intel">Intel</NavLink>
+          <NavLink href="/technical">Technical</NavLink>
+          <NavLink href="/notes">Reports</NavLink>
+          {isRealAdmin && !viewAsUser && (
+            <NavLink href="/admin/timeseries">System</NavLink>
+          )}
         </div>
 
-        {/* CENTER: Status */}
-        <div className="hidden xl:flex items-center gap-4 flex-1 justify-center">
-          <StatusIndicators />
+        {/* Center: live status */}
+        <div className="hidden xl:flex items-center flex-1 justify-center">
+          <LiveBadge />
         </div>
 
-        {/* RIGHT: User / Login + Mobile Menu */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        {/* Right actions */}
+        <div className="flex items-center gap-0.5 ml-auto shrink-0">
           <ThemeToggle />
-          {isAuthenticated && <TaskNotifications />}
-          
-          {isAuthenticated ? (
-            <UserDropdown />
-          ) : (
-            <Link 
-              href="/login"
-              className="inline-flex items-center px-2.5 sm:px-4 h-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] sm:text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 uppercase tracking-wider"
+          {isRealAdmin && (
+            <button
+              onClick={toggleViewAsUser}
+              className={`flex items-center justify-center w-7 h-7 rounded-md transition-all ${
+                viewAsUser
+                  ? 'text-sky-500 bg-sky-500/10'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+              }`}
+              title={viewAsUser ? 'Exit user view' : 'View as user'}
             >
-              <span className="sm:hidden">Login</span>
-              <span className="hidden sm:inline">Initialize Session</span>
+              <Users className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {isAuthenticated && <TaskNotifications />}
+
+          <div className="w-px h-4 bg-border/60 mx-1.5 hidden sm:block" />
+
+          {isAuthenticated ? (
+            <UserMenu />
+          ) : (
+            <Link
+              href="/login"
+              className="h-7 px-3 bg-foreground text-background rounded-md text-[12px] font-medium inline-flex items-center hover:opacity-80 transition-opacity"
+            >
+              Sign in
             </Link>
           )}
 
-          {/* Mobile Menu Button */}
+          {/* Mobile menu button */}
           <button
-              className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg border border-border/50 bg-secondary/20 hover:bg-accent/10 hover:border-border transition-all text-muted-foreground hover:text-foreground shadow-sm"
-              onClick={() => setMenuOpen(!menuOpen)}
-              aria-label="Toggle navigation menu"
-              aria-expanded={menuOpen}
+            className="md:hidden flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-all ml-1"
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="Menu"
+            aria-expanded={menuOpen}
           >
-              {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
-      {/* Mobile Menu Overlay */}
+      {/* Mobile menu */}
       <AnimatePresence>
         {menuOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="md:hidden absolute top-12 left-0 right-0 !bg-white dark:!bg-black border-b border-border p-6 flex flex-col gap-4 shadow-3xl z-[90] !opacity-100"
-            style={{ backgroundColor: 'rgb(var(--background))' }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+            className="md:hidden absolute top-[40px] left-0 right-0 bg-background border-b border-border px-3 py-3 flex flex-col gap-0.5 shadow-lg z-[90]"
           >
-               <div className="flex flex-col gap-2">
-                  <MobileNavLink href="/" icon={<Layout className="w-4 h-4" />}>Dashboard</MobileNavLink>
-                  <MobileNavLink href="/intel" icon={<Radio className="w-4 h-4" />}>Intel Feed</MobileNavLink>
-                  <MobileNavLink href="/technical" icon={<CandlestickChart className="w-4 h-4" />}>Technical</MobileNavLink>
-                  <MobileNavLink href="/notes" icon={<FileText className="w-4 h-4" />}>Reports</MobileNavLink>
-                  {isAdmin && (
-                    <MobileNavLink href="/admin/timeseries" icon={<Database className="w-4 h-4" />}>System Admin</MobileNavLink>
-                  )}
-               </div>
-
-               <div className="flex flex-col gap-4 pt-4 border-t border-white/5">
-                  {isAuthenticated ? (
-                    <button 
-                        onClick={logout}
-                        className="flex items-center justify-center gap-2 w-full py-3 text-rose-400 bg-rose-500/10 rounded-xl border border-rose-500/20 font-mono text-xs font-bold uppercase"
-                    >
-                        <LogOut className="w-4 h-4" /> Terminate Session
-                    </button>
-                  ) : (
-                      <Link 
-                        href="/login"
-                        className="flex items-center justify-center gap-2 w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase"
-                      >
-                        <LogIn className="w-4 h-4" /> Login
-                      </Link>
-                  )}
-               </div>
+            <MobileNavLink href="/">Dashboard</MobileNavLink>
+            <MobileNavLink href="/intel">Intel</MobileNavLink>
+            <MobileNavLink href="/technical">Technical</MobileNavLink>
+            <MobileNavLink href="/notes">Reports</MobileNavLink>
+            {isRealAdmin && !viewAsUser && (
+              <MobileNavLink href="/admin/timeseries">System</MobileNavLink>
+            )}
+            <div className="mt-2 pt-2 border-t border-border/60">
+              {isAuthenticated ? (
+                <button
+                  onClick={logout}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-muted-foreground hover:text-rose-500 hover:bg-rose-500/[0.07] transition-all w-full"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign out
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-foreground text-background rounded-lg text-[13px] font-medium"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign in
+                </Link>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -322,22 +289,19 @@ export default function Navbar() {
   );
 }
 
-function MobileNavLink({ href, children, icon }: { href: string; children: React.ReactNode; icon: React.ReactNode }) {
+function MobileNavLink({ href, children }: { href: string; children: React.ReactNode }) {
   const pathname = usePathname();
   const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
 
   return (
     <Link
       href={href}
-      className={`
-        flex items-center gap-3 px-4 py-3 rounded-xl font-mono text-sm transition-all
-        ${isActive
-          ? 'bg-primary/10 text-foreground border border-primary/20'
-          : 'text-muted-foreground hover:text-foreground'
-        }
-      `}
+      className={`px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
+        isActive
+          ? 'text-foreground bg-foreground/[0.06]'
+          : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
+      }`}
     >
-      <span className={isActive ? 'text-indigo-400' : 'text-slate-600'}>{icon}</span>
       {children}
     </Link>
   );

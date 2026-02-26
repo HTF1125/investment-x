@@ -4,6 +4,7 @@ import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } f
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ChevronDown,
   FileText,
   Loader2,
   Pin,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import AppShell from '@/components/AppShell';
+import Chart from '@/components/Chart';
 import NotesRichEditor from '@/components/NotesRichEditor';
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch, apiFetchJson } from '@/lib/api';
@@ -229,9 +231,12 @@ export default function NotesPage() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [chartSearchQuery, setChartSearchQuery] = useState('');
   const [insertingChartId, setInsertingChartId] = useState<string | null>(null);
+  const [chartPickerOpen, setChartPickerOpen] = useState(false);
+  const [collapsedChartCategories, setCollapsedChartCategories] = useState<Record<string, boolean>>({});
+  const [reportChartIds, setReportChartIds] = useState<string[]>([]);
   const [externalImageInsertRequest, setExternalImageInsertRequest] =
     useState<ExternalImageInsertRequest | null>(null);
-  const originalRef = useRef<{ title: string; content: string; pinned: boolean } | null>(null);
+  const originalRef = useRef<{ title: string; content: string; pinned: boolean; chartIds: string[] } | null>(null);
   const hydratedNoteIdRef = useRef<string | null>(null);
   const lastServerUpdatedAtRef = useRef<string | null>(null);
   const titleRef = useRef('');
@@ -309,6 +314,16 @@ export default function NotesPage() {
     });
   }, [chartLibrary, chartSearchQuery]);
 
+  const groupedChartLibrary = useMemo(() => {
+    const groups = new Map<string, CustomChartListItem[]>();
+    for (const chart of filteredChartLibrary) {
+      const category = chart.category || 'Uncategorized';
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category)!.push(chart);
+    }
+    return Array.from(groups.entries()).map(([category, charts]) => ({ category, charts }));
+  }, [filteredChartLibrary]);
+
   const noteQuery = useQuery({
     queryKey: ['investment-note', selectedNoteId],
     enabled: isAuthenticated && !!selectedNoteId,
@@ -321,16 +336,19 @@ export default function NotesPage() {
 
   const recomputeDirty = useCallback(() => {
     const original = originalRef.current;
+    const currentCharts = [...reportChartIds].sort();
+    const originalCharts = [...(original?.chartIds || [])].sort();
     const dirty = Boolean(
       original &&
         selectedNoteId &&
         (titleRef.current !== original.title ||
           contentRef.current !== original.content ||
-          pinnedRef.current !== original.pinned)
+          pinnedRef.current !== original.pinned ||
+          JSON.stringify(currentCharts) !== JSON.stringify(originalCharts))
     );
     setIsDirty((prev) => (prev === dirty ? prev : dirty));
     return dirty;
-  }, [selectedNoteId]);
+  }, [selectedNoteId, reportChartIds]);
 
   const hydrateFromNote = useCallback((note: NoteDetail) => {
     const nextTitle = note.title || '';
@@ -343,6 +361,16 @@ export default function NotesPage() {
     setTitle(nextTitle);
     setEditorValue(nextContent);
     setPinned(nextPinned);
+    setReportChartIds(
+      Array.from(
+        new Set(
+          (note.links || [])
+            .filter((link) => typeof link === 'string' && link.startsWith('chart://'))
+            .map((link) => link.replace('chart://', '').trim())
+            .filter(Boolean)
+        )
+      )
+    );
     setIsDirty(false);
     setLastSavedAt(note.updated_at || null);
     setSaveState('idle');
@@ -354,6 +382,10 @@ export default function NotesPage() {
       title: nextTitle,
       content: nextContent,
       pinned: nextPinned,
+      chartIds: (note.links || [])
+        .filter((link) => typeof link === 'string' && link.startsWith('chart://'))
+        .map((link) => link.replace('chart://', '').trim())
+        .filter(Boolean),
     };
   }, []);
 
@@ -460,6 +492,10 @@ export default function NotesPage() {
         title: variables.title || '',
         content: variables.content || '',
         pinned: !!variables.pinned,
+        chartIds: (variables.links || [])
+          .filter((link) => typeof link === 'string' && link.startsWith('chart://'))
+          .map((link) => link.replace('chart://', '').trim())
+          .filter(Boolean),
       };
       recomputeDirty();
     },
@@ -549,26 +585,26 @@ export default function NotesPage() {
       }
 
       setInsertingChartId(chart.id);
-      setStatus(`Rendering chart image: ${chart.name || chart.id}...`);
+      setStatus(`Adding chart block: ${chart.name || chart.id}...`);
       try {
-        const figure = await apiFetchJson<any>(`/api/v1/dashboard/charts/${chart.id}/figure`);
-        const snapshotFile = await renderFigureToSnapshotFile(figure, chart.name || chart.id);
-        const image = await handleImageUpload(snapshotFile);
-        setExternalImageInsertRequest({
-          token: `${chart.id}-${Date.now()}`,
-          url: image.url,
-          alt: chart.name || chart.id || 'Chart image',
-        });
-        setStatus(`Chart inserted into report: ${chart.name || chart.id}`);
+        setReportChartIds((prev) => (prev.includes(chart.id) ? prev : [...prev, chart.id]));
+        setIsDirty(true);
+        setChartPickerOpen(false);
+        setStatus(`Chart block added: ${chart.name || chart.id}`);
       } catch (err: any) {
         setSaveState('error');
-        setStatus(err?.message || 'Failed to insert chart image.');
+        setStatus(err?.message || 'Failed to add chart block.');
       } finally {
         setInsertingChartId(null);
       }
     },
-    [selectedNoteId, handleImageUpload]
+    [selectedNoteId]
   );
+
+  const handleRemoveChartBlock = useCallback((chartId: string) => {
+    setReportChartIds((prev) => prev.filter((id) => id !== chartId));
+    setIsDirty(true);
+  }, []);
 
   const saveNow = useCallback(() => {
     if (!selectedNoteId) return;
@@ -581,10 +617,13 @@ export default function NotesPage() {
       id: selectedNoteId,
       title: draftTitle,
       content: draftContent,
-      links: extractLinks(draftContent),
+      links: [
+        ...extractLinks(draftContent),
+        ...reportChartIds.map((id) => `chart://${id}`),
+      ],
       pinned: pinnedRef.current,
     });
-  }, [selectedNoteId, uploadMutation.isPending, updateMutation, recomputeDirty]);
+  }, [selectedNoteId, uploadMutation.isPending, updateMutation, recomputeDirty, reportChartIds]);
 
   const queueAutoSave = useCallback(() => {
     if (saveTimerRef.current) {
@@ -775,6 +814,14 @@ export default function NotesPage() {
                 {pinned ? 'Unpublish' : 'Publish'}
               </button>
               <button
+                onClick={() => setChartPickerOpen((prev) => !prev)}
+                disabled={!selectedNoteId}
+                className="h-6 px-2 rounded-md border border-sky-500/35 bg-sky-500/12 text-[11px] font-medium text-sky-300 hover:bg-sky-500/18 inline-flex items-center gap-1.5 disabled:opacity-40"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Insert Chart
+              </button>
+              <button
                 onClick={saveNow}
                 disabled={!selectedNoteId || !isDirty || updateMutation.isPending || uploadMutation.isPending}
                 className="h-6 px-2 rounded-md border border-emerald-500/35 bg-emerald-500/12 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/18 inline-flex items-center gap-1.5 disabled:opacity-40"
@@ -813,72 +860,88 @@ export default function NotesPage() {
                     />
 
                     <div className="mt-1 text-[11px] text-muted-foreground">
-                      Compose report text and insert custom chart blocks as inline visuals.
+                      Write first, then insert saved custom charts as inline visuals.
                     </div>
                   </div>
 
-                  <div className="mt-2 rounded-md border border-border/40 bg-card/15 p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Chart Blocks</div>
-                      <div className="text-[10px] text-muted-foreground">{filteredChartLibrary.length}</div>
-                    </div>
-                    <div className="mt-1.5 relative">
-                      <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        value={chartSearchQuery}
-                        onChange={(e) => setChartSearchQuery(e.target.value)}
-                        placeholder="Search custom charts..."
-                        className="w-full h-7 pl-7 pr-2 rounded-md border border-border/50 bg-background/50 text-[11px] outline-none focus:ring-2 focus:ring-sky-500/25"
-                      />
-                    </div>
-                    <div className="mt-1.5 max-h-28 overflow-y-auto custom-scrollbar space-y-1">
-                      {chartLibraryQuery.isLoading && (
-                        <div className="text-[10px] text-muted-foreground px-2 py-1.5 inline-flex items-center gap-1.5">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          Loading chart library...
-                        </div>
-                      )}
-                      {chartLibraryQuery.isError && (
-                        <div className="text-[10px] text-rose-300 px-2 py-1.5">
-                          Unable to load chart library.
-                        </div>
-                      )}
-                      {!chartLibraryQuery.isLoading && !chartLibraryQuery.isError && filteredChartLibrary.length === 0 && (
-                        <div className="text-[10px] text-muted-foreground px-2 py-1.5">
-                          No charts found.
-                        </div>
-                      )}
-                      {!chartLibraryQuery.isLoading &&
-                        !chartLibraryQuery.isError &&
-                        filteredChartLibrary.slice(0, 18).map((chart) => {
-                          const isAdding = insertingChartId === chart.id;
+                  {chartPickerOpen && (
+                    <div className="mt-2 rounded-md border border-border/40 bg-card/15 p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Insert Saved Chart</div>
+                        <div className="text-[10px] text-muted-foreground">{filteredChartLibrary.length}</div>
+                      </div>
+                      <div className="mt-1.5 relative">
+                        <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          value={chartSearchQuery}
+                          onChange={(e) => setChartSearchQuery(e.target.value)}
+                          placeholder="Search custom charts..."
+                          className="w-full h-7 pl-7 pr-2 rounded-md border border-border/50 bg-background/50 text-[11px] outline-none focus:ring-2 focus:ring-sky-500/25"
+                        />
+                      </div>
+                      <div className="mt-1.5 max-h-52 overflow-y-auto custom-scrollbar space-y-1">
+                        {chartLibraryQuery.isLoading && (
+                          <div className="text-[10px] text-muted-foreground px-2 py-1.5 inline-flex items-center gap-1.5">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Loading chart library...
+                          </div>
+                        )}
+                        {chartLibraryQuery.isError && (
+                          <div className="text-[10px] text-rose-300 px-2 py-1.5">
+                            Unable to load chart library.
+                          </div>
+                        )}
+                        {!chartLibraryQuery.isLoading && !chartLibraryQuery.isError && groupedChartLibrary.length === 0 && (
+                          <div className="text-[10px] text-muted-foreground px-2 py-1.5">
+                            No charts found.
+                          </div>
+                        )}
+                        {!chartLibraryQuery.isLoading && !chartLibraryQuery.isError && groupedChartLibrary.map(({ category, charts }) => {
+                          const collapsed = !!collapsedChartCategories[category];
                           return (
-                            <div
-                              key={chart.id}
-                              className="rounded border border-border/30 bg-background/35 px-2 py-1 flex items-center justify-between gap-2"
-                            >
-                              <div className="min-w-0">
-                                <div className="text-[10px] font-medium truncate">
-                                  {chart.name || chart.id}
-                                </div>
-                                <div className="text-[10px] text-muted-foreground truncate">
-                                  {chart.category || 'Uncategorized'}
-                                </div>
-                              </div>
+                            <div key={category} className="rounded border border-border/30 overflow-hidden">
                               <button
                                 type="button"
-                                onClick={() => void handleInsertChartBlock(chart)}
-                                disabled={!!insertingChartId || noteLoading}
-                                className="h-5 px-2 rounded border border-sky-500/35 bg-sky-500/12 text-[10px] font-semibold text-sky-300 hover:bg-sky-500/20 disabled:opacity-40 inline-flex items-center gap-1"
+                                onClick={() =>
+                                  setCollapsedChartCategories((prev) => ({ ...prev, [category]: !prev[category] }))
+                                }
+                                className="w-full px-2 py-1.5 bg-background/40 flex items-center justify-between text-left text-[10px] text-muted-foreground hover:text-foreground"
                               >
-                                {isAdding ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : null}
-                                Add
+                                <span>{category}</span>
+                                <span className="inline-flex items-center gap-1">
+                                  <span>{charts.length}</span>
+                                  <ChevronDown className={`w-3 h-3 transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`} />
+                                </span>
                               </button>
+                              {!collapsed && (
+                                <div className="space-y-1 p-1.5">
+                                  {charts.slice(0, 30).map((chart) => {
+                                    const isAdding = insertingChartId === chart.id;
+                                    return (
+                                      <div key={chart.id} className="rounded border border-border/30 bg-background/35 px-2 py-1 flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <div className="text-[10px] font-medium truncate">{chart.name || chart.id}</div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleInsertChartBlock(chart)}
+                                          disabled={!!insertingChartId || noteLoading}
+                                          className="h-5 px-2 rounded border border-sky-500/35 bg-sky-500/12 text-[10px] font-semibold text-sky-300 hover:bg-sky-500/20 disabled:opacity-40 inline-flex items-center gap-1"
+                                        >
+                                          {isAdding ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : null}
+                                          Add
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="mt-2">
                     {noteLoading ? (
@@ -898,6 +961,43 @@ export default function NotesPage() {
                       />
                     )}
                   </div>
+
+                  {reportChartIds.length > 0 && (
+                    <div className="mt-4">
+                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                        Chart Blocks
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {reportChartIds.map((chartId) => {
+                          const meta = chartLibrary.find((c) => c.id === chartId);
+                          return (
+                            <div key={chartId} className="bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col min-h-[360px]">
+                              <div className="px-3 py-2 border-b border-border/40 flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="text-xs font-medium text-foreground truncate">
+                                    {meta?.name || chartId}
+                                  </div>
+                                  <div className="text-[10px] text-muted-foreground truncate">
+                                    {meta?.category || 'Uncategorized'}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveChartBlock(chartId)}
+                                  className="h-6 px-2 rounded-md border border-rose-500/35 bg-rose-500/12 text-[10px] font-medium text-rose-300 hover:bg-rose-500/18"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <div className="p-2 h-[300px] min-h-[300px]">
+                                <Chart id={chartId} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 

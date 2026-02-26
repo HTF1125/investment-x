@@ -5,9 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Layers,
   Plus, Eye, EyeOff, Loader2, Copy,
-  ArrowUp, ArrowDown, Search,
+  Search,
   Info, RefreshCw, LayoutGrid, Trash2,
-  X, Filter, PanelLeftClose, PanelLeftOpen, Save, RotateCcw, FileDown,
+  X, PanelLeftClose, PanelLeftOpen, Save, RotateCcw, FileDown,
+  ChevronDown,
+  FoldVertical,
+  UnfoldVertical,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -45,36 +48,26 @@ interface ChartCardProps {
   onDeleteChart?: (id: string) => void;
   isRefreshingChart?: boolean;
   isDeletingChart?: boolean;
-  isSyncing?: boolean;
   onRankChange?: (id: string, newRank: number) => void;
-  onMoveUp?: (id: string) => void;
-  onMoveDown?: (id: string) => void;
   copySignal?: number;
-  index: number;
-  totalCharts: number;
   onOpenStudio?: (chartId: string | null) => void;
 }
 
-const ChartCard = React.memo(function ChartCard({ 
-  chart, 
+const ChartCard = React.memo(function ChartCard({
+  chart,
   canEdit,
   canRefresh,
   canDelete,
   canManageVisibility,
-  isReorderable, 
-  onTogglePdf, 
+  isReorderable,
+  onTogglePdf,
   onRefreshChart,
   onCopyChart,
   onDeleteChart,
   isRefreshingChart,
   isDeletingChart,
-  isSyncing,
   onRankChange,
-  onMoveUp,
-  onMoveDown,
   copySignal,
-  index,
-  totalCharts,
   onOpenStudio
 }: ChartCardProps) {
   // Viewport-based lazy rendering
@@ -118,84 +111,36 @@ const ChartCard = React.memo(function ChartCard({
 
   const renderRankInput = () => (
     isReorderable && (
-      <div className={`flex items-center gap-0.5 px-1 py-0.5 rounded border text-[10px] font-mono shrink-0 transition-colors ${
-        isModified ? 'bg-amber-500/20 border-amber-500/40' : 'bg-sky-500/10 border-sky-500/20'
-      }`}>
-        <input
-          type="number"
-          value={localRank}
-          onChange={(e) => setLocalRank(parseInt(e.target.value) || 1)}
-          onBlur={handleRankSubmit}
-          onKeyDown={(e) => e.key === 'Enter' && handleRankSubmit()}
-          onClick={(e) => e.stopPropagation()}
-          className={`w-5 bg-transparent focus:outline-none text-center font-bold appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-            isModified ? 'text-amber-400' : 'text-sky-400'
-          }`}
-        />
-      </div>
+      <input
+        type="number"
+        value={localRank}
+        onChange={(e) => setLocalRank(parseInt(e.target.value) || 1)}
+        onBlur={handleRankSubmit}
+        onKeyDown={(e) => e.key === 'Enter' && handleRankSubmit()}
+        onClick={(e) => e.stopPropagation()}
+        className={`w-5 bg-transparent focus:outline-none text-center text-[11px] font-mono tabular-nums shrink-0 appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-colors ${
+          isModified ? 'text-amber-400' : 'text-muted-foreground/40 hover:text-muted-foreground/70'
+        }`}
+      />
     )
   );
 
-  const renderVisibilityToggle = () => (
-    canManageVisibility && (
-      <button
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onTogglePdf(chart.id, !chart.export_pdf);
-        }}
-        className={`p-1 transition-all rounded hover:bg-white/5 shrink-0 ${chart.export_pdf ? 'text-emerald-400' : 'text-slate-600'}`}
-        title={chart.export_pdf ? "Public (Live on Dashboard)" : "Private (Draft/Admin Only)"}
-      >
-        {chart.export_pdf ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-      </button>
-    )
-  );
-
-  const renderOrderButtons = () => (
-    isReorderable && (
-      <div className="flex items-center gap-1 shrink-0">
-        <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMoveUp?.(chart.id); }}
-          className="p-1 rounded hover:bg-accent/30 text-muted-foreground/60 hover:text-sky-400 transition-colors"
-          title="Move up"
-          aria-label="Move chart up"
-          disabled={index === 0}
-        >
-          <ArrowUp className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMoveDown?.(chart.id); }}
-          className="p-1 rounded hover:bg-accent/30 text-muted-foreground/60 hover:text-sky-400 transition-colors"
-          title="Move down"
-          aria-label="Move chart down"
-          disabled={index === totalCharts - 1}
-        >
-          <ArrowDown className="w-3.5 h-3.5" />
-        </button>
-      </div>
-    )
-  );
-
-  const renderName = () => (
+  const renderName = () =>
     canEdit ? (
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenStudio?.(chart.id); }}
-        className="group/name flex items-center gap-2 min-w-0 text-left"
+        className="text-xs font-medium text-foreground/90 leading-tight truncate hover:text-foreground transition-colors text-left"
         title="Edit in Studio"
       >
-        <span className="text-[10px] font-mono text-foreground/80 group-hover/name:text-foreground transition-all leading-tight">
-          {chart.name}
-        </span>
+        {chart.name}
       </button>
     ) : (
-      <span className="text-[10px] font-mono text-foreground/80 leading-tight">
+      <span className="text-xs font-medium text-foreground/90 leading-tight truncate">
         {chart.name}
       </span>
-    )
-  );
+    );
 
-    const className = `glass-card overflow-hidden flex flex-col group transition-all duration-300 hover:border-sky-500/30 hover:shadow-sky-500/5 relative h-full min-h-[380px]`;
+  const cardClassName = `bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col group transition-all duration-200 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/30 hover:border-border relative h-full min-h-[380px]`;
 
   const [infoOpen, setInfoOpen] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
@@ -209,87 +154,105 @@ const ChartCard = React.memo(function ChartCard({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [infoOpen]);
 
-  // Grid View Content (Hardcoded)
+  // Grid View Content
   return (
-    <div className={className}>
+    <div className={cardClassName}>
       {/* Card Header */}
-      <div className="px-3 py-1.5 flex items-center justify-between gap-2 border-b border-border/50 bg-card/10 relative">
-         <div className="flex items-center gap-1.5 min-w-0 flex-1 z-10">
-            {renderRankInput()}
-            {renderOrderButtons()}
-            {renderVisibilityToggle()}
-            {renderName()}
-         </div>
+      <div className="px-4 py-2.5 flex items-center justify-between gap-2 border-b border-border/40">
+        {/* LEFT: rank + name */}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {renderRankInput()}
+          {renderName()}
+        </div>
 
-         <div className="relative shrink-0" ref={infoRef}>
+        {/* RIGHT: action icons — uniform style */}
+        <div className="flex items-center gap-0.5 shrink-0">
+
+          {/* Visibility */}
+          {canManageVisibility && (
             <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setInfoOpen(v => !v); }}
-              className={`p-1 rounded transition-colors ${infoOpen ? 'text-sky-400 bg-sky-500/10' : 'text-muted-foreground/50 hover:text-foreground'}`}
-              title="Chart info & actions"
-              aria-label="Chart info and actions"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTogglePdf(chart.id, !chart.export_pdf); }}
+              className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
+              title={chart.export_pdf ? 'Public' : 'Private'}
             >
-              <Info className="w-3.5 h-3.5" />
+              {chart.export_pdf ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
             </button>
-            <AnimatePresence>
-              {infoOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 4, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 4, scale: 0.96 }}
-                  transition={{ duration: 0.12 }}
-                  className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded-lg shadow-xl z-50 overflow-hidden"
-                >
-                  {chart.description && (
-                    <div className="px-3 py-2 text-[10px] text-muted-foreground leading-relaxed border-b border-border/50">
-                      {chart.description}
-                    </div>
-                  )}
-                  <div className="px-3 py-1.5 text-[9px] text-muted-foreground/70 font-mono border-b border-border/50">
-                    <span title={`Created by ${creatorLabel}`}>by {creatorLabel}</span>
-                    {chart.updated_at && (
-                      <span className="ml-2">{new Date(chart.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+          )}
+
+          {/* Refresh */}
+          {canRefresh && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRefreshChart?.(chart.id); }}
+              disabled={!!isRefreshingChart}
+              className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-40"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRefreshingChart ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+
+          {/* Copy */}
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); }}
+            className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
+            title="Copy image"
+          >
+            <Copy className="w-3 h-3" />
+          </button>
+
+          {/* Delete */}
+          {canDelete && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteChart?.(chart.id); }}
+              disabled={!!isDeletingChart}
+              className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-40"
+              title="Delete"
+            >
+              <Trash2 className={`w-3 h-3 ${isDeletingChart ? 'animate-pulse' : ''}`} />
+            </button>
+          )}
+
+          {/* Info — always last */}
+          {(chart.description || chart.created_by_name || chart.created_by_email) && (
+            <div className="relative" ref={infoRef}>
+              <button
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setInfoOpen(v => !v); }}
+                className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
+                title={chart.description || `by ${creatorLabel}`}
+              >
+                <Info className="w-3 h-3" />
+              </button>
+              <AnimatePresence>
+                {infoOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 4, scale: 0.96 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute right-0 top-full mt-1 w-52 bg-popover border border-border rounded-lg shadow-xl z-50 overflow-hidden"
+                  >
+                    {chart.description && (
+                      <div className="px-3 py-2 text-[10px] text-muted-foreground leading-relaxed border-b border-border/50">
+                        {chart.description}
+                      </div>
                     )}
-                  </div>
-                  {(canRefresh || canDelete || !!onCopyChart) && (
-                    <div className="p-1.5 flex flex-col gap-0.5">
-                      {canRefresh && (
-                        <button
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRefreshChart?.(chart.id); setInfoOpen(false); }}
-                          disabled={!!isRefreshingChart}
-                          className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors disabled:opacity-50"
-                        >
-                          <RefreshCw className={`w-3 h-3 ${isRefreshingChart ? 'animate-spin text-sky-400' : ''}`} />
-                          Refresh
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); setInfoOpen(false); }}
-                        className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
-                      >
-                        <Copy className="w-3 h-3" />
-                        Copy image
-                      </button>
-                      {canDelete && (
-                        <button
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteChart?.(chart.id); setInfoOpen(false); }}
-                          disabled={!!isDeletingChart}
-                          className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-[11px] text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
-                        >
-                          <Trash2 className={`w-3 h-3 ${isDeletingChart ? 'animate-pulse text-rose-400' : ''}`} />
-                          Delete
-                        </button>
+                    <div className="px-3 py-1.5 text-[9px] text-muted-foreground/70 font-mono">
+                      <span>by {creatorLabel}</span>
+                      {chart.updated_at && (
+                        <span className="ml-2">{new Date(chart.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       )}
                     </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-         </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
       </div>
 
       <div ref={cardRef} className="flex flex-col flex-1">
         {/* Chart Area — only render Plotly when in viewport */}
-        <div className="bg-background/80 dark:bg-slate-950/20 relative w-full p-4 h-[290px] min-h-[290px] flex-1">
+        <div className="bg-background relative w-full p-3 h-[290px] min-h-[290px] flex-1">
           {isInView ? (
             <Chart id={chart.id} initialFigure={chart.figure} copySignal={copySignal} />
           ) : (
@@ -367,9 +330,11 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   const searchParams = useSearchParams();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [collapsedSidebarCategories, setCollapsedSidebarCategories] = useState<Record<string, boolean>>({});
   const [activeStudioChartId, setActiveStudioChartId] = useState<string | null>(null);
 
   // Initial Sync from URL
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const chartId = searchParams.get('chartId');
     const isNew = searchParams.get('new') === 'true';
@@ -377,15 +342,15 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
     if (isNew) {
         setActiveStudioChartId('');
-        if (!sidebarOpen && isDesktop) setSidebarOpen(true);
+        setSidebarOpen(prev => prev || isDesktop);
     } else if (chartId) {
         setActiveStudioChartId(chartId);
         setQuickJumpId(chartId);
-        if (!sidebarOpen && isDesktop) setSidebarOpen(true);
+        setSidebarOpen(prev => prev || isDesktop);
     } else {
         setActiveStudioChartId(null);
     }
-  }, [searchParams, sidebarOpen]);
+  }, [searchParams]); // intentionally omit sidebarOpen — we only auto-open on URL change, not on manual toggle
 
   // Override onOpenStudio to stay in this page
   const handleOpenInStudio = useCallback((chartId: string | null) => {
@@ -425,9 +390,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
   // Export state
   const [exporting, setExporting] = useState(false);
-  const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [exportingHtml, setExportingHtml] = useState(false);
-  const [exportHtmlStatus, setExportHtmlStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const refreshChartsMutation = useMutation({
     mutationFn: async () => {
@@ -468,7 +431,6 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   const handleExportPDF = async () => {
     if (exporting) return;
     setExporting(true);
-    setExportStatus('idle');
     try {
       const res = await apiFetch('/api/custom/pdf', {
         method: 'POST',
@@ -488,12 +450,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      setExportStatus('success');
-      setTimeout(() => setExportStatus('idle'), 3000);
     } catch (err: any) {
       console.error('PDF export error:', err);
-      setExportStatus('error');
-      setTimeout(() => setExportStatus('idle'), 3000);
     } finally {
       queryClient.invalidateQueries({ queryKey: ['task-processes'] });
       setExporting(false);
@@ -503,7 +461,6 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   const handleExportHTML = async () => {
     if (exportingHtml) return;
     setExportingHtml(true);
-    setExportHtmlStatus('idle');
     try {
       const res = await apiFetch('/api/custom/html', {
         method: 'POST',
@@ -523,12 +480,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      setExportHtmlStatus('success');
-      setTimeout(() => setExportHtmlStatus('idle'), 3000);
     } catch (err: any) {
       console.error('HTML export error:', err);
-      setExportHtmlStatus('error');
-      setTimeout(() => setExportHtmlStatus('idle'), 3000);
     } finally {
       queryClient.invalidateQueries({ queryKey: ['task-processes'] });
       setExportingHtml(false);
@@ -592,6 +545,32 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     return Array.from(groups.entries()).map(([category, charts]) => ({ category, charts }));
   }, [filteredCharts]);
 
+  const sidebarGroupedCharts = useMemo(() => {
+    const groups = new Map<string, ChartMeta[]>();
+    for (const chart of filteredCharts) {
+      const category = chart.category || 'Uncategorized';
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category)!.push(chart);
+    }
+    return Array.from(groups.entries()).map(([category, charts]) => ({ category, charts }));
+  }, [filteredCharts]);
+
+  const allSidebarCategoriesCollapsed = useMemo(() => {
+    if (sidebarGroupedCharts.length === 0) return false;
+    return sidebarGroupedCharts.every(({ category }) => !!collapsedSidebarCategories[category]);
+  }, [sidebarGroupedCharts, collapsedSidebarCategories]);
+
+  const toggleCollapseAllSidebarCategories = useCallback(() => {
+    setCollapsedSidebarCategories((prev) => {
+      const shouldCollapseAll = !sidebarGroupedCharts.every(({ category }) => !!prev[category]);
+      const next: Record<string, boolean> = {};
+      for (const { category } of sidebarGroupedCharts) {
+        next[category] = shouldCollapseAll;
+      }
+      return next;
+    });
+  }, [sidebarGroupedCharts]);
+
   // 📡 Active Chart Tracking (Scroll Spy)
   useEffect(() => {
     if (filteredCharts.length === 0) return;
@@ -618,16 +597,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
     return () => observer.disconnect();
   }, [filteredCharts]);
-  const quickJumpIndex = useMemo(
-    () => filteredCharts.findIndex((c) => c.id === quickJumpId),
-    [filteredCharts, quickJumpId]
-  );
-  const quickJumpLabel = useMemo(() => {
-    if (quickJumpIndex < 0) return 'Select chart';
-    const chart = filteredCharts[quickJumpIndex];
-    if (!chart) return 'Select chart';
-    return `${quickJumpIndex + 1}. ${chart.name || `Chart ${quickJumpIndex + 1}`}`;
-  }, [filteredCharts, quickJumpIndex]);
+
 
   const setChartAnchorRef = useCallback(
     (chartId: string) => (node: HTMLDivElement | null) => {
@@ -693,18 +663,6 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     [scrollToChart, activeStudioChartId, router]
   );
 
-  const handleQuickJumpStep = useCallback(
-    (delta: number) => {
-      if (filteredCharts.length === 0) return;
-      const currentIndex = filteredCharts.findIndex((c) => c.id === quickJumpId);
-      const baseIndex = currentIndex >= 0 ? currentIndex : 0;
-      const nextIndex = Math.max(0, Math.min(baseIndex + delta, filteredCharts.length - 1));
-      const next = filteredCharts[nextIndex];
-      if (!next) return;
-      handleQuickJumpSelect(next.id);
-    },
-    [filteredCharts, quickJumpId, handleQuickJumpSelect]
-  );
 
   const isReorderEnabled = isOwner;
   const canManageVisibility = isOwner;
@@ -833,19 +791,6 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       });
   }, []);
 
-  const handleMoveBy = React.useCallback((id: string, delta: number) => {
-    setLocalCharts(prev => {
-      const oldIndex = prev.findIndex(c => c.id === id);
-      if (oldIndex === -1) return prev;
-      const newIndex = Math.max(0, Math.min(oldIndex + delta, prev.length - 1));
-      if (oldIndex === newIndex) return prev;
-
-      const next = [...prev];
-      const [item] = next.splice(oldIndex, 1);
-      next.splice(newIndex, 0, item);
-      return next.map((c, i) => ({ ...c, rank: i }));
-    });
-  }, []);
 
   const handleSaveOrder = React.useCallback(() => {
     if (!isReorderEnabled) return;
@@ -883,24 +828,26 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
   if (!mounted) {
     return (
-      <div className="space-y-8 min-h-[800px] animate-pulse">
-        {/* Skeleton Command Bar */}
-        <div className="h-16 w-full glass-card bg-card/5 border-border/50 rounded-xl" />
-        
-        {/* Skeleton Header */}
-        <div className="flex justify-between items-center px-2">
-          <div className="h-8 w-64 bg-card/10 rounded-lg" />
-          <div className="h-6 w-32 bg-card/5 rounded-lg" />
+      <div className="p-4 md:p-6 space-y-6 min-h-[800px] animate-pulse">
+        {/* Skeleton Stats */}
+        <div className="flex items-center gap-6 pb-5 border-b border-border/40">
+          {[80, 60, 72].map((w, i) => (
+            <div key={i} className="space-y-1.5">
+              <div className={`h-7 w-${w === 80 ? 12 : w === 60 ? 8 : 10} bg-foreground/5 rounded`} />
+              <div className="h-3 w-16 bg-foreground/5 rounded" />
+            </div>
+          ))}
         </div>
-
         {/* Skeleton Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="glass-card h-[450px] flex flex-col overflow-hidden opacity-50">
-              <div className="h-12 border-b border-border/50 bg-card/10" />
-              <div className="flex-1 p-4">
-                <div className="w-full h-full bg-card/5 rounded-xl flex items-center justify-center">
-                   <Loader2 className="w-6 h-6 text-sky-500/20 animate-spin" />
+            <div key={i} className="bg-card border border-border/60 rounded-xl h-[380px] flex flex-col overflow-hidden">
+              <div className="h-10 border-b border-border/40 px-4 flex items-center gap-2">
+                <div className="h-3 w-40 bg-foreground/5 rounded" />
+              </div>
+              <div className="flex-1 p-3">
+                <div className="w-full h-full bg-foreground/[0.03] rounded-lg flex items-center justify-center">
+                   <Loader2 className="w-5 h-5 text-muted-foreground/20 animate-spin" />
                 </div>
               </div>
             </div>
@@ -911,28 +858,28 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   }
 
   return (
-    <div className="flex h-[calc(100vh-48px)] relative bg-background overflow-hidden">
+    <div className="flex h-[calc(100vh-40px)] relative bg-background overflow-hidden">
       {/* 🧭 Sidebar Navigator - Now a Flex Sibling for Desktop */}
       <aside
         className={`
-          shrink-0 transition-all duration-300 flex flex-col border-r border-border/50 bg-background backdrop-blur-2xl z-[95] overflow-hidden
-          ${sidebarOpen ? 'w-80 border-r' : 'w-0 border-r-0'}
-          fixed inset-y-0 left-0 top-12 md:relative md:top-0 h-[calc(100vh-48px)]
+          shrink-0 transition-all duration-300 flex flex-col border-r border-border/40 bg-background z-[95] overflow-hidden
+          ${sidebarOpen ? 'w-72 border-r' : 'w-0 border-r-0'}
+          fixed inset-y-0 left-0 top-[40px] md:relative md:top-0 h-[calc(100vh-40px)]
         `}
       >
-        <div className="h-12 shrink-0 flex items-center justify-between px-3 border-b border-border/20 bg-foreground/[0.02]">
+        <div className="h-11 shrink-0 flex items-center justify-between px-3 border-b border-border/40">
             <div className="flex items-center gap-1.5">
-              <button 
+              <button
                 onClick={handleCloseStudio}
-                className={`p-1.5 rounded-lg transition-all ${!activeStudioChartId ? 'bg-sky-500/10 text-sky-400' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`p-1.5 rounded-lg transition-all ${activeStudioChartId === null ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/5'}`}
                 title="Dashboard View"
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
               </button>
-              <div className="h-4 w-px bg-border/30 mx-0.5" />
-              <button 
+              <div className="h-4 w-px bg-border/40 mx-0.5" />
+              <button
                 onClick={() => handleOpenInStudio(null)}
-                className={`p-1.5 rounded-lg transition-all ${activeStudioChartId === null && sidebarOpen ? 'text-emerald-400 hover:text-emerald-300' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`p-1.5 rounded-lg transition-all ${activeStudioChartId === '' ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/5'}`}
                 title="Create New Analysis"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -940,121 +887,149 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             </div>
 
             <div className="flex items-center gap-2">
-               <span className="text-[9px] font-bold text-muted-foreground/70 uppercase tracking-widest">Navigator</span>
-               <span className="text-[8px] tabular-nums px-1.5 py-0.5 rounded-full bg-sky-500/5 text-muted-foreground font-mono border border-border/20">
+               <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Charts</span>
+               <span className="text-[9px] tabular-nums text-muted-foreground/60 font-mono">
                   {filteredCharts.length}
                </span>
             </div>
 
-            <button 
+            <button
               onClick={() => setSidebarOpen(false)}
-              className="p-1.5 rounded-lg hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors"
-              title="Close Sidebar"
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/5 transition-colors"
+              title="Collapse"
             >
               <PanelLeftClose className="w-3.5 h-3.5" />
             </button>
         </div>
 
         {/* Action Buttons */}
-        <div className="shrink-0 border-t border-border/20 p-2 flex gap-1">
-          {canRefreshAllCharts && (
-            <button
-              onClick={handleRefreshAll}
-              disabled={isRefreshing}
-              className="flex-1 flex items-center justify-center p-1.5 rounded-lg text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 transition-all disabled:opacity-50"
-              title="Refresh all charts"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
-          )}
-          {isOwner && (
-            <>
+        {(canRefreshAllCharts || isOwner) && (
+          <div className="shrink-0 border-b border-border/40 px-3 py-2 flex items-center gap-1">
+            {canRefreshAllCharts && (
               <button
-                onClick={handleExportPDF}
-                disabled={exporting}
-                className="flex-1 flex items-center justify-center p-1.5 rounded-lg text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all disabled:opacity-50"
-                title={exporting ? 'Generating PDF...' : 'Download PDF'}
+                onClick={handleRefreshAll}
+                disabled={isRefreshing}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] border border-border/40 transition-all disabled:opacity-40"
+                title="Refresh all charts"
               >
-                <FileDown className={`w-3.5 h-3.5 ${exporting ? 'animate-pulse' : ''}`} />
-              </button>
-              <button
-                onClick={handleExportHTML}
-                disabled={exportingHtml}
-                className="flex-1 flex items-center justify-center p-1.5 rounded-lg text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all disabled:opacity-50"
-                title={exportingHtml ? 'Generating HTML...' : 'Download HTML'}
-              >
-                <FileDown className={`w-3.5 h-3.5 ${exportingHtml ? 'animate-pulse' : ''}`} />
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Search - Ultra Compact */}
-        <div className="px-3 py-2 border-b border-border/20 bg-foreground/[0.01]">
-          <div className="relative group">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 group-focus-within:text-sky-500 transition-colors" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search..."
-              className="w-full pl-7 pr-3 py-1 bg-secondary/30 border border-border/30 rounded text-[9px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0 transition-all"
-            />
-            {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery('')}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-accent/30 text-muted-foreground/60"
-              >
-                <X className="w-2 h-2" />
+                <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
               </button>
             )}
+            {isOwner && (
+              <>
+                <button
+                  onClick={handleExportPDF}
+                  disabled={exporting}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] border border-border/40 transition-all disabled:opacity-40"
+                  title={exporting ? 'Generating PDF...' : 'Export PDF'}
+                >
+                  <FileDown className={`w-3 h-3 ${exporting ? 'animate-pulse' : ''}`} />
+                  <span>PDF</span>
+                </button>
+                <button
+                  onClick={handleExportHTML}
+                  disabled={exportingHtml}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] border border-border/40 transition-all disabled:opacity-40"
+                  title={exportingHtml ? 'Generating HTML...' : 'Export HTML'}
+                >
+                  <FileDown className={`w-3 h-3 ${exportingHtml ? 'animate-pulse' : ''}`} />
+                  <span>HTML</span>
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Search */}
+        <div className="px-3 py-2.5 border-b border-border/40">
+          <div className="flex items-center gap-1.5">
+            <div className="relative group flex-1 min-w-0">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40 group-focus-within:text-foreground/60 transition-colors" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search charts..."
+                className="w-full pl-7 pr-7 py-1.5 bg-background border border-border/50 rounded-lg text-[10px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-foreground/25 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-accent/30 text-muted-foreground/60"
+                >
+                  <X className="w-2 h-2" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={toggleCollapseAllSidebarCategories}
+              disabled={sidebarGroupedCharts.length === 0}
+              className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/50 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.05] disabled:opacity-40"
+              title={allSidebarCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'}
+            >
+              {allSidebarCategoriesCollapsed ? <UnfoldVertical className="w-3 h-3" /> : <FoldVertical className="w-3 h-3" />}
+            </button>
           </div>
         </div>
 
-        {/* Scrollable Indicator List - Compact Items */}
-        <div className="flex-grow overflow-y-auto custom-scrollbar px-1.5 py-2 space-y-px">
-          {filteredCharts.map((chart, idx) => {
-            const isActive = chart.id === quickJumpId;
+        {/* Chart List */}
+        <div className="flex-grow overflow-y-auto custom-scrollbar px-2 py-2 space-y-1">
+          {sidebarGroupedCharts.map(({ category, charts }) => {
+            const collapsed = !!collapsedSidebarCategories[category];
             return (
-              <button
-                key={chart.id}
-                onClick={() => handleQuickJumpSelect(chart.id)}
-                className={`w-full group relative flex items-start gap-2 px-2 py-1 rounded cursor-pointer transition-all duration-150 border ${
-                  isActive
-                    ? 'bg-sky-500/10 border-sky-500/10'
-                    : 'border-transparent hover:bg-accent/20'
-                }`}
-              >
-                {/* 🔢 Index Number - Smaller */}
-                <div className={`mt-0.5 text-[8px] font-mono shrink-0 w-5 h-3 flex items-center justify-center rounded border transition-colors ${
-                  isActive ? 'bg-sky-500/20 text-sky-400 border-sky-500/20' : 'bg-foreground/5 text-muted-foreground/70 border-border/20'
-                }`}>
-                  {idx + 1}
-                </div>
-
-                {/* 📝 Content - Smaller */}
-                <div className="flex-1 min-w-0 flex flex-col items-start text-left">
-                  <span className={`text-[9px] font-medium leading-tight truncate w-full ${isActive ? 'text-sky-300' : 'text-muted-foreground group-hover:text-foreground'}`}>
-                    {chart.name || 'Untitled'}
+              <div key={category} className="rounded-lg border border-border/40 overflow-hidden">
+                <button
+                  onClick={() =>
+                    setCollapsedSidebarCategories((prev) => ({ ...prev, [category]: !prev[category] }))
+                  }
+                  className="w-full px-2.5 py-1.5 bg-background/40 flex items-center justify-between text-left text-[10px] text-muted-foreground hover:text-foreground"
+                >
+                  <span className="truncate">{category}</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-[9px]">{charts.length}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`} />
                   </span>
-                  <div className="flex items-center gap-1 opacity-50">
-                    <span className="text-[7px] font-mono uppercase tracking-tighter text-muted-foreground/60">
-                      {chart.category || 'ANALYSIS'}
-                    </span>
-                    {chart.export_pdf && <div className="w-0.5 h-0.5 rounded-full bg-emerald-500" />}
+                </button>
+                {!collapsed && (
+                  <div className="px-1.5 py-1 space-y-px">
+                    {charts.map((chart) => {
+                      const isActive = chart.id === quickJumpId;
+                      const idx = filteredCharts.findIndex((c) => c.id === chart.id);
+                      return (
+                        <button
+                          key={chart.id}
+                          onClick={() => handleQuickJumpSelect(chart.id)}
+                          className={`w-full group relative flex items-center gap-2.5 px-2 py-1.5 rounded-md cursor-pointer transition-all duration-100 ${
+                            isActive
+                              ? 'bg-foreground/[0.07] text-foreground'
+                              : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
+                          }`}
+                        >
+                          <span className={`text-[9px] font-mono tabular-nums shrink-0 w-4 text-right ${
+                            isActive ? 'text-foreground/60' : 'text-muted-foreground/40'
+                          }`}>
+                            {idx + 1}
+                          </span>
+                          <div className="flex-1 min-w-0 flex flex-col items-start text-left">
+                            <span className="text-[10px] font-medium leading-tight truncate w-full">
+                              {chart.name || 'Untitled'}
+                            </span>
+                          </div>
+                          {chart.export_pdf && (
+                            <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-emerald-500/40'}`} />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
-                </div>
-
-                {isActive && (
-                   <motion.div layoutId="sidebar-active" className="absolute left-0 w-0.5 h-2.5 bg-sky-500/60 rounded-r-full" />
                 )}
-              </button>
+              </div>
             );
           })}
           {filteredCharts.length === 0 && (
-            <div className="py-6 px-4 text-center">
-               <Filter className="w-4 h-4 text-slate-900 mx-auto mb-1 opacity-10" />
-               <p className="text-[8px] text-slate-700 font-medium tracking-tight">NO MATCHES</p>
+            <div className="py-8 px-4 text-center">
+               <p className="text-[10px] text-muted-foreground/50">No charts found</p>
             </div>
           )}
         </div>
@@ -1068,7 +1043,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden fixed inset-0 top-12 z-[90] bg-foreground/40 dark:bg-black/60 backdrop-blur-sm"
+            className="md:hidden fixed inset-0 top-[40px] z-[90] bg-foreground/40 dark:bg-black/60 backdrop-blur-sm"
           />
         )}
       </AnimatePresence>
@@ -1080,7 +1055,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
              {!sidebarOpen && (
                <button
                  onClick={() => setSidebarOpen(true)}
-                 className="absolute left-3 top-3 z-[40] p-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all active:scale-95"
+                 className="absolute left-3 top-3 z-[40] p-2 rounded-lg border border-border/50 bg-background text-muted-foreground hover:text-foreground hover:border-border shadow-sm transition-all active:scale-95"
                  title="Open Navigator"
                >
                  <PanelLeftOpen className="w-4 h-4" />
@@ -1093,40 +1068,35 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
              />
           </div>
         ) : (
-          <div className={`transition-all duration-300 p-4 md:p-8 xl:p-10 ${sidebarOpen ? 'xl:pr-16 2xl:pr-24' : ''}`}>
+          <div className="transition-all duration-300 p-4 md:p-6">
             {/* Toggle Button (when sidebar is closed) */}
             {!sidebarOpen && (
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="fixed left-4 top-16 z-[40] p-3 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 shadow-xl shadow-sky-500/10 transition-all active:scale-95"
+                className="fixed left-4 top-16 z-[40] p-2 rounded-lg border border-border/50 bg-background text-muted-foreground hover:text-foreground hover:border-border shadow-sm transition-all active:scale-95"
                 title="Open Navigator"
               >
-                <PanelLeftOpen className="w-5 h-5" />
+                <PanelLeftOpen className="w-4 h-4" />
               </button>
             )}
 
             {/* 🖼️ Grid Display — grouped by category */}
-            <div className={`space-y-8 mx-auto ${sidebarOpen ? 'max-w-[1400px]' : 'max-w-[1600px]'}`}>
+            <div className="space-y-8">
             {groupedCharts.map(({ category, charts: groupCharts }) => {
-              const globalOffset = filteredCharts.indexOf(groupCharts[0]);
               return (
                 <div key={category}>
                   {/* Category Section Header */}
                   {groupedCharts.length > 1 && (
-                    <div className="flex items-center gap-3 mb-4 px-1">
-                      <div className="h-px flex-1 bg-border/30" />
-                      <span className="text-[9px] font-mono font-bold uppercase tracking-[0.25em] text-muted-foreground/50 px-2 shrink-0">
+                    <div className="flex items-center gap-3 mb-5 px-1">
+                      <span className="text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider shrink-0">
                         {category}
                       </span>
-                      <span className="text-[8px] font-mono text-muted-foreground/30 shrink-0">
-                        {groupCharts.length}
-                      </span>
-                      <div className="h-px flex-1 bg-border/30" />
+                      <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0">{groupCharts.length}</span>
+                      <div className="h-px flex-1 bg-border/40" />
                     </div>
                   )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 lg:gap-10">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
                     {groupCharts.map((chart, localIdx) => {
-                      const idx = globalOffset + localIdx;
                       return (
                         <motion.div
                           key={chart.id}
@@ -1155,13 +1125,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                             onDeleteChart={handleDeleteChart}
                             isRefreshingChart={!!refreshingChartIds[chart.id]}
                             isDeletingChart={!!deletingChartIds[chart.id]}
-                            isSyncing={reorderMutation.isPending}
                             onRankChange={handleRankChange}
-                            onMoveUp={(id) => handleMoveBy(id, -1)}
-                            onMoveDown={(id) => handleMoveBy(id, 1)}
                             copySignal={copySignals[chart.id] || 0}
-                            index={idx}
-                            totalCharts={filteredCharts.length}
                             onOpenStudio={handleOpenInStudio}
                           />
                         </motion.div>
@@ -1173,12 +1138,12 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             })}
           </div>
 
-          {/* 📭 Empty State */}
+          {/* Empty State */}
           {filteredCharts.length === 0 && (
-            <div className="py-32 text-center glass-card border-dashed border-border/20 bg-transparent animate-in zoom-in-95 duration-500">
-              <Layers className="w-12 h-12 text-slate-700 mx-auto mb-4 opacity-20" />
-              <h3 className="text-xl font-medium text-slate-500">No matching indicators</h3>
-              <p className="text-slate-600 mt-2 text-sm font-light">No charts available with your current access.</p>
+            <div className="py-32 text-center border border-dashed border-border/40 rounded-xl">
+              <Layers className="w-8 h-8 text-muted-foreground/20 mx-auto mb-3" />
+              <p className="text-sm font-medium text-muted-foreground/50">No indicators found</p>
+              {searchQuery && <p className="text-xs text-muted-foreground/40 mt-1">Try a different search term</p>}
             </div>
           )}
           </div>
