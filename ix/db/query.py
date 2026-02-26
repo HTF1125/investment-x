@@ -1,5 +1,4 @@
 from typing import Optional, Union
-import os
 import numpy as np
 import pandas as pd
 
@@ -7,29 +6,9 @@ from scipy.optimize import curve_fit
 from pandas.tseries.offsets import MonthEnd
 from sqlalchemy.orm import Session as SessionType
 from ix.db.models import Timeseries
-from cachetools import TTLCache, cached
-from cachetools.keys import hashkey
 from ix import core
 from ix.core.stat import Cycle
 from ix.misc.date import today
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
-        if value <= 0:
-            raise ValueError
-        return value
-    except ValueError:
-        return default
-
-
-SERIES_CACHE_MAXSIZE = _env_int("IX_SERIES_CACHE_MAXSIZE", 48)
-SERIES_CACHE_TTL_SECONDS = _env_int("IX_SERIES_CACHE_TTL_SECONDS", 300)
-cache = TTLCache(maxsize=SERIES_CACHE_MAXSIZE, ttl=SERIES_CACHE_TTL_SECONDS)
 
 # Constants for PMI codes
 PMI_MANUFACTURING_CODES = [
@@ -150,19 +129,6 @@ def MultiSeries(**series: pd.Series) -> pd.DataFrame:
     return data
 
 
-def _series_cache_key(
-    code: str,
-    freq: str | None = None,
-    name: str | None = None,
-    ccy: str | None = None,
-    scale: int | None = None,
-    session: Optional[SessionType] = None,
-):
-    # Exclude `session` from cache key to avoid unhashable/ephemeral objects.
-    return hashkey(code, freq, name, ccy, scale)
-
-
-@cached(cache, key=_series_cache_key)
 def Series(
     code: str,
     freq: str | None = None,
