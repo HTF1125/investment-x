@@ -77,7 +77,14 @@ def _update_source_data(source_name, fetcher, progress_cb=None, start_index: int
 
             logger.debug(f"Fetching data for {ticker} (field: {field}).")
             try:
-                _data = fetcher(code=ticker)[field]
+                # Prefer positional ticker to support fetchers with different kwarg names
+                # (e.g. get_fred_data(ticker=...)).
+                try:
+                    fetched = fetcher(ticker)
+                except TypeError:
+                    # Backward-compatible fallback for wrappers that still use `code=...`.
+                    fetched = fetcher(code=ticker)
+                _data = fetched[field]
             except Exception as e:
                 logger.warning(f"Error fetching data for {ts_source_code}: {e}")
                 continue
