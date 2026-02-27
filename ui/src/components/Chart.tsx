@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
-import { applyChartTheme } from '@/lib/chartTheme';
+import { applyChartTheme, type ChartStyle } from '@/lib/chartTheme';
 
 const ChartSkeleton = () => (
   <div className="w-full h-full p-6 flex flex-col gap-4 bg-background/80 rounded-xl animate-pulse overflow-hidden relative min-h-[290px]">
@@ -16,14 +16,14 @@ const ChartSkeleton = () => (
         <div key={i} className="h-px bg-sky-500/30 w-full" />
       ))}
     </div>
-    
+
     {/* Body skeleton - Dynamic Bars */}
     <div className="flex-1 flex items-end gap-3 px-8 pb-12 relative z-10 transition-all duration-1000">
       {[40, 70, 45, 90, 65, 30, 85, 50, 60, 40].map((h, i) => (
-        <div 
-          key={i} 
+        <div
+          key={i}
           className="flex-1 rounded-t-md bg-sky-500/5 border border-sky-500/10"
-          style={{ height: `${h}%`, animationDelay: `${i * 100}ms` }} 
+          style={{ height: `${h}%`, animationDelay: `${i * 100}ms` }}
         />
       ))}
     </div>
@@ -47,38 +47,45 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface ChartProps {
   id: string;
   initialFigure?: any;
+  /** Per-chart style override. Falls back to global chartStyle from ThemeContext. */
+  chartStyle?: ChartStyle;
   copySignal?: number;
 }
 
-export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps) {
-  const { theme } = useTheme();
+export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, copySignal = 0 }: ChartProps) {
+  const { theme, chartStyle: globalChartStyle } = useTheme();
+  const effectiveStyle = chartStyleProp ?? globalChartStyle;
+
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
   const [plotRenderError, setPlotRenderError] = React.useState<string | null>(null);
   const [plotRetryNonce, setPlotRetryNonce] = React.useState(0);
   const [copyState, setCopyState] = React.useState<'idle' | 'copying' | 'done'>('idle');
   const [isVisible, setIsVisible] = React.useState(true);
   const containerRef = React.useRef<HTMLDivElement>(null);
+
   const safelyThemeFigure = React.useCallback(
     (figure: any) => {
       try {
-        return applyChartTheme(figure, theme, { transparentBackground: true });
+        return applyChartTheme(figure, theme, { transparentBackground: true, chartStyle: effectiveStyle });
       } catch {
         return figure;
       }
     },
-    [theme]
+    [theme, effectiveStyle]
   );
 
   const { data: rawFigure, isLoading, error } = useQuery({
     queryKey: ['chart-figure', id],
     queryFn: async () => {
       const res = await apiFetch(`/api/v1/dashboard/charts/${id}/figure`);
-      
+
       if (!res.ok) {
         throw new Error('Failed to load chart data');
       }
-      
-      return res.json();
+
+      const body = await res.json();
+      // API now returns { figure, chart_style } — extract just the figure data
+      return body?.figure ?? body;
     },
     initialData: initialFigure ?? undefined,
     staleTime: 1000 * 60 * 5,
@@ -119,7 +126,7 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
 
   React.useEffect(() => {
     setPlotRenderError(null);
-  }, [id, theme, rawFigure]);
+  }, [id, theme, effectiveStyle, rawFigure]);
 
   const handleCopy = React.useCallback(async () => {
     if (!graphDiv || copyState !== 'idle') return;
@@ -127,14 +134,14 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
     try {
         const Plotly = (await import('plotly.js-dist-min')).default;
         const url = await Plotly.toImage(graphDiv as any, { format: 'png', width: 1200, height: 800, scale: 2 });
-        
+
         const res = await fetch(url);
         const blob = await res.blob();
-        
+
         await navigator.clipboard.write([
             new ClipboardItem({ 'image/png': blob })
         ]);
-        
+
         setCopyState('done');
         setTimeout(() => setCopyState('idle'), 1500);
     } catch {
@@ -183,7 +190,7 @@ export default function Chart({ id, initialFigure, copySignal = 0 }: ChartProps)
           >
             {!plotRenderError ? (
               <Plot
-                key={`${id}-${theme}-${plotRetryNonce}`}
+                key={`${id}-${theme}-${effectiveStyle}-${plotRetryNonce}`}
                 data={figure.data}
                 layout={{
                   ...figure.layout,

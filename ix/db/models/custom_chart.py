@@ -10,7 +10,7 @@ class CustomChart(Base):
     Model for storing user-defined custom charts.
     """
 
-    __tablename__ = "custom_charts"
+    __tablename__ = "charts"
 
     id = Column(
         UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
@@ -26,7 +26,8 @@ class CustomChart(Base):
     tags = Column(JSONB, default=list)
 
     figure = Column(JSONB, nullable=True)  # Cached execution result
-    export_pdf = Column(Boolean, default=True, nullable=False)  # Include in PDF export
+    chart_style = Column(String(32), nullable=True)  # Visual style preset (default/minimal/terminal/presentation)
+    public = Column(Boolean, default=True, nullable=False)  # Visible to all users
 
     # "order" is a reserved keyword in SQL, so we quote it or use a different name in DB.
     # Since we added column "order", we map it here.

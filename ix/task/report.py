@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from sqlalchemy import desc
 from ix.db.conn import Session
-from ix.db.models.financial_news import FinancialNews
+from ix.db.models.news_item import NewsItem
 from ix.misc import get_logger
 import os
 
@@ -155,28 +155,23 @@ def generate_desk_report():
 
     with Session() as db:
         # Fetch latest news
-        news_items = (
-            db.query(FinancialNews)
-            .order_by(desc(FinancialNews.published_at))
-            .limit(20)
-            .all()
-        )
+        news_items = db.query(NewsItem).order_by(desc(NewsItem.published_at)).limit(20).all()
 
         content_html = ""
         for i, item in enumerate(news_items):
             idx = str(i + 1).zfill(2)
-            source = item.source
+            source = item.source_name or item.source or "unknown"
             time_str = item.published_at.strftime("%H:%M") if item.published_at else ""
 
             # Simple content cleaning
-            body = item.summary or item.content or "No content available."
+            body = item.summary or item.body_text or "No content available."
             # Remove HTML tags if raw
             # ... skipping robust cleaning for brevity ...
 
             content_html += f"""
             <div class="article-section">
               <div class="section-label">Briefing {idx} / {source}</div>
-              <h3 class="section-title"><a href="{item.url}" target="_blank">{item.title}</a></h3>
+              <h3 class="section-title"><a href="{item.url or '#'}" target="_blank">{item.title}</a></h3>
               <div class="section-meta">Published at {time_str}</div>
               <div class="article-body">
                 <p>{body}</p>

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
 import { useTheme } from '@/context/ThemeContext';
+import { CHART_STYLE_LABELS, type ChartStyle } from '@/lib/chartTheme';
 import { AnimatePresence, motion } from 'framer-motion';
 
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {

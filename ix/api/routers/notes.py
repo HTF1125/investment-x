@@ -80,6 +80,8 @@ def _normalize_links(links: Optional[List[str]]) -> List[str]:
         item = str(raw or "").strip()
         if not item:
             continue
+        if item.startswith("chart://"):
+            continue
         if "://" not in item and "." in item and " " not in item:
             item = f"https://{item}"
         if item in seen:

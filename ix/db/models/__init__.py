@@ -20,10 +20,11 @@ from ix.db.conn import Base
 from .user import User
 from .telegram import TelegramMessage
 from .custom_chart import CustomChart
-from .financial_news import FinancialNews
 from .youtube_intel import YouTubeIntel
 from .task_process import TaskProcess
 from .investment_note import InvestmentNote, InvestmentNoteImage
+from .system_setting import SystemSetting
+from .news_item import NewsItem
 import pandas as pd
 
 # Re-export Base for convenience
@@ -38,11 +39,12 @@ __all__ = [
     "TelegramMessage",
     "Insights",
     "CustomChart",
-    "FinancialNews",
     "YouTubeIntel",
     "TaskProcess",
     "InvestmentNote",
     "InvestmentNoteImage",
+    "SystemSetting",
+    "NewsItem",
 ]
 
 
@@ -55,11 +57,11 @@ def all():
         TacticalView,
         Insights,
         CustomChart,
-        FinancialNews,
         YouTubeIntel,
         TaskProcess,
         InvestmentNote,
         InvestmentNoteImage,
+        NewsItem,
     ]
 
 

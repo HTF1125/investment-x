@@ -1,13 +1,14 @@
 'use client';
 
 import AppShell from '@/components/AppShell';
+import NavigatorShell from '@/components/NavigatorShell';
 import NewsFeed from '@/components/NewsFeed';
 import YouTubeIntelFeed from '@/components/YouTubeIntelFeed';
+import TelegramFeed from '@/components/TelegramFeed';
 import { useAuth } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Radio, RefreshCw, Check, AlertTriangle } from 'lucide-react';
+import { Radio, RefreshCw, Check, AlertTriangle, Youtube, MessageSquare } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -24,13 +25,27 @@ interface ProcessInfo {
 export default function IntelPage() {
   const { user } = useAuth();
   const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncSidebarForViewport = () => {
+      if (window.innerWidth < 1024) setSidebarOpen(false);
+    };
+
+    syncSidebarForViewport();
+    window.addEventListener('resize', syncSidebarForViewport);
+    return () => window.removeEventListener('resize', syncSidebarForViewport);
+  }, []);
   const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
   const [syncingYoutube, setSyncingYoutube] = useState(false);
+  const [intelTab, setIntelTab] = useState<'youtube' | 'telegram'>('youtube');
   const [syncMsg, setSyncMsg] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error'; sticky?: boolean } | null>(null);
+  const youtubeRef = useRef<HTMLDivElement>(null);
+  const newsRef = useRef<HTMLDivElement>(null);
+  const telegramRef = useRef<HTMLDivElement>(null);
   const lastTelegramProcessIdRef = useRef<string | null>(null);
   const lastYoutubeProcessIdRef = useRef<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,56 +167,117 @@ export default function IntelPage() {
     }
   };
 
+  const sidebarContent = (
+    <div className="min-h-0 flex-1 overflow-y-auto py-1 custom-scrollbar">
+      <button
+        onClick={() => youtubeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        className="w-full text-left px-2.5 py-1.5 transition-colors border-l-2 border-l-transparent hover:bg-foreground/5 text-muted-foreground hover:text-foreground"
+      >
+        <div className="font-medium text-[12px] truncate leading-tight">YouTube Intel</div>
+      </button>
+      <button
+        onClick={() => newsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        className="w-full text-left px-2.5 py-1.5 transition-colors border-l-2 border-l-transparent hover:bg-foreground/5 text-muted-foreground hover:text-foreground"
+      >
+        <div className="font-medium text-[12px] truncate leading-tight">Recent News</div>
+      </button>
+      <button
+        onClick={() => telegramRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        className="w-full text-left px-2.5 py-1.5 transition-colors border-l-2 border-l-transparent hover:bg-foreground/5 text-muted-foreground hover:text-foreground"
+      >
+        <div className="font-medium text-[12px] truncate leading-tight">Telegram</div>
+      </button>
+    </div>
+  );
+
   return (
     <AppShell hideFooter>
-      <div className="flex h-[calc(100vh-40px)] relative bg-background overflow-hidden">
-        <main className="flex-1 min-w-0 h-full flex flex-col bg-background">
-          {/* Inner header bar */}
-          <div className="h-11 flex items-center justify-between px-4 border-b border-border/60 shrink-0">
-            <div className="flex items-center gap-2.5">
-              <Radio className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
-              <span className="text-sm font-semibold text-foreground">Intel Feed</span>
-              <span className="text-muted-foreground/30 text-[11px]">·</span>
-              <span className="text-[11px] text-muted-foreground/60">YouTube + Telegram</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span className={`w-1.5 h-1.5 rounded-full ${syncing ? 'bg-sky-400 animate-pulse' : 'bg-emerald-500'}`} />
-                <span>{syncing ? (syncMsg || 'Syncing…') : 'Live'}</span>
-              </div>
-              {isAdmin && (
-                <>
-                  <div className="w-px h-4 bg-border/60 mx-1" />
-                  <button
-                    onClick={handleScrape}
-                    disabled={syncing}
-                    className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
-                    title="Sync Telegram"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-                  </button>
-                  <button
-                    onClick={handleYouTubeSync}
-                    disabled={syncingYoutube}
-                    className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
-                    title="Sync YouTube"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${syncingYoutube ? 'animate-spin' : ''}`} />
-                  </button>
-                </>
-              )}
-            </div>
+      <NavigatorShell
+        sidebarOpen={sidebarOpen}
+        onSidebarToggle={() => setSidebarOpen((o) => !o)}
+        sidebarIcon={<Radio className="w-3.5 h-3.5 text-sky-400" />}
+        sidebarLabel="Intel"
+        sidebarContent={sidebarContent}
+        topBarLeft={
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="text-sm font-semibold text-foreground">Intel Feed</span>
+            <span className="text-muted-foreground/30 hidden lg:inline">·</span>
+            <span className="hidden lg:inline">YouTube + News + Telegram</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${syncing ? 'bg-sky-400 animate-pulse' : 'bg-emerald-500'}`} />
+            <span>{syncing ? (syncMsg || 'Syncing…') : 'Live'}</span>
           </div>
-
-          {/* Scrollable feed content */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            <div className="p-4 md:p-6 space-y-4">
-              <YouTubeIntelFeed />
+        }
+        topBarRight={
+          <>
+            {isAdmin && (
+              <>
+                <button
+                  onClick={handleScrape}
+                  disabled={syncing}
+                  className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
+                  title="Sync Telegram"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={handleYouTubeSync}
+                  disabled={syncingYoutube}
+                  className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
+                  title="Sync YouTube"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncingYoutube ? 'animate-spin' : ''}`} />
+                </button>
+              </>
+            )}
+          </>
+        }
+        mainClassName="overflow-hidden"
+      >
+        <div className="h-full p-3 md:p-4 overflow-hidden">
+          <div className="h-full min-h-0 grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-3">
+            <div ref={newsRef} className="min-h-0 h-full">
               <NewsFeed />
             </div>
+            <div className="min-h-0 h-full border border-border/60 rounded-xl bg-background overflow-hidden flex flex-col">
+              <div className="h-10 border-b border-border/60 px-2.5 flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => setIntelTab('youtube')}
+                  className={`h-7 px-2 rounded-md text-[11px] inline-flex items-center gap-1.5 border transition-colors ${
+                    intelTab === 'youtube'
+                      ? 'border-border bg-foreground/[0.06] text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
+                  }`}
+                >
+                  <Youtube className="w-3.5 h-3.5" />
+                  YouTube
+                </button>
+                <button
+                  onClick={() => setIntelTab('telegram')}
+                  className={`h-7 px-2 rounded-md text-[11px] inline-flex items-center gap-1.5 border transition-colors ${
+                    intelTab === 'telegram'
+                      ? 'border-border bg-foreground/[0.06] text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
+                  }`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  Telegram
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 p-2">
+                {intelTab === 'youtube' ? (
+                  <div ref={youtubeRef} className="min-h-0 h-full">
+                    <YouTubeIntelFeed />
+                  </div>
+                ) : (
+                  <div ref={telegramRef} className="min-h-0 h-full">
+                    <TelegramFeed />
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </main>
-      </div>
+        </div>
+      </NavigatorShell>
 
       {/* Toast Notification */}
       <AnimatePresence>
@@ -231,3 +307,4 @@ export default function IntelPage() {
     </AppShell>
   );
 }
+

@@ -20,12 +20,13 @@ class ChartMetaSchema(BaseModel):
     description: str | None
     updated_at: datetime | None
     rank: int = 0
-    export_pdf: bool = True
+    public: bool = True
     created_by_user_id: str | None = None
     created_by_email: str | None = None
     created_by_name: str | None = None
     code: str | None = None
     figure: Any | None = None  # Added figure data to bundle with summary
+    chart_style: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -94,8 +95,9 @@ def get_dashboard_summary(
         Chart.description,
         Chart.updated_at,
         Chart.rank,
-        Chart.export_pdf,
+        Chart.public,
         Chart.created_by_user_id,
+        Chart.chart_style,
     ]
     if include_figures:
         chart_columns.append(Chart.figure)
@@ -116,12 +118,12 @@ def get_dashboard_summary(
         if current_uid:
             query = query.filter(
                 or_(
-                    Chart.export_pdf == True,
+                    Chart.public == True,
                     Chart.created_by_user_id == current_uid,
                 )
             )
         else:
-            query = query.filter(Chart.export_pdf == True)
+            query = query.filter(Chart.public == True)
 
     charts = query.all()
 
@@ -148,12 +150,13 @@ def get_dashboard_summary(
             description=chart.description,
             updated_at=chart.updated_at,
             rank=int(chart.rank or 0),
-            export_pdf=bool(chart.export_pdf),
+            public=bool(chart.public),
             created_by_user_id=str(creator_id) if creator_id else None,
             created_by_email=str(creator_email) if creator_email else None,
             created_by_name=creator_name,
             code=chart.code if include_code_for_user else None,
             figure=_theme_figure_for_delivery(chart.figure) if include_figures else None,
+            chart_style=chart.chart_style,
         )
 
         summary["charts_by_category"][cat].append(meta)
@@ -180,7 +183,8 @@ def get_chart_figure(
         Chart.id,
         Chart.name,
         Chart.figure,
-        Chart.export_pdf,
+        Chart.chart_style,
+        Chart.public,
         Chart.created_by_user_id,
     ]
     chart = db.query(Chart).options(load_only(*chart_fields)).filter(Chart.id == chart_id).first()
@@ -194,7 +198,7 @@ def get_chart_figure(
     is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
     current_uid = str(getattr(current_user, "id", "") or "") if current_user else ""
     is_owner_chart = bool(current_uid and str(getattr(chart, "created_by_user_id", "") or "") == current_uid)
-    if not is_admin and not bool(chart.export_pdf) and not is_owner_chart:
+    if not is_admin and not bool(chart.public) and not is_owner_chart:
         raise HTTPException(status_code=404, detail="Chart not found")
 
     if not chart.figure:
@@ -204,4 +208,7 @@ def get_chart_figure(
             status_code=404, detail="Figure data missing for this chart"
         )
 
-    return _theme_figure_for_delivery(chart.figure)
+    return {
+        "figure": _theme_figure_for_delivery(chart.figure),
+        "chart_style": chart.chart_style,
+    }

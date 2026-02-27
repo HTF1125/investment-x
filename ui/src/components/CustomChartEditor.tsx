@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchJson } from '@/lib/api';
-import { applyChartTheme } from '@/lib/chartTheme';
+import { applyChartTheme, type ChartStyle, CHART_STYLE_LABELS, CHART_STYLE_CONFIGS } from '@/lib/chartTheme';
 import {
   Loader2, Play, Save, Code, FileText,
   Download, Copy, Trash2, Plus, Terminal, Search,
@@ -64,7 +64,7 @@ interface CustomChartListItem {
   category?: string | null;
   description?: string | null;
   tags?: string[];
-  export_pdf?: boolean;
+  public?: boolean;
   rank?: number;
   created_by_user_id?: string | null;
   created_by_email?: string | null;
@@ -93,6 +93,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const [currentChartId, setCurrentChartId] = useState<string | null>(initialChartId || null);
   const [currentChartOwnerId, setCurrentChartOwnerId] = useState<string | null>(null);
   const [exportPdf, setExportPdf] = useState(true);
+  const [chartStyle, setChartStyle] = useState<ChartStyle>('default');
   const [createdByEmail, setCreatedByEmail] = useState<string | null>(null);
   const [createdByName, setCreatedByName] = useState<string | null>(null);
 
@@ -290,7 +291,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   }, [searchQuery, categoryFilter]);
 
   // Count of charts flagged for PDF export
-  const pdfCount = useMemo(() => orderedCharts.filter((c: any) => c.export_pdf).length, [orderedCharts]);
+  const pdfCount = useMemo(() => orderedCharts.filter((c: any) => c.public).length, [orderedCharts]);
   const parseBodySafe = useCallback(async (res: Response) => {
     const text = await res.text();
     if (!text) return null;
@@ -359,7 +360,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const saveMutation = useMutation({
     mutationFn: async () => {
       const tagList = tags.split(',').map((t: string) => t.trim()).filter(Boolean);
-      const payload = { name, code, category, description, tags: tagList, export_pdf: exportPdf };
+      const payload = { name, code, category, description, tags: tagList, public: exportPdf, chart_style: chartStyle };
       const url = currentChartId ? `/api/custom/${currentChartId}` : '/api/custom';
       const method = currentChartId ? 'PUT' : 'POST';
       
@@ -427,21 +428,21 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     },
   });
 
-  // Toggle export_pdf for a single chart inline
+  // Toggle public for a single chart inline
   const toggleExportPdf = useCallback(async (chartId: string, newValue: boolean) => {
     if (!canToggleExport) return;
     // Optimistic update
-    setOrderedCharts(prev => prev.map(c => c.id === chartId ? { ...c, export_pdf: newValue } : c));
+    setOrderedCharts(prev => prev.map(c => c.id === chartId ? { ...c, public: newValue } : c));
     if (currentChartId === chartId) setExportPdf(newValue);
     try {
-      await apiFetchJson('/api/custom/export-pdf', {
+      await apiFetchJson('/api/custom/public', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [chartId], export_pdf: newValue }),
+        body: JSON.stringify({ ids: [chartId], public: newValue }),
       });
     } catch {
       // Revert on failure
-      setOrderedCharts(prev => prev.map(c => c.id === chartId ? { ...c, export_pdf: !newValue } : c));
+      setOrderedCharts(prev => prev.map(c => c.id === chartId ? { ...c, public: !newValue } : c));
       if (currentChartId === chartId) setExportPdf(!newValue);
     }
   }, [canToggleExport, currentChartId]);
@@ -478,7 +479,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setCopying(true);
     try {
       const Plotly = (await import('plotly.js-dist-min')).default;
-      const themed = applyChartTheme(previewFigure, theme, { transparentBackground: false });
+      const themed = applyChartTheme(previewFigure, theme, { transparentBackground: false, chartStyle });
       const url = await Plotly.toImage(
         { data: themed.data, layout: { ...themed.layout, width: 1200, height: 800 } },
         { format: 'png', scale: 2 }
@@ -499,7 +500,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setSuccessMsg(null);
     setPreviewError(null);
     try {
-      // Send empty items array — backend will auto-select export_pdf=true charts
+      // Send empty items array — backend will auto-select public=true charts
       const res = await apiFetch('/api/custom/pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -664,7 +665,8 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setCategory(chart.category || 'ChartPack');
     setDescription(chart.description || '');
     setTags(chart.tags ? chart.tags.join(', ') : '');
-    setExportPdf(chart.export_pdf ?? true);
+    setExportPdf(chart.public ?? true);
+    setChartStyle((chart.chart_style as ChartStyle) || 'default');
     setCreatedByEmail(chart.created_by_email || null);
     setCreatedByName(chart.created_by_name || null);
     setPreviewFigure(chart.figure || null);
@@ -694,7 +696,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                 category: fullChart.category ?? item.category,
                 description: fullChart.description ?? item.description,
                 tags: fullChart.tags ?? item.tags,
-                export_pdf: fullChart.export_pdf ?? item.export_pdf,
+                public: fullChart.public ?? item.public,
                 created_by_user_id: fullChart.created_by_user_id ?? item.created_by_user_id,
                 created_by_email: fullChart.created_by_email ?? item.created_by_email,
                 created_by_name: fullChart.created_by_name ?? item.created_by_name,
@@ -719,6 +721,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setDescription('');
     setTags('');
     setExportPdf(true);
+    setChartStyle('default');
     setCreatedByEmail(null);
     setCreatedByName(null);
     setPreviewFigure(null);
@@ -782,12 +785,12 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const themedPreviewFigure = useMemo(
     () => {
       try {
-        return applyChartTheme(previewFigure, theme, { transparentBackground: true });
+        return applyChartTheme(previewFigure, theme, { transparentBackground: true, chartStyle });
       } catch {
         return previewFigure;
       }
     },
-    [previewFigure, theme]
+    [previewFigure, theme, chartStyle]
   );
 
   useEffect(() => {
@@ -991,11 +994,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         {canToggleExport && (
                           <button
-                              onClick={(e) => { e.stopPropagation(); toggleExportPdf(chart.id, !chart.export_pdf); }}
-                              className={`w-2.5 h-2.5 rounded-sm border flex items-center justify-center transition-all ${chart.export_pdf ? 'bg-emerald-500 border-emerald-400' : 'border-muted-foreground/30 hover:border-muted-foreground/50'}`}
-                              title={chart.export_pdf ? "Included in PDF" : "Excluded from PDF"}
+                              onClick={(e) => { e.stopPropagation(); toggleExportPdf(chart.id, !chart.public); }}
+                              className={`w-2.5 h-2.5 rounded-sm border flex items-center justify-center transition-all ${chart.public ? 'bg-emerald-500 border-emerald-400' : 'border-muted-foreground/30 hover:border-muted-foreground/50'}`}
+                              title={chart.public ? "Included in PDF" : "Excluded from PDF"}
                           >
-                              {chart.export_pdf && <CheckCircle2 className="w-2 h-2 text-white" />}
+                              {chart.public && <CheckCircle2 className="w-2 h-2 text-white" />}
                           </button>
                         )}
                         {canDeleteChart(chart) && (
@@ -1244,6 +1247,28 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                     className="w-full border border-border/50 rounded-md px-2 py-1 text-[11px] bg-transparent focus:outline-none focus:border-border transition-all text-foreground placeholder:text-muted-foreground/40"
                                     placeholder="Describe the protocol..."
                                 />
+                            </div>
+
+                            <div className="col-span-4 min-w-0 space-y-1">
+                                <label className="text-[10px] text-muted-foreground mb-0.5 block">Chart Style</label>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    {(Object.keys(CHART_STYLE_LABELS) as ChartStyle[]).map((s) => (
+                                        <button
+                                            key={s}
+                                            type="button"
+                                            disabled={!canEditCurrentChart}
+                                            onClick={() => setChartStyle(s)}
+                                            className={`px-2.5 py-1 rounded-md border text-[10px] font-medium transition-all ${
+                                                chartStyle === s
+                                                    ? 'border-border/80 bg-foreground/[0.09] text-foreground'
+                                                    : 'border-border/40 text-muted-foreground hover:border-border/60 hover:text-foreground'
+                                            } disabled:opacity-40 disabled:cursor-not-allowed`}
+                                            title={CHART_STYLE_CONFIGS[s] ? `Font: ${CHART_STYLE_CONFIGS[s].fontFamily.split(',')[0]}` : ''}
+                                        >
+                                            {CHART_STYLE_LABELS[s]}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
 

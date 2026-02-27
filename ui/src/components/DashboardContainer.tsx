@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -13,9 +13,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
   const router = useRouter();
   const { token, user } = useAuth();
   const role = String(user?.role || '').toLowerCase();
-  const isOwner = !!user && role === 'owner';
-  const isAdminRole = !!user && (role === 'admin' || user.is_admin);
-  const canUseStudio = !!user && (isOwner || (!isAdminRole && role === 'general'));
+  const canUseStudio = !!user && (role === 'owner' || (role !== 'admin' && !user.is_admin && role === 'general'));
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard-summary'],
@@ -41,11 +39,6 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
       setTimeout(preloadStudioRoute, 1000);
     }
   }, [canUseStudio, router]);
-
-  const openStudio = useCallback((chartId: string | null = null) => {
-    const target = chartId ? `?chartId=${encodeURIComponent(chartId)}` : '?new=true';
-    router.push(target, { scroll: false });
-  }, [router]);
 
   if (isError) {
     return (
@@ -122,37 +115,15 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
 
   return (
     <AppShell hideFooter>
-      <div className="relative h-[calc(100vh-40px)] overflow-hidden">
-        <div className="h-full">
-          <div className="w-full h-full">
-             {data.charts_by_category ? (
-                <DashboardGallery
-                    chartsByCategory={data.charts_by_category}
-                    onOpenStudio={canUseStudio ? openStudio : undefined}
-                />
-            ) : (
-                <div className="text-center py-20 text-muted-foreground">
-                    Loading Data Dictionary...
-                </div>
-            )}
-          </div>
+      {data.charts_by_category ? (
+        <DashboardGallery
+          chartsByCategory={data.charts_by_category}
+        />
+      ) : (
+        <div className="text-center py-20 text-muted-foreground">
+          Loading Data Dictionary...
         </div>
-
-        {/* Floating Toggle */}
-        {canUseStudio && (
-          <button
-            className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 md:bottom-8 md:right-8 z-[110] p-3 sm:p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-2xl shadow-indigo-600/30 transition-all flex items-center gap-2 sm:gap-3 border border-indigo-400/20 group hover:scale-105 active:scale-95"
-            onClick={() => openStudio(null)}
-          >
-             <div className="relative">
-                <Activity className="w-4 h-4 sm:w-5 sm:h-5" />
-                <div className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
-                <div className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full" />
-             </div>
-             <span className="text-xs font-bold uppercase tracking-widest hidden lg:group-hover:block transition-all">Research Studio</span>
-          </button>
-        )}
-      </div>
+      )}
     </AppShell>
   );
 }

@@ -179,6 +179,13 @@ h1, h2, h3, h4 {
   pointer-events: none;
 }
 
+.notes-editor .ProseMirror h1,
+.notes-editor .ProseMirror h2,
+.notes-editor .ProseMirror h3,
+.notes-editor .ProseMirror h4 {
+  margin-top: 1.1em;
+}
+
 .notes-editor .ProseMirror h1 {
   font-size: 1.45rem;
   font-weight: 700;
@@ -191,12 +198,33 @@ h1, h2, h3, h4 {
   line-height: 1.3;
 }
 
-.notes-editor .ProseMirror blockquote {
-  border: 1px solid rgb(var(--border));
-  border-radius: 0.55rem;
-  padding: 0.55rem 0.65rem;
-  background: rgb(var(--foreground) / 0.03);
+.notes-editor .ProseMirror h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.notes-editor .ProseMirror h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
   color: rgb(var(--muted-foreground));
+}
+
+.notes-editor .ProseMirror blockquote {
+  border-left: 3px solid rgb(var(--primary) / 0.5);
+  border-radius: 0 0.4rem 0.4rem 0;
+  padding: 0.55rem 0.75rem;
+  background: rgb(var(--card) / 0.5);
+  color: rgb(var(--muted-foreground));
+  font-style: normal;
+  margin: 0.15rem 0;
+}
+
+.notes-editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid rgb(var(--border) / 0.6);
+  margin: 1rem 0;
 }
 
 .notes-editor .ProseMirror pre {
@@ -209,6 +237,15 @@ h1, h2, h3, h4 {
 
 .notes-editor .ProseMirror code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Inline code (not inside a code block) */
+.notes-editor .ProseMirror :not(pre) > code {
+  background: rgb(var(--card));
+  border: 1px solid rgb(var(--border) / 0.8);
+  border-radius: 0.25rem;
+  padding: 0.1em 0.35em;
+  font-size: 0.82em;
 }
 
 .notes-editor .ProseMirror ul,

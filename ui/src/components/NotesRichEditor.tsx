@@ -2,9 +2,13 @@
 
 import {
   type ChangeEvent,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -40,8 +44,12 @@ import {
   Bold,
   Italic,
   Link as LinkIcon,
+  Type,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 import { applyChartTheme } from '@/lib/chartTheme';
+import { apiFetch } from '@/lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -86,6 +94,7 @@ const SLASH_COMMANDS = [
   { id: 'horizontalRule', label: 'Divider',       description: 'Horizontal rule',        icon: Minus,       keywords: ['divider', 'hr', 'rule', 'line'] },
   { id: 'image',          label: 'Image',         description: 'Upload an image',        icon: ImageIcon,   keywords: ['image', 'photo', 'img'] },
   { id: 'chart',          label: 'Chart',         description: 'Embed a chart snapshot', icon: BarChart2,   keywords: ['chart', 'graph', 'plot', 'visualization'] },
+  { id: 'callout',        label: 'Callout',       description: 'Highlighted callout box', icon: Square,     keywords: ['callout', 'highlight', 'note', 'info', 'alert', 'box', 'tip'] },
 ] as const;
 
 type SlashCommandId = (typeof SLASH_COMMANDS)[number]['id'];
@@ -270,6 +279,48 @@ function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, edit
   const chartHeight = (node.attrs.chartHeight as number) || 320;
   const plotRef = useRef<HTMLDivElement>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+
+  const loadSnapshot = useCallback(async () => {
+    if (!chartId) return;
+    setSnapshotLoading(true);
+    setSnapshotError(null);
+    try {
+      // 1. Try the dedicated dashboard figure endpoint
+      const res1 = await apiFetch(`/api/v1/dashboard/charts/${chartId}/figure`);
+      if (res1.ok) {
+        const figure = await res1.json();
+        if (figure && typeof figure === 'object') {
+          updateAttributes({ figureJson: JSON.stringify(figure), snapshotAt: new Date().toISOString() });
+          return;
+        }
+      }
+      // 2. Try full chart record
+      const res2 = await apiFetch(`/api/custom/${chartId}`);
+      if (res2.ok) {
+        const data = await res2.json();
+        if (data?.figure) {
+          updateAttributes({ figureJson: JSON.stringify(data.figure), snapshotAt: new Date().toISOString() });
+          return;
+        }
+      }
+      // 3. No stored figure — re-execute the chart code server-side
+      const res3 = await apiFetch(`/api/custom/${chartId}/refresh`, { method: 'POST' });
+      if (res3.ok) {
+        const data = await res3.json();
+        if (data?.figure) {
+          updateAttributes({ figureJson: JSON.stringify(data.figure), snapshotAt: new Date().toISOString() });
+          return;
+        }
+      }
+      setSnapshotError('No figure — open chart in Studio, run the code, then retry.');
+    } catch (err) {
+      setSnapshotError(`Failed to load: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setSnapshotLoading(false);
+    }
+  }, [chartId, updateAttributes]);
 
   useEffect(() => {
     return () => {
@@ -294,6 +345,7 @@ function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, edit
     (async () => {
       const Plotly = (await import('plotly.js-dist-min')) as any;
       if (cancelled || !plotRef.current) return;
+      try { Plotly.purge(plotRef.current); } catch { /* ok */ }
       Plotly.react(
         plotRef.current,
         themed.data || [],
@@ -368,14 +420,7 @@ function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, edit
     <NodeViewWrapper contentEditable={false}>
       <div className={`notes-chart-node ${selected ? 'is-selected' : ''}`}>
         <div className="notes-chart-toolbar">
-          <span className="notes-chart-title">{chartName || chartId}</span>
           <div className="flex items-center gap-2 ml-auto">
-            {formattedDate && (
-              <span className="notes-chart-timestamp">
-                <Clock className="w-3 h-3 inline-block mr-1 opacity-50" />
-                {formattedDate}
-              </span>
-            )}
             {editor.isEditable && (
               <button
                 type="button"
@@ -392,7 +437,27 @@ function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, edit
         {figureJson ? (
           <div ref={plotRef} style={{ width: '100%', height: chartHeight }} />
         ) : (
-          <div className="notes-chart-empty">No snapshot data.</div>
+          <div className="notes-chart-empty flex flex-col items-center gap-2">
+            <span className="text-[11px] text-muted-foreground/50">
+              {snapshotError ?? 'No snapshot data.'}
+            </span>
+            {editor.isEditable && (
+              <button
+                type="button"
+                disabled={snapshotLoading}
+                onClick={loadSnapshot}
+                className="px-2.5 py-1 text-[10px] rounded border border-border/50 text-muted-foreground hover:text-foreground hover:border-border transition-colors disabled:opacity-40"
+              >
+                {snapshotLoading ? 'Loading…' : 'Load snapshot'}
+              </button>
+            )}
+          </div>
+        )}
+        {formattedDate && (
+          <div className="notes-chart-timestamp mt-2">
+            <Clock className="w-3 h-3 inline-block mr-1 opacity-50" />
+            {formattedDate}
+          </div>
         )}
 
         {editor.isEditable && (
@@ -464,6 +529,82 @@ const ChartBlock = Node.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Formatting toolbar
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FormattingToolbar({ editor, onSetLink }: { editor: Editor; onSetLink: () => void }) {
+  const base = 'transition-colors flex items-center justify-center rounded disabled:opacity-30';
+  const iconBtn = (active: boolean) =>
+    `${base} h-6 w-6 ${active ? 'bg-sky-500/[0.14] text-foreground' : 'text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.07]'}`;
+  const labelBtn = (active: boolean) =>
+    `${base} h-6 px-1.5 text-[11px] font-semibold ${active ? 'bg-sky-500/[0.14] text-foreground' : 'text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.07]'}`;
+  const sep = <div className="w-px h-3.5 bg-border/30 mx-0.5 shrink-0" />;
+
+  // Track active state for paragraph (not inside list/quote)
+  const isPlainPara = editor.isActive('paragraph') && !editor.isActive('blockquote');
+
+  return (
+    <div
+      className="flex items-center gap-0.5 px-1 pt-1 pb-1.5 flex-wrap border-b border-border/20"
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {/* Block type */}
+      <button type="button" onMouseDown={() => editor.chain().focus().setParagraph().run()} className={labelBtn(isPlainPara)} title="Text">
+        <Type className="w-3 h-3" />
+      </button>
+      <button type="button" onMouseDown={() => editor.chain().focus().setHeading({ level: 1 }).run()} className={labelBtn(editor.isActive('heading', { level: 1 }))} title="Heading 1">H1</button>
+      <button type="button" onMouseDown={() => editor.chain().focus().setHeading({ level: 2 }).run()} className={labelBtn(editor.isActive('heading', { level: 2 }))} title="Heading 2">H2</button>
+      <button type="button" onMouseDown={() => editor.chain().focus().setHeading({ level: 3 }).run()} className={labelBtn(editor.isActive('heading', { level: 3 }))} title="Heading 3">H3</button>
+
+      {sep}
+
+      {/* Text marks */}
+      <button type="button" onMouseDown={() => editor.chain().focus().toggleBold().run()} className={iconBtn(editor.isActive('bold'))} title="Bold (⌘B)">
+        <Bold className="w-3.5 h-3.5" />
+      </button>
+      <button type="button" onMouseDown={() => editor.chain().focus().toggleItalic().run()} className={iconBtn(editor.isActive('italic'))} title="Italic (⌘I)">
+        <Italic className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        onMouseDown={() => editor.chain().focus().toggleStrike().run()}
+        className={`${base} h-6 w-6 text-[12px] font-semibold line-through ${editor.isActive('strike') ? 'bg-sky-500/[0.14] text-foreground' : 'text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.07]'}`}
+        title="Strikethrough"
+      >S</button>
+      <button type="button" onMouseDown={() => editor.chain().focus().toggleCode().run()} className={iconBtn(editor.isActive('code'))} title="Inline code">
+        <Code2 className="w-3 h-3" />
+      </button>
+      <button type="button" onMouseDown={onSetLink} className={iconBtn(editor.isActive('link'))} title="Link">
+        <LinkIcon className="w-3 h-3" />
+      </button>
+
+      {sep}
+
+      {/* Lists & blocks */}
+      <button type="button" onMouseDown={() => editor.chain().focus().toggleBulletList().run()} className={iconBtn(editor.isActive('bulletList'))} title="Bullet list">
+        <List className="w-3.5 h-3.5" />
+      </button>
+      <button type="button" onMouseDown={() => editor.chain().focus().toggleOrderedList().run()} className={iconBtn(editor.isActive('orderedList'))} title="Numbered list">
+        <ListOrdered className="w-3.5 h-3.5" />
+      </button>
+      <button type="button" onMouseDown={() => editor.chain().focus().toggleBlockquote().run()} className={iconBtn(editor.isActive('blockquote'))} title="Callout / Quote">
+        <Square className="w-3 h-3" />
+      </button>
+
+      {sep}
+
+      {/* History */}
+      <button type="button" onMouseDown={() => editor.chain().focus().undo().run()} className={iconBtn(false)} title="Undo (⌘Z)">
+        <Undo2 className="w-3.5 h-3.5" />
+      </button>
+      <button type="button" onMouseDown={() => editor.chain().focus().redo().run()} className={iconBtn(false)} title="Redo (⌘⇧Z)">
+        <Redo2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Slash command palette
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -481,14 +622,40 @@ function SlashCommandMenu({
   onClose: () => void;
 }) {
   const [index, setIndex] = useState(0);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const activeItemRef = useRef<HTMLButtonElement>(null);
+  const [posStyle, setPosStyle] = useState<CSSProperties>({
+    position: 'fixed', top, left, zIndex: 9999, opacity: 0,
+  });
 
-  const filtered = SLASH_COMMANDS.filter((cmd) => {
+  const filtered = useMemo(() => SLASH_COMMANDS.filter((cmd) => {
     if (!query) return true;
     const q = query.toLowerCase();
     return cmd.label.toLowerCase().includes(q) || cmd.keywords.some((k) => k.includes(q));
-  });
+  }), [query]);
 
   useEffect(() => { setIndex(0); }, [query]);
+
+  // Scroll active item into view
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [index]);
+
+  // Reposition to avoid viewport overflow (bottom flip + right clamp)
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const overflowsBottom = rect.bottom > window.innerHeight - 8;
+    const clampedLeft = Math.max(8, Math.min(left, window.innerWidth - rect.width - 8));
+    setPosStyle({
+      position: 'fixed',
+      top: overflowsBottom ? undefined : top,
+      bottom: overflowsBottom ? window.innerHeight - top : undefined,
+      left: clampedLeft,
+      zIndex: 9999,
+      opacity: 1,
+    });
+  }, [top, left]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -515,35 +682,40 @@ function SlashCommandMenu({
 
   return (
     <div
-      style={{ position: 'fixed', top, left, zIndex: 9999 }}
-      className="w-64 rounded-xl border border-border/60 bg-background shadow-2xl shadow-black/30 py-1.5 overflow-hidden"
+      ref={menuRef}
+      style={posStyle}
+      className="w-44 rounded-lg border border-border/60 bg-background shadow-lg shadow-black/20 overflow-hidden"
     >
-      <div className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+      <div className="px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40">
         Blocks
       </div>
-      {filtered.map((cmd, i) => {
-        const Icon = cmd.icon;
-        return (
-          <button
-            key={cmd.id}
-            type="button"
-            onMouseDown={(e) => { e.preventDefault(); onSelect(cmd.id as SlashCommandId); }}
-            className={`w-full px-3 py-1.5 flex items-center gap-3 text-left transition-colors ${
-              i === index
-                ? 'bg-sky-500/10 text-foreground'
-                : 'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
-            }`}
-          >
-            <div className="w-7 h-7 rounded-md border border-border/50 bg-card/60 flex items-center justify-center shrink-0">
-              <Icon className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <div className="text-[12px] font-medium leading-tight">{cmd.label}</div>
-              <div className="text-[10px] text-muted-foreground/60 leading-tight">{cmd.description}</div>
-            </div>
-          </button>
-        );
-      })}
+      <div className="max-h-48 overflow-y-auto pb-0.5">
+        {filtered.map((cmd, i) => {
+          const Icon = cmd.icon;
+          return (
+            <button
+              key={cmd.id}
+              ref={i === index ? activeItemRef : undefined}
+              type="button"
+              onMouseEnter={() => setIndex(i)}
+              onMouseDown={(e) => { e.preventDefault(); onSelect(cmd.id as SlashCommandId); }}
+              className={`w-full px-2 py-0.5 flex items-center gap-1.5 text-left transition-colors ${
+                i === index
+                  ? 'bg-sky-500/10 text-foreground'
+                  : 'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
+              }`}
+            >
+              <div className="w-5 h-5 rounded border border-border/40 bg-card/60 flex items-center justify-center shrink-0">
+                <Icon className="w-2.5 h-2.5" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-medium leading-tight truncate">{cmd.label}</div>
+                <div className="text-[9px] text-muted-foreground/50 leading-tight truncate">{cmd.description}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -566,65 +738,116 @@ function ChartPickerMenu({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const activeItemRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [posStyle, setPosStyle] = useState<CSSProperties>({
+    position: 'fixed', top, left, zIndex: 9999, opacity: 0,
+  });
+
+  // Reposition to avoid viewport overflow (bottom flip + right clamp)
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const overflowsBottom = rect.bottom > window.innerHeight - 8;
+    const clampedLeft = Math.max(8, Math.min(left, window.innerWidth - rect.width - 8));
+    setPosStyle({
+      position: 'fixed',
+      top: overflowsBottom ? undefined : top,
+      bottom: overflowsBottom ? window.innerHeight - top : undefined,
+      left: clampedLeft,
+      zIndex: 9999,
+      opacity: 1,
+    });
+  }, [top, left]);
 
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 30); }, []);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
-    };
-    window.addEventListener('keydown', handler, { capture: true });
-    return () => window.removeEventListener('keydown', handler, { capture: true });
-  }, [onClose]);
 
   const filtered = chartLibrary.filter((c) => {
     if (!query) return true;
     const q = query.toLowerCase();
     return (c.name || '').toLowerCase().includes(q) || (c.category || '').toLowerCase().includes(q);
-  });
+  }).slice(0, 40);
+
+  // Reset active index when filter changes
+  useEffect(() => { setActiveIndex(0); }, [query]);
+
+  // Scroll active item into view
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault(); e.stopPropagation();
+        setActiveIndex((i) => Math.min(i + 1, filtered.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation();
+        setActiveIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter' && filtered.length > 0) {
+        e.preventDefault(); e.stopPropagation();
+        onSelect(filtered[activeIndex]);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler, { capture: true });
+    return () => window.removeEventListener('keydown', handler, { capture: true });
+  }, [onClose, onSelect, filtered, activeIndex]);
 
   return (
     <div
-      style={{ position: 'fixed', top, left, zIndex: 9999 }}
-      className="w-72 rounded-xl border border-border/60 bg-background shadow-2xl shadow-black/30 overflow-hidden"
+      ref={menuRef}
+      style={posStyle}
+      className="w-52 rounded-md border border-border/60 bg-background shadow-lg shadow-black/20 overflow-hidden"
     >
-      <div className="p-3 border-b border-border/40">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2">
-          Insert Chart Snapshot
-        </div>
+      <div className="px-1.5 pt-1.5 pb-1 border-b border-border/40">
         <div className="relative">
-          <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search className="w-2.5 h-2.5 absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search charts..."
-            className="w-full h-7 pl-7 pr-2 rounded-md border border-border/50 bg-background/60 text-[11px] outline-none focus:ring-1 focus:ring-sky-500/30"
+            placeholder="Search..."
+            className="w-full h-5 pl-5 pr-1.5 rounded border border-border/50 bg-background/60 text-[10px] outline-none focus:ring-1 focus:ring-sky-500/30 placeholder:text-muted-foreground/35"
           />
         </div>
       </div>
-      <div className="max-h-56 overflow-y-auto py-1">
+      <div ref={listRef} className="max-h-40 overflow-y-auto py-0.5">
         {filtered.length === 0 && (
-          <div className="px-3 py-2 text-[11px] text-muted-foreground">No charts found.</div>
+          <div className="px-2 py-1.5 text-[10px] text-muted-foreground/50">No charts found.</div>
         )}
-        {filtered.slice(0, 30).map((chart) => (
+        {filtered.map((chart, i) => (
           <button
             key={chart.id}
+            ref={i === activeIndex ? activeItemRef : undefined}
             type="button"
+            onMouseEnter={() => setActiveIndex(i)}
             onMouseDown={(e) => { e.preventDefault(); onSelect(chart); }}
-            className="w-full px-3 py-2 flex items-center gap-2.5 text-left hover:bg-accent/10 transition-colors"
+            className={`w-full px-2 py-0.5 flex items-center gap-1.5 text-left transition-colors ${i === activeIndex ? 'bg-accent/15' : ''}`}
           >
-            <BarChart2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <div>
-              <div className="text-[12px] font-medium text-foreground">{chart.name || chart.id}</div>
+            <BarChart2 className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-medium text-foreground truncate block leading-snug">{chart.name || chart.id}</span>
               {chart.category && (
-                <div className="text-[10px] text-muted-foreground">{chart.category}</div>
+                <span className="text-[9px] text-muted-foreground/50 truncate block leading-none">{chart.category}</span>
               )}
             </div>
           </button>
         ))}
       </div>
+      {filtered.length > 0 && (
+        <div className="px-2 py-0.5 border-t border-border/30">
+          <span className="text-[8px] text-muted-foreground/35 font-mono">↑↓ · ↵ select · esc</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -671,7 +894,7 @@ async function compressImageForUpload(file: File): Promise<File> {
 // Main editor
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function NotesRichEditor({
+function NotesRichEditor({
   value,
   onChange,
   disabled = false,
@@ -784,6 +1007,7 @@ export default function NotesRichEditor({
       case 'table':          ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); break;
       case 'horizontalRule': ed.chain().focus().setHorizontalRule().run(); break;
       case 'image':          fileInputRef.current?.click(); break;
+      case 'callout':        ed.chain().focus().insertContent('<blockquote><p>💡 </p></blockquote><p></p>').run(); break;
     }
   }, []);
 
@@ -986,6 +1210,7 @@ export default function NotesRichEditor({
       />
 
       <div className="notes-editor">
+        {!disabled && <FormattingToolbar editor={editor} onSetLink={setLink} />}
         <EditorContent editor={editor} />
       </div>
 
@@ -1020,3 +1245,5 @@ export default function NotesRichEditor({
     </div>
   );
 }
+
+export default memo(NotesRichEditor);

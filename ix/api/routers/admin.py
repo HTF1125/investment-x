@@ -8,11 +8,75 @@ from sqlalchemy.orm import Session as SessionType
 
 from ix.api.dependencies import get_current_admin_user, get_db
 from ix.db.models.user import User
+from ix.db.models.system_setting import SystemSetting
 from ix.misc import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Role permissions — feature-level access control
+# ─────────────────────────────────────────────────────────────────────────────
+
+ROLE_PERMISSIONS_KEY = "role_permissions"
+
+# Features and their default minimum role (who can access).
+# "general" = all users, "admin" = admin+owner, "owner" = owner only.
+FEATURE_DEFAULTS: dict[str, str] = {
+    "dashboard": "general",
+    "intel": "general",
+    "technical": "general",
+    "notes": "general",
+}
+
+VALID_ROLES = {"general", "admin", "owner"}
+
+
+class RolePermissionsPayload(BaseModel):
+    permissions: dict[str, str]
+
+
+def _load_permissions(db: SessionType) -> dict[str, str]:
+    setting = db.query(SystemSetting).filter_by(key=ROLE_PERMISSIONS_KEY).first()
+    stored: dict = setting.value if setting else {}
+    return {**FEATURE_DEFAULTS, **{k: v for k, v in stored.items() if k in FEATURE_DEFAULTS and v in VALID_ROLES}}
+
+
+@router.get("/admin/settings/role_permissions")
+def get_role_permissions(
+    db: SessionType = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+) -> dict:
+    return _load_permissions(db)
+
+
+@router.put("/admin/settings/role_permissions")
+def set_role_permissions(
+    payload: RolePermissionsPayload,
+    db: SessionType = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+) -> dict:
+    # Validate: only known features and valid roles
+    validated = {}
+    for feature, role in payload.permissions.items():
+        if feature not in FEATURE_DEFAULTS:
+            raise HTTPException(status_code=400, detail=f"Unknown feature: {feature!r}")
+        if role not in VALID_ROLES:
+            raise HTTPException(status_code=400, detail=f"Invalid role: {role!r}")
+        validated[feature] = role
+
+    merged = {**FEATURE_DEFAULTS, **validated}
+
+    setting = db.query(SystemSetting).filter_by(key=ROLE_PERMISSIONS_KEY).first()
+    if setting:
+        setting.value = merged
+    else:
+        db.add(SystemSetting(key=ROLE_PERMISSIONS_KEY, value=merged))
+    db.commit()
+
+    logger.info(f"Admin {current_user.email} updated role permissions: {merged}")
+    return merged
 
 
 class AdminUserResponse(BaseModel):

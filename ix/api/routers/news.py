@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Any
 from ix.db.conn import get_session
 from ix.db.models import TelegramMessage
+from ix.db.models.news_item import NewsItem
 from ix.db.models.youtube_intel import YouTubeIntel
 from ix.db.conn import ensure_connection, conn
 from pydantic import BaseModel
@@ -66,6 +67,23 @@ class NewsAggregateResponse(BaseModel):
     generated_at: datetime
     telegram_messages: list[TelegramMessageSchema]
     video_summaries: list[YouTubeVideoIntel]
+
+
+class UnifiedNewsItemSchema(BaseModel):
+    id: str
+    source: str
+    source_name: Optional[str] = None
+    source_item_id: Optional[str] = None
+    url: Optional[str] = None
+    title: str
+    summary: Optional[str] = None
+    published_at: Optional[datetime] = None
+    discovered_at: datetime
+    symbols: list[str] = []
+    meta: dict[str, Any] = {}
+
+    class Config:
+        from_attributes = True
 
 
 _ATOM_NS = {
@@ -543,13 +561,14 @@ def get_news_aggregate(db: Session = Depends(get_session)):
     - YouTube video summaries from last 7 days
     """
     now = datetime.utcnow()
-    telegram_cutoff = now - timedelta(hours=24)
+    telegram_cutoff = now - timedelta(days=7)
     youtube_cutoff = now - timedelta(days=7)
 
     telegram_messages = (
         db.query(TelegramMessage)
         .filter(TelegramMessage.date >= telegram_cutoff)
         .order_by(TelegramMessage.date.desc())
+        .limit(300)
         .all()
     )
 
@@ -567,6 +586,28 @@ def get_news_aggregate(db: Session = Depends(get_session)):
         telegram_messages=[TelegramMessageSchema.model_validate(m) for m in telegram_messages],
         video_summaries=[_to_video_schema(r) for r in youtube_rows],
     )
+
+
+@router.get("/news/items", response_model=list[UnifiedNewsItemSchema])
+def get_unified_news_items(
+    limit: int = 100,
+    source: Optional[str] = None,
+    q: Optional[str] = None,
+    db: Session = Depends(get_session),
+):
+    limit = max(1, min(limit, 500))
+    query = db.query(NewsItem)
+    if source:
+        query = query.filter(NewsItem.source == source)
+    if q:
+        pattern = f"%{q.strip()}%"
+        query = query.filter(or_(NewsItem.title.ilike(pattern), NewsItem.summary.ilike(pattern)))
+    rows = (
+        query.order_by(NewsItem.published_at.desc().nullslast(), NewsItem.discovered_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [UnifiedNewsItemSchema.model_validate(r) for r in rows]
 
 
 @router.get("/news/youtube", response_model=YouTubeIntelResponse)

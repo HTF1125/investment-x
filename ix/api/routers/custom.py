@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Response, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, load_only, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from typing import List, Optional, Any, Dict, Callable
 from pydantic import BaseModel
 from datetime import datetime
@@ -179,7 +179,8 @@ class CustomChartCreate(BaseModel):
     category: Optional[str] = "Personal"
     description: Optional[str] = None
     tags: List[str] = []
-    export_pdf: bool = True
+    public: bool = True
+    chart_style: Optional[str] = None
 
 
 class CustomChartUpdate(BaseModel):
@@ -188,14 +189,15 @@ class CustomChartUpdate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[List[str]] = None
-    export_pdf: Optional[bool] = None
+    public: Optional[bool] = None
+    chart_style: Optional[str] = None
 
 
-class ExportPdfToggle(BaseModel):
-    """Toggle export_pdf flag for one or more charts."""
+class PublicToggle(BaseModel):
+    """Toggle public flag for one or more charts."""
 
     ids: List[str]
-    export_pdf: bool
+    public: bool
 
 
 class CustomChartResponse(BaseModel):
@@ -206,7 +208,8 @@ class CustomChartResponse(BaseModel):
     description: Optional[str]
     tags: List[str]
     figure: Optional[Dict[str, Any]]
-    export_pdf: bool = True
+    chart_style: Optional[str] = None
+    public: bool = True
     rank: int = 0
     created_by_user_id: Optional[str] = None
     created_by_email: Optional[str] = None
@@ -224,7 +227,7 @@ class CustomChartListItemResponse(BaseModel):
     category: Optional[str]
     description: Optional[str]
     tags: List[str]
-    export_pdf: bool = True
+    public: bool = True
     rank: int = 0
     created_by_user_id: Optional[str] = None
     created_by_email: Optional[str] = None
@@ -270,7 +273,7 @@ def _to_custom_chart_list_item(
         "category": chart.category,
         "description": chart.description,
         "tags": chart.tags or [],
-        "export_pdf": bool(chart.export_pdf),
+        "public": bool(chart.public),
         "rank": int(chart.rank or 0),
         "created_by_user_id": creator_meta["created_by_user_id"],
         "created_by_email": creator_meta["created_by_email"],
@@ -924,7 +927,8 @@ def create_custom_chart(
         description=chart_data.description,
         tags=chart_data.tags,
         figure=figure_json,
-        export_pdf=chart_data.export_pdf,
+        chart_style=chart_data.chart_style,
+        public=chart_data.public,
         rank=next_rank,
         created_by_user_id=_user_id(current_user) or None,
     )
@@ -957,7 +961,12 @@ def list_custom_charts(
         )
     )
     if not (_is_owner(current_user) or _is_admin(current_user)):
-        query = query.filter(CustomChart.created_by_user_id == _user_id(current_user))
+        query = query.filter(
+            or_(
+                CustomChart.created_by_user_id == _user_id(current_user),
+                CustomChart.public == True,
+            )
+        )
 
     # Default list is metadata-only to keep studio opening fast.
     if not include_code and not include_figure:
@@ -968,7 +977,7 @@ def list_custom_charts(
                 CustomChart.category,
                 CustomChart.description,
                 CustomChart.tags,
-                CustomChart.export_pdf,
+                CustomChart.public,
                 CustomChart.rank,
                 CustomChart.created_by_user_id,
                 CustomChart.created_at,
@@ -983,7 +992,7 @@ def list_custom_charts(
                 CustomChart.category,
                 CustomChart.description,
                 CustomChart.tags,
-                CustomChart.export_pdf,
+                CustomChart.public,
                 CustomChart.rank,
                 CustomChart.created_by_user_id,
                 CustomChart.created_at,
@@ -999,7 +1008,7 @@ def list_custom_charts(
                 CustomChart.category,
                 CustomChart.description,
                 CustomChart.tags,
-                CustomChart.export_pdf,
+                CustomChart.public,
                 CustomChart.rank,
                 CustomChart.created_by_user_id,
                 CustomChart.created_at,
@@ -1042,16 +1051,16 @@ def reorder_custom_charts(
     return {"message": "Reordered successfully"}
 
 
-@router.patch("/custom/export-pdf")
-def toggle_export_pdf(
-    data: ExportPdfToggle,
+@router.patch("/custom/public")
+def toggle_public(
+    data: PublicToggle,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    """Toggle the export_pdf flag for one or more charts."""
+    """Toggle the public flag for one or more charts."""
     _assert_owner_only(current_user)
     db.query(CustomChart).filter(CustomChart.id.in_(data.ids)).update(
-        {CustomChart.export_pdf: data.export_pdf}, synchronize_session="fetch"
+        {CustomChart.public: data.public}, synchronize_session="fetch"
     )
     db.commit()
     return {"message": f"Updated {len(data.ids)} chart(s)"}
@@ -1066,7 +1075,7 @@ def export_custom_charts_pdf(
     """Generate a PDF of charts marked for export, in rank order.
 
     If request.items is provided, use that order.
-    If request.items is empty, auto-select all charts with export_pdf=True.
+    If request.items is empty, auto-select all public charts.
     """
     # Import task registry lazily to avoid circular-import fallback to dummy handlers.
     from ix.api.routers.task import start_process as _start_process
@@ -1090,7 +1099,7 @@ def export_custom_charts_pdf(
             # Auto-select all charts flagged for export
             ordered_charts = (
                 db.query(CustomChart)
-                .filter(CustomChart.export_pdf == True)
+                .filter(CustomChart.public == True)
                 .order_by(CustomChart.rank.asc())
                 .all()
             )
@@ -1098,7 +1107,7 @@ def export_custom_charts_pdf(
         if not ordered_charts:
             _update_process(pid, _ProcessStatus.FAILED, "No charts found")
             raise HTTPException(
-                status_code=404, detail="No charts marked for PDF export"
+                status_code=404, detail="No public charts found for PDF export"
             )
 
         total_steps = max(1, len(ordered_charts) * 2)
@@ -1172,7 +1181,7 @@ def export_custom_charts_html(
         else:
             ordered_charts = (
                 db.query(*chart_columns)
-                .filter(CustomChart.export_pdf.is_(True))
+                .filter(CustomChart.public.is_(True))
                 .order_by(CustomChart.rank.asc())
                 .all()
             )
@@ -1452,8 +1461,10 @@ def update_custom_chart(
         chart.description = update_data.description
     if update_data.tags is not None:
         chart.tags = update_data.tags
-    if update_data.export_pdf is not None:
-        chart.export_pdf = update_data.export_pdf
+    if update_data.public is not None:
+        chart.public = update_data.public
+    if update_data.chart_style is not None:
+        chart.chart_style = update_data.chart_style
 
     # If code changes, re-render
     if update_data.code is not None:

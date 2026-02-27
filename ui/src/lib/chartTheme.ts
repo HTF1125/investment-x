@@ -1,17 +1,84 @@
 type UiTheme = 'light' | 'dark';
 
+export type ChartStyle = 'default' | 'minimal' | 'terminal' | 'presentation';
+
+export const CHART_STYLE_LABELS: Record<ChartStyle, string> = {
+  default: 'Default',
+  minimal: 'Minimal',
+  terminal: 'Terminal',
+  presentation: 'Presentation',
+};
+
+interface ChartStyleConfig {
+  showGrid: boolean;
+  showZeroline: boolean;
+  showLine: boolean;
+  mirror: boolean;
+  fontFamily: string;
+  baseFontSize: number;
+  titleFontSize: number;
+  legend: { x: number; y: number; xanchor: string; yanchor: string; orientation: 'v' | 'h' };
+  margin: { t: number; l: number; r: number; b: number };
+  gridOpacityScale: number;
+}
+
+export const CHART_STYLE_CONFIGS: Record<ChartStyle, ChartStyleConfig> = {
+  default: {
+    showGrid: true,
+    showZeroline: true,
+    showLine: true,
+    mirror: true,
+    fontFamily: 'Inter, sans-serif',
+    baseFontSize: 10,
+    titleFontSize: 14,
+    legend: { x: 0.01, y: 0.99, xanchor: 'left', yanchor: 'top', orientation: 'v' },
+    margin: { t: 50, l: 0, r: 0, b: 0 },
+    gridOpacityScale: 1.0,
+  },
+  minimal: {
+    showGrid: false,
+    showZeroline: false,
+    showLine: false,
+    mirror: false,
+    fontFamily: 'Inter, sans-serif',
+    baseFontSize: 10,
+    titleFontSize: 13,
+    legend: { x: 0.99, y: 0.01, xanchor: 'right', yanchor: 'bottom', orientation: 'h' },
+    margin: { t: 40, l: 5, r: 5, b: 5 },
+    gridOpacityScale: 0,
+  },
+  terminal: {
+    showGrid: true,
+    showZeroline: true,
+    showLine: true,
+    mirror: true,
+    fontFamily: 'JetBrains Mono, Fira Mono, Consolas, monospace',
+    baseFontSize: 9,
+    titleFontSize: 12,
+    legend: { x: 0.01, y: 0.99, xanchor: 'left', yanchor: 'top', orientation: 'v' },
+    margin: { t: 44, l: 0, r: 0, b: 0 },
+    gridOpacityScale: 1.8,
+  },
+  presentation: {
+    showGrid: true,
+    showZeroline: true,
+    showLine: true,
+    mirror: false,
+    fontFamily: 'Inter, sans-serif',
+    baseFontSize: 12,
+    titleFontSize: 16,
+    legend: { x: 0.99, y: 0.99, xanchor: 'right', yanchor: 'top', orientation: 'v' },
+    margin: { t: 60, l: 10, r: 10, b: 10 },
+    gridOpacityScale: 0.7,
+  },
+};
+
 interface ApplyChartThemeOptions {
   transparentBackground?: boolean;
+  chartStyle?: ChartStyle;
 }
 
 const DATE_TICK_FORMAT = '%Y-%m-%d';
-const BASE_FONT_SIZE = 10;
-const TITLE_FONT_SIZE = 14;
-const TITLE_X = 0.01;
-const TITLE_Y = 0.98;
-const LEGEND_X = 0.01;
-const LEGEND_Y = 0.99;
-const LEGEND_GAP = 2;
 const AXIS_KEY_REGEX = /^(x|y)axis(\d*)$/;
 
 const THEME_TOKENS: Record<UiTheme, {
@@ -45,6 +112,17 @@ const THEME_TOKENS: Record<UiTheme, {
     hoverBg: 'rgba(11,14,20,0.95)',
   },
 };
+
+/**
+ * Scale the alpha of an rgba() string by a given factor (clamped to [0, 1]).
+ * Falls back to the original string if parsing fails.
+ */
+function scaleRgbaAlpha(color: string, scale: number): string {
+  const match = color.match(/^rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)$/);
+  if (!match) return color;
+  const alpha = Math.min(1, Math.max(0, parseFloat(match[4]) * scale));
+  return `rgba(${match[1]},${match[2]},${match[3]},${alpha})`;
+}
 
 function axisKeyToTraceRef(axisKey: string): string | null {
   const match = axisKey.match(AXIS_KEY_REGEX);
@@ -152,6 +230,10 @@ export function applyChartTheme(
   const transparent = options.transparentBackground ?? false;
   const data = Array.isArray(cleaned.data) ? cleaned.data : [];
 
+  const styleKey = (options.chartStyle ?? 'default') as ChartStyle;
+  const style = CHART_STYLE_CONFIGS[styleKey] ?? CHART_STYLE_CONFIGS.default;
+  const scaledGrid = scaleRgbaAlpha(tokens.grid, style.gridOpacityScale);
+
   if (!cleaned.layout) {
     cleaned.layout = {};
   }
@@ -164,19 +246,19 @@ export function applyChartTheme(
   cleaned.layout.font = {
     ...cleaned.layout.font,
     color: tokens.text,
-    size: BASE_FONT_SIZE,
-    family: cleaned.layout.font?.family || 'Inter, sans-serif',
+    size: style.baseFontSize,
+    family: style.fontFamily,
   };
   cleaned.layout.hovermode = 'x';
   cleaned.layout.title = {
     ...(cleaned.layout.title || {}),
-    x: TITLE_X,
-    y: TITLE_Y,
+    x: 0.01,
+    y: 0.98,
     xanchor: 'left',
     yanchor: 'top',
     font: {
       ...(cleaned.layout.title?.font || {}),
-      size: TITLE_FONT_SIZE,
+      size: style.titleFontSize,
       color: theme === 'light' ? '#000000' : tokens.text,
     },
   };
@@ -186,7 +268,7 @@ export function applyChartTheme(
       ...annotation,
       font: {
         ...(annotation?.font || {}),
-        size: BASE_FONT_SIZE,
+        size: style.baseFontSize,
         color: theme === 'light' ? '#000000' : tokens.text,
       },
     }));
@@ -210,43 +292,45 @@ export function applyChartTheme(
       axis.autorange = true;
     }
 
-    axis.gridcolor = tokens.grid;
-    axis.zerolinecolor = tokens.grid;
-    axis.showline = true;
+    axis.showgrid = style.showGrid;
+    axis.zeroline = style.showZeroline;
+    axis.showline = style.showLine;
+    axis.mirror = style.mirror;
+    axis.gridcolor = scaledGrid;
+    axis.zerolinecolor = scaledGrid;
     axis.linecolor = tokens.chartBorder;
     axis.linewidth = axis.linewidth || 1;
-    axis.mirror = true;
-    axis.tickfont = { ...axis.tickfont, color: tokens.text, size: BASE_FONT_SIZE };
+    axis.tickfont = { ...axis.tickfont, color: tokens.text, size: style.baseFontSize, family: style.fontFamily };
     if (axisKey.startsWith('xaxis') && axis.type === 'date') {
       axis.tickformat = DATE_TICK_FORMAT;
     }
     if (typeof axis.title === 'string') {
       axis.title = {
         text: axis.title,
-        font: { color: tokens.text, size: BASE_FONT_SIZE },
+        font: { color: tokens.text, size: style.baseFontSize, family: style.fontFamily },
       };
     } else if (axis.title && typeof axis.title === 'object') {
       axis.title = {
         ...axis.title,
-        font: { ...axis.title.font, color: tokens.text, size: BASE_FONT_SIZE },
+        font: { ...axis.title.font, color: tokens.text, size: style.baseFontSize, family: style.fontFamily },
       };
     }
   });
 
   cleaned.layout.legend = {
     ...(cleaned.layout.legend || {}),
-    orientation: 'v',
-    x: LEGEND_X,
-    y: LEGEND_Y,
-    xanchor: 'left',
-    yanchor: 'top',
+    orientation: style.legend.orientation,
+    x: style.legend.x,
+    y: style.legend.y,
+    xanchor: style.legend.xanchor,
+    yanchor: style.legend.yanchor,
     bgcolor: tokens.legendBg,
     bordercolor: tokens.legendBorder,
     borderwidth: cleaned.layout.legend?.borderwidth ?? 1,
-    tracegroupgap: LEGEND_GAP,
+    tracegroupgap: 2,
     itemwidth: 40,
     itemsizing: 'constant',
-    font: { ...cleaned.layout.legend?.font, color: tokens.text, size: BASE_FONT_SIZE },
+    font: { ...cleaned.layout.legend?.font, color: tokens.text, size: style.baseFontSize, family: style.fontFamily },
   };
 
   cleaned.layout.hoverlabel = {
@@ -256,13 +340,13 @@ export function applyChartTheme(
     font: {
       ...(cleaned.layout.hoverlabel?.font || {}),
       color: tokens.text,
-      family: cleaned.layout.hoverlabel?.font?.family || 'Inter, sans-serif',
-      size: BASE_FONT_SIZE,
+      family: style.fontFamily,
+      size: style.baseFontSize,
     },
     align: cleaned.layout.hoverlabel?.align || 'left',
   };
 
-  cleaned.layout.margin = { t: 50, l: 0, r: 0, b: 0 };
+  cleaned.layout.margin = style.margin;
 
   return cleaned;
 }

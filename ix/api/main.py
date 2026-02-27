@@ -93,6 +93,38 @@ def _ensure_user_role_schema() -> None:
         logger.warning(f"User role schema check failed: {exc}")
 
 
+def _ensure_charts_rename() -> None:
+    """Idempotent runtime migration: rename table custom_charts→charts and column export_pdf→public."""
+    if not ensure_connection():
+        logger.warning("Skipping charts rename migration because DB connection is unavailable.")
+        return
+
+    try:
+        with conn.engine.begin() as db_conn:
+            old_table = db_conn.execute(text("SELECT to_regclass('public.custom_charts')")).scalar()
+            if old_table:
+                db_conn.execute(text("ALTER TABLE custom_charts RENAME TO charts"))
+                logger.info("Renamed table custom_charts → charts.")
+
+            table_exists = db_conn.execute(text("SELECT to_regclass('public.charts')")).scalar()
+            if not table_exists:
+                return
+
+            col_exists = db_conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'charts' AND column_name = 'export_pdf'"
+                )
+            ).first()
+            if col_exists:
+                db_conn.execute(text("ALTER TABLE charts RENAME COLUMN export_pdf TO public"))
+                logger.info("Renamed column export_pdf → public in charts table.")
+
+        logger.info("Charts rename migration completed.")
+    except Exception as exc:
+        logger.warning(f"Charts rename migration failed: {exc}")
+
+
 def _ensure_custom_chart_owner_schema() -> None:
     """Idempotent runtime migration for custom chart creator ownership fields."""
     if not ensure_connection():
@@ -104,24 +136,24 @@ def _ensure_custom_chart_owner_schema() -> None:
     try:
         with conn.engine.begin() as db_conn:
             table_exists = db_conn.execute(
-                text("SELECT to_regclass('public.custom_charts')")
+                text("SELECT to_regclass('public.charts')")
             ).scalar()
             if not table_exists:
                 logger.info(
-                    "Skipping custom chart owner schema check because custom_charts table does not exist."
+                    "Skipping custom chart owner schema check because charts table does not exist."
                 )
                 return
 
             db_conn.execute(
                 text(
-                    "ALTER TABLE custom_charts "
+                    "ALTER TABLE charts "
                     "ADD COLUMN IF NOT EXISTS created_by_user_id UUID"
                 )
             )
             db_conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS ix_custom_charts_created_by_user_id "
-                    "ON custom_charts (created_by_user_id)"
+                    "CREATE INDEX IF NOT EXISTS ix_charts_created_by_user_id "
+                    "ON charts (created_by_user_id)"
                 )
             )
 
@@ -136,7 +168,7 @@ def _ensure_custom_chart_owner_schema() -> None:
                         AND att.attnum = ANY(con.conkey)
                     WHERE con.contype = 'f'
                       AND nsp.nspname = 'public'
-                      AND rel.relname = 'custom_charts'
+                      AND rel.relname = 'charts'
                       AND att.attname = 'created_by_user_id'
                     LIMIT 1
                     """
@@ -147,8 +179,8 @@ def _ensure_custom_chart_owner_schema() -> None:
                 db_conn.execute(
                     text(
                         """
-                        ALTER TABLE custom_charts
-                        ADD CONSTRAINT fk_custom_charts_created_by_user_id
+                        ALTER TABLE charts
+                        ADD CONSTRAINT fk_charts_created_by_user_id
                         FOREIGN KEY (created_by_user_id) REFERENCES "user"(id)
                         ON DELETE SET NULL
                         """
@@ -158,6 +190,30 @@ def _ensure_custom_chart_owner_schema() -> None:
         logger.info("Custom chart owner schema check completed.")
     except Exception as exc:
         logger.warning(f"Custom chart owner schema check failed: {exc}")
+
+
+def _ensure_chart_style_column() -> None:
+    """Idempotent runtime migration to add chart_style column to charts table."""
+    if not ensure_connection():
+        logger.warning("Skipping chart_style column check because DB connection is unavailable.")
+        return
+
+    try:
+        with conn.engine.begin() as db_conn:
+            table_exists = db_conn.execute(
+                text("SELECT to_regclass('public.charts')")
+            ).scalar()
+            if not table_exists:
+                return
+            db_conn.execute(
+                text(
+                    "ALTER TABLE charts "
+                    "ADD COLUMN IF NOT EXISTS chart_style VARCHAR(32)"
+                )
+            )
+        logger.info("chart_style column migration completed.")
+    except Exception as exc:
+        logger.warning(f"chart_style column migration failed: {exc}")
 
 
 def _ensure_investment_notes_schema() -> None:
@@ -174,6 +230,50 @@ def _ensure_investment_notes_schema() -> None:
         logger.info("Investment notes schema check completed.")
     except Exception as exc:
         logger.warning(f"Investment notes schema check failed: {exc}")
+
+
+def _ensure_system_settings_schema() -> None:
+    """Idempotent runtime migration for system_settings table."""
+    if not ensure_connection():
+        logger.warning("Skipping system_settings schema check because DB connection is unavailable.")
+        return
+
+    try:
+        from ix.db.models.system_setting import SystemSetting
+
+        SystemSetting.__table__.create(bind=conn.engine, checkfirst=True)
+        logger.info("System settings schema check completed.")
+    except Exception as exc:
+        logger.warning(f"System settings schema check failed: {exc}")
+
+
+def _ensure_news_items_schema() -> None:
+    """Idempotent runtime migration for unified news_items table."""
+    if not ensure_connection():
+        logger.warning("Skipping news_items schema check because DB connection is unavailable.")
+        return
+
+    try:
+        from ix.db.models.news_item import NewsItem
+
+        NewsItem.__table__.create(bind=conn.engine, checkfirst=True)
+        logger.info("News items schema check completed.")
+    except Exception as exc:
+        logger.warning(f"News items schema check failed: {exc}")
+
+
+def _drop_financial_news_table() -> None:
+    """Idempotent runtime migration to remove legacy financial_news table."""
+    if not ensure_connection():
+        logger.warning("Skipping financial_news drop because DB connection is unavailable.")
+        return
+
+    try:
+        with conn.engine.begin() as db_conn:
+            db_conn.execute(text("DROP TABLE IF EXISTS financial_news"))
+        logger.info("Legacy financial_news table dropped (if it existed).")
+    except Exception as exc:
+        logger.warning(f"financial_news drop failed: {exc}")
 
 
 @asynccontextmanager
@@ -197,8 +297,13 @@ async def lifespan(app: FastAPI):
     logger.info("Scheduled 'run_daily_tasks' for 07:00 KST")
 
     _ensure_user_role_schema()
+    _ensure_charts_rename()
     _ensure_custom_chart_owner_schema()
+    _ensure_chart_style_column()
     _ensure_investment_notes_schema()
+    _ensure_system_settings_schema()
+    _ensure_news_items_schema()
+    _drop_financial_news_table()
 
     scheduler.start()
 

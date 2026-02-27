@@ -7,7 +7,7 @@ import {
   Plus, Eye, EyeOff, Loader2, Copy,
   Search,
   Info, RefreshCw, LayoutGrid, Trash2,
-  X, PanelLeftClose, PanelLeftOpen, Save, RotateCcw, FileDown,
+  X, Save, RotateCcw, FileDown,
   ChevronDown,
   FoldVertical,
   UnfoldVertical,
@@ -17,8 +17,10 @@ import { useTheme } from '@/context/ThemeContext';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, apiFetchJson } from '@/lib/api';
+import { type ChartStyle, CHART_STYLE_LABELS } from '@/lib/chartTheme';
 import Chart from './Chart';
 import CustomChartEditor from './CustomChartEditor';
+import NavigatorShell from './NavigatorShell';
 
 interface ChartMeta {
   id: string;
@@ -27,12 +29,13 @@ interface ChartMeta {
   description: string | null;
   updated_at: string | null;
   rank: number;
-  export_pdf?: boolean;
+  public?: boolean;
   created_by_user_id?: string | null;
   created_by_email?: string | null;
   created_by_name?: string | null;
   code?: string;
   figure?: any; // Prefetched figure data
+  chart_style?: string | null;
 }
 
 interface ChartCardProps {
@@ -171,11 +174,11 @@ const ChartCard = React.memo(function ChartCard({
           {/* Visibility */}
           {canManageVisibility && (
             <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTogglePdf(chart.id, !chart.export_pdf); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTogglePdf(chart.id, !chart.public); }}
               className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
-              title={chart.export_pdf ? 'Public' : 'Private'}
+              title={chart.public ? 'Public' : 'Private'}
             >
-              {chart.export_pdf ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+              {chart.public ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
             </button>
           )}
 
@@ -254,7 +257,7 @@ const ChartCard = React.memo(function ChartCard({
         {/* Chart Area — only render Plotly when in viewport */}
         <div className="bg-background relative w-full p-3 h-[290px] min-h-[290px] flex-1">
           {isInView ? (
-            <Chart id={chart.id} initialFigure={chart.figure} copySignal={copySignal} />
+            <Chart id={chart.id} initialFigure={chart.figure} chartStyle={(chart.chart_style ?? undefined) as ChartStyle | undefined} copySignal={copySignal} />
           ) : (
             <div className="relative h-full w-full overflow-hidden rounded-lg border border-border/20 bg-background/90">
               <motion.div
@@ -291,12 +294,11 @@ const ChartCard = React.memo(function ChartCard({
 
 interface DashboardGalleryProps {
   chartsByCategory: Record<string, ChartMeta[]>;
-  onOpenStudio?: (chartId: string | null) => void;
 }
 
 export default function DashboardGallery({ chartsByCategory }: DashboardGalleryProps) {
   const { user } = useAuth();
-  const { theme } = useTheme();
+  const { theme, chartStyle, setChartStyle } = useTheme();
   const role = String(user?.role || '').toLowerCase();
   const isOwner = !!user && role === 'owner';
   const isAdminRole = !!user && (role === 'admin' || user.is_admin);
@@ -322,7 +324,6 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
   const [mounted, setMounted] = useState(false);
   const [quickJumpId, setQuickJumpId] = useState('');
-  const [showQuickJumpMenu, setShowQuickJumpMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   // Expanded by default for large screens
@@ -332,6 +333,17 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [collapsedSidebarCategories, setCollapsedSidebarCategories] = useState<Record<string, boolean>>({});
   const [activeStudioChartId, setActiveStudioChartId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncSidebarForViewport = () => {
+      if (window.innerWidth < 1024) setSidebarOpen(false);
+    };
+
+    syncSidebarForViewport();
+    window.addEventListener('resize', syncSidebarForViewport);
+    return () => window.removeEventListener('resize', syncSidebarForViewport);
+  }, []);
 
   // Initial Sync from URL
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -365,28 +377,9 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     router.push('/', { scroll: false });
   }, [router]);
 
-  const quickJumpRef = useRef<HTMLDivElement>(null);
   const chartAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const mainScrollRef = useRef<HTMLElement>(null);
   const isAutoScrolling = useRef(false);
-
-  // Initial Sidebar State for Mobile
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-      setSidebarOpen(false);
-    }
-  }, []);
-
-  // Close quick-jump menu on outside click
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (quickJumpRef.current && !quickJumpRef.current.contains(event.target as Node)) {
-        setShowQuickJumpMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   // Export state
   const [exporting, setExporting] = useState(false);
@@ -525,7 +518,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     }
 
     if (!isOwner && !isAdminRole) {
-      result = result.filter((c) => c.export_pdf !== false || isChartOwner(c));
+      result = result.filter((c) => c.public !== false || isChartOwner(c));
     }
 
     return result;
@@ -545,31 +538,21 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     return Array.from(groups.entries()).map(([category, charts]) => ({ category, charts }));
   }, [filteredCharts]);
 
-  const sidebarGroupedCharts = useMemo(() => {
-    const groups = new Map<string, ChartMeta[]>();
-    for (const chart of filteredCharts) {
-      const category = chart.category || 'Uncategorized';
-      if (!groups.has(category)) groups.set(category, []);
-      groups.get(category)!.push(chart);
-    }
-    return Array.from(groups.entries()).map(([category, charts]) => ({ category, charts }));
-  }, [filteredCharts]);
-
   const allSidebarCategoriesCollapsed = useMemo(() => {
-    if (sidebarGroupedCharts.length === 0) return false;
-    return sidebarGroupedCharts.every(({ category }) => !!collapsedSidebarCategories[category]);
-  }, [sidebarGroupedCharts, collapsedSidebarCategories]);
+    if (groupedCharts.length === 0) return false;
+    return groupedCharts.every(({ category }) => !!collapsedSidebarCategories[category]);
+  }, [groupedCharts, collapsedSidebarCategories]);
 
   const toggleCollapseAllSidebarCategories = useCallback(() => {
     setCollapsedSidebarCategories((prev) => {
-      const shouldCollapseAll = !sidebarGroupedCharts.every(({ category }) => !!prev[category]);
+      const shouldCollapseAll = !groupedCharts.every(({ category }) => !!prev[category]);
       const next: Record<string, boolean> = {};
-      for (const { category } of sidebarGroupedCharts) {
+      for (const { category } of groupedCharts) {
         next[category] = shouldCollapseAll;
       }
       return next;
     });
-  }, [sidebarGroupedCharts]);
+  }, [groupedCharts]);
 
   // 📡 Active Chart Tracking (Scroll Spy)
   useEffect(() => {
@@ -635,18 +618,16 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   useEffect(() => {
     if (filteredCharts.length === 0) {
       if (quickJumpId) setQuickJumpId('');
-      if (showQuickJumpMenu) setShowQuickJumpMenu(false);
       return;
     }
     if (!quickJumpId || !filteredCharts.some((c) => c.id === quickJumpId)) {
       setQuickJumpId(filteredCharts[0].id);
     }
-  }, [filteredCharts, quickJumpId, showQuickJumpMenu]);
+  }, [filteredCharts, quickJumpId]);
 
   const handleQuickJumpSelect = useCallback(
     (chartId: string) => {
       setQuickJumpId(chartId);
-      setShowQuickJumpMenu(false);
 
       // Close navigator on mobile when selecting a chart
       if (typeof window !== 'undefined' && window.innerWidth < 768) {
@@ -682,11 +663,11 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       return apiFetchJson(`/api/custom/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ export_pdf: status })
+        body: JSON.stringify({ public: status })
       });
     },
     onMutate: async ({ id, status }) => {
-      setLocalCharts(prev => prev.map(c => c.id === id ? { ...c, export_pdf: status } : c));
+      setLocalCharts(prev => prev.map(c => c.id === id ? { ...c, public: status } : c));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
@@ -856,286 +837,239 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       </div>
     );
   }
-
-  return (
-    <div className="flex h-[calc(100vh-40px)] relative bg-background overflow-hidden">
-      {/* 🧭 Sidebar Navigator - Now a Flex Sibling for Desktop */}
-      <aside
-        className={`
-          shrink-0 transition-all duration-300 flex flex-col border-r border-border/40 bg-background z-[95] overflow-hidden
-          ${sidebarOpen ? 'w-72 border-r' : 'w-0 border-r-0'}
-          fixed inset-y-0 left-0 top-[40px] md:relative md:top-0 h-[calc(100vh-40px)]
-        `}
-      >
-        <div className="h-11 shrink-0 flex items-center justify-between px-3 border-b border-border/40">
-            <div className="flex items-center gap-1.5">
+  const sidebarContent = (
+    <>
+      {/* Search */}
+      <div className="px-2 py-1.5 border-b border-border/40">
+        <div className="flex items-center gap-1">
+          <div className="relative group flex-1 min-w-0">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/60 group-focus-within:text-foreground/60 transition-colors" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search..."
+              className="w-full h-6 pl-6 pr-2 rounded border border-border/50 bg-background/50 text-[11px] outline-none focus:ring-1 focus:ring-sky-500/25 placeholder:text-muted-foreground/60"
+            />
+            {searchQuery && (
               <button
-                onClick={handleCloseStudio}
-                className={`p-1.5 rounded-lg transition-all ${activeStudioChartId === null ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/5'}`}
-                title="Dashboard View"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-accent/30 text-muted-foreground/60"
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
+                <X className="w-2 h-2" />
               </button>
-              <div className="h-4 w-px bg-border/40 mx-0.5" />
-              <button
-                onClick={() => handleOpenInStudio(null)}
-                className={`p-1.5 rounded-lg transition-all ${activeStudioChartId === '' ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/5'}`}
-                title="Create New Analysis"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
-               <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Charts</span>
-               <span className="text-[9px] tabular-nums text-muted-foreground/60 font-mono">
-                  {filteredCharts.length}
-               </span>
-            </div>
-
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/5 transition-colors"
-              title="Collapse"
-            >
-              <PanelLeftClose className="w-3.5 h-3.5" />
-            </button>
-        </div>
-
-        {/* Action Buttons */}
-        {(canRefreshAllCharts || isOwner) && (
-          <div className="shrink-0 border-b border-border/40 px-3 py-2 flex items-center gap-1">
-            {canRefreshAllCharts && (
-              <button
-                onClick={handleRefreshAll}
-                disabled={isRefreshing}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] border border-border/40 transition-all disabled:opacity-40"
-                title="Refresh all charts"
-              >
-                <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
-              </button>
-            )}
-            {isOwner && (
-              <>
-                <button
-                  onClick={handleExportPDF}
-                  disabled={exporting}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] border border-border/40 transition-all disabled:opacity-40"
-                  title={exporting ? 'Generating PDF...' : 'Export PDF'}
-                >
-                  <FileDown className={`w-3 h-3 ${exporting ? 'animate-pulse' : ''}`} />
-                  <span>PDF</span>
-                </button>
-                <button
-                  onClick={handleExportHTML}
-                  disabled={exportingHtml}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] border border-border/40 transition-all disabled:opacity-40"
-                  title={exportingHtml ? 'Generating HTML...' : 'Export HTML'}
-                >
-                  <FileDown className={`w-3 h-3 ${exportingHtml ? 'animate-pulse' : ''}`} />
-                  <span>HTML</span>
-                </button>
-              </>
             )}
           </div>
-        )}
+          <button
+            onClick={toggleCollapseAllSidebarCategories}
+            disabled={groupedCharts.length === 0}
+            className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/50 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.05] disabled:opacity-40"
+            title={allSidebarCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'}
+          >
+            {allSidebarCategoriesCollapsed ? <UnfoldVertical className="w-3 h-3" /> : <FoldVertical className="w-3 h-3" />}
+          </button>
+        </div>
+      </div>
 
-        {/* Search */}
-        <div className="px-3 py-2.5 border-b border-border/40">
-          <div className="flex items-center gap-1.5">
-            <div className="relative group flex-1 min-w-0">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40 group-focus-within:text-foreground/60 transition-colors" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search charts..."
-                className="w-full pl-7 pr-7 py-1.5 bg-background border border-border/50 rounded-lg text-[10px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-foreground/25 transition-all"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-accent/30 text-muted-foreground/60"
-                >
-                  <X className="w-2 h-2" />
-                </button>
+      {/* Chart List */}
+      <div className="flex-grow overflow-y-auto custom-scrollbar px-2 py-2 space-y-1">
+        {groupedCharts.map(({ category, charts }) => {
+          const collapsed = !!collapsedSidebarCategories[category];
+          return (
+            <div key={category} className="rounded-lg border border-border/40 overflow-hidden">
+              <button
+                onClick={() =>
+                  setCollapsedSidebarCategories((prev) => ({ ...prev, [category]: !prev[category] }))
+                }
+                className="w-full px-2.5 py-1.5 bg-background/40 flex items-center justify-between text-left text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                <span className="truncate">{category}</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="text-[9px]">{charts.length}</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`} />
+                </span>
+              </button>
+              {!collapsed && (
+                <div className="px-1.5 py-1 space-y-px">
+                  {charts.map((chart) => {
+                    const isActive = chart.id === quickJumpId;
+                    const idx = filteredCharts.findIndex((c) => c.id === chart.id);
+                    return (
+                      <button
+                        key={chart.id}
+                        onClick={() => handleQuickJumpSelect(chart.id)}
+                        className={`w-full group relative flex items-center gap-2.5 px-2 py-1.5 rounded-md cursor-pointer transition-all duration-100 ${
+                          isActive
+                            ? 'bg-foreground/[0.07] text-foreground'
+                            : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
+                        }`}
+                      >
+                        <span className={`text-[9px] font-mono tabular-nums shrink-0 w-4 text-right ${
+                          isActive ? 'text-foreground/60' : 'text-muted-foreground/40'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <div className="flex-1 min-w-0 flex flex-col items-start text-left">
+                          <span className="text-[10px] font-medium leading-tight truncate w-full">
+                            {chart.name || 'Untitled'}
+                          </span>
+                        </div>
+                        {chart.public && (
+                          <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-emerald-500/40'}`} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
-            <button
-              onClick={toggleCollapseAllSidebarCategories}
-              disabled={sidebarGroupedCharts.length === 0}
-              className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/50 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.05] disabled:opacity-40"
-              title={allSidebarCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'}
-            >
-              {allSidebarCategoriesCollapsed ? <UnfoldVertical className="w-3 h-3" /> : <FoldVertical className="w-3 h-3" />}
-            </button>
+          );
+        })}
+        {filteredCharts.length === 0 && (
+          <div className="py-8 px-4 text-center">
+            <p className="text-[10px] text-muted-foreground/50">No charts found</p>
           </div>
-        </div>
+        )}
+      </div>
+    </>
+  );
 
-        {/* Chart List */}
-        <div className="flex-grow overflow-y-auto custom-scrollbar px-2 py-2 space-y-1">
-          {sidebarGroupedCharts.map(({ category, charts }) => {
-            const collapsed = !!collapsedSidebarCategories[category];
+  return (
+    <NavigatorShell
+      sidebarOpen={sidebarOpen}
+      onSidebarToggle={() => setSidebarOpen((o) => !o)}
+      sidebarIcon={<LayoutGrid className="w-3.5 h-3.5 text-sky-400" />}
+      sidebarLabel="Dashboard"
+      sidebarHeaderActions={
+        <>
+          <button
+            onClick={() => handleOpenInStudio(null)}
+            className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-colors"
+            title="New chart"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        </>
+      }
+      sidebarContent={sidebarContent}
+      topBarRight={
+        <>
+          <div className="flex items-center gap-0.5 border border-border/50 rounded p-0.5">
+            {(Object.keys(CHART_STYLE_LABELS) as ChartStyle[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => setChartStyle(s)}
+                className={`h-5 px-2 rounded text-[10px] font-medium transition-colors ${
+                  chartStyle === s
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+                }`}
+              >
+                {CHART_STYLE_LABELS[s]}
+              </button>
+            ))}
+          </div>
+          {canRefreshAllCharts && (
+            <button
+              onClick={handleRefreshAll}
+              disabled={isRefreshing}
+              className="h-6 px-2 rounded border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          )}
+          {isOwner && (
+            <>
+              <button
+                onClick={handleExportPDF}
+                disabled={exporting}
+                className="h-6 px-2 rounded border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors"
+              >
+                <FileDown className={`w-3 h-3 ${exporting ? 'animate-pulse' : ''}`} />
+                PDF
+              </button>
+              <button
+                onClick={handleExportHTML}
+                disabled={exportingHtml}
+                className="h-6 px-2 rounded border border-rose-500/35 bg-rose-500/10 text-[11px] font-medium text-rose-300 hover:bg-rose-500/18 inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors"
+              >
+                <FileDown className={`w-3 h-3 ${exportingHtml ? 'animate-pulse' : ''}`} />
+                HTML
+              </button>
+            </>
+          )}
+        </>
+      }
+      mainScrollRef={mainScrollRef}
+    >
+      {/* Main Content */}
+      {activeStudioChartId !== null ? (
+        <div className="h-full w-full relative">
+          <CustomChartEditor
+            mode="integrated"
+            initialChartId={activeStudioChartId === '' ? null : activeStudioChartId}
+            onClose={handleCloseStudio}
+          />
+        </div>
+      ) : (
+        <div className="transition-all duration-300 p-4 md:p-6">
+          {/* 🖼️ Grid Display — grouped by category */}
+          <div className="space-y-8">
+          {groupedCharts.map(({ category, charts: groupCharts }) => {
             return (
-              <div key={category} className="rounded-lg border border-border/40 overflow-hidden">
-                <button
-                  onClick={() =>
-                    setCollapsedSidebarCategories((prev) => ({ ...prev, [category]: !prev[category] }))
-                  }
-                  className="w-full px-2.5 py-1.5 bg-background/40 flex items-center justify-between text-left text-[10px] text-muted-foreground hover:text-foreground"
-                >
-                  <span className="truncate">{category}</span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="text-[9px]">{charts.length}</span>
-                    <ChevronDown className={`w-3 h-3 transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`} />
-                  </span>
-                </button>
-                {!collapsed && (
-                  <div className="px-1.5 py-1 space-y-px">
-                    {charts.map((chart) => {
-                      const isActive = chart.id === quickJumpId;
-                      const idx = filteredCharts.findIndex((c) => c.id === chart.id);
-                      return (
-                        <button
-                          key={chart.id}
-                          onClick={() => handleQuickJumpSelect(chart.id)}
-                          className={`w-full group relative flex items-center gap-2.5 px-2 py-1.5 rounded-md cursor-pointer transition-all duration-100 ${
-                            isActive
-                              ? 'bg-foreground/[0.07] text-foreground'
-                              : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
-                          }`}
-                        >
-                          <span className={`text-[9px] font-mono tabular-nums shrink-0 w-4 text-right ${
-                            isActive ? 'text-foreground/60' : 'text-muted-foreground/40'
-                          }`}>
-                            {idx + 1}
-                          </span>
-                          <div className="flex-1 min-w-0 flex flex-col items-start text-left">
-                            <span className="text-[10px] font-medium leading-tight truncate w-full">
-                              {chart.name || 'Untitled'}
-                            </span>
-                          </div>
-                          {chart.export_pdf && (
-                            <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-emerald-500/40'}`} />
-                          )}
-                        </button>
-                      );
-                    })}
+              <div key={category}>
+                {/* Category Section Header */}
+                {groupedCharts.length > 1 && (
+                  <div className="flex items-center gap-3 mb-5 px-1">
+                    <span className="text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider shrink-0">
+                      {category}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0">{groupCharts.length}</span>
+                    <div className="h-px flex-1 bg-border/40" />
                   </div>
                 )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+                  {groupCharts.map((chart, localIdx) => {
+                    return (
+                      <motion.div
+                        key={chart.id}
+                        id={`chart-anchor-${chart.id}`}
+                        ref={setChartAnchorRef(chart.id)}
+                        className="h-full flex flex-col"
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, margin: "-50px" }}
+                        transition={{
+                          duration: 0.5,
+                          ease: [0.23, 1, 0.32, 1],
+                          delay: localIdx % 4 * 0.05
+                        }}
+                      >
+                        <ChartCard
+                          chart={chart}
+                          canEdit={canEditChart(chart)}
+                          canRefresh={canRefreshChart(chart)}
+                          canDelete={canDeleteChart(chart)}
+                          canManageVisibility={canManageVisibility}
+                          isReorderable={isReorderEnabled}
+                          onTogglePdf={handleTogglePdf}
+                          onRefreshChart={handleRefreshChart}
+                          onCopyChart={handleCopyFromHeader}
+                          onDeleteChart={handleDeleteChart}
+                          isRefreshingChart={!!refreshingChartIds[chart.id]}
+                          isDeletingChart={!!deletingChartIds[chart.id]}
+                          onRankChange={handleRankChange}
+                          copySignal={copySignals[chart.id] || 0}
+                          onOpenStudio={handleOpenInStudio}
+                        />
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
-          {filteredCharts.length === 0 && (
-            <div className="py-8 px-4 text-center">
-               <p className="text-[10px] text-muted-foreground/50">No charts found</p>
-            </div>
-          )}
-        </div>
-      </aside>
-
-      {/* 🧭 Mobile Overlay Backdrop - Below Sidebar but Above Content */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setSidebarOpen(false)}
-            className="md:hidden fixed inset-0 top-[40px] z-[90] bg-foreground/40 dark:bg-black/60 backdrop-blur-sm"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Main Content Area - Scrollable Flex Child */}
-      <main ref={mainScrollRef} className="flex-1 min-w-0 h-full overflow-y-auto custom-scrollbar relative flex flex-col bg-background">
-        {activeStudioChartId !== null ? (
-          <div className="h-full w-full relative">
-             {!sidebarOpen && (
-               <button
-                 onClick={() => setSidebarOpen(true)}
-                 className="absolute left-3 top-3 z-[40] p-2 rounded-lg border border-border/50 bg-background text-muted-foreground hover:text-foreground hover:border-border shadow-sm transition-all active:scale-95"
-                 title="Open Navigator"
-               >
-                 <PanelLeftOpen className="w-4 h-4" />
-               </button>
-             )}
-             <CustomChartEditor
-                mode="integrated"
-                initialChartId={activeStudioChartId === '' ? null : activeStudioChartId}
-                onClose={handleCloseStudio}
-             />
-          </div>
-        ) : (
-          <div className="transition-all duration-300 p-4 md:p-6">
-            {/* Toggle Button (when sidebar is closed) */}
-            {!sidebarOpen && (
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="fixed left-4 top-16 z-[40] p-2 rounded-lg border border-border/50 bg-background text-muted-foreground hover:text-foreground hover:border-border shadow-sm transition-all active:scale-95"
-                title="Open Navigator"
-              >
-                <PanelLeftOpen className="w-4 h-4" />
-              </button>
-            )}
-
-            {/* 🖼️ Grid Display — grouped by category */}
-            <div className="space-y-8">
-            {groupedCharts.map(({ category, charts: groupCharts }) => {
-              return (
-                <div key={category}>
-                  {/* Category Section Header */}
-                  {groupedCharts.length > 1 && (
-                    <div className="flex items-center gap-3 mb-5 px-1">
-                      <span className="text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider shrink-0">
-                        {category}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0">{groupCharts.length}</span>
-                      <div className="h-px flex-1 bg-border/40" />
-                    </div>
-                  )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-                    {groupCharts.map((chart, localIdx) => {
-                      return (
-                        <motion.div
-                          key={chart.id}
-                          id={`chart-anchor-${chart.id}`}
-                          ref={setChartAnchorRef(chart.id)}
-                          className="h-full flex flex-col"
-                          initial={{ opacity: 0, y: 20 }}
-                          whileInView={{ opacity: 1, y: 0 }}
-                          viewport={{ once: true, margin: "-50px" }}
-                          transition={{
-                            duration: 0.5,
-                            ease: [0.23, 1, 0.32, 1],
-                            delay: localIdx % 4 * 0.05
-                          }}
-                        >
-                          <ChartCard
-                            chart={chart}
-                            canEdit={canEditChart(chart)}
-                            canRefresh={canRefreshChart(chart)}
-                            canDelete={canDeleteChart(chart)}
-                            canManageVisibility={canManageVisibility}
-                            isReorderable={isReorderEnabled}
-                            onTogglePdf={handleTogglePdf}
-                            onRefreshChart={handleRefreshChart}
-                            onCopyChart={handleCopyFromHeader}
-                            onDeleteChart={handleDeleteChart}
-                            isRefreshingChart={!!refreshingChartIds[chart.id]}
-                            isDeletingChart={!!deletingChartIds[chart.id]}
-                            onRankChange={handleRankChange}
-                            copySignal={copySignals[chart.id] || 0}
-                            onOpenStudio={handleOpenInStudio}
-                          />
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
           </div>
 
           {/* Empty State */}
@@ -1146,9 +1080,9 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
               {searchQuery && <p className="text-xs text-muted-foreground/40 mt-1">Try a different search term</p>}
             </div>
           )}
-          </div>
-        )}
-      </main>
+        </div>
+      )}
+
       {/* 💾 Save Order Floating Bar */}
       <AnimatePresence>
         {isReorderEnabled && isOrderDirty && (
@@ -1181,10 +1115,11 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         )}
       </AnimatePresence>
 
+      {/* 🗑️ Delete Confirm Modal */}
       <AnimatePresence>
         {deleteTarget && (
           <motion.div
-            className="fixed inset-0 z-[220] flex items-center justify-center bg-foreground/40 dark:bg-black/60 backdrop-blur-sm px-4"
+            className="fixed inset-0 z-[220] flex items-center justify-center bg-foreground/40 dark:bg-black/60 px-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1219,6 +1154,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </NavigatorShell>
   );
 }
+
