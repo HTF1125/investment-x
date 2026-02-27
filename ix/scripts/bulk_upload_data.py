@@ -30,7 +30,7 @@ def parse_filename(filename: str):
         if len(first_part) == 8 and first_part.isdigit():
             try:
                 pub_date = datetime.strptime(first_part, "%Y%m%d").date()
-            except:
+            except Exception:
                 pass
         if len(parts) >= 2:
             issuer = parts[1].replace("-", " ").title()

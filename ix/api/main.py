@@ -5,7 +5,7 @@ Main FastAPI application.
 import os
 from contextlib import asynccontextmanager
 import pytz
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
@@ -263,6 +263,9 @@ async def db_session_middleware(request, call_next):
 
 # Root endpoint removed as Dash handles "/"
 
+# Auth dependency — imported here to avoid circular imports at module top-level
+from ix.api.dependencies import get_current_admin_user as _get_admin_user  # noqa: E402
+
 
 @app.get("/api/health")
 async def health_check():
@@ -281,8 +284,8 @@ if _DEBUG_MODE:
 
 
 @app.get("/api/jobs")
-async def get_jobs():
-    """List currently scheduled jobs"""
+async def get_jobs(_=Depends(_get_admin_user)):
+    """List currently scheduled jobs — admin only."""
     jobs = []
     for job in scheduler.get_jobs():
         jobs.append(

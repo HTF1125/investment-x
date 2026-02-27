@@ -13,15 +13,23 @@ from datetime import datetime
 
 from ix.db.conn import ensure_connection
 from ix.db.query import Series
+from ix.api.dependencies import get_current_user
+from ix.db.models.user import User
 from ix.misc import get_logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from fastapi import Request
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+_limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/series")
+@_limiter.limit("60/minute")
 async def get_series(
+    request: Request,
     series: List[str] = Query(..., description="Series expressions (can be repeated)"),
     start: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
@@ -29,6 +37,7 @@ async def get_series(
     sort: str = Query("asc", description="Sort order ('asc' or 'desc')"),
     limit: Optional[int] = Query(None, description="Maximum number of rows"),
     offset: Optional[int] = Query(None, description="Number of rows to skip"),
+    _current_user: User = Depends(get_current_user),
 ):
     """
     GET /api/series - Advanced series data API with comprehensive features.

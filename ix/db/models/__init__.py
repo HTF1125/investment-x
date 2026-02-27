@@ -223,7 +223,7 @@ class Timeseries(Base):
                 return series.sort_index().resample(str(frequency)).last().dropna()
             else:
                 return series.sort_index()
-        except:
+        except Exception:
             return series.sort_index()
 
     @data.setter

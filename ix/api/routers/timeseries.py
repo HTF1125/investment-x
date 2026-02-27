@@ -643,7 +643,7 @@ def _run_upload_background_task(pid: str, contents: bytes):
                                 date_str = pd.to_datetime(date_cell).strftime(
                                     "%Y-%m-%d"
                                 )
-                            except:
+                            except Exception:
                                 pass
 
                         if not date_str:
@@ -653,7 +653,7 @@ def _run_upload_background_task(pid: str, contents: bytes):
                             val = float(val_cell)
                             if math.isnan(val):
                                 continue
-                        except:
+                        except Exception:
                             continue
 
                         current_data[date_str] = val

@@ -199,8 +199,8 @@ export default function TechnicalPage() {
   // ── Render ───────────────────────────────────────────────────────────────
   const formStyle: React.CSSProperties = {
     colorScheme: isLight ? 'light' : 'dark',
-    backgroundColor: isLight ? '#ffffff' : '#050505',
-    color: isLight ? '#0f172a' : '#f8fafc',
+    backgroundColor: 'rgb(var(--background))',
+    color: 'rgb(var(--foreground))',
   };
   const inputCls = 'border border-border/50 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:border-border transition-colors';
   const selectCls = inputCls + ' cursor-pointer';

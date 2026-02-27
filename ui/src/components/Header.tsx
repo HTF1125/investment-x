@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { FileDown, Loader2, Check, Monitor } from 'lucide-react';
+import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 
 /**
@@ -11,6 +12,8 @@ import { useAuth } from '@/context/AuthContext';
 export default function Header() {
   const [mounted, setMounted] = useState(false);
   const { token } = useAuth();
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   
   // PDF State
   const [exporting, setExporting] = useState(false);
@@ -99,18 +102,18 @@ export default function Header() {
   };
 
   return (
-    <header className="max-w-[1600px] mx-auto mb-8 flex flex-col md:flex-row items-start md:items-center justify-between text-slate-500 font-mono text-xs gap-4">
+    <header className="max-w-[1600px] mx-auto mb-8 flex flex-col md:flex-row items-start md:items-center justify-between text-muted-foreground font-mono text-xs gap-4">
         <div className="flex flex-wrap items-center gap-3">
             <button
                 onClick={handleExportPDF}
                 disabled={exporting || exportingHtml}
                 className={`
                     flex items-center gap-2 px-4 py-2 rounded-xl border font-bold transition-all
-                    ${exportStatus === 'success' 
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                    ${exportStatus === 'success'
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
                         : exportStatus === 'error'
                         ? 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                        : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white hover:border-white/20 shadow-lg shadow-black/20'
+                        : 'bg-foreground/[0.04] border-border text-foreground hover:bg-foreground/[0.08] hover:border-border/80'
                     }
                     disabled:opacity-30
                 `}
@@ -130,11 +133,11 @@ export default function Header() {
                 disabled={exporting || exportingHtml}
                 className={`
                     flex items-center gap-2 px-4 py-2 rounded-xl border font-bold transition-all
-                    ${exportHtmlStatus === 'success' 
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                    ${exportHtmlStatus === 'success'
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
                         : exportHtmlStatus === 'error'
                         ? 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                        : 'bg-indigo-500/5 border-indigo-500/10 text-slate-300 hover:bg-indigo-500/10 hover:text-white hover:border-indigo-500/30'
+                        : 'bg-indigo-500/[0.04] border-indigo-500/20 text-foreground hover:bg-indigo-500/[0.08] hover:border-indigo-500/40'
                     }
                     disabled:opacity-30
                 `}
@@ -152,23 +155,23 @@ export default function Header() {
 
         <div className="flex items-center gap-6">
             <div className="flex flex-col items-end">
-                <span className="text-[10px] text-slate-600 mb-1">DATA STATUS</span>
+                <span className="text-[10px] text-muted-foreground/50 mb-1">DATA STATUS</span>
                 <span className="text-emerald-500 flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                     LIVE PIPELINE
                 </span>
             </div>
-            <div className="w-px h-8 bg-white/10" />
+            <div className="w-px h-8 bg-border/60" />
             <div className="flex flex-col items-end">
-                <span className="text-[10px] text-slate-600 mb-1">REGION</span>
-                <span className="text-slate-300 font-semibold uppercase">Seoul / KST</span>
+                <span className="text-[10px] text-muted-foreground/50 mb-1">REGION</span>
+                <span className="text-foreground font-semibold uppercase">Seoul / KST</span>
             </div>
             {mounted && (
               <>
-                <div className="w-px h-8 bg-white/10" />
+                <div className="w-px h-8 bg-border/60" />
                 <div className="flex flex-col items-end">
-                    <span className="text-[10px] text-slate-600 mb-1">LOCAL TIME</span>
-                    <span className="text-slate-300 font-semibold tabular-nums">
+                    <span className="text-[10px] text-muted-foreground/50 mb-1">LOCAL TIME</span>
+                    <span className="text-foreground font-semibold tabular-nums">
                         {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                     </span>
                 </div>

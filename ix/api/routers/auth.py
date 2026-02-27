@@ -112,7 +112,7 @@ async def logout(response: Response):
 
 
 @router.post("/auth/register", response_model=UserResponse)
-async def register(user_data: UserRegister):
+def register(user_data: UserRegister):
     """
     Register a new user.
     """

@@ -2,7 +2,7 @@
 Evaluation router for executing function code and returning dataframes.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from typing import Optional
 from collections import OrderedDict
@@ -14,12 +14,18 @@ from pydantic import BaseModel
 
 from ix.db.conn import ensure_connection
 from ix.db.query import *
+from ix.api.dependencies import get_current_user
+from ix.db.models.user import User
 from ix.misc import get_logger
 from ix.core import ContributionToGrowth
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from fastapi import Request
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+_limiter = Limiter(key_func=get_remote_address)
 
 
 class EvaluationRequest(BaseModel):
@@ -30,7 +36,12 @@ class EvaluationRequest(BaseModel):
 
 
 @router.post("/data/evaluation")
-async def evaluate_code(request: EvaluationRequest):
+@_limiter.limit("30/minute")
+async def evaluate_code(
+    request: Request,
+    body: EvaluationRequest,
+    _current_user: User = Depends(get_current_user),
+):
     """
     POST /api/data/evaluation - Evaluate code expression and return dataframe.
 
@@ -47,16 +58,16 @@ async def evaluate_code(request: EvaluationRequest):
     """
     ensure_connection()
 
-    if not request.code or not request.code.strip():
+    if not body.code or not body.code.strip():
         raise HTTPException(status_code=400, detail="Code string cannot be empty")
 
-    if request.format not in ["json", "csv"]:
+    if body.format not in ["json", "csv"]:
         raise HTTPException(
             status_code=400, detail="Invalid format. Must be 'json' or 'csv'"
         )
 
     try:
-        code = request.code.strip()
+        code = body.code.strip()
 
         # Evaluate the code expression directly
         result = eval(code, globals(), {})
@@ -80,7 +91,7 @@ async def evaluate_code(request: EvaluationRequest):
 
         # Handle empty dataframe
         if df.empty:
-            if request.format == "csv":
+            if body.format == "csv":
                 return Response(
                     content="Date\n",
                     media_type="text/csv",
@@ -95,7 +106,7 @@ async def evaluate_code(request: EvaluationRequest):
                 )
 
         # Format response
-        if request.format == "csv":
+        if body.format == "csv":
             csv_data = df.to_csv()
             return Response(
                 content=csv_data,

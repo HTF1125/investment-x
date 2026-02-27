@@ -1164,7 +1164,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             <div className="flex items-center gap-2 ml-2">
               <button
                 onClick={handleResetOrder}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/10 text-slate-400 hover:text-white text-[10px] font-bold transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/50 text-muted-foreground hover:text-foreground text-[10px] font-bold transition-colors"
               >
                 <RotateCcw className="w-3 h-3" /> Reset
               </button>
@@ -1204,7 +1204,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
               <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={() => setDeleteTarget(null)}
-                  className="px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+                  className="px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
                 >
                   Cancel
                 </button>

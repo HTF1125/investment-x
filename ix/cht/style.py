@@ -79,7 +79,7 @@ def finalize_axis_colors(fig: go.Figure, color: str = None) -> go.Figure:
                 ):
                     try:
                         axis.title.font.color = color
-                    except:
+                    except Exception:
                         pass
     return fig
 
@@ -202,7 +202,7 @@ def apply_academic_style(fig: go.Figure, force_dark: bool = True) -> go.Figure:
                 ):
                     try:
                         axis.title.font.color = font_color
-                    except:
+                    except Exception:
                         pass
 
                 axis.update(**update_dict)

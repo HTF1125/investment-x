@@ -3,12 +3,12 @@
 import {
   type ChangeEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from 'react';
+import { Node, mergeAttributes } from '@tiptap/core';
 import { Editor } from '@tiptap/core';
 import {
   EditorContent,
@@ -21,72 +21,78 @@ import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style';
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import {
-  Bold,
-  Italic,
-  List,
-  ListOrdered,
   Heading1,
   Heading2,
-  Square,
+  Heading3,
+  List,
+  ListOrdered,
   Code2,
-  Minus,
-  Link as LinkIcon,
-  Image as ImageIcon,
+  Square,
   Table as TableIcon,
-  Undo2,
-  Redo2,
+  Minus,
+  Image as ImageIcon,
+  BarChart2,
+  Search,
+  Clock,
+  X,
+  Bold,
+  Italic,
+  Link as LinkIcon,
 } from 'lucide-react';
+import { applyChartTheme } from '@/lib/chartTheme';
 
-type UploadResult = {
-  url: string;
-  filename?: string | null;
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
 
-type ExternalImageInsertRequest = {
-  token: string;
-  url: string;
-  alt?: string;
-};
+type UploadResult = { url: string; filename?: string | null };
+export type ChartItem = { id: string; name?: string | null; category?: string | null };
 
 interface NotesRichEditorProps {
   value: string;
   onChange: (html: string) => void;
   disabled?: boolean;
   onImageUpload: (file: File) => Promise<UploadResult>;
-  externalImageInsertRequest?: ExternalImageInsertRequest | null;
   minHeightClassName?: string;
-  toolbarStickyTopClassName?: string;
+  chartLibrary?: ChartItem[];
+  onFetchChartSnapshot?: (chartId: string) => Promise<{
+    figure: any;
+    name?: string | null;
+    updated_at?: string | null;
+  }>;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
 
 const MAX_UPLOAD_EDGE = 2200;
 const MAX_DIRECT_UPLOAD_BYTES = 1_800_000;
 const MIN_IMAGE_PERCENT = 20;
 const MAX_IMAGE_PERCENT = 100;
 
-const FONT_FAMILY_OPTIONS = [
-  { label: 'Default', value: '' },
-  { label: 'Inter', value: "'Inter', sans-serif" },
-  { label: 'Outfit', value: "'Outfit', sans-serif" },
-  { label: 'Georgia', value: 'Georgia, serif' },
-  {
-    label: 'Monospace',
-    value:
-      "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-  },
+const SLASH_COMMANDS = [
+  { id: 'paragraph',      label: 'Text',          description: 'Plain paragraph',        icon: Heading1,    keywords: ['text', 'paragraph', 'p'] },
+  { id: 'heading1',       label: 'Heading 1',     description: 'Large section title',    icon: Heading1,    keywords: ['h1', 'heading'] },
+  { id: 'heading2',       label: 'Heading 2',     description: 'Medium section title',   icon: Heading2,    keywords: ['h2', 'heading'] },
+  { id: 'heading3',       label: 'Heading 3',     description: 'Small section title',    icon: Heading3,    keywords: ['h3', 'heading'] },
+  { id: 'bulletList',     label: 'Bullet List',   description: 'Unordered list',         icon: List,        keywords: ['ul', 'bullet', 'list'] },
+  { id: 'orderedList',    label: 'Numbered List', description: 'Ordered list',           icon: ListOrdered, keywords: ['ol', 'numbered', 'ordered'] },
+  { id: 'codeBlock',      label: 'Code',          description: 'Code block',             icon: Code2,       keywords: ['code', 'pre', 'mono'] },
+  { id: 'blockquote',     label: 'Quote',         description: 'Callout / quote block',  icon: Square,      keywords: ['quote', 'blockquote', 'callout', 'box'] },
+  { id: 'table',          label: 'Table',         description: '3 × 3 table',            icon: TableIcon,   keywords: ['table', 'grid', 'data'] },
+  { id: 'horizontalRule', label: 'Divider',       description: 'Horizontal rule',        icon: Minus,       keywords: ['divider', 'hr', 'rule', 'line'] },
+  { id: 'image',          label: 'Image',         description: 'Upload an image',        icon: ImageIcon,   keywords: ['image', 'photo', 'img'] },
+  { id: 'chart',          label: 'Chart',         description: 'Embed a chart snapshot', icon: BarChart2,   keywords: ['chart', 'graph', 'plot', 'visualization'] },
 ] as const;
 
-const FONT_SIZE_OPTIONS = [
-  { label: 'Default', value: '' },
-  { label: '12', value: '12px' },
-  { label: '14', value: '14px' },
-  { label: '16', value: '16px' },
-  { label: '18', value: '18px' },
-  { label: '20', value: '20px' },
-  { label: '24', value: '24px' },
-] as const;
+type SlashCommandId = (typeof SLASH_COMMANDS)[number]['id'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Resizable image node
+// ─────────────────────────────────────────────────────────────────────────────
 
 function parseWidthPercent(width: unknown): number {
   if (typeof width === 'number' && Number.isFinite(width)) {
@@ -132,7 +138,6 @@ function ResizableImageNode({ node, selected, updateAttributes, editor }: NodeVi
   const startResize = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (!editor.isEditable) return;
-
       event.preventDefault();
       event.stopPropagation();
 
@@ -160,16 +165,11 @@ function ResizableImageNode({ node, selected, updateAttributes, editor }: NodeVi
           MIN_IMAGE_PERCENT,
           Math.min(MAX_IMAGE_PERCENT, Math.round((nextPx / containerWidth) * 100))
         );
-        if (!rafId) {
-          rafId = window.requestAnimationFrame(flush);
-        }
+        if (!rafId) rafId = window.requestAnimationFrame(flush);
       };
 
       const stop = () => {
-        if (rafId) {
-          window.cancelAnimationFrame(rafId);
-          rafId = 0;
-        }
+        if (rafId) { window.cancelAnimationFrame(rafId); rafId = 0; }
         document.removeEventListener('pointermove', onMove);
         document.removeEventListener('pointerup', stop);
         document.removeEventListener('pointercancel', stop);
@@ -229,10 +229,7 @@ const RichImage = Image.extend({
           ),
         renderHTML: (attributes) => {
           const width = normalizeWidth(attributes.width);
-          return {
-            'data-width': width,
-            style: `width:${width};height:auto;`,
-          };
+          return { 'data-width': width, style: `width:${width};height:auto;` };
         },
       },
     };
@@ -241,6 +238,400 @@ const RichImage = Image.extend({
     return ReactNodeViewRenderer(ResizableImageNode);
   },
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart block — renders a point-in-time Plotly snapshot
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Read theme from the <html> class since NodeViews render in a separate React subtree
+// and don't have access to ThemeContext.
+function useDocTheme(): 'light' | 'dark' {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof document === 'undefined') return 'dark';
+    return document.documentElement.classList.contains('light') ? 'light' : 'dark';
+  });
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setTheme(root.classList.contains('light') ? 'light' : 'dark');
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
+function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, editor }: NodeViewProps) {
+  const theme = useDocTheme();
+  const chartId = node.attrs.chartId as string;
+  const chartName = node.attrs.chartName as string | null;
+  const figureJson = node.attrs.figureJson as string | null;
+  const snapshotAt = node.attrs.snapshotAt as string | null;
+  const chartHeight = (node.attrs.chartHeight as number) || 320;
+  const plotRef = useRef<HTMLDivElement>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      resizeCleanupRef.current?.();
+      resizeCleanupRef.current = null;
+    };
+  }, []);
+
+  // Render/update the Plotly snapshot whenever figure data, height, or theme changes
+  useEffect(() => {
+    if (!figureJson || !plotRef.current) return;
+    let cancelled = false;
+    let figure: any;
+    try { figure = JSON.parse(figureJson); } catch { return; }
+
+    // Apply dark/light theme to the stored snapshot.
+    // applyChartTheme sets autosize:true and clears width/height.
+    // The container div has explicit width:100% and height:chartHeight,
+    // so Plotly will autosize to fill the container exactly.
+    const themed = applyChartTheme(figure, theme);
+
+    (async () => {
+      const Plotly = (await import('plotly.js-dist-min')) as any;
+      if (cancelled || !plotRef.current) return;
+      Plotly.react(
+        plotRef.current,
+        themed.data || [],
+        themed.layout,
+        { responsive: true, displayModeBar: false }
+      );
+    })();
+
+    return () => { cancelled = true; };
+  }, [figureJson, chartHeight, theme]);
+
+  // Purge Plotly on unmount
+  useEffect(() => {
+    return () => {
+      const el = plotRef.current;
+      if (el) {
+        import('plotly.js-dist-min').then((Plotly: any) => {
+          try { Plotly.purge(el); } catch { /* ok */ }
+        });
+      }
+    };
+  }, []);
+
+  const startHeightResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!editor.isEditable) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const startY = event.clientY;
+      const initialHeight = chartHeight;
+      let rafId = 0;
+      let pendingHeight = initialHeight;
+
+      const flush = () => {
+        rafId = 0;
+        updateAttributes({ chartHeight: pendingHeight });
+      };
+
+      const onMove = (e: PointerEvent) => {
+        pendingHeight = Math.max(180, Math.min(900, initialHeight + (e.clientY - startY)));
+        if (!rafId) rafId = window.requestAnimationFrame(flush);
+      };
+
+      const stop = () => {
+        if (rafId) { window.cancelAnimationFrame(rafId); rafId = 0; }
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', stop);
+        document.removeEventListener('pointercancel', stop);
+        resizeCleanupRef.current = null;
+      };
+
+      resizeCleanupRef.current = stop;
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', stop);
+      document.addEventListener('pointercancel', stop);
+    },
+    [editor.isEditable, chartHeight, updateAttributes]
+  );
+
+  const formattedDate = snapshotAt
+    ? new Date(snapshotAt).toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
+
+  return (
+    <NodeViewWrapper contentEditable={false}>
+      <div className={`notes-chart-node ${selected ? 'is-selected' : ''}`}>
+        <div className="notes-chart-toolbar">
+          <span className="notes-chart-title">{chartName || chartId}</span>
+          <div className="flex items-center gap-2 ml-auto">
+            {formattedDate && (
+              <span className="notes-chart-timestamp">
+                <Clock className="w-3 h-3 inline-block mr-1 opacity-50" />
+                {formattedDate}
+              </span>
+            )}
+            {editor.isEditable && (
+              <button
+                type="button"
+                className="notes-chart-remove"
+                onClick={deleteNode}
+                title="Remove chart"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {figureJson ? (
+          <div ref={plotRef} style={{ width: '100%', height: chartHeight }} />
+        ) : (
+          <div className="notes-chart-empty">No snapshot data.</div>
+        )}
+
+        {editor.isEditable && (
+          <div
+            className="notes-chart-resize-handle"
+            onPointerDown={startHeightResize}
+            title="Drag to resize"
+          />
+        )}
+      </div>
+    </NodeViewWrapper>
+  );
+}
+
+const ChartBlock = Node.create({
+  name: 'chartBlock',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: true,
+
+  addAttributes() {
+    return {
+      chartId: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-chart-id'),
+        renderHTML: (attrs) => ({ 'data-chart-id': attrs.chartId || '' }),
+      },
+      chartName: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-chart-name'),
+        renderHTML: (attrs) => ({ 'data-chart-name': attrs.chartName || '' }),
+      },
+      // Full Plotly figure JSON — stored for point-in-time rendering
+      figureJson: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-figure') || null,
+        renderHTML: (attrs) => (attrs.figureJson ? { 'data-figure': attrs.figureJson } : {}),
+      },
+      // ISO timestamp of when the snapshot was captured
+      snapshotAt: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-snapshot-at') || null,
+        renderHTML: (attrs) => (attrs.snapshotAt ? { 'data-snapshot-at': attrs.snapshotAt } : {}),
+      },
+      // User-adjustable chart height in pixels
+      chartHeight: {
+        default: 320,
+        parseHTML: (el) => {
+          const v = el.getAttribute('data-chart-height');
+          return v ? Math.max(180, Math.min(900, Number(v))) : 320;
+        },
+        renderHTML: (attrs) => ({ 'data-chart-height': String(attrs.chartHeight || 320) }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-chart-block]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes({ 'data-chart-block': 'true' }, HTMLAttributes)];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ChartBlockNodeView);
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Slash command palette
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SlashCommandMenu({
+  query,
+  top,
+  left,
+  onSelect,
+  onClose,
+}: {
+  query: string;
+  top: number;
+  left: number;
+  onSelect: (id: SlashCommandId) => void;
+  onClose: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+
+  const filtered = SLASH_COMMANDS.filter((cmd) => {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return cmd.label.toLowerCase().includes(q) || cmd.keywords.some((k) => k.includes(q));
+  });
+
+  useEffect(() => { setIndex(0); }, [query]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault(); e.stopPropagation();
+        setIndex((i) => (i + 1) % Math.max(1, filtered.length));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation();
+        setIndex((i) => (i - 1 + Math.max(1, filtered.length)) % Math.max(1, filtered.length));
+      } else if (e.key === 'Enter' && filtered.length > 0) {
+        e.preventDefault(); e.stopPropagation();
+        const cmd = filtered[index];
+        if (cmd) onSelect(cmd.id as SlashCommandId);
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handler, { capture: true });
+    return () => window.removeEventListener('keydown', handler, { capture: true });
+  }, [filtered, index, onSelect, onClose]);
+
+  if (!filtered.length) return null;
+
+  return (
+    <div
+      style={{ position: 'fixed', top, left, zIndex: 9999 }}
+      className="w-64 rounded-xl border border-border/60 bg-background shadow-2xl shadow-black/30 py-1.5 overflow-hidden"
+    >
+      <div className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+        Blocks
+      </div>
+      {filtered.map((cmd, i) => {
+        const Icon = cmd.icon;
+        return (
+          <button
+            key={cmd.id}
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); onSelect(cmd.id as SlashCommandId); }}
+            className={`w-full px-3 py-1.5 flex items-center gap-3 text-left transition-colors ${
+              i === index
+                ? 'bg-sky-500/10 text-foreground'
+                : 'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
+            }`}
+          >
+            <div className="w-7 h-7 rounded-md border border-border/50 bg-card/60 flex items-center justify-center shrink-0">
+              <Icon className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <div className="text-[12px] font-medium leading-tight">{cmd.label}</div>
+              <div className="text-[10px] text-muted-foreground/60 leading-tight">{cmd.description}</div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart picker (shown after /chart command)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ChartPickerMenu({
+  chartLibrary,
+  top,
+  left,
+  onSelect,
+  onClose,
+}: {
+  chartLibrary: ChartItem[];
+  top: number;
+  left: number;
+  onSelect: (chart: ChartItem) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 30); }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
+    };
+    window.addEventListener('keydown', handler, { capture: true });
+    return () => window.removeEventListener('keydown', handler, { capture: true });
+  }, [onClose]);
+
+  const filtered = chartLibrary.filter((c) => {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return (c.name || '').toLowerCase().includes(q) || (c.category || '').toLowerCase().includes(q);
+  });
+
+  return (
+    <div
+      style={{ position: 'fixed', top, left, zIndex: 9999 }}
+      className="w-72 rounded-xl border border-border/60 bg-background shadow-2xl shadow-black/30 overflow-hidden"
+    >
+      <div className="p-3 border-b border-border/40">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2">
+          Insert Chart Snapshot
+        </div>
+        <div className="relative">
+          <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search charts..."
+            className="w-full h-7 pl-7 pr-2 rounded-md border border-border/50 bg-background/60 text-[11px] outline-none focus:ring-1 focus:ring-sky-500/30"
+          />
+        </div>
+      </div>
+      <div className="max-h-56 overflow-y-auto py-1">
+        {filtered.length === 0 && (
+          <div className="px-3 py-2 text-[11px] text-muted-foreground">No charts found.</div>
+        )}
+        {filtered.slice(0, 30).map((chart) => (
+          <button
+            key={chart.id}
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); onSelect(chart); }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-left hover:bg-accent/10 transition-colors"
+          >
+            <BarChart2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <div>
+              <div className="text-[12px] font-medium text-foreground">{chart.name || chart.id}</div>
+              {chart.category && (
+                <div className="text-[10px] text-muted-foreground">{chart.category}</div>
+              )}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image compression
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function compressImageForUpload(file: File): Promise<File> {
   if (typeof window === 'undefined') return file;
@@ -260,103 +651,44 @@ async function compressImageForUpload(file: File): Promise<File> {
     canvas.height = height;
 
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      bitmap.close();
-      return file;
-    }
+    if (!ctx) { bitmap.close(); return file; }
     ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
 
     const blob = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob(resolve, 'image/webp', 0.82);
     });
-    if (!blob || blob.size >= file.size) {
-      return file;
-    }
+    if (!blob || blob.size >= file.size) return file;
 
     const baseName = (file.name || 'image').replace(/\.[^/.]+$/, '');
-    return new File([blob], `${baseName || 'image'}.webp`, {
-      type: 'image/webp',
-    });
+    return new File([blob], `${baseName || 'image'}.webp`, { type: 'image/webp' });
   } catch {
     return file;
   }
 }
 
-function ToolbarButton({
-  active,
-  onClick,
-  disabled,
-  children,
-  title,
-}: {
-  active?: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  children: ReactNode;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={`h-6 px-1.5 rounded-md border text-[11px] inline-flex items-center gap-1 transition-colors ${
-        active
-          ? 'border-sky-500/40 bg-sky-500/15 text-sky-200'
-          : 'border-border/50 text-muted-foreground hover:text-foreground hover:bg-accent/10'
-      } disabled:opacity-40`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ToolbarSelect({
-  value,
-  onChange,
-  disabled,
-  title,
-  options,
-  className = '',
-}: {
-  value: string;
-  onChange: (event: ChangeEvent<HTMLSelectElement>) => void;
-  disabled?: boolean;
-  title?: string;
-  options: ReadonlyArray<{ label: string; value: string }>;
-  className?: string;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={onChange}
-      disabled={disabled}
-      title={title}
-      className={`h-6 px-1.5 rounded-md border border-border/50 bg-background/60 text-[11px] text-muted-foreground outline-none hover:text-foreground focus:ring-2 focus:ring-sky-500/20 disabled:opacity-40 ${className}`}
-    >
-      {options.map((option) => (
-        <option key={option.label} value={option.value} className="bg-background text-foreground">
-          {option.label}
-        </option>
-      ))}
-    </select>
-  );
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Main editor
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function NotesRichEditor({
   value,
   onChange,
   disabled = false,
   onImageUpload,
-  externalImageInsertRequest = null,
   minHeightClassName = 'min-h-[48vh]',
-  toolbarStickyTopClassName = 'top-0',
+  chartLibrary = [],
+  onFetchChartSnapshot,
 }: NotesRichEditorProps) {
   const editorRef = useRef<Editor | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const lastExternalImageInsertTokenRef = useRef<string | null>(null);
+  const slashStartPosRef = useRef<number | null>(null);
+  const onFetchChartSnapshotRef = useRef(onFetchChartSnapshot);
+  useEffect(() => { onFetchChartSnapshotRef.current = onFetchChartSnapshot; }, [onFetchChartSnapshot]);
+
+  const [slashMenu, setSlashMenu] = useState<{ query: string; top: number; left: number } | null>(null);
+  const [chartPicker, setChartPicker] = useState<{ top: number; left: number } | null>(null);
+  const [bubbleMenu, setBubbleMenu] = useState<{ top: number; left: number } | null>(null);
 
   const uploadAndInsertImages = useCallback(
     async (files: File[]) => {
@@ -368,56 +700,164 @@ export default function NotesRichEditor({
         activeEditor
           .chain()
           .focus()
-          .setImage({
-            src: image.url,
-            alt: image.filename || file.name || 'image',
-            width: 100,
-          })
+          .setImage({ src: image.url, alt: image.filename || file.name || 'image', width: 100 })
           .run();
       }
     },
     [onImageUpload]
   );
 
+  // Fetch the chart's current figure JSON and insert as a static snapshot block
+  const insertChartBlock = useCallback(async (chart: ChartItem) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+
+    // Capture positions before async op
+    const { from } = ed.state.selection;
+    const startPos = slashStartPosRef.current;
+    slashStartPosRef.current = null;
+    setSlashMenu(null);
+    setChartPicker(null);
+
+    // Fetch point-in-time snapshot
+    let figureJson: string | null = null;
+    const snapshotAt = new Date().toISOString();
+    if (onFetchChartSnapshotRef.current) {
+      try {
+        const snapshot = await onFetchChartSnapshotRef.current(chart.id);
+        if (snapshot?.figure) figureJson = JSON.stringify(snapshot.figure);
+      } catch { /* insert without figure if fetch fails */ }
+    }
+
+    const attrs = {
+      chartId: chart.id,
+      chartName: chart.name || null,
+      figureJson,
+      snapshotAt,
+      chartHeight: 320,
+    };
+
+    const activeEd = editorRef.current;
+    if (!activeEd) return;
+
+    if (startPos !== null) {
+      try {
+        activeEd.chain().focus()
+          .deleteRange({ from: startPos, to: from })
+          .insertContent({ type: 'chartBlock', attrs })
+          .run();
+      } catch {
+        activeEd.chain().focus().insertContent({ type: 'chartBlock', attrs }).run();
+      }
+    } else {
+      activeEd.chain().focus().insertContent({ type: 'chartBlock', attrs }).run();
+    }
+  }, []);
+
+  const executeSlashCommand = useCallback((id: SlashCommandId) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+
+    setSlashMenu(null);
+
+    if (id === 'chart') {
+      const coords = ed.view.coordsAtPos(ed.state.selection.from);
+      setChartPicker({ top: coords.bottom, left: coords.left });
+      return; // slash text deleted when chart is selected
+    }
+
+    if (slashStartPosRef.current !== null) {
+      const { from } = ed.state.selection;
+      ed.chain().focus().deleteRange({ from: slashStartPosRef.current, to: from }).run();
+      slashStartPosRef.current = null;
+    }
+
+    switch (id) {
+      case 'paragraph':      ed.chain().focus().setParagraph().run(); break;
+      case 'heading1':       ed.chain().focus().setHeading({ level: 1 }).run(); break;
+      case 'heading2':       ed.chain().focus().setHeading({ level: 2 }).run(); break;
+      case 'heading3':       ed.chain().focus().setHeading({ level: 3 }).run(); break;
+      case 'bulletList':     ed.chain().focus().toggleBulletList().run(); break;
+      case 'orderedList':    ed.chain().focus().toggleOrderedList().run(); break;
+      case 'codeBlock':      ed.chain().focus().toggleCodeBlock().run(); break;
+      case 'blockquote':     ed.chain().focus().insertContent('<blockquote><p></p></blockquote><p></p>').run(); break;
+      case 'table':          ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); break;
+      case 'horizontalRule': ed.chain().focus().setHorizontalRule().run(); break;
+      case 'image':          fileInputRef.current?.click(); break;
+    }
+  }, []);
+
+  const setLink = useCallback(() => {
+    const ed = editorRef.current;
+    if (!ed || disabled) return;
+    const previousUrl = ed.getAttributes('link').href || '';
+    const url = window.prompt('Enter URL', previousUrl);
+    if (url === null) return;
+    if (url === '') { ed.chain().focus().unsetLink().run(); return; }
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    ed.chain().focus().extendMarkRange('link').setLink({ href }).run();
+  }, [disabled]);
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
       StarterKit,
-      TextStyle,
-      FontFamily.configure({
-        types: ['textStyle'],
-      }),
-      FontSize.configure({
-        types: ['textStyle'],
-      }),
-      Table.configure({
-        resizable: true,
-      }),
+      Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
       TableCell,
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        linkOnPaste: true,
-      }),
-      RichImage.configure({
-        allowBase64: false,
-      }),
+      Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
+      RichImage.configure({ allowBase64: false }),
+      ChartBlock,
       Placeholder.configure({
-        placeholder: 'Write your note... paste images and drag the handle to resize.',
+        placeholder: "Write here… type '/' for blocks, '/chart' to embed a chart snapshot.",
       }),
     ],
     content: value || '',
     editable: !disabled,
-    onCreate: ({ editor }) => {
-      editorRef.current = editor;
+    onCreate: ({ editor }) => { editorRef.current = editor; },
+    onDestroy: () => { editorRef.current = null; },
+    onSelectionUpdate: ({ editor }) => {
+      const { selection } = editor.state;
+      if (selection.empty || disabled) { setBubbleMenu(null); return; }
+      try {
+        const from = selection.from;
+        const to = selection.to;
+        const startCoords = editor.view.coordsAtPos(from);
+        const endCoords = editor.view.coordsAtPos(to);
+        setBubbleMenu({
+          top: startCoords.top - 44,
+          left: (startCoords.left + endCoords.left) / 2,
+        });
+      } catch { setBubbleMenu(null); }
     },
-    onDestroy: () => {
-      editorRef.current = null;
-    },
+    onBlur: () => { setTimeout(() => setBubbleMenu(null), 150); },
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
+
+      if (disabled) return;
+      const { state } = editor;
+      const { selection } = state;
+      const { $from } = selection;
+
+      if ($from.parent.type.name !== 'paragraph') {
+        setSlashMenu(null);
+        slashStartPosRef.current = null;
+        return;
+      }
+
+      const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
+      if (textBefore.startsWith('/') && !textBefore.includes(' ')) {
+        const query = textBefore.slice(1).toLowerCase();
+        const coords = editor.view.coordsAtPos(selection.from);
+        if (slashStartPosRef.current === null) {
+          slashStartPosRef.current = selection.from - textBefore.length;
+        }
+        setSlashMenu({ query, top: coords.bottom, left: coords.left });
+      } else {
+        setSlashMenu(null);
+        slashStartPosRef.current = null;
+      }
     },
     editorProps: {
       attributes: {
@@ -431,7 +871,6 @@ export default function NotesRichEditor({
           .map((item) => item.getAsFile())
           .filter((file): file is File => !!file);
         if (!files.length) return false;
-
         event.preventDefault();
         void uploadAndInsertImages(files);
         return true;
@@ -462,177 +901,122 @@ export default function NotesRichEditor({
     editor.setEditable(!disabled);
   }, [editor, disabled]);
 
-  useEffect(() => {
-    if (!editor || !externalImageInsertRequest) return;
-    if (lastExternalImageInsertTokenRef.current === externalImageInsertRequest.token) return;
-    lastExternalImageInsertTokenRef.current = externalImageInsertRequest.token;
-
-    editor
-      .chain()
-      .focus()
-      .setImage({
-        src: externalImageInsertRequest.url,
-        alt: externalImageInsertRequest.alt || 'chart snapshot',
-        width: 100,
-      })
-      .insertContent('<p></p>')
-      .run();
-  }, [editor, externalImageInsertRequest]);
-
-  const setLink = () => {
-    if (!editor || disabled) return;
-    const previousUrl = editor.getAttributes('link').href || '';
-    const url = window.prompt('Enter URL', previousUrl);
-    if (url === null) return;
-    if (url === '') {
-      editor.chain().focus().unsetLink().run();
-      return;
-    }
-    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-    editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
-  };
-
-  const activeTextStyle = editor?.getAttributes('textStyle') || {};
-  const activeFontFamily =
-    typeof activeTextStyle.fontFamily === 'string' ? activeTextStyle.fontFamily : '';
-  const activeFontSize = typeof activeTextStyle.fontSize === 'string' ? activeTextStyle.fontSize : '';
-  const selectedFontFamily = FONT_FAMILY_OPTIONS.some((option) => option.value === activeFontFamily)
-    ? activeFontFamily
-    : '';
-  const selectedFontSize = FONT_SIZE_OPTIONS.some((option) => option.value === activeFontSize)
-    ? activeFontSize
-    : '';
-
-  const handleFontFamilyChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    if (!editor || disabled) return;
-    const nextFamily = event.target.value;
-    if (!nextFamily) {
-      editor.chain().focus().unsetFontFamily().removeEmptyTextStyle().run();
-      return;
-    }
-    editor.chain().focus().setFontFamily(nextFamily).run();
-  };
-
-  const handleFontSizeChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    if (!editor || disabled) return;
-    const nextSize = event.target.value;
-    if (!nextSize) {
-      editor.chain().focus().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run();
-      return;
-    }
-    editor.chain().focus().setMark('textStyle', { fontSize: nextSize }).run();
-  };
-
-  const insertBox = () => {
-    if (!editor || disabled) return;
-    editor
-      .chain()
-      .focus()
-      .insertContent('<blockquote><p>Box note</p></blockquote><p></p>')
-      .run();
-  };
-
-  const insertTable = () => {
-    if (!editor || disabled) return;
-    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-  };
-
-  const triggerImagePick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const onImageSelected = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file || !editor || disabled) return;
-    try {
-      await uploadAndInsertImages([file]);
-    } catch {
-      // Parent manages error state.
-    }
-  };
-
   if (!editor) return null;
 
   return (
-    <div className="space-y-2">
-      <div
-        className={`sticky ${toolbarStickyTopClassName} z-20 -mx-1 px-1 py-1.5 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border/40`}
-      >
-        <div className="flex items-center gap-1 flex-wrap">
-          <ToolbarSelect
-            value={selectedFontFamily}
-            onChange={handleFontFamilyChange}
-            disabled={disabled}
-            title="Font Family"
-            options={FONT_FAMILY_OPTIONS}
-            className="w-[108px]"
-          />
-          <ToolbarSelect
-            value={selectedFontSize}
-            onChange={handleFontSizeChange}
-            disabled={disabled}
-            title="Font Size"
-            options={FONT_SIZE_OPTIONS}
-            className="w-[70px]"
-          />
-          <div className="w-px h-4 bg-border/50 mx-0.5" />
-          <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} disabled={disabled} title="Bold">
+    <div>
+      {/* Bubble menu — appears on text selection (Notion-style) */}
+      {bubbleMenu && !disabled && (
+        <div
+          style={{
+            position: 'fixed',
+            top: bubbleMenu.top,
+            left: bubbleMenu.left,
+            transform: 'translateX(-50%)',
+            zIndex: 9998,
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+          className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-background shadow-xl shadow-black/20 p-1"
+        >
+          <button
+            type="button"
+            onClick={() => editor.chain().focus().toggleBold().run()}
+            className={`h-6 w-6 rounded flex items-center justify-center transition-colors ${
+              editor.isActive('bold') ? 'bg-sky-500/20 text-sky-300' : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
+            }`}
+            title="Bold"
+          >
             <Bold className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} disabled={disabled} title="Italic">
+          </button>
+          <button
+            type="button"
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+            className={`h-6 w-6 rounded flex items-center justify-center transition-colors ${
+              editor.isActive('italic') ? 'bg-sky-500/20 text-sky-300' : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
+            }`}
+            title="Italic"
+          >
             <Italic className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive('heading', { level: 1 })} disabled={disabled} title="Heading 1">
-            <Heading1 className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} disabled={disabled} title="Heading 2">
-            <Heading2 className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} disabled={disabled} title="Bullet List">
-            <List className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} disabled={disabled} title="Ordered List">
-            <ListOrdered className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={insertBox} disabled={disabled} title="Insert Box">
-            <Square className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={insertTable} disabled={disabled} title="Insert Table">
-            <TableIcon className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive('codeBlock')} disabled={disabled} title="Code Block">
-            <Code2 className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().setHorizontalRule().run()} disabled={disabled} title="Divider">
-            <Minus className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={setLink} active={editor.isActive('link')} disabled={disabled} title="Link">
-            <LinkIcon className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={triggerImagePick} disabled={disabled} title="Upload Image">
-            <ImageIcon className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={disabled || !editor.can().undo()} title="Undo">
-            <Undo2 className="w-3.5 h-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().redo().run()} disabled={disabled || !editor.can().redo()} title="Redo">
-            <Redo2 className="w-3.5 h-3.5" />
-          </ToolbarButton>
+          </button>
+          <button
+            type="button"
+            onClick={() => editor.chain().focus().toggleStrike().run()}
+            className={`h-6 w-6 rounded flex items-center justify-center text-[13px] line-through transition-colors ${
+              editor.isActive('strike') ? 'bg-sky-500/20 text-sky-300' : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
+            }`}
+            title="Strikethrough"
+          >
+            S
+          </button>
+          <button
+            type="button"
+            onClick={() => editor.chain().focus().toggleCode().run()}
+            className={`h-6 w-6 rounded flex items-center justify-center transition-colors ${
+              editor.isActive('code') ? 'bg-sky-500/20 text-sky-300' : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
+            }`}
+            title="Inline Code"
+          >
+            <Code2 className="w-3 h-3" />
+          </button>
+          <div className="w-px h-4 bg-border/50 mx-0.5" />
+          <button
+            type="button"
+            onClick={setLink}
+            className={`h-6 w-6 rounded flex items-center justify-center transition-colors ${
+              editor.isActive('link') ? 'bg-sky-500/20 text-sky-300' : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
+            }`}
+            title="Link"
+          >
+            <LinkIcon className="w-3 h-3" />
+          </button>
         </div>
-      </div>
+      )}
 
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={onImageSelected}
+        onChange={async (event: ChangeEvent<HTMLInputElement>) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (!file || !editor || disabled) return;
+          try { await uploadAndInsertImages([file]); } catch { /* parent manages error state */ }
+        }}
       />
 
-      <div className="notes-editor rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+      <div className="notes-editor">
         <EditorContent editor={editor} />
       </div>
+
+      {/* Slash command palette */}
+      {slashMenu && !disabled && (
+        <SlashCommandMenu
+          query={slashMenu.query}
+          top={slashMenu.top}
+          left={slashMenu.left}
+          onSelect={executeSlashCommand}
+          onClose={() => {
+            setSlashMenu(null);
+            slashStartPosRef.current = null;
+          }}
+        />
+      )}
+
+      {/* Chart picker (triggered by /chart) */}
+      {chartPicker && !disabled && (
+        <ChartPickerMenu
+          chartLibrary={chartLibrary}
+          top={chartPicker.top}
+          left={chartPicker.left}
+          onSelect={insertChartBlock}
+          onClose={() => {
+            setChartPicker(null);
+            slashStartPosRef.current = null;
+            editorRef.current?.commands.focus();
+          }}
+        />
+      )}
     </div>
   );
 }

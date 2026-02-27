@@ -766,7 +766,7 @@ export default function TimeseriesManager() {
 
       {/* ═══════════════ Create / Edit Modal ═══════════════ */}
       {(showCreate || editItem) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md" role="dialog" aria-modal="true" aria-label={editItem ? `Edit ${editItem.code}` : 'Create new timeseries'} onClick={() => { setShowCreate(false); setEditItem(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 dark:bg-black/70 backdrop-blur-md" role="dialog" aria-modal="true" aria-label={editItem ? `Edit ${editItem.code}` : 'Create new timeseries'} onClick={() => { setShowCreate(false); setEditItem(null); }}>
           <div
             className="bg-gradient-to-br from-card/95 via-card/90 to-card/85 border border-border/50 rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/60 mx-4 backdrop-blur-xl"
             onClick={(e) => e.stopPropagation()}
@@ -851,7 +851,7 @@ export default function TimeseriesManager() {
 
       {/* ═══════════════ Delete Confirmation ═══════════════ */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md" role="dialog" aria-modal="true" aria-label="Delete confirmation" onClick={() => setDeleteTarget(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 dark:bg-black/70 backdrop-blur-md" role="dialog" aria-modal="true" aria-label="Delete confirmation" onClick={() => setDeleteTarget(null)}>
           <div
             className="bg-gradient-to-br from-card/95 via-card/90 to-card/85 border border-rose-500/30 rounded-3xl w-full max-w-md shadow-2xl shadow-black/60 p-8 mx-4 backdrop-blur-xl"
             onClick={(e) => e.stopPropagation()}
@@ -914,7 +914,7 @@ export default function TimeseriesManager() {
               {toast.sticky && (
                 <button
                   onClick={() => setToast(null)}
-                  className="px-3 py-1.5 rounded-lg border border-current/30 text-xs font-semibold hover:bg-white/10 transition-colors shrink-0"
+                  className="px-3 py-1.5 rounded-lg border border-current/30 text-xs font-semibold hover:bg-foreground/[0.08] transition-colors shrink-0"
                 >
                   OK
                 </button>
@@ -927,7 +927,7 @@ export default function TimeseriesManager() {
       {/* ═══════════════ Chart Modal ═══════════════ */}
       {viewChartItem && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground/40 dark:bg-black/80 backdrop-blur-md p-4"
           role="dialog"
           onClick={() => setViewChartItem(null)}
         >

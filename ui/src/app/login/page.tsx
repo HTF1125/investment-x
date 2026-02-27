@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { Mail, Lock, LogIn, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, LogIn, ArrowRight, Eye, EyeOff, X } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -37,6 +37,14 @@ export default function LoginPage() {
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
       
       <div className="w-full max-w-md glass-card p-8 relative z-10 shadow-2xl shadow-sky-500/10 border-sky-500/20">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-all"
+          title="Go back"
+        >
+          <X className="w-4 h-4" />
+        </button>
         <div className="mb-8 text-center">
           <div className="w-12 h-12 rounded-full bg-sky-500/10 flex items-center justify-center mx-auto mb-4 border border-sky-500/20">
             <LogIn className="w-6 h-6 text-sky-400" />

@@ -174,7 +174,7 @@ def _create_rrg_chart(
             f_y = interp1d(t_raw, y_raw.values, kind="cubic")
             x_smooth = f_x(t_smooth)
             y_smooth = f_y(t_smooth)
-        except:
+        except Exception:
             x_smooth, y_smooth = x_raw.values, y_raw.values
 
         style = _get_quadrant_style(x_raw.iloc[-1], y_raw.iloc[-1])
