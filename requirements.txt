@@ -28,3 +28,4 @@ xlsxwriter
 openpyxl
 reportlab
 kaleido==0.2.1
+feedparser
