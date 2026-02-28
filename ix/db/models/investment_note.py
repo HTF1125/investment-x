@@ -1,12 +1,15 @@
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Boolean, LargeBinary
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Boolean, Integer, Index, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from ix.db.conn import Base
 
-
 class InvestmentNote(Base):
+    """
+    Unified Notion-like block-based investment note.
+    Everything (text, images, charts, links) is stored in the 'body' JSONB column.
+    """
     __tablename__ = "investment_notes"
 
     id = Column(
@@ -16,39 +19,31 @@ class InvestmentNote(Base):
         UUID(as_uuid=False), ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title = Column(String(255), nullable=False, default="Untitled Note")
-    content = Column(Text, nullable=False, default="")
-    links = Column(JSONB, nullable=False, default=list)
+    
+    # The 'body' stores an ordered list of blocks:
+    # [
+    #   {"type": "text", "value": "Analysis..."},
+    #   {"type": "image", "id": "uuid", "data": "base64...", "filename": "..."},
+    #   {"type": "chart", "chart_id": "..."},
+    #   {"type": "link", "url": "..."}
+    # ]
+    body = Column(JSONB, nullable=False, server_default='[]')
+    
     pinned = Column(Boolean, nullable=False, default=False, index=True)
+    is_deleted = Column(Boolean, nullable=False, default=False, index=True)
+    deleted_at = Column(DateTime, nullable=True)
+    version = Column(Integer, default=1, nullable=False)
+    
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
-    images = relationship(
-        "InvestmentNoteImage",
-        back_populates="note",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        lazy="selectin",
-    )
+# GIN index for deep searching within the block-based body
+Index("ix_investment_notes_body_gin", InvestmentNote.body, postgresql_using="gin")
 
-
-class InvestmentNoteImage(Base):
-    __tablename__ = "investment_note_images"
-
-    id = Column(
-        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
-    )
-    note_id = Column(
-        UUID(as_uuid=False),
-        ForeignKey("investment_notes.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    user_id = Column(
-        UUID(as_uuid=False), ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    filename = Column(String(255), nullable=True)
-    content_type = Column(String(128), nullable=False, default="image/png")
-    data = Column(LargeBinary, nullable=False)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-
-    note = relationship("InvestmentNote", back_populates="images", lazy="joined")
+# Full-Text Search Index for title and text blocks inside body
+# This uses a functional index to extract text from the JSONB body for searching
+Index(
+    "ix_investment_notes_fts",
+    text("to_tsvector('english', coalesce(title, '') || ' ' || (SELECT string_agg(elem->>'value', ' ') FROM jsonb_array_elements(body) AS elem WHERE elem->>'type' = 'text'))"),
+    postgresql_using="gin",
+)

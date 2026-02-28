@@ -600,8 +600,22 @@ def get_unified_news_items(
     if source:
         query = query.filter(NewsItem.source == source)
     if q:
-        pattern = f"%{q.strip()}%"
+        search_text = q.strip()
+        # Use Full-Text Search (FTS) with to_tsvector/websearch_to_tsquery for relevance
+        # Fallback to ILIKE if FTS yields nothing (e.g. for partial matches not in tsvector)
+        ts_query = func.websearch_to_tsquery("english", search_text)
+        fts_filter = NewsItem.__table__.c.title.op("@@")(ts_query) | \
+                     NewsItem.__table__.c.summary.op("@@")(ts_query)
+        
+        # Check if FTS returns results, otherwise fallback to ilike
+        fts_rows = query.filter(fts_filter).limit(limit).all()
+        if fts_rows:
+            return [UnifiedNewsItemSchema.model_validate(r) for r in fts_rows]
+        
+        # Fallback to traditional ilike for partial word matches
+        pattern = f"%{search_text}%"
         query = query.filter(or_(NewsItem.title.ilike(pattern), NewsItem.summary.ilike(pattern)))
+    
     rows = (
         query.order_by(NewsItem.published_at.desc().nullslast(), NewsItem.discovered_at.desc())
         .limit(limit)

@@ -878,3 +878,46 @@ def technical_elliott(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to build technical chart: {e}")
+
+
+@router.get("/technical/summary")
+def get_technical_summary(
+    ticker: str = Query(...),
+    interval: str = Query("1d"),
+):
+    from ix.misc.openai import TechnicalAnalyzer
+    import os
+    
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return {"summary": "AI Technical Analysis is unavailable: OPENAI_API_KEY not configured."}
+
+    try:
+        tk = ticker.strip().upper()
+        # Get latest 60 bars for context
+        df = yf.download(tk, period="1y", interval=interval, auto_adjust=False, progress=False)
+        if df.empty:
+            return {"summary": f"No data available for {tk} to analyze."}
+        
+        df = _normalize_yf(df, tk)
+        latest = df.tail(60)
+        
+        # Calculate some basic signals for the prompt
+        ma20 = latest["Close"].rolling(20).mean().iloc[-1]
+        ma50 = latest["Close"].rolling(50).mean().iloc[-1]
+        rsi = _compute_rsi(latest["Close"]).iloc[-1]
+        
+        data_summary = f"""
+        Latest Price: {latest['Close'].iloc[-1]:.2f}
+        MA20: {ma20:.2f}
+        MA50: {ma50:.2f}
+        RSI(14): {rsi:.1f}
+        Last 5 Days Close: {latest['Close'].tail(5).tolist()}
+        """
+        
+        analyzer = TechnicalAnalyzer(api_key=api_key)
+        summary_md = analyzer.analyze(tk, data_summary)
+        
+        return {"summary": summary_md}
+    except Exception as e:
+        return {"summary": f"Failed to generate AI summary: {str(e)}"}

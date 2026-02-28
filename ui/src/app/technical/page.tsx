@@ -4,10 +4,11 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import NavigatorShell from '@/components/NavigatorShell';
-import { Activity, Loader2, Plus, X } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { apiFetchJson } from '@/lib/api';
+import { Activity, Loader2, Plus, X, BrainCircuit, RefreshCw } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetchJson, apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import ReactMarkdown from 'react-markdown';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -48,40 +49,49 @@ export default function TechnicalPage() {
   const isLight = theme === 'light';
   const today = todayIso();
   const addInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
-  // ── Watchlist (localStorage-persisted) ──────────────────────────────────
+  // ── Preferences Persistence ─────────────────────────────────────────────
+  const prefQuery = useQuery({
+    queryKey: ['user-preferences'],
+    queryFn: () => apiFetchJson('/api/user/preferences'),
+  });
+
+  const prefMutation = useMutation({
+    mutationFn: (settings: any) => 
+      apiFetch('/api/user/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user-preferences'] }),
+  });
+
   const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_WATCHLIST);
-  const [watchlistReady, setWatchlistReady] = useState(false);
   const [addInput, setAddInput] = useState('');
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(WATCHLIST_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
-          setWatchlist(parsed);
-        }
-      }
-    } catch {}
-    setWatchlistReady(true);
-  }, []);
+    if (prefQuery.data?.settings?.technical_watchlist) {
+      setWatchlist(prefQuery.data.settings.technical_watchlist);
+    }
+  }, [prefQuery.data]);
 
-  useEffect(() => {
-    if (!watchlistReady) return;
-    try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist)); } catch {}
-  }, [watchlist, watchlistReady]);
+  const updateWatchlist = useCallback((newList: string[]) => {
+    setWatchlist(newList);
+    const currentSettings = prefQuery.data?.settings || {};
+    prefMutation.mutate({ ...currentSettings, technical_watchlist: newList });
+  }, [prefQuery.data, prefMutation]);
 
   const addTicker = useCallback(() => {
     const t = addInput.trim().toUpperCase();
     if (!t || watchlist.includes(t)) { setAddInput(''); return; }
-    setWatchlist((prev) => [...prev, t]);
+    updateWatchlist([...watchlist, t]);
     setAddInput('');
-  }, [addInput, watchlist]);
+  }, [addInput, watchlist, updateWatchlist]);
 
   const removeTicker = useCallback((ticker: string) => {
-    setWatchlist((prev) => prev.filter((t) => t !== ticker));
-  }, []);
+    updateWatchlist(watchlist.filter((t) => t !== ticker));
+  }, [watchlist, updateWatchlist]);
 
   // ── Controls state ───────────────────────────────────────────────────────
   const [activeTicker, setActiveTicker] = useState(watchlist[0] ?? 'SPY');
@@ -92,17 +102,6 @@ export default function TechnicalPage() {
   const [countdownFrom, setCountdownFrom] = useState(13);
   const [cooldown, setCooldown] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const syncSidebarForViewport = () => {
-      if (window.innerWidth < 1024) setSidebarOpen(false);
-    };
-
-    syncSidebarForViewport();
-    window.addEventListener('resize', syncSidebarForViewport);
-    return () => window.removeEventListener('resize', syncSidebarForViewport);
-  }, []);
 
   // Committed params — only update on Refresh
   const [params, setParams] = useState({
@@ -114,6 +113,25 @@ export default function TechnicalPage() {
     countdownFrom: 13,
     cooldown: 0,
   });
+
+  const summaryQuery = useQuery({
+    queryKey: ['technical-summary', params.ticker, params.interval],
+    queryFn: () => apiFetchJson(`/api/technical/summary?ticker=${params.ticker}&interval=${params.interval}`),
+    enabled: !!params.ticker,
+    staleTime: 300_000,
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncSidebarForViewport = () => {
+      if (window.innerWidth < 1024) setSidebarOpen(false);
+    };
+
+    syncSidebarForViewport();
+    window.addEventListener('resize', syncSidebarForViewport);
+    return () => window.removeEventListener('resize', syncSidebarForViewport);
+  }, []);
 
   useEffect(() => {
     if (!watchlist.includes(activeTicker)) {
@@ -422,6 +440,34 @@ export default function TechnicalPage() {
                     {[0, 5, 10, 15, 20].map((v) => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
+              </div>
+            </div>
+
+            {/* AI Summary */}
+            <div className="rounded-xl border border-border/60 bg-background p-3 flex flex-col gap-2 shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-mono flex items-center gap-1.5">
+                  <BrainCircuit className="w-3 h-3 text-sky-400" />
+                  AI Summary
+                </div>
+                <button 
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['technical-summary'] })}
+                  className="text-muted-foreground/30 hover:text-foreground transition-colors"
+                  title="Refresh AI Analysis"
+                >
+                  <RefreshCw className={`w-2.5 h-2.5 ${summaryQuery.isFetching ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              <div className="min-h-[120px] max-h-[320px] overflow-y-auto no-scrollbar">
+                {summaryQuery.isLoading ? (
+                  <div className="h-24 flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/20" />
+                  </div>
+                ) : (
+                  <div className="text-[11px] leading-relaxed text-muted-foreground/80 prose prose-invert prose-xs max-w-none">
+                    <ReactMarkdown>{summaryQuery.data?.summary || 'No analysis available.'}</ReactMarkdown>
+                  </div>
+                )}
               </div>
             </div>
 

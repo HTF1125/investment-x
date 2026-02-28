@@ -22,9 +22,11 @@ from .telegram import TelegramMessage
 from .custom_chart import CustomChart
 from .youtube_intel import YouTubeIntel
 from .task_process import TaskProcess
-from .investment_note import InvestmentNote, InvestmentNoteImage
+from .investment_note import InvestmentNote
 from .system_setting import SystemSetting
 from .news_item import NewsItem
+from .audit_log import AuditLog
+from .user_preference import UserPreference
 import pandas as pd
 
 # Re-export Base for convenience
@@ -42,9 +44,10 @@ __all__ = [
     "YouTubeIntel",
     "TaskProcess",
     "InvestmentNote",
-    "InvestmentNoteImage",
     "SystemSetting",
     "NewsItem",
+    "AuditLog",
+    "UserPreference",
 ]
 
 
@@ -60,8 +63,9 @@ def all():
         YouTubeIntel,
         TaskProcess,
         InvestmentNote,
-        InvestmentNoteImage,
         NewsItem,
+        AuditLog,
+        UserPreference,
     ]
 
 
@@ -756,6 +760,7 @@ class Insights(Base):
     name = Column(String, nullable=True)
     status = Column(String, default="new")
     summary = Column(Text, nullable=True)
+    storage_path = Column(String(512), nullable=True)
     pdf_content = Column(LargeBinary, nullable=True)
     hash = Column(String, nullable=True)
     created = Column(DateTime, default=func.now(), nullable=False)

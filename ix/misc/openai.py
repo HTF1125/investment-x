@@ -248,3 +248,37 @@ Provided Insights:
             messages=[{"role": "user", "content": self.PROMPT + insights}],
         )
         return completion.choices[0].message.content.strip()
+
+
+class TechnicalAnalyzer:
+    PROMPT = """
+You are an expert technical analyst. Analyze the following OHLC data and technical signals for the given ticker.
+Provide a concise, professional technical summary (2-3 paragraphs).
+Focus on:
+1. Current Trend & Momentum (MAs, RSI, MACD).
+2. Key Support and Resistance levels.
+3. Specific patterns like Elliott Wave structure or TD Sequential signals if present.
+4. Actionable 'Technical Posture' (Bullish, Bearish, or Neutral).
+
+Format the output in Markdown. Be direct and avoid fluff.
+Data:
+"""
+
+    def __init__(self, api_key: str, model: str = "gpt-4o"):
+        # Using the same client config as TaaViews for consistency if needed, 
+        # but standard OpenAI is also fine. Adjusting to match the project's likely setup.
+        self.client = OpenAI(api_key=api_key)
+        self.model = model
+
+    def analyze(self, ticker: str, data_summary: str) -> str:
+        try:
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a professional technical analyst."},
+                    {"role": "user", "content": f"{self.PROMPT}\nTicker: {ticker}\n{data_summary}"}
+                ],
+            )
+            return completion.choices[0].message.content.strip()
+        except Exception as e:
+            return f"Error analyzing technicals: {str(e)}"

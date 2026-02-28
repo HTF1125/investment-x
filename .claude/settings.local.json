@@ -7,7 +7,15 @@
       "Bash(git:*)",
       "Bash(head:*)",
       "Bash(cd:*)",
-      "Bash(timeout 5 tail -f C:UsershantiAppDataLocalTempclauded--investment-xtasksbb8e2d6.output)"
+      "Bash(timeout 5 tail -f C:UsershantiAppDataLocalTempclauded--investment-xtasksbb8e2d6.output)",
+      "Bash(ls -lh /d/investment-x/ui/src/components/*.tsx)",
+      "Read(//d/investment-x/**)",
+      "Bash(wc -l /d/investment-x/ix/api/routers/*.py)",
+      "Bash(ls -1 d:/investment-x/ix/api/routers/*.py)",
+      "Bash(grep -n \"@router\\\\.\" d:/investment-x/ix/api/routers/*.py)",
+      "Bash(python3 -:*)",
+      "Bash(npm run lint)",
+      "Bash(grep -r \"emerald-\\\\|rose-\\\\|indigo-\\\\|sky-\" /d/investment-x/ui/src/components/*.tsx)"
     ]
   }
 }

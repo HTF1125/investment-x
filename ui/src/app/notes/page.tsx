@@ -28,31 +28,33 @@ import { apiFetch, apiFetchJson } from '@/lib/api';
 interface NoteSummary {
   id: string;
   title: string;
-  links: string[];
   pinned: boolean;
   image_count: number;
   created_at: string;
   updated_at: string;
 }
 
-interface NoteImageMeta {
+interface NoteBlock {
   id: string;
-  filename?: string | null;
-  content_type: string;
-  created_at: string;
-  url: string;
+  type: string;
+  value?: string;
+  data?: string;
+  filename?: string;
+  content_type?: string;
+  url?: string;
+  chart_id?: string;
+  metadata?: Record<string, any>;
 }
 
 interface NoteDetail {
   id: string;
   user_id: string;
   title: string;
-  content: string;
-  links: string[];
+  body: NoteBlock[];
   pinned: boolean;
+  version: number;
   created_at: string;
   updated_at: string;
-  images: NoteImageMeta[];
 }
 
 interface CustomChartListItem {
@@ -178,14 +180,18 @@ function NoteEditorPane({
     const note = noteQuery.data;
     if (!note || hydratedRef.current === note.id) return;
     hydratedRef.current = note.id;
+    
+    const textBlock = note.body?.find(b => b.type === 'text');
+    const content = textBlock?.value || '';
+    
     titleRef.current = note.title || '';
-    contentRef.current = note.content || '';
+    contentRef.current = content;
     setTitle(note.title || '');
-    setEditorValue(note.content || '');
+    setEditorValue(content);
     setIsDirty(false);
     setLastSavedAt(note.updated_at || null);
     setSaveState('idle');
-    originalRef.current = { title: note.title || '', content: note.content || '' };
+    originalRef.current = { title: note.title || '', content: content };
   }, [noteQuery.data]);
 
   const uploadMutation = useMutation({
@@ -194,22 +200,34 @@ function NoteEditorPane({
       formData.append('file', file);
       const res = await apiFetch(`/api/notes/${id}/images`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
-      return res.json() as Promise<NoteImageMeta>;
+      return res.json() as Promise<{ id: string; url: string }>;
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { id: string; title: string; content: string }) =>
-      apiFetchJson<NoteDetail>(`/api/notes/${payload.id}`, {
+    mutationFn: async (payload: { id: string; title: string; content: string }) => {
+      // Reconstruct body preserving non-text blocks
+      const currentNote = queryClient.getQueryData<NoteDetail>(['investment-note', payload.id]);
+      const existingBlocks = currentNote?.body?.filter(b => b.type !== 'text') || [];
+      const updatedBody = [
+        { id: crypto.randomUUID(), type: 'text', value: payload.content },
+        ...existingBlocks
+      ];
+
+      return apiFetchJson<NoteDetail>(`/api/notes/${payload.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: payload.title, content: payload.content, links: extractLinks(payload.content), pinned: false }),
-      }),
+        body: JSON.stringify({ title: payload.title, body: updatedBody, pinned: false }),
+      });
+    },
     onSuccess: (note) => {
       setSaveState('saved');
       setLastSavedAt(note.updated_at || null);
       queryClient.setQueryData(['investment-note', note.id], note);
-      originalRef.current = { title: note.title || '', content: note.content || '' };
+      
+      const textBlock = note.body?.find(b => b.type === 'text');
+      const content = textBlock?.value || '';
+      originalRef.current = { title: note.title || '', content: content };
       setIsDirty(false);
     },
     onError: () => setSaveState('error'),
@@ -293,10 +311,11 @@ function NoteEditorPane({
       </div>
 
       {/* Editor area */}
-      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 md:p-5">
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-6 py-8 md:px-10 bg-background">
         {!selectedNoteId ? (
-          <div className="h-32 flex items-center justify-center text-muted-foreground/40 text-sm">
-            Select a note above.
+          <div className="h-full flex flex-col items-center justify-center text-muted-foreground/50 text-sm">
+            <FileText className="w-8 h-8 opacity-20 mb-3" />
+            <p>Select a note to edit.</p>
           </div>
         ) : noteLoading ? (
           <div className="h-32 flex items-center justify-center text-muted-foreground/50 text-sm gap-2">
@@ -304,24 +323,23 @@ function NoteEditorPane({
             Loading…
           </div>
         ) : (
-          <>
+          <div className="max-w-3xl mx-auto">
             <input
               value={title}
               onChange={handleTitleChange}
               placeholder="Untitled"
-              className="w-full bg-transparent text-2xl md:text-3xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/25 mb-1"
+              className="w-full bg-transparent text-3xl md:text-4xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/20 mb-4"
             />
-            <div className="border-t border-border/20 mb-4 mt-2" />
             <NotesRichEditor
               value={editorValue}
               onChange={handleEditorChange}
               onImageUpload={handleImageUpload}
               disabled={!selectedNoteId}
               chartLibrary={chartLibrary}
-              minHeightClassName="min-h-[60vh]"
+              minHeightClassName="min-h-[60vh] text-lg"
               onFetchChartSnapshot={onFetchChartSnapshot}
             />
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -458,7 +476,8 @@ export default function NotesPage() {
 
   const hydrateFromNote = useCallback((note: NoteDetail) => {
     const nextTitle = note.title || '';
-    const nextContent = note.content || '';
+    const textBlock = note.body?.find(b => b.type === 'text');
+    const nextContent = textBlock?.value || '';
     const nextPinned = !!note.pinned;
 
     titleRef.current = nextTitle;
@@ -550,7 +569,7 @@ export default function NotesPage() {
   }, []);
 
   const createMutation = useMutation({
-    mutationFn: (payload: { title: string; content: string; links: string[]; pinned: boolean }) =>
+    mutationFn: (payload: { title: string; body: NoteBlock[]; pinned: boolean }) =>
       apiFetchJson<NoteDetail>('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -562,12 +581,12 @@ export default function NotesPage() {
       setLastSavedAt(note.updated_at || null);
       queryClient.setQueryData(['investment-note', note.id], note);
       queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => {
+        const imgCount = note.body?.filter(b => b.type === 'image').length || 0;
         const summary: NoteSummary = {
           id: note.id,
           title: note.title || 'Untitled Note',
-          links: Array.isArray(note.links) ? note.links : [],
           pinned: !!note.pinned,
-          image_count: Array.isArray(note.images) ? note.images.length : 0,
+          image_count: imgCount,
           created_at: note.created_at,
           updated_at: note.updated_at,
         };
@@ -579,14 +598,13 @@ export default function NotesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { id: string; title: string; content: string; links: string[]; pinned: boolean }) =>
+    mutationFn: async (payload: { id: string; title: string; body: NoteBlock[]; pinned: boolean }) =>
       apiFetchJson<NoteDetail>(`/api/notes/${payload.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: payload.title,
-          content: payload.content,
-          links: payload.links,
+          body: payload.body,
           pinned: payload.pinned,
         }),
       }),
@@ -602,18 +620,19 @@ export default function NotesPage() {
             ? {
                 ...item,
                 title: note.title || 'Untitled Note',
-                links: Array.isArray(note.links) ? note.links : [],
                 pinned: !!note.pinned,
                 updated_at: note.updated_at,
-                image_count: Array.isArray(note.images) ? note.images.length : item.image_count,
+                image_count: note.body?.filter(b => b.type === 'image').length || item.image_count,
               }
             : item
         );
         return sortNoteSummaries(next);
       });
+      
+      const textBlock = variables.body?.find(b => b.type === 'text');
       originalRef.current = {
         title: variables.title || '',
-        content: variables.content || '',
+        content: textBlock?.value || '',
         pinned: !!variables.pinned,
       };
       recomputeDirty();
@@ -665,8 +684,8 @@ export default function NotesPage() {
     try {
       const res = await apiFetch(`/api/v1/dashboard/charts/${chartId}/figure`);
       if (res.ok) {
-        const figure = await res.json();
-        if (figure && typeof figure === 'object') return { figure };
+        const data = await res.json();
+        if (data?.figure && typeof data.figure === 'object') return { figure: data.figure };
       }
     } catch { /* fall through */ }
     // 2. Try full chart record
@@ -689,16 +708,25 @@ export default function NotesPage() {
   }, []);
 
   const handleImageUpload = useCallback(
-    async (file: File): Promise<NoteImageMeta> => {
+    async (file: File): Promise<{ id: string; url: string }> => {
       if (!selectedNoteId) {
         throw new Error('Create or select a report first.');
       }
       setStatus('Uploading image...');
       const image = await uploadMutation.mutateAsync({ id: selectedNoteId, file });
       const nowIso = new Date().toISOString();
-      queryClient.setQueryData<NoteDetail | undefined>(['investment-note', selectedNoteId], (prev) =>
-        prev ? { ...prev, images: [...(prev.images || []), image], updated_at: nowIso } : prev
-      );
+      queryClient.setQueryData<NoteDetail | undefined>(['investment-note', selectedNoteId], (prev) => {
+        if (!prev) return prev;
+        const newBlock = {
+          id: image.id,
+          type: 'image',
+          data: '', // Base64 is managed via the endpoint response, we just push the block structure roughly
+          filename: file.name,
+          content_type: file.type
+        };
+        // The backend handles pushing the block, but we reflect it optimistically
+        return { ...prev, body: [...(prev.body || []), newBlock], updated_at: nowIso };
+      });
       queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => {
         if (!prev) return prev;
         return sortNoteSummaries(
@@ -719,17 +747,28 @@ export default function NotesPage() {
     if (!selectedNoteId) return;
     if (uploadMutation.isPending || updateMutation.isPending) return;
     if (!recomputeDirty()) return;
+    
     const draftTitle = titleRef.current.trim() || 'Untitled Note';
     const draftContent = contentRef.current;
+    
+    // Construct the updated body with the new text block and existing non-text blocks
+    const currentNote = queryClient.getQueryData<NoteDetail>(['investment-note', selectedNoteId]);
+    const existingBlocks = currentNote?.body?.filter(b => b.type !== 'text') || [];
+    
+    // Generate UUID locally or just assume backend manages text block
+    const updatedBody = [
+      { id: crypto.randomUUID(), type: 'text', value: draftContent },
+      ...existingBlocks
+    ];
+
     setSaveState('saving');
     updateMutation.mutate({
       id: selectedNoteId,
       title: draftTitle,
-      content: draftContent,
-      links: extractLinks(draftContent),
+      body: updatedBody,
       pinned: pinnedRef.current,
     });
-  }, [selectedNoteId, uploadMutation.isPending, updateMutation, recomputeDirty]);
+  }, [selectedNoteId, uploadMutation.isPending, updateMutation, recomputeDirty, queryClient]);
 
   const queueAutoSave = useCallback(() => {
     if (saveTimerRef.current) {
@@ -966,52 +1005,38 @@ export default function NotesPage() {
           <div className="h-full min-h-0 rounded-xl border border-border/50 bg-background/70 overflow-hidden">
             <div className="h-full min-h-0 flex">
               <section
-                className="min-h-0 h-full overflow-y-auto custom-scrollbar p-4 md:p-5"
+                className="min-h-0 h-full overflow-y-auto custom-scrollbar bg-background"
                 style={{ width: focusMode ? '100%' : `${splitRatio}%` }}
               >
                 {!selectedNoteId && (
-                  <div className="h-[40vh] rounded-lg border border-border/50 bg-card/25 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-                    <FileText className="w-6 h-6 opacity-30" />
-                    <p className="text-sm">Select or create a report.</p>
+                  <div className="h-full flex flex-col items-center justify-center gap-4 text-muted-foreground/60">
+                    <FileText className="w-12 h-12 opacity-20" />
+                    <p className="text-sm font-medium">Select a note or create a new one.</p>
                     <button
                       onClick={handleCreateNote}
                       disabled={createMutation.isPending}
-                      className="h-7 px-3 rounded border border-border/50 text-[12px] font-medium hover:bg-accent/10 transition-colors disabled:opacity-40"
+                      className="mt-2 h-9 px-4 rounded-md border border-border/50 bg-card hover:bg-accent/20 transition-colors disabled:opacity-40 flex items-center shadow-sm"
                     >
-                      <Plus className="w-3 h-3 inline mr-1" />
-                      New Report
+                      <Plus className="w-4 h-4 mr-2" />
+                      New Note
                     </button>
                   </div>
                 )}
 
                 {selectedNoteId && (
-                  <>
+                  <div className="max-w-3xl mx-auto px-6 py-12 md:px-12 md:py-16">
                     <input
                       value={title}
                       onChange={handleTitleChange}
-                      placeholder="Untitled Report"
+                      placeholder="Untitled"
                       disabled={noteLoading}
-                      className="w-full bg-transparent text-2xl md:text-3xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/25 disabled:opacity-50 mb-1"
+                      className="w-full bg-transparent text-4xl md:text-5xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/20 disabled:opacity-50 mb-4"
                     />
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="text-[10px] text-muted-foreground/40 font-mono">
-                        <kbd className="px-1 rounded border border-border/40 bg-background text-[9px]">/</kbd>
-                        {' '}blocks &middot;{' '}
-                        <kbd className="px-1 rounded border border-border/40 bg-background text-[9px]">/chart</kbd>
-                        {' '}snapshot
-                      </div>
-                      {wordCount > 0 && (
-                        <div className="text-[10px] text-muted-foreground/35 font-mono">
-                          {wordCount} words
-                        </div>
-                      )}
-                    </div>
-                    <div className="border-t border-border/20 mb-4" />
-
+                    
                     {noteLoading ? (
-                      <div className="h-[40vh] rounded-lg border border-border/50 bg-card/25 flex items-center justify-center text-sm text-muted-foreground">
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Loading...
+                      <div className="mt-12 flex items-center justify-center text-sm text-muted-foreground gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading blocks...
                       </div>
                     ) : (
                       <NotesRichEditor
@@ -1020,17 +1045,17 @@ export default function NotesPage() {
                         onImageUpload={handleImageUpload}
                         disabled={!selectedNoteId}
                         chartLibrary={chartLibrary}
-                        minHeightClassName="min-h-[60vh]"
+                        minHeightClassName="min-h-[60vh] text-lg"
                         onFetchChartSnapshot={handleFetchChartSnapshot}
                       />
                     )}
 
                     {status && (
-                      <div className={`mt-3 text-[11px] ${saveState === 'error' ? 'text-rose-300' : 'text-muted-foreground/60'}`}>
+                      <div className={`mt-8 text-[12px] font-medium transition-opacity ${saveState === 'error' ? 'text-rose-400' : 'text-muted-foreground/40'}`}>
                         {status}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </section>
 

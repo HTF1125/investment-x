@@ -455,11 +455,13 @@ try:
         insights,
         technical,
         notes,
+        user,
     )
 
     logger.info("Importing routers...")
     app.include_router(auth.router, prefix="/api", tags=["Authentication"])
     app.include_router(admin.router, prefix="/api", tags=["Admin"])
+    app.include_router(user.router, prefix="/api", tags=["User"])
     app.include_router(timeseries.router, prefix="/api", tags=["Timeseries"])
     app.include_router(series.router, prefix="/api", tags=["Series"])
     app.include_router(evaluation.router, prefix="/api", tags=["Evaluation"])

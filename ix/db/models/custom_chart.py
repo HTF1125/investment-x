@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, JSON, Boolean, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 from ix.db.conn import Base
@@ -28,6 +28,8 @@ class CustomChart(Base):
     figure = Column(JSONB, nullable=True)  # Cached execution result
     chart_style = Column(String(32), nullable=True)  # Visual style preset (default/minimal/terminal/presentation)
     public = Column(Boolean, default=True, nullable=False)  # Visible to all users
+    is_deleted = Column(Boolean, nullable=False, default=False, index=True)
+    deleted_at = Column(DateTime, nullable=True)
 
     # "order" is a reserved keyword in SQL, so we quote it or use a different name in DB.
     # Since we added column "order", we map it here.
@@ -41,3 +43,7 @@ class CustomChart(Base):
     )
 
     creator = relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+
+# GIN index for tags containment queries
+Index("ix_charts_tags_gin", CustomChart.tags, postgresql_using="gin")

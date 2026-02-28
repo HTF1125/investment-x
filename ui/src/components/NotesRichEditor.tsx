@@ -290,9 +290,9 @@ function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, edit
       // 1. Try the dedicated dashboard figure endpoint
       const res1 = await apiFetch(`/api/v1/dashboard/charts/${chartId}/figure`);
       if (res1.ok) {
-        const figure = await res1.json();
-        if (figure && typeof figure === 'object') {
-          updateAttributes({ figureJson: JSON.stringify(figure), snapshotAt: new Date().toISOString() });
+        const data = await res1.json();
+        if (data?.figure && typeof data.figure === 'object') {
+          updateAttributes({ figureJson: JSON.stringify(data.figure), snapshotAt: new Date().toISOString() });
           return;
         }
       }
@@ -1210,7 +1210,6 @@ function NotesRichEditor({
       />
 
       <div className="notes-editor">
-        {!disabled && <FormattingToolbar editor={editor} onSetLink={setLink} />}
         <EditorContent editor={editor} />
       </div>
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, String, Text, text
+from sqlalchemy import Column, DateTime, String, Text, text, Index, Boolean
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from ix.db.conn import Base
@@ -34,7 +34,22 @@ class NewsItem(Base):
     raw = Column(JSONB, nullable=False, default=dict)  # original payload for audit/reparse
 
     published_at = Column(DateTime, nullable=True, index=True)
+    is_deleted = Column(Boolean, nullable=False, default=False, index=True)
+    deleted_at = Column(DateTime, nullable=True)
     discovered_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# GIN index for JSONB symbols containment queries (@>)
+Index("ix_news_items_symbols_gin", NewsItem.symbols, postgresql_using="gin")
+
+# Full-Text Search Index for title and summary
+# Note: In a production environment with high volume, consider a stored TSVector column.
+# For now, we use a functional index for improved search performance on existing text.
+Index(
+    "ix_news_items_fts",
+    text("to_tsvector('english', coalesce(title, '') || ' ' || coalesce(summary, ''))"),
+    postgresql_using="gin",
+)
 
