@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
-from fastapi import Request
 from sqlalchemy.orm import Session, joinedload, load_only
 from sqlalchemy import or_
 from typing import List, Dict, Any
@@ -7,7 +6,7 @@ from ix.db.conn import get_session
 from ix.db.models import CustomChart as Chart
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-from ix.misc.auth import verify_token
+from ix.api.dependencies import get_optional_user
 from ix.misc.theme import chart_theme
 
 router = APIRouter()
@@ -46,32 +45,11 @@ def _theme_figure_for_delivery(figure: Any) -> Any:
     return chart_theme.apply_json(figure, mode="light")
 
 
-def _get_optional_user(request: Request) -> User | None:
-    auth = request.headers.get("authorization") or request.headers.get("Authorization")
-    token = None
-    if auth and auth.lower().startswith("bearer "):
-        token = auth.split(" ", 1)[1].strip()
-    if not token:
-        token = request.cookies.get("access_token")
-    if not token:
-        return None
-    payload = verify_token(token)
-    if not payload:
-        return None
-    email = payload.get("sub")
-    if not email:
-        return None
-    user = User.get_by_email(email)
-    if not user or getattr(user, "disabled", False):
-        return None
-    return user
-
-
 @router.get("/dashboard/summary", response_model=DashboardSummary)
 def get_dashboard_summary(
-    request: Request,
     response: Response,
     db: Session = Depends(get_session),
+    current_user: User | None = Depends(get_optional_user),
     include_figures: bool = False,
     include_code: bool = False,
 ):
@@ -82,8 +60,6 @@ def get_dashboard_summary(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-
-    current_user = _get_optional_user(request)
     is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
     current_uid = str(getattr(current_user, "id", "") or "") if current_user else None
     include_code_for_user = bool(include_code and is_admin)
@@ -171,7 +147,10 @@ def get_dashboard_summary(
 
 @router.get("/dashboard/charts/{chart_id}/figure")
 def get_chart_figure(
-    chart_id: str, request: Request, response: Response, db: Session = Depends(get_session)
+    chart_id: str,
+    response: Response,
+    db: Session = Depends(get_session),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """
     Returns the Plotly JSON figure for a specific custom chart.
@@ -194,7 +173,6 @@ def get_chart_figure(
         if not chart:
             raise HTTPException(status_code=404, detail="Chart not found")
 
-    current_user = _get_optional_user(request)
     is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
     current_uid = str(getattr(current_user, "id", "") or "") if current_user else ""
     is_owner_chart = bool(current_uid and str(getattr(chart, "created_by_user_id", "") or "") == current_uid)

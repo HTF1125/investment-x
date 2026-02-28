@@ -1,18 +1,26 @@
-from datetime import datetime
 from typing import Optional, List, Dict
-from enum import Enum
-import uuid
 import asyncio
-from threading import RLock
 import json
-from pydantic import BaseModel
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from ix.api.dependencies import get_current_user
+from ix.misc import get_logger
+
+logger = get_logger(__name__)
 from ix.db.models.user import User
 from ix.db.models.task_process import TaskProcess
-from ix.db.conn import Session, ensure_connection, conn
+from ix.db.conn import Session
+from ix.api.task_utils import (
+    ProcessStatus,
+    ProcessInfo,
+    SSE_SUBSCRIBERS,
+    start_process,
+    get_process as _get_process,
+    update_process,
+    _ensure_task_table,
+    _broadcast_task_event,
+)
 from ix.misc.task import (
     daily,
     send_data_reports,
@@ -21,50 +29,6 @@ from ix.misc.task import (
 )
 
 router = APIRouter()
-
-# ═══════════════════════════════════════════════════════════
-# Process Registry — unified task tracking
-# ═══════════════════════════════════════════════════════════
-
-
-class ProcessStatus(str, Enum):
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-class ProcessInfo(BaseModel):
-    id: str
-    name: str
-    status: ProcessStatus
-    start_time: str
-    end_time: Optional[str] = None
-    message: Optional[str] = None
-    progress: Optional[str] = None
-    user_id: Optional[str] = None
-
-
-REGISTRY_LOCK = RLock()
-SSE_SUBSCRIBERS: set[asyncio.Queue] = set()
-
-
-def _ensure_task_table():
-    """Create task_process table on demand (safe during rollout)."""
-    if not ensure_connection():
-        raise ConnectionError("Failed to establish database connection")
-    TaskProcess.__table__.create(bind=conn.engine, checkfirst=True)
-
-
-def _broadcast_task_event(event: str, pid: str):
-    payload = {"event": event, "task_id": pid, "ts": datetime.now().isoformat()}
-    stale = []
-    for q in list(SSE_SUBSCRIBERS):
-        try:
-            q.put_nowait(payload)
-        except Exception:
-            stale.append(q)
-    for q in stale:
-        SSE_SUBSCRIBERS.discard(q)
 
 
 def _is_admin_user(user: User) -> bool:
@@ -79,73 +43,6 @@ def _can_access_task(task_user_id: Optional[str], current_user: User) -> bool:
     if _is_admin_user(current_user):
         return True
     return bool(task_user_id and task_user_id == _current_user_id(current_user))
-
-
-def start_process(name: str, user_id: str = None) -> str:
-    """Register a new process as running. Returns process ID."""
-    pid = str(uuid.uuid4())
-    _ensure_task_table()
-    safe_user_id = user_id
-    if safe_user_id:
-        try:
-            uuid.UUID(str(safe_user_id))
-            safe_user_id = str(safe_user_id)
-        except Exception:
-            safe_user_id = None
-    with Session() as db:
-        db.add(
-            TaskProcess(
-                id=pid,
-                name=name,
-                status=ProcessStatus.RUNNING.value,
-                start_time=datetime.now(),
-                user_id=safe_user_id,
-                message="Started",
-            )
-        )
-    _broadcast_task_event("created", pid)
-    return pid
-
-
-def _get_process(pid: str) -> Optional[ProcessInfo]:
-    _ensure_task_table()
-    with Session() as db:
-        proc = db.query(TaskProcess).filter(TaskProcess.id == pid).first()
-        if not proc:
-            return None
-        return ProcessInfo(
-            id=pid,
-            name=proc.name,
-            status=ProcessStatus(proc.status),
-            start_time=proc.start_time.isoformat(),
-            end_time=proc.end_time.isoformat() if proc.end_time else None,
-            message=proc.message,
-            progress=proc.progress,
-            user_id=proc.user_id,
-        )
-
-
-def update_process(
-    pid: str,
-    status: ProcessStatus | None = None,
-    message: str | None = None,
-    progress: str | None = None,
-):
-    """Update a tracked process with new status, message, or progress."""
-    _ensure_task_table()
-    with Session() as db:
-        proc = db.query(TaskProcess).filter(TaskProcess.id == pid).first()
-        if not proc:
-            return
-        if status:
-            proc.status = status.value if isinstance(status, ProcessStatus) else status
-        if message:
-            proc.message = message
-        if progress is not None:
-            proc.progress = progress
-        if status in (ProcessStatus.COMPLETED, ProcessStatus.FAILED):
-            proc.end_time = datetime.now()
-    _broadcast_task_event("updated", pid)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -199,6 +96,7 @@ def _run_daily_update(user_id: str | None = None):
             progress=f"{total_tickers}/{total_tickers}",
         )
     except Exception as e:
+        logger.exception("Background task failed: %s", e)
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
@@ -216,6 +114,7 @@ def _run_send_reports(user_id: str | None = None):
             progress="3/3",
         )
     except Exception as e:
+        logger.exception("Background task failed: %s", e)
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
@@ -233,6 +132,7 @@ def _run_send_brief(user_id: str | None = None):
             progress="3/3",
         )
     except Exception as e:
+        logger.exception("Background task failed: %s", e)
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
@@ -264,6 +164,7 @@ async def _run_telegram_scrape(user_id: str | None = None):
             progress=f"{total_channels}/{total_channels}",
         )
     except Exception as e:
+        logger.exception("Background task failed: %s", e)
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
@@ -293,6 +194,7 @@ def _run_youtube_sync(user_id: str | None = None):
             progress="1/1",
         )
     except Exception as e:
+        logger.exception("Background task failed: %s", e)
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
@@ -326,6 +228,7 @@ def _run_news_scraping(user_id: str | None = None):
 
         update_process(pid, status=ProcessStatus.COMPLETED, message="News crawl completed.", progress=f"{total}/{total}")
     except Exception as e:
+        logger.exception("Background task failed: %s", e)
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
@@ -361,6 +264,7 @@ def _run_refresh_charts(pid: Optional[str] = None, user_id: str | None = None):
             progress=final_progress,
         )
     except Exception as e:
+        logger.exception("Background task failed: %s", e)
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
@@ -370,7 +274,7 @@ def _run_refresh_charts(pid: Optional[str] = None, user_id: str | None = None):
 
 
 @router.get("/task/processes", response_model=List[ProcessInfo])
-async def get_processes(current_user: User = Depends(get_current_user)):
+def get_processes(current_user: User = Depends(get_current_user)):
     """Get all tracked processes, sorted by start time desc (max 30)."""
     _ensure_task_table()
     current_uid = _current_user_id(current_user)
@@ -443,7 +347,7 @@ def _is_task_running(name_prefix: str, user_id: str | None = None) -> bool:
 
 
 @router.post("/task/process/start", response_model=Dict[str, str])
-async def start_client_process(
+def start_client_process(
     name: str,
     user_id: str = None,
     current_user: User = Depends(get_current_user),
@@ -457,7 +361,7 @@ async def start_client_process(
 
 
 @router.patch("/task/process/{pid}")
-async def update_client_process(
+def update_client_process(
     pid: str,
     status: Optional[ProcessStatus] = None,
     message: Optional[str] = None,
@@ -475,7 +379,7 @@ async def update_client_process(
 
 
 @router.delete("/task/process/{pid}")
-async def delete_client_process(pid: str, current_user: User = Depends(get_current_user)):
+def delete_client_process(pid: str, current_user: User = Depends(get_current_user)):
     """Delete a process from DB-backed task store."""
     proc = _get_process(pid)
     if not proc:
@@ -490,7 +394,7 @@ async def delete_client_process(pid: str, current_user: User = Depends(get_curre
 
 
 @router.post("/task/process/{pid}/dismiss")
-async def dismiss_process(pid: str, current_user: User = Depends(get_current_user)):
+def dismiss_process(pid: str, current_user: User = Depends(get_current_user)):
     """Dismiss a task by deleting it from persistent DB storage."""
     proc = _get_process(pid)
     if not proc:
@@ -505,7 +409,7 @@ async def dismiss_process(pid: str, current_user: User = Depends(get_current_use
 
 
 @router.post("/task/process/dismiss-completed")
-async def dismiss_completed_processes(current_user: User = Depends(get_current_user)):
+def dismiss_completed_processes(current_user: User = Depends(get_current_user)):
     """Clear all completed/failed tasks from persistent store."""
     _ensure_task_table()
     deleted_ids: list[str] = []
@@ -634,7 +538,7 @@ async def run_refresh_charts_task(
 
 # Legacy endpoint for backward compat
 @router.get("/task/status")
-async def get_task_status(current_user: User = Depends(get_current_user)):
+def get_task_status(current_user: User = Depends(get_current_user)):
     """Legacy status check — returns running state for current user's tasks."""
     current_uid = _current_user_id(current_user)
     daily_running = _is_task_running("Daily Data Update", user_id=current_uid)

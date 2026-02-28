@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileDown, Loader2, Check, Monitor } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
@@ -14,7 +14,7 @@ export default function Header() {
   const { token } = useAuth();
   const { theme } = useTheme();
   const isLight = theme === 'light';
-  
+
   // PDF State
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -23,8 +23,16 @@ export default function Header() {
   const [exportingHtml, setExportingHtml] = useState(false);
   const [exportHtmlStatus, setExportHtmlStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
+  // Timer refs for cleanup on unmount
+  const pdfTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const htmlTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
   useEffect(() => {
     setMounted(true);
+    return () => {
+      clearTimeout(pdfTimerRef.current);
+      clearTimeout(htmlTimerRef.current);
+    };
   }, []);
 
   const handleExportPDF = async () => {
@@ -55,10 +63,10 @@ export default function Header() {
       window.URL.revokeObjectURL(url);
       
       setExportStatus('success');
-      setTimeout(() => setExportStatus('idle'), 3000);
+      pdfTimerRef.current = setTimeout(() => setExportStatus('idle'), 3000);
     } catch {
       setExportStatus('error');
-      setTimeout(() => setExportStatus('idle'), 3000);
+      pdfTimerRef.current = setTimeout(() => setExportStatus('idle'), 3000);
     } finally {
       setExporting(false);
     }
@@ -92,10 +100,10 @@ export default function Header() {
       window.URL.revokeObjectURL(url);
       
       setExportHtmlStatus('success');
-      setTimeout(() => setExportHtmlStatus('idle'), 3000);
+      htmlTimerRef.current = setTimeout(() => setExportHtmlStatus('idle'), 3000);
     } catch {
       setExportHtmlStatus('error');
-      setTimeout(() => setExportHtmlStatus('idle'), 3000);
+      htmlTimerRef.current = setTimeout(() => setExportHtmlStatus('idle'), 3000);
     } finally {
       setExportingHtml(false);
     }

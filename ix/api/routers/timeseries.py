@@ -92,7 +92,7 @@ def _apply_timeseries_updates(ts: Timeseries, data: dict) -> None:
 
 
 @router.get("/timeseries", response_model=List[TimeseriesResponse])
-async def get_timeseries(
+def get_timeseries(
     limit: Optional[int] = Query(None, description="Limit number of results"),
     offset: int = Query(0, description="Offset for pagination"),
     search: Optional[str] = Query(
@@ -328,7 +328,7 @@ async def get_timeseries(
 
 
 @router.get("/timeseries/sources")
-async def get_timeseries_sources(
+def get_timeseries_sources(
     db: SessionType = Depends(get_db),
 ):
     """Return distinct source names for timeseries that have source_code set."""
@@ -358,7 +358,7 @@ _DOWNLOAD_FORMULA_TEMPLATE = (
 
 
 @router.get("/timeseries/download_template")
-async def download_template(
+def download_template(
     source: Optional[List[str]] = Query(
         None,
         description="Filter by source(s): Bloomberg, FactSet, Infomax (repeatable)",
@@ -694,7 +694,7 @@ def _run_upload_background_task(pid: str, contents: bytes):
 
 
 @router.post("/timeseries")
-async def create_or_update_timeseries_bulk(
+def create_or_update_timeseries_bulk(
     payload: List[TimeseriesCreate],
     db: SessionType = Depends(get_db),
 ):
@@ -814,7 +814,7 @@ async def create_or_update_timeseries_bulk(
 
 
 @router.put("/timeseries/{code}", response_model=TimeseriesResponse)
-async def update_timeseries(
+def update_timeseries(
     code: str, payload: TimeseriesUpdate, db: SessionType = Depends(get_db)
 ):
     """
@@ -881,7 +881,7 @@ async def update_timeseries(
 
 
 @router.post("/timeseries/{code}", response_model=TimeseriesResponse, status_code=201)
-async def create_timeseries(
+def create_timeseries(
     code: str, payload: TimeseriesCreate, db: SessionType = Depends(get_db)
 ):
     """
@@ -942,7 +942,7 @@ async def create_timeseries(
 
 
 @router.delete("/timeseries/{code}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_timeseries(
+def delete_timeseries(
     code: str,
     db: SessionType = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
@@ -974,7 +974,7 @@ async def delete_timeseries(
 
 
 @router.get("/timeseries/{timeseries_id}", response_model=TimeseriesResponse)
-async def get_timeseries_by_id(
+def get_timeseries_by_id(
     timeseries_id: str,
     db: SessionType = Depends(get_db),
 ):
@@ -1011,7 +1011,7 @@ async def get_timeseries_by_id(
 
 
 @router.get("/timeseries/code/{code}", response_model=TimeseriesResponse)
-async def get_timeseries_by_code(
+def get_timeseries_by_code(
     code: str,
     db: SessionType = Depends(get_db),
 ):
@@ -1050,7 +1050,7 @@ async def get_timeseries_by_code(
 
 
 @router.get("/timeseries/favorites")
-async def get_favorite_timeseries_data(
+def get_favorite_timeseries_data(
     start_date: Optional[str] = Query(None, description="Start date (ISO-8601)"),
     end_date: Optional[str] = Query(None, description="End date (ISO-8601)"),
     db: SessionType = Depends(get_db),
@@ -1592,7 +1592,7 @@ async def get_custom_timeseries_data(
 
 
 @router.post("/upload_data")
-async def upload_data(
+def upload_data(
     payload: TimeseriesDataUpload,
     db: SessionType = Depends(get_db),
 ):
@@ -1722,7 +1722,7 @@ async def upload_data(
 
 
 @router.post("/upload_data_columnar")
-async def upload_data_columnar(
+def upload_data_columnar(
     payload: TimeseriesColumnarUpload,
     db: SessionType = Depends(get_db),
 ):

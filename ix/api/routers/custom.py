@@ -31,21 +31,7 @@ from ix.api.dependencies import get_current_user
 from ix.misc import get_logger
 from ix.misc.theme import chart_theme
 
-# Import process manager functions (ensure no circular deps)
-try:
-    from ix.api.routers.task import start_process, update_process, ProcessStatus
-except ImportError:
-    # Use dummy functions if import fails (e.g. during circular import check)
-    def start_process(name, user_id=None):
-        return "dummy"
-
-    def update_process(pid, status=None, message=None, progress=None):
-        pass
-
-    class ProcessStatus:
-        RUNNING = "running"
-        COMPLETED = "completed"
-        FAILED = "failed"
+from ix.api.task_utils import start_process, update_process, ProcessStatus
 
 
 logger = get_logger(__name__)

@@ -43,11 +43,10 @@ def list_insights(
     """
     Returns a paginated list of research insights stored in the database.
     """
+    from sqlalchemy import or_
+    from sqlalchemy.exc import SQLAlchemyError
+
     try:
-        from sqlalchemy import or_
-
-        # defer is now imported at top level
-
         query = db.query(Insights).options(defer(Insights.pdf_content))
 
         if q:
@@ -62,8 +61,8 @@ def list_insights(
         total = query.count()
         results = query.offset(skip).limit(limit).all()
         return {"items": results, "total": total}
-    except Exception as e:
-        logger.error(f"Error listing insights: {e}")
+    except SQLAlchemyError as e:
+        logger.exception("Database error listing insights: %s", e)
         raise HTTPException(status_code=500, detail="Failed to retrieve insights")
 
 

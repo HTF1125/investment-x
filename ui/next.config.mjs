@@ -23,7 +23,6 @@ const nextConfig = {
         apiUrl = `http://${apiUrl}`;
     }
     
-    console.log(`[NextConfig] Using API URL: ${apiUrl}`);
     return [
       {
         source: '/api/:path*',

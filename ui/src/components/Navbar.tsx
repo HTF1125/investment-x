@@ -81,6 +81,9 @@ function UserMenu() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(v => !v)}
+        aria-label="User menu"
+        aria-haspopup="true"
+        aria-expanded={open}
         className={`flex items-center gap-1.5 h-7 pl-1 pr-2 rounded-lg transition-colors ${
           open ? 'bg-foreground/[0.07]' : 'hover:bg-foreground/[0.05]'
         }`}

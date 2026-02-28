@@ -68,6 +68,30 @@ def get_current_user(
     return user
 
 
+def get_optional_user(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
+) -> Optional[User]:
+    """
+    Dependency to get current user if authenticated, or None if not.
+    Does not raise on missing/invalid credentials.
+    """
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        return None
+    payload = verify_token(token)
+    if not payload:
+        return None
+    email: Optional[str] = payload.get("sub")
+    if not email:
+        return None
+    user = User.get_by_email(email)
+    if not user or getattr(user, "disabled", False):
+        return None
+    return user
+
+
 def get_current_admin_user(
     current_user: User = Depends(get_current_user),
 ) -> User:
