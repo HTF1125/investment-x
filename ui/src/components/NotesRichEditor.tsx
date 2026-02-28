@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, Extension, mergeAttributes } from '@tiptap/core';
 import { Editor } from '@tiptap/core';
 import {
   EditorContent,
@@ -40,6 +40,7 @@ import {
   BarChart2,
   Search,
   Clock,
+  Loader2,
   X,
   Bold,
   Italic,
@@ -47,7 +48,10 @@ import {
   Type,
   Undo2,
   Redo2,
+  Columns2,
+  Plus,
 } from 'lucide-react';
+import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import { applyChartTheme } from '@/lib/chartTheme';
 import { apiFetch } from '@/lib/api';
 
@@ -95,6 +99,7 @@ const SLASH_COMMANDS = [
   { id: 'image',          label: 'Image',         description: 'Upload an image',        icon: ImageIcon,   keywords: ['image', 'photo', 'img'] },
   { id: 'chart',          label: 'Chart',         description: 'Embed a chart snapshot', icon: BarChart2,   keywords: ['chart', 'graph', 'plot', 'visualization'] },
   { id: 'callout',        label: 'Callout',       description: 'Highlighted callout box', icon: Square,     keywords: ['callout', 'highlight', 'note', 'info', 'alert', 'box', 'tip'] },
+  { id: 'twoColumn',      label: '2 Columns',     description: 'Split into two columns',  icon: Columns2,   keywords: ['2col', '2column', 'columns', 'split', 'layout', 'two', 'column', 'side'] },
 ] as const;
 
 type SlashCommandId = (typeof SLASH_COMMANDS)[number]['id'];
@@ -322,6 +327,12 @@ function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, edit
     }
   }, [chartId, updateAttributes]);
 
+  // Auto-load snapshot on mount if none is stored yet
+  useEffect(() => {
+    if (!figureJson && !snapshotError) loadSnapshot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     return () => {
       resizeCleanupRef.current?.();
@@ -436,6 +447,16 @@ function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, edit
 
         {figureJson ? (
           <div ref={plotRef} style={{ width: '100%', height: chartHeight }} />
+        ) : snapshotLoading ? (
+          <div
+            style={{ height: chartHeight }}
+            className="relative flex flex-col items-center justify-center gap-2 rounded bg-foreground/[0.025] overflow-hidden"
+          >
+            {/* Shimmer sweep */}
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent" />
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/30" />
+            <span className="text-[10px] font-mono text-muted-foreground/30">Loading chart…</span>
+          </div>
         ) : (
           <div className="notes-chart-empty flex flex-col items-center gap-2">
             <span className="text-[11px] text-muted-foreground/50">
@@ -444,11 +465,10 @@ function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, edit
             {editor.isEditable && (
               <button
                 type="button"
-                disabled={snapshotLoading}
                 onClick={loadSnapshot}
-                className="px-2.5 py-1 text-[10px] rounded border border-border/50 text-muted-foreground hover:text-foreground hover:border-border transition-colors disabled:opacity-40"
+                className="px-2.5 py-1 text-[10px] rounded border border-border/50 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
               >
-                {snapshotLoading ? 'Loading…' : 'Load snapshot'}
+                {snapshotError ? 'Retry' : 'Load snapshot'}
               </button>
             )}
           </div>
@@ -525,6 +545,45 @@ const ChartBlock = Node.create({
 
   addNodeView() {
     return ReactNodeViewRenderer(ChartBlockNodeView);
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Two-column layout nodes
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ColumnNode = Node.create({
+  name: 'column',
+  content: 'block+',
+  isolating: true,
+  renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes({ 'data-column': '' }, HTMLAttributes), 0],
+  parseHTML: () => [{ tag: 'div[data-column]' }],
+});
+
+const TwoColumnBlock = Node.create({
+  name: 'twoColumnBlock',
+  group: 'block',
+  content: 'column{2}',
+  isolating: true,
+  renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes({ 'data-two-column': '' }, HTMLAttributes), 0],
+  parseHTML: () => [{ tag: 'div[data-two-column]' }],
+});
+
+// Always ensure an empty paragraph exists at the end (so you can always click below any block)
+const TrailingNode = Extension.create({
+  name: 'trailingNode',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('trailingNode'),
+        appendTransaction(_, __, state) {
+          const { doc, tr, schema } = state;
+          const last = doc.lastChild;
+          if (last?.type.name === 'paragraph' && !last.content.size) return null;
+          return tr.insert(doc.content.size, schema.nodes.paragraph.create());
+        },
+      }),
+    ];
   },
 });
 
@@ -912,6 +971,38 @@ function NotesRichEditor({
   const [slashMenu, setSlashMenu] = useState<{ query: string; top: number; left: number } | null>(null);
   const [chartPicker, setChartPicker] = useState<{ top: number; left: number } | null>(null);
   const [bubbleMenu, setBubbleMenu] = useState<{ top: number; left: number } | null>(null);
+  const [blockHandle, setBlockHandle] = useState<{ top: number; left: number; insertPos: number } | null>(null);
+  const blockHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleHideHandle = useCallback(() => {
+    if (blockHideTimerRef.current) clearTimeout(blockHideTimerRef.current);
+    blockHideTimerRef.current = setTimeout(() => setBlockHandle(null), 250);
+  }, []);
+  const cancelHideHandle = useCallback(() => {
+    if (blockHideTimerRef.current) { clearTimeout(blockHideTimerRef.current); blockHideTimerRef.current = null; }
+  }, []);
+
+  const handleEditorMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const ed = editorRef.current;
+    if (!ed || disabled) return;
+    const view = ed.view;
+    const containerRect = e.currentTarget.getBoundingClientRect();
+    const result = view.posAtCoords({ left: e.clientX, top: e.clientY });
+    if (!result) { scheduleHideHandle(); return; }
+    try {
+      const $pos = ed.state.doc.resolve(result.pos);
+      if ($pos.depth === 0) { scheduleHideHandle(); return; }
+      const blockStart = $pos.before(1);
+      const block = ed.state.doc.nodeAt(blockStart);
+      if (!block) { scheduleHideHandle(); return; }
+      cancelHideHandle();
+      setBlockHandle({
+        top: e.clientY,
+        left: containerRect.left, // button style adds its own negative offset
+        insertPos: blockStart + block.nodeSize,
+      });
+    } catch { scheduleHideHandle(); }
+  }, [disabled, scheduleHideHandle, cancelHideHandle]);
 
   const uploadAndInsertImages = useCallback(
     async (files: File[]) => {
@@ -930,50 +1021,27 @@ function NotesRichEditor({
     [onImageUpload]
   );
 
-  // Fetch the chart's current figure JSON and insert as a static snapshot block
-  const insertChartBlock = useCallback(async (chart: ChartItem) => {
+  // Insert chart block immediately — ChartBlockNodeView auto-loads the snapshot on mount
+  const insertChartBlock = useCallback((chart: ChartItem) => {
     const ed = editorRef.current;
     if (!ed) return;
 
-    // Capture positions before async op
     const { from } = ed.state.selection;
     const startPos = slashStartPosRef.current;
     slashStartPosRef.current = null;
     setSlashMenu(null);
     setChartPicker(null);
 
-    // Fetch point-in-time snapshot
-    let figureJson: string | null = null;
-    const snapshotAt = new Date().toISOString();
-    if (onFetchChartSnapshotRef.current) {
-      try {
-        const snapshot = await onFetchChartSnapshotRef.current(chart.id);
-        if (snapshot?.figure) figureJson = JSON.stringify(snapshot.figure);
-      } catch { /* insert without figure if fetch fails */ }
-    }
-
-    const attrs = {
-      chartId: chart.id,
-      chartName: chart.name || null,
-      figureJson,
-      snapshotAt,
-      chartHeight: 320,
-    };
-
-    const activeEd = editorRef.current;
-    if (!activeEd) return;
+    const attrs = { chartId: chart.id, chartName: chart.name || null, figureJson: null, snapshotAt: null, chartHeight: 320 };
 
     if (startPos !== null) {
       try {
-        activeEd.chain().focus()
-          .deleteRange({ from: startPos, to: from })
-          .insertContent({ type: 'chartBlock', attrs })
-          .run();
+        ed.chain().focus().deleteRange({ from: startPos, to: from }).insertContent({ type: 'chartBlock', attrs }).run();
       } catch {
-        activeEd.chain().focus().insertContent({ type: 'chartBlock', attrs }).run();
+        ed.chain().focus().insertContent({ type: 'chartBlock', attrs }).run();
       }
     } else {
-      activeEd.chain().focus().insertContent({ type: 'chartBlock', attrs }).run();
+      ed.chain().focus().insertContent({ type: 'chartBlock', attrs }).run();
     }
   }, []);
 
@@ -1008,6 +1076,15 @@ function NotesRichEditor({
       case 'horizontalRule': ed.chain().focus().setHorizontalRule().run(); break;
       case 'image':          fileInputRef.current?.click(); break;
       case 'callout':        ed.chain().focus().insertContent('<blockquote><p>💡 </p></blockquote><p></p>').run(); break;
+      case 'twoColumn':
+        ed.chain().focus().insertContent({
+          type: 'twoColumnBlock',
+          content: [
+            { type: 'column', content: [{ type: 'paragraph' }] },
+            { type: 'column', content: [{ type: 'paragraph' }] },
+          ],
+        }).run();
+        break;
     }
   }, []);
 
@@ -1033,6 +1110,9 @@ function NotesRichEditor({
       Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
       RichImage.configure({ allowBase64: false }),
       ChartBlock,
+      ColumnNode,
+      TwoColumnBlock,
+      TrailingNode,
       Placeholder.configure({
         placeholder: "Write here… type '/' for blocks, '/chart' to embed a chart snapshot.",
       }),
@@ -1086,6 +1166,29 @@ function NotesRichEditor({
     editorProps: {
       attributes: {
         class: `notes-editor-content px-0 py-1 focus:outline-none ${minHeightClassName}`,
+      },
+      handleKeyDown: (view, event) => {
+        if (event.key !== 'Tab') return false;
+        event.preventDefault();
+        const { state } = view;
+        const { selection } = state;
+        // Node selected (chart, image, hr) — move cursor to after it
+        if (selection instanceof NodeSelection) {
+          const endPos = selection.from + selection.node.nodeSize;
+          editorRef.current?.commands.focus(Math.min(endPos, state.doc.content.size));
+          return true;
+        }
+        const { $from } = selection;
+        // In list items — let StarterKit handle indentation
+        if ($from.node(-1)?.type.name === 'listItem') return false;
+        // In code blocks — insert a tab character
+        if ($from.parent.type.name === 'codeBlock') {
+          view.dispatch(state.tr.insertText('\t'));
+          return true;
+        }
+        // Default: insert 4 spaces
+        view.dispatch(state.tr.insertText('    '));
+        return true;
       },
       handlePaste: (_view, event) => {
         if (disabled) return false;
@@ -1209,9 +1312,40 @@ function NotesRichEditor({
         }}
       />
 
-      <div className="notes-editor">
+      <div
+        className="notes-editor"
+        onMouseMove={handleEditorMouseMove}
+        onMouseLeave={scheduleHideHandle}
+      >
         <EditorContent editor={editor} />
       </div>
+
+      {/* Block handle — add-block button that appears on hover */}
+      {blockHandle && !disabled && (
+        <div
+          style={{ position: 'fixed', top: blockHandle.top - 10, left: blockHandle.left - 28, zIndex: 200 }}
+          onMouseEnter={cancelHideHandle}
+          onMouseLeave={scheduleHideHandle}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const { insertPos } = blockHandle;
+              editor.chain()
+                .insertContentAt(insertPos, { type: 'paragraph' })
+                .setTextSelection(insertPos + 1)
+                .insertContent('/')
+                .run();
+              setBlockHandle(null);
+            }}
+            className="w-5 h-5 rounded border border-border/60 bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-border hover:bg-card transition-colors shadow-sm"
+            title="Add block below (opens block menu)"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        </div>
+      )}
 
       {/* Slash command palette */}
       {slashMenu && !disabled && (

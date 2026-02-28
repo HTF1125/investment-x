@@ -102,6 +102,23 @@ export default function TechnicalPage() {
   const [countdownFrom, setCountdownFrom] = useState(13);
   const [cooldown, setCooldown] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const plotContainerRef = useRef<HTMLDivElement>(null);
+  const plotGraphDivRef = useRef<HTMLElement | null>(null);
+
+  // Resize Plotly when the container changes size (sidebar toggle, etc.)
+  useEffect(() => {
+    const el = plotContainerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      const gd = plotGraphDivRef.current;
+      if (!gd || !gd.isConnected) return;
+      import('plotly.js-dist-min')
+        .then(({ default: Plotly }) => { (Plotly as any).Plots.resize(gd); })
+        .catch(() => {});
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Committed params — only update on Refresh
   const [params, setParams] = useState({
@@ -196,6 +213,10 @@ export default function TechnicalPage() {
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
       font: { ...(cloned.layout?.font || {}), color: fg, family: 'Inter, sans-serif' },
+      margin: {
+        ...(cloned.layout?.margin || {}),
+        b: Math.max((cloned.layout?.margin?.b ?? 0), 48),
+      },
       legend: {
         ...(cloned.layout?.legend || {}),
         orientation: 'h',
@@ -304,7 +325,7 @@ export default function TechnicalPage() {
         sidebarLabel="Watchlist"
         sidebarContent={sidebarContent}
       >
-        <div className="h-full min-h-0 p-3 flex gap-2">
+        <div className="h-full min-h-0 p-3 flex gap-2 max-w-screen-xl mx-auto w-full">
 
           {/* ── Chart (dominant area) ── */}
           <div className="flex-1 min-w-0 min-h-0 rounded-xl border border-border/60 bg-background flex flex-col overflow-hidden">
@@ -332,7 +353,7 @@ export default function TechnicalPage() {
               </div>
             </div>
 
-            <div className="flex-1 min-h-0">
+            <div ref={plotContainerRef} className="flex-1 min-h-0">
               {isLoading && (
                 <div className="h-full w-full flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -357,6 +378,7 @@ export default function TechnicalPage() {
                   }}
                   style={{ width: '100%', height: '100%' }}
                   useResizeHandler
+                  onInitialized={(_fig: any, gd: any) => { plotGraphDivRef.current = gd; }}
                 />
               )}
               {!isLoading && !cleanedFigure && !error && (

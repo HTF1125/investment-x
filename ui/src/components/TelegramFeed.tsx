@@ -17,7 +17,7 @@ interface NewsAggregateResponse {
   telegram_messages: TelegramMessage[];
 }
 
-export default function TelegramFeed() {
+export default function TelegramFeed({ embedded }: { embedded?: boolean } = {}) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -47,8 +47,12 @@ export default function TelegramFeed() {
     );
   }
 
+  const outer = embedded
+    ? 'h-full flex flex-col min-h-0 overflow-hidden'
+    : 'h-full border border-border/60 rounded-xl overflow-hidden bg-background flex flex-col min-h-0';
+
   return (
-    <section className="h-full border border-border/60 rounded-xl overflow-hidden bg-background flex flex-col min-h-0">
+    <section className={outer}>
       <div className="h-10 flex items-center justify-between px-3 border-b border-border/60 shrink-0">
         <div className="flex items-center gap-2">
           <MessageSquare className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />

@@ -39,7 +39,7 @@ function detectThemes(item: UnifiedNewsItem): string[] {
   return matched.length ? matched : ['General Market'];
 }
 
-export default function NewsFeed() {
+export default function NewsFeed({ embedded }: { embedded?: boolean }) {
   const [mounted, setMounted] = useState(false);
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
@@ -54,6 +54,7 @@ export default function NewsFeed() {
     queryFn: () => apiFetchJson<UnifiedNewsItem[]>('/api/news/items?limit=250'),
     staleTime: 60_000,
   });
+
   const allThemes = [...THEME_RULES.map((r) => r.theme), 'General Market'];
   const allSelected = selectedThemes.length === allThemes.length;
   const filterLabel = allSelected ? 'All' : `${selectedThemes.length}/${allThemes.length}`;
@@ -104,8 +105,12 @@ export default function NewsFeed() {
 
   if (rows.length === 0) return null;
 
+  const outer = embedded
+    ? 'h-full flex flex-col min-h-0 overflow-hidden'
+    : 'h-full border border-border/60 rounded-xl overflow-hidden bg-background flex flex-col min-h-0';
+
   return (
-    <section className="h-full border border-border/60 rounded-xl overflow-hidden bg-background flex flex-col min-h-0">
+    <section className={outer}>
       <div className="h-10 flex items-center justify-between px-3 border-b border-border/60 shrink-0">
         <div className="flex items-center gap-2">
           <Newspaper className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />

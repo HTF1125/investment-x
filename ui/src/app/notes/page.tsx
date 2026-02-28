@@ -65,6 +65,12 @@ interface CustomChartListItem {
   updated_at?: string | null;
 }
 
+interface NoteImageMeta {
+  id: string;
+  url: string;
+  filename?: string | null;
+}
+
 function sortNoteSummaries(notes: NoteSummary[]): NoteSummary[] {
   return [...notes].sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -323,7 +329,7 @@ function NoteEditorPane({
             Loading…
           </div>
         ) : (
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-4xl mx-auto">
             <input
               value={title}
               onChange={handleTitleChange}
@@ -440,8 +446,7 @@ export default function NotesPage() {
     if (!q) return notes;
     return notes.filter(
       (n) =>
-        (n.title || '').toLowerCase().includes(q) ||
-        (n.links || []).some((l) => l.toLowerCase().includes(q))
+        (n.title || '').toLowerCase().includes(q)
     );
   }, [notes, searchQuery]);
 
@@ -458,7 +463,7 @@ export default function NotesPage() {
   const headings = useMemo(() => extractHeadings(editorValue), [editorValue]);
   const wordCount = useMemo(() => countWords(editorValue), [editorValue]);
   const chartCount = useMemo(() => (editorValue.match(/data-chart-block/g) || []).length, [editorValue]);
-  const imageCount = noteQuery.data?.images?.length ?? 0;
+  const imageCount = noteQuery.data?.body?.filter(b => b.type === 'image').length ?? 0;
   const currentLinks = useMemo(() => extractLinks(editorValue), [editorValue]);
 
   const recomputeDirty = useCallback(() => {
@@ -840,7 +845,7 @@ export default function NotesPage() {
 
   const handleCreateNote = () => {
     setStatus(null);
-    createMutation.mutate({ title: 'New Report Draft', content: '', links: [], pinned: false });
+    createMutation.mutate({ title: 'New Report Draft', body: [{ id: crypto.randomUUID(), type: 'text', value: '' }], pinned: false });
   };
 
   const handleDeleteNote = () => {
@@ -950,23 +955,6 @@ export default function NotesPage() {
         topBarRight={
           <>
             <button
-              onClick={() => {
-                setDualPane((v) => {
-                  if (!v) { setSplitRatio(50); setFocusMode(false); }
-                  return !v;
-                });
-              }}
-              className={`h-6 px-2 rounded border text-[11px] font-medium inline-flex items-center gap-1.5 transition-colors ${
-                dualPane
-                  ? 'border-sky-500/40 bg-sky-500/[0.08] text-sky-400'
-                  : 'border-border/50 text-muted-foreground hover:text-foreground'
-              }`}
-              title={dualPane ? 'Close split view' : 'Open split view'}
-            >
-              <Columns2 className="w-3 h-3" />
-              {dualPane ? 'Exit Split' : 'Split'}
-            </button>
-            <button
               onClick={() => { setFocusMode((v) => !v); if (!focusMode) setDualPane(false); }}
               className="h-6 px-2 rounded border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
               title={focusMode ? 'Exit focus mode' : 'Focus mode'}
@@ -1001,7 +989,7 @@ export default function NotesPage() {
           </>
         }
       >
-        <div className="h-full min-h-0 p-3 md:p-4 overflow-hidden">
+        <div className="h-full min-h-0 p-3 md:p-4 overflow-hidden max-w-screen-xl mx-auto w-full">
           <div className="h-full min-h-0 rounded-xl border border-border/50 bg-background/70 overflow-hidden">
             <div className="h-full min-h-0 flex">
               <section
@@ -1024,7 +1012,7 @@ export default function NotesPage() {
                 )}
 
                 {selectedNoteId && (
-                  <div className="max-w-3xl mx-auto px-6 py-12 md:px-12 md:py-16">
+                  <div className="max-w-4xl mx-auto px-6 py-10 md:px-10 md:py-14">
                     <input
                       value={title}
                       onChange={handleTitleChange}

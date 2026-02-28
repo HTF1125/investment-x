@@ -66,7 +66,7 @@ export default function NavigatorShell({
       <section className="min-h-0 flex-1 flex flex-col bg-background overflow-hidden">
         {/* Top bar */}
         <div className="h-8 px-2.5 border-b border-border/50 flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-1.5">
+          <div className="shrink-0 flex items-center gap-1.5">
             <button
               onClick={onSidebarToggle}
               className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-colors"
@@ -78,7 +78,7 @@ export default function NavigatorShell({
             </button>
             {topBarLeft}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0">
             {topBarRight}
           </div>
         </div>

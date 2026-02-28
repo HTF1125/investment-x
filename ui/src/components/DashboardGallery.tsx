@@ -8,9 +8,11 @@ import {
   Search,
   Info, RefreshCw, LayoutGrid, Trash2,
   X, Save, RotateCcw, FileDown,
-  ChevronDown,
-  FoldVertical,
-  UnfoldVertical,
+  ChevronDown, ChevronLeft, ChevronRight,
+  FoldVertical, UnfoldVertical,
+  Square, Rows2, Link2, Link2Off,
+  LayoutTemplate, ScanLine, Terminal, MonitorPlay,
+  FileText, FileCode,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -18,9 +20,11 @@ import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { type ChartStyle, CHART_STYLE_LABELS } from '@/lib/chartTheme';
-import Chart from './Chart';
+import Chart, { type HoverPoint } from './Chart';
 import CustomChartEditor from './CustomChartEditor';
 import NavigatorShell from './NavigatorShell';
+
+type LayoutMode = 'grid' | 'single' | 'stack';
 
 interface ChartMeta {
   id: string;
@@ -54,6 +58,9 @@ interface ChartCardProps {
   onRankChange?: (id: string, newRank: number) => void;
   copySignal?: number;
   onOpenStudio?: (chartId: string | null) => void;
+  expanded?: boolean;
+  syncXRange?: [any, any] | null;
+  onXRangeChange?: (range: [any, any] | null) => void;
 }
 
 const ChartCard = React.memo(function ChartCard({
@@ -71,11 +78,15 @@ const ChartCard = React.memo(function ChartCard({
   isDeletingChart,
   onRankChange,
   copySignal,
-  onOpenStudio
+  onOpenStudio,
+  expanded = false,
+  syncXRange,
+  onXRangeChange,
 }: ChartCardProps) {
   // Viewport-based lazy rendering
   const cardRef = useRef<HTMLDivElement>(null);
   const [isInView, setIsInView] = useState(false);
+  const [hoverPoints, setHoverPoints] = useState<HoverPoint[] | null>(null);
 
   useEffect(() => {
     const el = cardRef.current;
@@ -143,7 +154,7 @@ const ChartCard = React.memo(function ChartCard({
       </span>
     );
 
-  const cardClassName = `bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col group transition-all duration-200 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/30 hover:border-border relative h-full min-h-[380px]`;
+  const cardClassName = `bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col group transition-all duration-200 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/30 hover:border-border relative ${expanded ? 'h-full' : 'h-full min-h-[380px]'}`;
 
   const [infoOpen, setInfoOpen] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
@@ -253,11 +264,31 @@ const ChartCard = React.memo(function ChartCard({
         </div>
       </div>
 
-      <div ref={cardRef} className="flex flex-col flex-1">
+      <div ref={cardRef} className="flex flex-col flex-1 min-h-0">
         {/* Chart Area — only render Plotly when in viewport */}
-        <div className="bg-background relative w-full p-3 h-[290px] min-h-[290px] flex-1">
+        <div className={`bg-background relative w-full p-3 ${expanded ? 'flex-1 min-h-0' : 'h-[290px] min-h-[290px]'}`}>
+          {/* Hover data overlay — Feature 2+3 */}
+          {hoverPoints && hoverPoints.length > 0 && (
+            <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-2 flex-wrap pointer-events-none">
+              {hoverPoints.map((pt, i) => (
+                <span key={i} className="text-[10px] font-mono bg-background/80 backdrop-blur-sm rounded px-1.5 py-0.5 text-foreground/80 border border-border/30">
+                  {pt.name && <span className="text-muted-foreground/60 mr-1">{pt.name}:</span>}
+                  {typeof pt.y === 'number' ? pt.y.toLocaleString(undefined, { maximumFractionDigits: 4 }) : String(pt.y)}
+                  {pt.x !== undefined && <span className="text-muted-foreground/50 ml-1">@ {String(pt.x)}</span>}
+                </span>
+              ))}
+            </div>
+          )}
           {isInView ? (
-            <Chart id={chart.id} initialFigure={chart.figure} chartStyle={(chart.chart_style ?? undefined) as ChartStyle | undefined} copySignal={copySignal} />
+            <Chart
+              id={chart.id}
+              initialFigure={chart.figure}
+              chartStyle={(chart.chart_style ?? undefined) as ChartStyle | undefined}
+              copySignal={copySignal}
+              onHoverData={setHoverPoints}
+              syncXRange={syncXRange}
+              onXRangeChange={onXRangeChange}
+            />
           ) : (
             <div className="relative h-full w-full overflow-hidden rounded-lg border border-border/20 bg-background/90">
               <motion.div
@@ -333,6 +364,30 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [collapsedSidebarCategories, setCollapsedSidebarCategories] = useState<Record<string, boolean>>({});
   const [activeStudioChartId, setActiveStudioChartId] = useState<string | null>(null);
+
+  // ── Layout mode (grid / single / stack) ──
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('dashboard-layout-mode') as LayoutMode) || 'grid' : 'grid'
+  );
+  const prevLayoutModeRef = useRef<LayoutMode>('grid');
+
+  // Single mode: index into filteredCharts
+  const [singleChartIdx, setSingleChartIdx] = useState(0);
+
+  // Stack mode
+  const [stackChartCount, setStackChartCount] = useState<2 | 3 | 4>(2);
+  const [stackHeights, setStackHeights] = useState<number[]>([50, 50]);
+  const isStackDragging = useRef(false);
+  const stackDragStartY = useRef(0);
+  const stackDragStartHeights = useRef<number[]>([]);
+  const stackDragPaneIdx = useRef(0);
+  const stackContainerRef = useRef<HTMLDivElement>(null);
+
+  // X-axis sync
+  const [syncXAxis, setSyncXAxis] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('dashboard-sync-xaxis') === 'true' : false
+  );
+  const [xSyncRange, setXSyncRange] = useState<[any, any] | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -344,6 +399,28 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     window.addEventListener('resize', syncSidebarForViewport);
     return () => window.removeEventListener('resize', syncSidebarForViewport);
   }, []);
+
+  // Persist layout mode
+  useEffect(() => {
+    if (typeof window !== 'undefined') localStorage.setItem('dashboard-layout-mode', layoutMode);
+  }, [layoutMode]);
+
+  // Reset stack heights when count changes
+  useEffect(() => {
+    const eq = 100 / stackChartCount;
+    setStackHeights(Array.from({ length: stackChartCount }, () => eq));
+  }, [stackChartCount]);
+
+  // Keep singleChartIdx in sync with scroll-spy quickJumpId (grid mode drives it)
+  useEffect(() => {
+    const idx = filteredCharts.findIndex(c => c.id === quickJumpId);
+    if (idx !== -1 && layoutMode !== 'single') setSingleChartIdx(idx);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickJumpId]); // intentionally narrow — only sync when quickJumpId changes
+
+  const handleXRangeChange = useCallback((range: [any, any] | null) => {
+    if (syncXAxis) setXSyncRange(range);
+  }, [syncXAxis]);
 
   // Initial Sync from URL
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -637,12 +714,103 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       // If we are in Studio view, switch the active chart via URL
       if (activeStudioChartId !== null) {
         router.push(`?chartId=${encodeURIComponent(chartId)}`, { scroll: false });
+      } else if (layoutMode === 'single') {
+        const idx = filteredCharts.findIndex(c => c.id === chartId);
+        if (idx !== -1) setSingleChartIdx(idx);
       } else {
         scrollToChart(chartId);
       }
     },
-    [scrollToChart, activeStudioChartId, router]
+    [scrollToChart, activeStudioChartId, router, layoutMode, filteredCharts]
   );
+
+  // ── Keyboard navigation ──
+  const keyNavHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    keyNavHandlerRef.current = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.contentEditable === 'true') return;
+      const len = filteredCharts.length;
+      if (!len) return;
+
+      if (e.key === 'j' || (e.key === 'ArrowDown' && layoutMode !== 'grid')) {
+        e.preventDefault();
+        const next = (singleChartIdx + 1) % len;
+        setSingleChartIdx(next);
+        setQuickJumpId(filteredCharts[next].id);
+        if (layoutMode === 'grid') scrollToChart(filteredCharts[next].id);
+      }
+      if (e.key === 'k' || (e.key === 'ArrowUp' && layoutMode !== 'grid')) {
+        e.preventDefault();
+        const prev = (singleChartIdx - 1 + len) % len;
+        setSingleChartIdx(prev);
+        setQuickJumpId(filteredCharts[prev].id);
+        if (layoutMode === 'grid') scrollToChart(filteredCharts[prev].id);
+      }
+      if (e.key === 'f') {
+        setLayoutMode(cur => {
+          if (cur === 'single') return prevLayoutModeRef.current;
+          prevLayoutModeRef.current = cur;
+          return 'single';
+        });
+      }
+      if (e.key === 'Escape') setLayoutMode('grid');
+    };
+  }, [filteredCharts, layoutMode, singleChartIdx, scrollToChart]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => keyNavHandlerRef.current(e);
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  // ── Stack drag-resize ──
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isStackDragging.current || !stackContainerRef.current) return;
+      const totalH = stackContainerRef.current.getBoundingClientRect().height;
+      if (totalH === 0) return;
+      const delta = ((e.clientY - stackDragStartY.current) / totalH) * 100;
+      const h = stackDragStartHeights.current;
+      const idx = stackDragPaneIdx.current;
+      const MIN = 15;
+      let above = Math.max(MIN, h[idx] + delta);
+      let below = Math.max(MIN, h[idx + 1] - delta);
+      // Re-clamp the other side if clamping caused overflow
+      if (above + below !== h[idx] + h[idx + 1]) {
+        const total = h[idx] + h[idx + 1];
+        above = Math.min(total - MIN, above);
+        below = total - above;
+      }
+      const newH = [...h];
+      newH[idx] = above;
+      newH[idx + 1] = below;
+      setStackHeights(newH);
+    };
+    const onUp = () => {
+      if (isStackDragging.current) {
+        isStackDragging.current = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  const startStackDrag = useCallback((idx: number, e: React.MouseEvent) => {
+    isStackDragging.current = true;
+    stackDragStartY.current = e.clientY;
+    stackDragStartHeights.current = [...stackHeights];
+    stackDragPaneIdx.current = idx;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  }, [stackHeights]);
 
 
   const isReorderEnabled = isOwner;
@@ -952,31 +1120,104 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         </>
       }
       sidebarContent={sidebarContent}
+      mainClassName={layoutMode !== 'grid' ? 'overflow-hidden' : ''}
       topBarRight={
         <>
-          <div className="flex items-center gap-0.5 border border-border/50 rounded p-0.5">
-            {(Object.keys(CHART_STYLE_LABELS) as ChartStyle[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => setChartStyle(s)}
-                className={`h-5 px-2 rounded text-[10px] font-medium transition-colors ${
-                  chartStyle === s
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
-                }`}
-              >
-                {CHART_STYLE_LABELS[s]}
-              </button>
-            ))}
-          </div>
+          {/* Group 1: Layout mode */}
+          {([
+            { mode: 'grid' as LayoutMode, icon: <LayoutGrid className="w-3 h-3" />, label: 'Grid' },
+            { mode: 'single' as LayoutMode, icon: <Square className="w-3 h-3" />, label: 'Single' },
+            { mode: 'stack' as LayoutMode, icon: <Rows2 className="w-3 h-3" />, label: 'Stack' },
+          ]).map(({ mode, icon, label }) => (
+            <button
+              key={mode}
+              onClick={() => setLayoutMode(mode)}
+              className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                layoutMode === mode
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+              }`}
+              title={`${label} mode`}
+            >
+              {icon}
+            </button>
+          ))}
+
+          {/* Stack count */}
+          {layoutMode === 'stack' && (
+            <>
+              <div className="w-px h-3 bg-border/40 mx-0.5" />
+              {([2, 3, 4] as const).map(n => (
+                <button
+                  key={n}
+                  onClick={() => setStackChartCount(n)}
+                  className={`w-5 h-5 rounded text-[10px] font-mono transition-colors ${
+                    stackChartCount === n
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+                  }`}
+                  title={`${n} panes`}
+                >
+                  {n}
+                </button>
+              ))}
+            </>
+          )}
+
+          <div className="w-px h-3 bg-border/40 mx-0.5" />
+
+          {/* Group 2: X-axis sync */}
+          <button
+            onClick={() => {
+              const next = !syncXAxis;
+              setSyncXAxis(next);
+              localStorage.setItem('dashboard-sync-xaxis', String(next));
+              if (!next) setXSyncRange(null);
+            }}
+            className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+              syncXAxis
+                ? 'text-sky-400 bg-sky-500/10 hover:bg-sky-500/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+            }`}
+            title={syncXAxis ? 'X-axis synced — click to disable' : 'Sync X-axis across charts'}
+          >
+            {syncXAxis ? <Link2 className="w-3 h-3" /> : <Link2Off className="w-3 h-3" />}
+          </button>
+
+          <div className="w-px h-3 bg-border/40 mx-0.5" />
+
+          {/* Group 3: Chart style */}
+          {([
+            { style: 'default' as ChartStyle, icon: <LayoutTemplate className="w-3 h-3" />, label: 'Default' },
+            { style: 'minimal' as ChartStyle, icon: <ScanLine className="w-3 h-3" />, label: 'Minimal' },
+            { style: 'terminal' as ChartStyle, icon: <Terminal className="w-3 h-3" />, label: 'Terminal' },
+            { style: 'presentation' as ChartStyle, icon: <MonitorPlay className="w-3 h-3" />, label: 'Presentation' },
+          ]).map(({ style, icon, label }) => (
+            <button
+              key={style}
+              onClick={() => setChartStyle(style)}
+              className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                chartStyle === style
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+              }`}
+              title={label}
+            >
+              {icon}
+            </button>
+          ))}
+
+          {(canRefreshAllCharts || isOwner) && <div className="w-px h-3 bg-border/40 mx-0.5" />}
+
+          {/* Group 4: Actions */}
           {canRefreshAllCharts && (
             <button
               onClick={handleRefreshAll}
               disabled={isRefreshing}
-              className="h-6 px-2 rounded border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors"
+              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-colors"
+              title="Refresh all charts"
             >
               <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Refresh
             </button>
           )}
           {isOwner && (
@@ -984,18 +1225,18 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
               <button
                 onClick={handleExportPDF}
                 disabled={exporting}
-                className="h-6 px-2 rounded border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors"
+                className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-colors"
+                title="Export PDF"
               >
-                <FileDown className={`w-3 h-3 ${exporting ? 'animate-pulse' : ''}`} />
-                PDF
+                <FileText className={`w-3 h-3 ${exporting ? 'animate-pulse' : ''}`} />
               </button>
               <button
                 onClick={handleExportHTML}
                 disabled={exportingHtml}
-                className="h-6 px-2 rounded border border-rose-500/35 bg-rose-500/10 text-[11px] font-medium text-rose-300 hover:bg-rose-500/18 inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors"
+                className="w-5 h-5 rounded flex items-center justify-center text-rose-400 hover:text-rose-300 hover:bg-rose-500/[0.08] disabled:opacity-40 transition-colors"
+                title="Export HTML"
               >
-                <FileDown className={`w-3 h-3 ${exportingHtml ? 'animate-pulse' : ''}`} />
-                HTML
+                <FileCode className={`w-3 h-3 ${exportingHtml ? 'animate-pulse' : ''}`} />
               </button>
             </>
           )}
@@ -1012,8 +1253,130 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             onClose={handleCloseStudio}
           />
         </div>
+      ) : layoutMode === 'single' ? (
+        /* ── SINGLE MODE ── */
+        <div className="h-full flex flex-col overflow-hidden">
+          {/* Chart nav strip */}
+          <div className="h-8 px-3 border-b border-border/40 shrink-0 flex items-center gap-2">
+            <button
+              onClick={() => {
+                const prev = (singleChartIdx - 1 + filteredCharts.length) % filteredCharts.length;
+                setSingleChartIdx(prev);
+                setQuickJumpId(filteredCharts[prev]?.id ?? '');
+              }}
+              disabled={filteredCharts.length <= 1}
+              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-xs font-medium text-foreground/80 flex-1 truncate text-center">
+              {filteredCharts[singleChartIdx]?.name ?? ''}
+            </span>
+            <button
+              onClick={() => {
+                const next = (singleChartIdx + 1) % filteredCharts.length;
+                setSingleChartIdx(next);
+                setQuickJumpId(filteredCharts[next]?.id ?? '');
+              }}
+              disabled={filteredCharts.length <= 1}
+              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Main chart */}
+          <div className="flex-1 min-h-0 p-3">
+            {filteredCharts[singleChartIdx] && (
+              <ChartCard
+                key={filteredCharts[singleChartIdx].id}
+                chart={filteredCharts[singleChartIdx]}
+                expanded={true}
+                canEdit={canEditChart(filteredCharts[singleChartIdx])}
+                canRefresh={canRefreshChart(filteredCharts[singleChartIdx])}
+                canDelete={canDeleteChart(filteredCharts[singleChartIdx])}
+                canManageVisibility={canManageVisibility}
+                isReorderable={false}
+                onTogglePdf={handleTogglePdf}
+                onRefreshChart={handleRefreshChart}
+                onCopyChart={handleCopyFromHeader}
+                onDeleteChart={handleDeleteChart}
+                isRefreshingChart={!!refreshingChartIds[filteredCharts[singleChartIdx].id]}
+                isDeletingChart={!!deletingChartIds[filteredCharts[singleChartIdx].id]}
+                onRankChange={handleRankChange}
+                copySignal={copySignals[filteredCharts[singleChartIdx].id] || 0}
+                onOpenStudio={handleOpenInStudio}
+                syncXRange={syncXAxis ? xSyncRange : null}
+                onXRangeChange={handleXRangeChange}
+              />
+            )}
+          </div>
+
+          {/* Thumbnail strip */}
+          <div className="h-[68px] border-t border-border/40 flex overflow-x-auto no-scrollbar shrink-0 bg-background/50">
+            {filteredCharts.map((chart, idx) => {
+              const isActive = idx === singleChartIdx;
+              return (
+                <button
+                  key={chart.id}
+                  onClick={() => { setSingleChartIdx(idx); setQuickJumpId(chart.id); }}
+                  className={`shrink-0 h-full px-3 flex flex-col justify-center items-start border-b-2 transition-all duration-100 text-left ${
+                    isActive
+                      ? 'border-sky-500 bg-sky-500/[0.07] text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
+                  }`}
+                  style={{ minWidth: '90px', maxWidth: '150px' }}
+                >
+                  <span className="text-[10px] font-medium leading-tight truncate w-full">{chart.name}</span>
+                  {chart.category && (
+                    <span className="text-[9px] text-muted-foreground/50 truncate w-full mt-0.5">{chart.category}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : layoutMode === 'stack' ? (
+        /* ── STACK MODE ── */
+        <div ref={stackContainerRef} className="h-full flex flex-col overflow-hidden">
+          {filteredCharts.slice(0, stackChartCount).map((chart, paneIdx) => (
+            <React.Fragment key={chart.id}>
+              <div
+                className="overflow-hidden flex flex-col"
+                style={{ height: `${stackHeights[paneIdx] ?? (100 / stackChartCount)}%` }}
+              >
+                <ChartCard
+                  chart={chart}
+                  expanded={true}
+                  canEdit={canEditChart(chart)}
+                  canRefresh={canRefreshChart(chart)}
+                  canDelete={canDeleteChart(chart)}
+                  canManageVisibility={canManageVisibility}
+                  isReorderable={false}
+                  onTogglePdf={handleTogglePdf}
+                  onRefreshChart={handleRefreshChart}
+                  onCopyChart={handleCopyFromHeader}
+                  onDeleteChart={handleDeleteChart}
+                  isRefreshingChart={!!refreshingChartIds[chart.id]}
+                  isDeletingChart={!!deletingChartIds[chart.id]}
+                  onRankChange={handleRankChange}
+                  copySignal={copySignals[chart.id] || 0}
+                  onOpenStudio={handleOpenInStudio}
+                  syncXRange={syncXAxis ? xSyncRange : null}
+                  onXRangeChange={handleXRangeChange}
+                />
+              </div>
+              {paneIdx < Math.min(stackChartCount, filteredCharts.length) - 1 && (
+                <div
+                  className="h-1 shrink-0 cursor-row-resize bg-border/40 hover:bg-sky-500/40 active:bg-sky-500/60 transition-colors"
+                  onMouseDown={(e) => startStackDrag(paneIdx, e)}
+                />
+              )}
+            </React.Fragment>
+          ))}
+        </div>
       ) : (
-        <div className="transition-all duration-300 p-4 md:p-6">
+        <div className="transition-all duration-300 p-4 md:p-6 max-w-screen-xl mx-auto w-full">
           {/* 🖼️ Grid Display — grouped by category */}
           <div className="space-y-8">
           {groupedCharts.map(({ category, charts: groupCharts }) => {
@@ -1062,6 +1425,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                           onRankChange={handleRankChange}
                           copySignal={copySignals[chart.id] || 0}
                           onOpenStudio={handleOpenInStudio}
+                          syncXRange={syncXAxis ? xSyncRange : null}
+                          onXRangeChange={handleXRangeChange}
                         />
                       </motion.div>
                     );

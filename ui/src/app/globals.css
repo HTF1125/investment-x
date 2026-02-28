@@ -464,3 +464,31 @@ h1, h2, h3, h4 {
   color: rgb(var(--primary));
   text-decoration: underline;
 }
+
+/* Two-column layout block */
+.notes-editor .ProseMirror [data-two-column] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.notes-editor .ProseMirror [data-column] {
+  min-width: 0;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgb(var(--border) / 0.35);
+  background: rgb(var(--card) / 0.3);
+}
+
+.notes-editor .ProseMirror [data-column] > * + * {
+  margin-top: 0.4em;
+}
+
+.notes-editor .ProseMirror [data-column] p {
+  margin: 0;
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(200%); }
+}

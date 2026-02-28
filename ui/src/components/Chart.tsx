@@ -44,15 +44,24 @@ const Plot = dynamic(() => import('react-plotly.js'), {
 
 import { motion, AnimatePresence } from 'framer-motion';
 
+export interface HoverPoint {
+  x: any;
+  y: any;
+  name: string;
+}
+
 interface ChartProps {
   id: string;
   initialFigure?: any;
   /** Per-chart style override. Falls back to global chartStyle from ThemeContext. */
   chartStyle?: ChartStyle;
   copySignal?: number;
+  onHoverData?: (points: HoverPoint[] | null) => void;
+  syncXRange?: [any, any] | null;
+  onXRangeChange?: (range: [any, any] | null) => void;
 }
 
-export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, copySignal = 0 }: ChartProps) {
+export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, copySignal = 0, onHoverData, syncXRange, onXRangeChange }: ChartProps) {
   const { theme, chartStyle: globalChartStyle } = useTheme();
   const effectiveStyle = chartStyleProp ?? globalChartStyle;
 
@@ -62,6 +71,8 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
   const [copyState, setCopyState] = React.useState<'idle' | 'copying' | 'done'>('idle');
   const [isVisible, setIsVisible] = React.useState(true);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  // Keep a ref to graphDiv so the ResizeObserver callback never goes stale
+  const graphDivRef = React.useRef<HTMLElement | null>(null);
 
   const safelyThemeFigure = React.useCallback(
     (figure: any) => {
@@ -93,10 +104,17 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
     enabled: !!id && isVisible,
   });
 
-  const figure = React.useMemo(
-    () => safelyThemeFigure(rawFigure),
-    [rawFigure, safelyThemeFigure]
-  );
+  const figure = React.useMemo(() => {
+    const themed = safelyThemeFigure(rawFigure);
+    if (!themed || !syncXRange) return themed;
+    return {
+      ...themed,
+      layout: {
+        ...themed.layout,
+        xaxis: { ...(themed.layout?.xaxis ?? {}), range: syncXRange, autorange: false },
+      },
+    };
+  }, [rawFigure, safelyThemeFigure, syncXRange]);
 
   React.useEffect(() => {
     const el = containerRef.current;
@@ -127,6 +145,27 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
   React.useEffect(() => {
     setPlotRenderError(null);
   }, [id, theme, effectiveStyle, rawFigure]);
+
+  // Keep ref current so the ResizeObserver callback is never stale
+  React.useEffect(() => {
+    graphDivRef.current = graphDiv;
+  }, [graphDiv]);
+
+  // Resize Plotly when the container element changes size (sidebar toggle, panel resize, etc.)
+  // useResizeHandler={true} only fires on window resize — this handles container-level changes.
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      const gd = graphDivRef.current;
+      if (!gd || !gd.isConnected) return;
+      import('plotly.js-dist-min')
+        .then(({ default: Plotly }) => { (Plotly as any).Plots.resize(gd); })
+        .catch(() => {});
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const handleCopy = React.useCallback(async () => {
     if (!graphDiv || copyState !== 'idle') return;
@@ -205,6 +244,18 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
                 useResizeHandler={true}
                 onInitialized={(_figure: Readonly<{data: any[]; layout: any; frames: any}>, gd: Readonly<HTMLElement>) => setGraphDiv(gd as HTMLElement)}
                 onError={(err: any) => setPlotRenderError(err?.message || 'Chart render failed.')}
+                onHover={(data: any) => onHoverData?.(
+                  data.points?.map((p: any) => ({ x: p.x, y: p.y, name: p.data?.name || '' })) ?? null
+                )}
+                onUnhover={() => onHoverData?.(null)}
+                onRelayout={(update: any) => {
+                  if (!onXRangeChange) return;
+                  if (update['xaxis.range[0]'] !== undefined) {
+                    onXRangeChange([update['xaxis.range[0]'], update['xaxis.range[1]']]);
+                  } else if (update['xaxis.autorange'] === true) {
+                    onXRangeChange(null);
+                  }
+                }}
               />
             ) : (
               <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-4 text-center">

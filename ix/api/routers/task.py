@@ -296,6 +296,39 @@ def _run_youtube_sync(user_id: str | None = None):
         update_process(pid, status=ProcessStatus.FAILED, message=str(e))
 
 
+def _run_news_scraping(user_id: str | None = None):
+    """Synchronous wrapper for RSS/Reddit/GDELT news scraping with task tracking."""
+    pid = start_process("News Scraping", user_id=user_id)
+    try:
+        update_process(pid, message="Starting news crawl...", progress="0/4")
+        from ix.task.news import RSS_FEEDS, SEC_RSS_FEEDS, REDDIT_FEEDS, GDELT_QUERIES
+        from ix.task.news import fetch_rss_feed, fetch_reddit_feed, fetch_gdelt
+
+        with Session() as db:
+            total = len(RSS_FEEDS) + len(SEC_RSS_FEEDS) + len(REDDIT_FEEDS) + len(GDELT_QUERIES)
+            done = 0
+            for name, url in RSS_FEEDS.items():
+                fetch_rss_feed(name, url, db)
+                done += 1
+                update_process(pid, message=f"Fetched {name}", progress=f"{done}/{total}")
+            for name, url in SEC_RSS_FEEDS.items():
+                fetch_rss_feed(name, url, db)
+                done += 1
+                update_process(pid, message=f"Fetched {name}", progress=f"{done}/{total}")
+            for name, url in REDDIT_FEEDS.items():
+                fetch_reddit_feed(name, url, db)
+                done += 1
+                update_process(pid, message=f"Fetched {name}", progress=f"{done}/{total}")
+            for q in GDELT_QUERIES:
+                fetch_gdelt(q, db)
+                done += 1
+                update_process(pid, message=f"Fetched GDELT", progress=f"{done}/{total}")
+
+        update_process(pid, status=ProcessStatus.COMPLETED, message="News crawl completed.", progress=f"{total}/{total}")
+    except Exception as e:
+        update_process(pid, status=ProcessStatus.FAILED, message=str(e))
+
+
 def _run_refresh_charts(pid: Optional[str] = None, user_id: str | None = None):
     """Synchronous wrapper for chart refresh."""
     if pid is None:
@@ -550,6 +583,20 @@ async def run_telegram_scrape_task(
 
     background_tasks.add_task(_run_telegram_scrape, current_uid)
     return {"message": "Telegram sync triggered", "status": "started"}
+
+
+@router.post("/task/news")
+async def run_news_scraping_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger RSS/Reddit/GDELT news crawl in background."""
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("News Scraping", user_id=current_uid):
+        raise HTTPException(status_code=400, detail="News scraping is already running")
+
+    background_tasks.add_task(_run_news_scraping, current_uid)
+    return {"message": "News scraping triggered", "status": "started"}
 
 
 @router.post("/task/youtube")

@@ -28,7 +28,7 @@ interface YouTubeIntelResponse {
   note?: string;
 }
 
-export default function YouTubeIntelFeed() {
+export default function YouTubeIntelFeed({ embedded }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
   const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const [manualUrl, setManualUrl] = useState('');
@@ -281,8 +281,12 @@ export default function YouTubeIntelFeed() {
     );
   }
 
+  const outer = embedded
+    ? 'h-full flex flex-col min-h-0 overflow-hidden'
+    : 'h-full border border-border/60 rounded-xl overflow-hidden bg-background flex flex-col min-h-0';
+
   return (
-    <section className="h-full border border-border/60 rounded-xl overflow-hidden bg-background flex flex-col min-h-0">
+    <section className={outer}>
       <div className="h-10 flex items-center justify-between px-3 border-b border-border/60 shrink-0 relative">
         <div className="flex items-center gap-2">
           <Youtube className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />

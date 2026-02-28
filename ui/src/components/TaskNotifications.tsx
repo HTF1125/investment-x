@@ -179,21 +179,29 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
         </AnimatePresence>
       )}
       
-      {(completedCount > 0 || failedCount > 0) && (
-        <button
-          onClick={handleClearAll}
-          className="w-full group flex items-center justify-center gap-1.5 py-1.5 mt-1 text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:bg-accent/10 rounded-md transition-all border border-transparent hover:border-border/50"
-        >
-          <Trash2 className="w-2.5 h-2.5 group-hover:text-rose-400 transition-colors" /> 
-          CLEAR COMPLETED
-        </button>
-      )}
     </div>
   );
 
+  const clearButton = (completedCount > 0 || failedCount > 0) ? (
+    <div className="border-t border-border/40 px-1.5 py-1.5">
+      <button
+        onClick={handleClearAll}
+        className="w-full group flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:bg-accent/10 rounded-md transition-all border border-transparent hover:border-border/50"
+      >
+        <Trash2 className="w-2.5 h-2.5 group-hover:text-rose-400 transition-colors" />
+        CLEAR COMPLETED
+      </button>
+    </div>
+  ) : null;
+
   // Embedded mode: just render the list inline
   if (embedded) {
-    return renderProcessList();
+    return (
+      <>
+        {renderProcessList()}
+        {clearButton}
+      </>
+    );
   }
 
   // Standalone mode: bell button + dropdown
@@ -260,6 +268,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
             </div>
 
             {renderProcessList()}
+            {clearButton}
           </motion.div>
         )}
       </AnimatePresence>

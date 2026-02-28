@@ -8,7 +8,7 @@ import TelegramFeed from '@/components/TelegramFeed';
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Radio, RefreshCw, Check, AlertTriangle, Youtube, MessageSquare } from 'lucide-react';
+import { Radio, RefreshCw, Check, AlertTriangle, Youtube, MessageSquare, Newspaper } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -22,54 +22,45 @@ interface ProcessInfo {
   progress?: string;
 }
 
+type IntelTab = 'news' | 'youtube' | 'telegram';
+
+const TABS: { id: IntelTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'news', label: 'News', icon: <Newspaper className="w-3.5 h-3.5" /> },
+  { id: 'youtube', label: 'YouTube', icon: <Youtube className="w-3.5 h-3.5" /> },
+  { id: 'telegram', label: 'Telegram', icon: <MessageSquare className="w-3.5 h-3.5" /> },
+];
+
 export default function IntelPage() {
   const { user } = useAuth();
   const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [intelTab, setIntelTab] = useState<IntelTab>('news');
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
-
-    const syncSidebarForViewport = () => {
-      if (window.innerWidth < 1024) setSidebarOpen(false);
-    };
-
-    syncSidebarForViewport();
-    window.addEventListener('resize', syncSidebarForViewport);
-    return () => window.removeEventListener('resize', syncSidebarForViewport);
+    const sync = () => { if (window.innerWidth < 1024) setSidebarOpen(false); };
+    sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
   }, []);
+
   const queryClient = useQueryClient();
-  const [syncing, setSyncing] = useState(false);
+  const [syncingNews, setSyncingNews] = useState(false);
   const [syncingYoutube, setSyncingYoutube] = useState(false);
-  const [intelTab, setIntelTab] = useState<'youtube' | 'telegram'>('youtube');
-  const [syncMsg, setSyncMsg] = useState('');
+  const [syncingTelegram, setSyncingTelegram] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error'; sticky?: boolean } | null>(null);
-  const youtubeRef = useRef<HTMLDivElement>(null);
-  const newsRef = useRef<HTMLDivElement>(null);
-  const telegramRef = useRef<HTMLDivElement>(null);
-  const lastTelegramProcessIdRef = useRef<string | null>(null);
-  const lastYoutubeProcessIdRef = useRef<string | null>(null);
+
+  const lastNewsIdRef = useRef<string | null>(null);
+  const lastYoutubeIdRef = useRef<string | null>(null);
+  const lastTelegramIdRef = useRef<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
-  }, []);
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
-  const flash = useCallback((
-    msg: string,
-    type: 'success' | 'error',
-    opts?: { sticky?: boolean; durationMs?: number }
-  ) => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = null;
-    }
-    const sticky = !!opts?.sticky;
-    setToast({ msg, type, sticky });
-    if (!sticky) {
-      toastTimerRef.current = setTimeout(() => setToast(null), opts?.durationMs ?? 4000);
-    }
+  const flash = useCallback((msg: string, type: 'success' | 'error', opts?: { sticky?: boolean }) => {
+    if (toastTimerRef.current) { clearTimeout(toastTimerRef.current); toastTimerRef.current = null; }
+    setToast({ msg, type, sticky: !!opts?.sticky });
+    if (!opts?.sticky) toastTimerRef.current = setTimeout(() => setToast(null), 4000);
   }, []);
 
   const { data: allProcesses = [] } = useQuery({
@@ -77,118 +68,80 @@ export default function IntelPage() {
     queryFn: () => apiFetchJson<ProcessInfo[]>('/api/task/processes'),
     refetchInterval: (query) => {
       const data = (query.state.data as ProcessInfo[] | undefined) ?? [];
-      const hasRunning = data.some((p) => p.status === 'running');
-      return hasRunning ? 2500 : 15000;
+      return data.some((p) => p.status === 'running') ? 2500 : 15000;
     },
     refetchIntervalInBackground: false,
     staleTime: 3000,
     enabled: isAdmin,
   });
 
-  const latestTelegram = allProcesses.find((p) => p.name.startsWith('Telegram Sync'));
+  const latestNews = allProcesses.find((p) => p.name.startsWith('News Scraping'));
   const latestYoutube = allProcesses.find((p) => p.name.startsWith('YouTube Sync'));
+  const latestTelegram = allProcesses.find((p) => p.name.startsWith('Telegram Sync'));
 
   useEffect(() => {
-    if (!latestTelegram) return;
-
-    setSyncMsg(latestTelegram.message || (latestTelegram.status === 'running' ? 'Syncing...' : 'Idle'));
-    setSyncing(latestTelegram.status === 'running');
-
-    if (
-      latestTelegram.id !== lastTelegramProcessIdRef.current &&
-      latestTelegram.status !== 'running'
-    ) {
-      if (latestTelegram.status === 'completed') {
-        flash('Channel sync completed!', 'success', { sticky: true });
+    if (!latestNews) return;
+    setSyncingNews(latestNews.status === 'running');
+    if (latestNews.id !== lastNewsIdRef.current && latestNews.status !== 'running') {
+      if (latestNews.status === 'completed') {
+        flash('News crawl completed!', 'success', { sticky: true });
         queryClient.invalidateQueries({ queryKey: ['news-feed'] });
-        queryClient.invalidateQueries({ queryKey: ['youtube-intel'] });
-      } else if (latestTelegram.status === 'failed') {
-        flash(latestTelegram.message || 'Channel sync failed', 'error', { sticky: true });
+      } else if (latestNews.status === 'failed') {
+        flash(latestNews.message || 'News crawl failed', 'error', { sticky: true });
       }
     }
-    lastTelegramProcessIdRef.current = latestTelegram.id;
-  }, [latestTelegram, flash, queryClient]);
+    lastNewsIdRef.current = latestNews.id;
+  }, [latestNews, flash, queryClient]);
 
   useEffect(() => {
     if (!latestYoutube) return;
     setSyncingYoutube(latestYoutube.status === 'running');
-
-    if (
-      latestYoutube.id !== lastYoutubeProcessIdRef.current &&
-      latestYoutube.status !== 'running'
-    ) {
+    if (latestYoutube.id !== lastYoutubeIdRef.current && latestYoutube.status !== 'running') {
       if (latestYoutube.status === 'completed') {
         flash('YouTube sync completed!', 'success', { sticky: true });
         queryClient.invalidateQueries({ queryKey: ['youtube-intel'] });
-        queryClient.invalidateQueries({ queryKey: ['news-feed'] });
       } else if (latestYoutube.status === 'failed') {
         flash(latestYoutube.message || 'YouTube sync failed', 'error', { sticky: true });
       }
     }
-    lastYoutubeProcessIdRef.current = latestYoutube.id;
+    lastYoutubeIdRef.current = latestYoutube.id;
   }, [latestYoutube, flash, queryClient]);
 
-  const handleScrape = async () => {
-    if (syncing) return;
-    setSyncMsg('Starting sync...');
-    
-    try {
-      const res = await apiFetch('/api/task/telegram', { method: 'POST' });
-      
-      if (!res.ok) {
-        const err = await res.json();
-        if (res.status !== 400 || err.detail !== "Telegram sync is already running") {
-             throw new Error(err.detail || 'Scrape failed');
-        }
+  useEffect(() => {
+    if (!latestTelegram) return;
+    setSyncingTelegram(latestTelegram.status === 'running');
+    if (latestTelegram.id !== lastTelegramIdRef.current && latestTelegram.status !== 'running') {
+      if (latestTelegram.status === 'completed') {
+        flash('Telegram sync completed!', 'success', { sticky: true });
+        queryClient.invalidateQueries({ queryKey: ['news-feed'] });
+      } else if (latestTelegram.status === 'failed') {
+        flash(latestTelegram.message || 'Telegram sync failed', 'error', { sticky: true });
       }
-      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
-      setSyncing(true);
+    }
+    lastTelegramIdRef.current = latestTelegram.id;
+  }, [latestTelegram, flash, queryClient]);
 
+  const triggerSync = async (endpoint: string, setSyncing: (v: boolean) => void, label: string) => {
+    setSyncing(true);
+    try {
+      const res = await apiFetch(endpoint, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.detail || `${label} failed`);
+      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
     } catch (err: any) {
-      flash(err.message, 'error');
+      flash(err.message || `${label} failed`, 'error');
       setSyncing(false);
     }
   };
 
-  const handleYouTubeSync = async () => {
-    if (syncingYoutube) return;
-    setSyncingYoutube(true);
-    try {
-      const res = await apiFetch('/api/task/youtube', { method: 'POST' });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.detail || 'YouTube sync failed');
-      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
-      flash('YouTube sync started.', 'success');
-    } catch (err: any) {
-      flash(err.message || 'YouTube sync failed', 'error');
-      setSyncingYoutube(false);
-    } finally {
-      // Keep running state controlled by task polling effect.
-    }
+  const handleActiveSync = () => {
+    if (intelTab === 'news') triggerSync('/api/task/news', setSyncingNews, 'News crawl');
+    else if (intelTab === 'youtube') triggerSync('/api/task/youtube', setSyncingYoutube, 'YouTube sync');
+    else triggerSync('/api/task/telegram', setSyncingTelegram, 'Telegram sync');
   };
 
-  const sidebarContent = (
-    <div className="min-h-0 flex-1 overflow-y-auto py-1 custom-scrollbar">
-      <button
-        onClick={() => youtubeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-        className="w-full text-left px-2.5 py-1.5 transition-colors border-l-2 border-l-transparent hover:bg-foreground/5 text-muted-foreground hover:text-foreground"
-      >
-        <div className="font-medium text-[12px] truncate leading-tight">YouTube Intel</div>
-      </button>
-      <button
-        onClick={() => newsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-        className="w-full text-left px-2.5 py-1.5 transition-colors border-l-2 border-l-transparent hover:bg-foreground/5 text-muted-foreground hover:text-foreground"
-      >
-        <div className="font-medium text-[12px] truncate leading-tight">Recent News</div>
-      </button>
-      <button
-        onClick={() => telegramRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-        className="w-full text-left px-2.5 py-1.5 transition-colors border-l-2 border-l-transparent hover:bg-foreground/5 text-muted-foreground hover:text-foreground"
-      >
-        <div className="font-medium text-[12px] truncate leading-tight">Telegram</div>
-      </button>
-    </div>
-  );
+  const activeIsSyncing = intelTab === 'news' ? syncingNews : intelTab === 'youtube' ? syncingYoutube : syncingTelegram;
+  const anySyncing = syncingNews || syncingYoutube || syncingTelegram;
 
   return (
     <AppShell hideFooter>
@@ -197,89 +150,71 @@ export default function IntelPage() {
         onSidebarToggle={() => setSidebarOpen((o) => !o)}
         sidebarIcon={<Radio className="w-3.5 h-3.5 text-sky-400" />}
         sidebarLabel="Intel"
-        sidebarContent={sidebarContent}
+        sidebarContent={
+          <div className="min-h-0 flex-1 overflow-y-auto py-1 custom-scrollbar">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setIntelTab(tab.id)}
+                className={`w-full text-left px-2.5 py-1.5 transition-colors border-l-2 hover:bg-foreground/5 ${
+                  intelTab === tab.id
+                    ? 'border-l-sky-400 text-foreground'
+                    : 'border-l-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <div className="font-medium text-[12px] truncate leading-tight">{tab.label}</div>
+              </button>
+            ))}
+          </div>
+        }
         topBarLeft={
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-foreground">Intel Feed</span>
-            <span className="text-muted-foreground/30 hidden lg:inline">·</span>
-            <span className="hidden lg:inline">YouTube + News + Telegram</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${syncing ? 'bg-sky-400 animate-pulse' : 'bg-emerald-500'}`} />
-            <span>{syncing ? (syncMsg || 'Syncing…') : 'Live'}</span>
+            <span className="text-muted-foreground/30">·</span>
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setIntelTab(tab.id)}
+                className={`h-6 px-2 rounded-md text-[11px] inline-flex items-center gap-1.5 border transition-colors ${
+                  intelTab === tab.id
+                    ? 'border-border bg-foreground/[0.06] text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
           </div>
         }
         topBarRight={
-          <>
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${anySyncing ? 'bg-sky-400 animate-pulse' : 'bg-emerald-500'}`} />
             {isAdmin && (
-              <>
-                <button
-                  onClick={handleScrape}
-                  disabled={syncing}
-                  className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
-                  title="Sync Telegram"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  onClick={handleYouTubeSync}
-                  disabled={syncingYoutube}
-                  className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
-                  title="Sync YouTube"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${syncingYoutube ? 'animate-spin' : ''}`} />
-                </button>
-              </>
+              <button
+                onClick={handleActiveSync}
+                disabled={activeIsSyncing}
+                title={`Sync ${TABS.find((t) => t.id === intelTab)?.label}`}
+                className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${activeIsSyncing ? 'animate-spin' : ''}`} />
+              </button>
             )}
-          </>
+          </div>
         }
         mainClassName="overflow-hidden"
       >
-        <div className="h-full p-3 md:p-4 overflow-hidden">
-          <div className="h-full min-h-0 grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-3">
-            <div ref={newsRef} className="min-h-0 h-full">
-              <NewsFeed />
-            </div>
-            <div className="min-h-0 h-full border border-border/60 rounded-xl bg-background overflow-hidden flex flex-col">
-              <div className="h-10 border-b border-border/60 px-2.5 flex items-center gap-1.5 shrink-0">
-                <button
-                  onClick={() => setIntelTab('youtube')}
-                  className={`h-7 px-2 rounded-md text-[11px] inline-flex items-center gap-1.5 border transition-colors ${
-                    intelTab === 'youtube'
-                      ? 'border-border bg-foreground/[0.06] text-foreground'
-                      : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
-                  }`}
-                >
-                  <Youtube className="w-3.5 h-3.5" />
-                  YouTube
-                </button>
-                <button
-                  onClick={() => setIntelTab('telegram')}
-                  className={`h-7 px-2 rounded-md text-[11px] inline-flex items-center gap-1.5 border transition-colors ${
-                    intelTab === 'telegram'
-                      ? 'border-border bg-foreground/[0.06] text-foreground'
-                      : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
-                  }`}
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  Telegram
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 p-2">
-                {intelTab === 'youtube' ? (
-                  <div ref={youtubeRef} className="min-h-0 h-full">
-                    <YouTubeIntelFeed />
-                  </div>
-                ) : (
-                  <div ref={telegramRef} className="min-h-0 h-full">
-                    <TelegramFeed />
-                  </div>
-                )}
-              </div>
+        <div className="h-full p-3 md:p-4 overflow-hidden max-w-screen-xl mx-auto w-full">
+          <div className="h-full min-h-0 border border-border/60 rounded-xl bg-background overflow-hidden">
+            <div className="min-h-0 h-full overflow-hidden">
+              {intelTab === 'news' && <NewsFeed embedded />}
+              {intelTab === 'youtube' && <YouTubeIntelFeed embedded />}
+              {intelTab === 'telegram' && <TelegramFeed embedded />}
             </div>
           </div>
         </div>
       </NavigatorShell>
 
-      {/* Toast Notification */}
       <AnimatePresence>
         {toast && (
           <motion.div
@@ -307,4 +242,3 @@ export default function IntelPage() {
     </AppShell>
   );
 }
-
