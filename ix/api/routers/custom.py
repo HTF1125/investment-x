@@ -18,7 +18,6 @@ from io import BytesIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib import utils
-from xhtml2pdf import pisa
 import textwrap
 import sys
 import threading
@@ -45,6 +44,11 @@ try:
 except Exception:
     _orjson = None
 
+try:
+    from xhtml2pdf import pisa
+except Exception:
+    pisa = None
+
 
 def _theme_figure_for_delivery(figure: Any) -> Any:
     """Apply canonical misc theme when returning figures to dashboard/studio clients."""
@@ -57,6 +61,14 @@ def _json_dumps_fast(payload: Any) -> str:
     if _orjson is not None:
         return _orjson.dumps(payload).decode("utf-8")
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+
+
+def _require_pdf_dependency() -> None:
+    if pisa is None:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF export dependency is unavailable. Install `xhtml2pdf` and redeploy.",
+        )
 
 
 def _compact_figure_for_html(figure: Any) -> Dict[str, Any]:
@@ -712,6 +724,7 @@ def generate_pdf_buffer(
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
     theme: str = "light",
 ) -> BytesIO:
+    _require_pdf_dependency()
     buffer = BytesIO()
 
     # 1. Pre-fetch/Filter valid charts
@@ -1158,6 +1171,8 @@ def export_custom_charts_pdf(
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
         logger.error(f"PDF Export failed: {e}")
         _update_process(pid, _ProcessStatus.FAILED, str(e))
         raise HTTPException(status_code=500, detail=str(e))

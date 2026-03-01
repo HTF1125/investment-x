@@ -467,12 +467,23 @@ def _clean_html_for_export(html: str) -> str:
     return text.strip()
 
 
-from xhtml2pdf import pisa
+try:
+    from xhtml2pdf import pisa
+except Exception:
+    pisa = None
 from ix.api.routers.custom import render_chart_image
 from ix.db.models import CustomChart
 
 
 from bs4 import BeautifulSoup
+
+
+def _require_pdf_dependency() -> None:
+    if pisa is None:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF export dependency is unavailable. Install `xhtml2pdf` and redeploy.",
+        )
 
 
 @router.get("/notes/{note_id}/export")
@@ -537,6 +548,7 @@ def export_note(
         )
 
     else:  # PDF via xhtml2pdf to preserve tables natively
+        _require_pdf_dependency()
         html_parts = []
         html_parts.append(
             f"""

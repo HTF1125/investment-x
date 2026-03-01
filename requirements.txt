@@ -27,5 +27,8 @@ markdown
 xlsxwriter
 openpyxl
 reportlab
+xhtml2pdf
 kaleido==0.2.1
 feedparser
+python-pptx
+beautifulsoup4
