@@ -472,6 +472,8 @@ try:
     app.include_router(insights.router, prefix="/api", tags=["Insights"])
     app.include_router(technical.router, prefix="/api", tags=["Technical"])
     app.include_router(notes.router, prefix="/api", tags=["Notes"])
+    from ix.api.routers import wartime
+    app.include_router(wartime.router, prefix="/api", tags=["Wartime"])
     from ix.api.routers import dashboard
 
     app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
