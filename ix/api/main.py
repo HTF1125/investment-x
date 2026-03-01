@@ -8,7 +8,7 @@ import pytz
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -35,27 +35,27 @@ scheduler = AsyncIOScheduler()
 def _ensure_user_role_schema() -> None:
     """Idempotent runtime migration for user role-based authorization."""
     if not ensure_connection():
-        logger.warning("Skipping user role schema check because DB connection is unavailable.")
+        logger.warning(
+            "Skipping user role schema check because DB connection is unavailable."
+        )
         return
 
     try:
         with conn.engine.begin() as db_conn:
-            user_table = db_conn.execute(text("SELECT to_regclass('public.\"user\"')")).scalar()
+            user_table = db_conn.execute(
+                text("SELECT to_regclass('public.\"user\"')")
+            ).scalar()
             if not user_table:
-                logger.info("Skipping user role schema check because user table does not exist.")
+                logger.info(
+                    "Skipping user role schema check because user table does not exist."
+                )
                 return
 
             db_conn.execute(
-                text(
-                    "ALTER TABLE \"user\" "
-                    "ADD COLUMN IF NOT EXISTS role VARCHAR(32)"
-                )
+                text('ALTER TABLE "user" ' "ADD COLUMN IF NOT EXISTS role VARCHAR(32)")
             )
             db_conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS ix_user_role "
-                    "ON \"user\" (role)"
-                )
+                text("CREATE INDEX IF NOT EXISTS ix_user_role " 'ON "user" (role)')
             )
             db_conn.execute(
                 text(
@@ -82,10 +82,7 @@ def _ensure_user_role_schema() -> None:
                 )
             )
             db_conn.execute(
-                text(
-                    "ALTER TABLE \"user\" "
-                    "ALTER COLUMN role SET DEFAULT 'general'"
-                )
+                text('ALTER TABLE "user" ' "ALTER COLUMN role SET DEFAULT 'general'")
             )
 
         logger.info("User role schema check completed.")
@@ -96,17 +93,23 @@ def _ensure_user_role_schema() -> None:
 def _ensure_charts_rename() -> None:
     """Idempotent runtime migration: rename table custom_charts→charts and column export_pdf→public."""
     if not ensure_connection():
-        logger.warning("Skipping charts rename migration because DB connection is unavailable.")
+        logger.warning(
+            "Skipping charts rename migration because DB connection is unavailable."
+        )
         return
 
     try:
         with conn.engine.begin() as db_conn:
-            old_table = db_conn.execute(text("SELECT to_regclass('public.custom_charts')")).scalar()
+            old_table = db_conn.execute(
+                text("SELECT to_regclass('public.custom_charts')")
+            ).scalar()
             if old_table:
                 db_conn.execute(text("ALTER TABLE custom_charts RENAME TO charts"))
                 logger.info("Renamed table custom_charts → charts.")
 
-            table_exists = db_conn.execute(text("SELECT to_regclass('public.charts')")).scalar()
+            table_exists = db_conn.execute(
+                text("SELECT to_regclass('public.charts')")
+            ).scalar()
             if not table_exists:
                 return
 
@@ -117,7 +120,9 @@ def _ensure_charts_rename() -> None:
                 )
             ).first()
             if col_exists:
-                db_conn.execute(text("ALTER TABLE charts RENAME COLUMN export_pdf TO public"))
+                db_conn.execute(
+                    text("ALTER TABLE charts RENAME COLUMN export_pdf TO public")
+                )
                 logger.info("Renamed column export_pdf → public in charts table.")
 
         logger.info("Charts rename migration completed.")
@@ -195,7 +200,9 @@ def _ensure_custom_chart_owner_schema() -> None:
 def _ensure_chart_style_column() -> None:
     """Idempotent runtime migration to add chart_style column to charts table."""
     if not ensure_connection():
-        logger.warning("Skipping chart_style column check because DB connection is unavailable.")
+        logger.warning(
+            "Skipping chart_style column check because DB connection is unavailable."
+        )
         return
 
     try:
@@ -219,7 +226,9 @@ def _ensure_chart_style_column() -> None:
 def _ensure_investment_notes_schema() -> None:
     """Idempotent runtime migration for investment notes tables."""
     if not ensure_connection():
-        logger.warning("Skipping investment notes schema check because DB connection is unavailable.")
+        logger.warning(
+            "Skipping investment notes schema check because DB connection is unavailable."
+        )
         return
 
     try:
@@ -235,7 +244,9 @@ def _ensure_investment_notes_schema() -> None:
 def _ensure_system_settings_schema() -> None:
     """Idempotent runtime migration for system_settings table."""
     if not ensure_connection():
-        logger.warning("Skipping system_settings schema check because DB connection is unavailable.")
+        logger.warning(
+            "Skipping system_settings schema check because DB connection is unavailable."
+        )
         return
 
     try:
@@ -250,7 +261,9 @@ def _ensure_system_settings_schema() -> None:
 def _ensure_news_items_schema() -> None:
     """Idempotent runtime migration for unified news_items table."""
     if not ensure_connection():
-        logger.warning("Skipping news_items schema check because DB connection is unavailable.")
+        logger.warning(
+            "Skipping news_items schema check because DB connection is unavailable."
+        )
         return
 
     try:
@@ -265,7 +278,9 @@ def _ensure_news_items_schema() -> None:
 def _drop_financial_news_table() -> None:
     """Idempotent runtime migration to remove legacy financial_news table."""
     if not ensure_connection():
-        logger.warning("Skipping financial_news drop because DB connection is unavailable.")
+        logger.warning(
+            "Skipping financial_news drop because DB connection is unavailable."
+        )
         return
 
     try:
@@ -361,6 +376,12 @@ async def db_session_middleware(request, call_next):
     try:
         response = await call_next(request)
         return response
+    except RuntimeError as e:
+        if str(e) == "No response returned.":
+            # Client disconnected mid-request, causing Starlette's BaseHTTPMiddleware to crash.
+            # We return a dummy 499 Client Closed Request to gracefully exit the middleware chain.
+            return Response(status_code=499)
+        raise
     finally:
         if conn.Session:
             conn.Session.remove()

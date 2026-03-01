@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { TaskProvider } from '@/components/TaskProvider';
 import QueryProvider from '@/providers/QueryProvider';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -34,11 +35,13 @@ export default function RootLayout({
       <body>
         <QueryProvider>
           <AuthProvider>
-            <ThemeProvider>
-              <ErrorBoundary>
-                {children}
-              </ErrorBoundary>
-            </ThemeProvider>
+            <TaskProvider>
+              <ThemeProvider>
+                <ErrorBoundary>
+                  {children}
+                </ErrorBoundary>
+              </ThemeProvider>
+            </TaskProvider>
           </AuthProvider>
         </QueryProvider>
       </body>

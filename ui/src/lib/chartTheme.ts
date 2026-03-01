@@ -211,6 +211,28 @@ function sanitizeAxisRange(axis: any) {
   if (!isValid) {
     delete axis.range;
     axis.autorange = true;
+  } else if (axis.type === 'date') {
+    // PAD RIGHT BY 10%
+    const tStart = Date.parse(String(start));
+    let tEnd = Date.parse(String(end));
+    
+    // Reverse axes sometimes have end before start in Plotly
+    const isReversed = tStart > tEnd;
+    const dur = Math.abs(tEnd - tStart);
+    const pad = dur * 0.10;
+
+    if (isReversed) {
+      tEnd -= pad;
+    } else {
+      tEnd += pad;
+    }
+    
+    // We must format back to Plotly's expected string representation
+    // Using simple ISO string works universally for Plotly datetime
+    axis.range = [
+        new Date(tStart).toISOString(),
+        new Date(tEnd).toISOString()
+    ];
   }
 }
 
@@ -250,6 +272,7 @@ export function applyChartTheme(
     family: style.fontFamily,
   };
   cleaned.layout.hovermode = 'x';
+  cleaned.layout.dragmode = 'pan';
   cleaned.layout.title = {
     ...(cleaned.layout.title || {}),
     x: 0.01,
@@ -259,7 +282,7 @@ export function applyChartTheme(
     font: {
       ...(cleaned.layout.title?.font || {}),
       size: style.titleFontSize,
-      color: theme === 'light' ? '#000000' : tokens.text,
+      color: tokens.text,
     },
   };
 
@@ -269,7 +292,7 @@ export function applyChartTheme(
       font: {
         ...(annotation?.font || {}),
         size: style.baseFontSize,
-        color: theme === 'light' ? '#000000' : tokens.text,
+        color: tokens.text,
       },
     }));
   }

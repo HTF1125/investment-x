@@ -47,6 +47,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 export interface HoverPoint {
   x: any;
   y: any;
+  z?: any;
+  value?: any;
+  text?: any;
   name: string;
 }
 
@@ -158,7 +161,8 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
     if (!el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
       const gd = graphDivRef.current;
-      if (!gd || !gd.isConnected) return;
+      // Plotly crashes if `resize()` is called on an unmounted or hidden container
+      if (!gd || !gd.isConnected || gd.clientHeight === 0 || gd.clientWidth === 0) return;
       import('plotly.js-dist-min')
         .then(({ default: Plotly }) => { (Plotly as any).Plots.resize(gd); })
         .catch(() => {});
@@ -197,6 +201,53 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
     }
   }, [copySignal, handleCopy]);
 
+  const plotLayout = React.useMemo(() => figure ? {
+    ...figure.layout,
+    autosize: true,
+    dragmode: 'pan'
+  } : {}, [figure?.layout]);
+
+  const plotConfig = React.useMemo(() => ({
+    responsive: true,
+    displayModeBar: false,
+    displaylogo: false,
+    scrollZoom: true,
+  }), []);
+
+  const plotStyle = React.useMemo(() => ({ width: '100%', height: '100%' }), []);
+
+  const handleInitialized = React.useCallback(
+    (_figure: any, gd: HTMLElement) => setGraphDiv(gd),
+    []
+  );
+
+  const handleError = React.useCallback(
+    (err: any) => setPlotRenderError(err?.message || 'Chart render failed.'),
+    []
+  );
+
+  const handleHover = React.useCallback(
+    (data: any) => onHoverData?.(data.points?.map((p: any) => ({ x: p.x, y: p.y, z: p.z, value: p.value, text: p.text, name: p.data?.name || '' })) ?? null),
+    [onHoverData]
+  );
+
+  const handleUnhover = React.useCallback(
+    () => onHoverData?.(null),
+    [onHoverData]
+  );
+
+  const handleRelayout = React.useCallback(
+    (update: any) => {
+      if (!onXRangeChange) return;
+      if (update['xaxis.range[0]'] !== undefined) {
+        onXRangeChange([update['xaxis.range[0]'], update['xaxis.range[1]']]);
+      } else if (update['xaxis.autorange'] === true) {
+        onXRangeChange(null);
+      }
+    },
+    [onXRangeChange]
+  );
+
   if (!isVisible) {
     return (
       <div ref={containerRef} className="h-[290px] w-full">
@@ -231,31 +282,14 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
               <Plot
                 key={`${id}-${theme}-${effectiveStyle}-${plotRetryNonce}`}
                 data={figure.data}
-                layout={{
-                  ...figure.layout,
-                  autosize: true
-                }}
-                config={{
-                  responsive: true,
-                  displayModeBar: false,
-                  displaylogo: false,
-                }}
-                style={{ width: '100%', height: '100%' }}
-                useResizeHandler={true}
-                onInitialized={(_figure: Readonly<{data: any[]; layout: any; frames: any}>, gd: Readonly<HTMLElement>) => setGraphDiv(gd as HTMLElement)}
-                onError={(err: any) => setPlotRenderError(err?.message || 'Chart render failed.')}
-                onHover={(data: any) => onHoverData?.(
-                  data.points?.map((p: any) => ({ x: p.x, y: p.y, name: p.data?.name || '' })) ?? null
-                )}
-                onUnhover={() => onHoverData?.(null)}
-                onRelayout={(update: any) => {
-                  if (!onXRangeChange) return;
-                  if (update['xaxis.range[0]'] !== undefined) {
-                    onXRangeChange([update['xaxis.range[0]'], update['xaxis.range[1]']]);
-                  } else if (update['xaxis.autorange'] === true) {
-                    onXRangeChange(null);
-                  }
-                }}
+                layout={plotLayout}
+                config={plotConfig}
+                style={plotStyle}
+                onInitialized={handleInitialized as any}
+                onError={handleError}
+                onHover={handleHover}
+                onUnhover={handleUnhover}
+                onRelayout={handleRelayout}
               />
             ) : (
               <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-4 text-center">

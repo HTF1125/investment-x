@@ -13,18 +13,24 @@ interface NavigatorShellProps {
   sidebarHeaderActions?: ReactNode;
   /** Full body of the sidebar below the header (search + list, etc.) */
   sidebarContent: ReactNode;
+  sidebarClassName?: string;
+  sidebarOpenWidthClassName?: string;
+  sidebarHeaderClassName?: string;
 
   // Top bar (in main area, right of sidebar)
   /** Content placed after the sidebar toggle button on the left */
   topBarLeft?: ReactNode;
   /** Action buttons on the right side of the top bar */
   topBarRight?: ReactNode;
+  topBarClassName?: string;
 
   // Main content
   children: ReactNode;
   /** Optional ref forwarded to the main scrollable element */
   mainScrollRef?: RefObject<HTMLElement>;
   mainClassName?: string;
+  shellClassName?: string;
+  mainSectionClassName?: string;
 }
 
 export default function NavigatorShell({
@@ -34,22 +40,28 @@ export default function NavigatorShell({
   sidebarLabel,
   sidebarHeaderActions,
   sidebarContent,
+  sidebarClassName = '',
+  sidebarOpenWidthClassName = 'w-[190px]',
+  sidebarHeaderClassName = '',
   topBarLeft,
   topBarRight,
+  topBarClassName = '',
   children,
   mainScrollRef,
   mainClassName = '',
+  shellClassName = '',
+  mainSectionClassName = '',
 }: NavigatorShellProps) {
   return (
-    <div className="h-[calc(100vh-40px)] flex overflow-hidden">
+    <div className={`h-[calc(100vh-40px)] flex overflow-hidden ${shellClassName}`}>
       {/* ── Sidebar ── */}
       <aside
         className={`shrink-0 transition-all duration-200 overflow-hidden border-r border-border/50 bg-card/20 flex flex-col ${
-          sidebarOpen ? 'w-[190px]' : 'w-0'
-        }`}
+          sidebarOpen ? sidebarOpenWidthClassName : 'w-0'
+        } ${sidebarClassName}`}
       >
         {/* Header */}
-        <div className="h-8 px-2.5 border-b border-border/50 flex items-center justify-between shrink-0">
+        <div className={`h-8 px-2.5 border-b border-border/50 flex items-center justify-between shrink-0 ${sidebarHeaderClassName}`}>
           <div className="text-[11px] font-semibold tracking-wide flex items-center gap-1.5 text-muted-foreground">
             {sidebarIcon}
             {sidebarLabel}
@@ -63,9 +75,9 @@ export default function NavigatorShell({
       </aside>
 
       {/* ── Main area ── */}
-      <section className="min-h-0 flex-1 flex flex-col bg-background overflow-hidden">
+      <section className={`min-h-0 flex-1 flex flex-col bg-background overflow-hidden ${mainSectionClassName}`}>
         {/* Top bar */}
-        <div className="h-8 px-2.5 border-b border-border/50 flex items-center justify-between gap-2 shrink-0">
+        <div className={`h-8 px-2.5 border-b border-border/50 flex items-center justify-between gap-2 shrink-0 ${topBarClassName}`}>
           <div className="shrink-0 flex items-center gap-1.5">
             <button
               onClick={onSidebarToggle}

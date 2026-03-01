@@ -96,7 +96,8 @@ def get_timeseries(
     limit: Optional[int] = Query(None, description="Limit number of results"),
     offset: int = Query(0, description="Offset for pagination"),
     search: Optional[str] = Query(
-        None, description="Search by code/name/source/category/provider/asset class/country"
+        None,
+        description="Search by code/name/source/category/provider/asset class/country",
     ),
     category: Optional[str] = Query(None, description="Filter by category"),
     asset_class: Optional[str] = Query(None, description="Filter by asset class"),
@@ -418,7 +419,9 @@ def download_template(
     code_font = Font(name="Consolas", size=9, color="000000", bold=True)
     formula_font = Font(name="Consolas", size=8, color="000000", italic=True)
     date_font = Font(name="Consolas", size=9, color="000000")
-    black_fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
+    black_fill = PatternFill(
+        start_color="000000", end_color="000000", fill_type="solid"
+    )
 
     # Generate dates: start from end_date + 2, descending to start_date
     date_top = end_dt + pd.DateOffset(days=2)
@@ -504,7 +507,9 @@ def download_template(
         # Column widths
         ws.column_dimensions["A"].width = 16
         for col_idx in range(2, len(ts_list) + 2):
-            ws.column_dimensions[ws.cell(row=2, column=col_idx).column_letter].width = 14
+            ws.column_dimensions[ws.cell(row=2, column=col_idx).column_letter].width = (
+                14
+            )
 
     # Save to buffer
     buffer = io.BytesIO()
@@ -720,21 +725,33 @@ def create_or_update_timeseries_bulk(
     created_codes = []
     errors = []
 
+    # Pre-fetch existing timeseries
+    payload_ids = [str(ts.id) for ts in payload if ts.id]
+    payload_codes = [ts.code for ts in payload if ts.code]
+
+    existing_by_id = {}
+    if payload_ids:
+        for ts in db.query(Timeseries).filter(Timeseries.id.in_(payload_ids)).all():
+            existing_by_id[str(ts.id)] = ts
+
+    existing_by_code = {}
+    if payload_codes:
+        for ts in db.query(Timeseries).filter(Timeseries.code.in_(payload_codes)).all():
+            existing_by_code[str(ts.code)] = ts
+
     for ts_data in payload:
         try:
             ts = None
 
             # If ID is provided, try to find by ID first
             if ts_data.id:
-                ts = db.query(Timeseries).filter(Timeseries.id == ts_data.id).first()
+                ts = existing_by_id.get(str(ts_data.id))
                 if ts:
-                    updated_codes.append(ts.code if ts.code else ts_data.id)
+                    updated_codes.append(ts.code if ts.code else str(ts_data.id))
 
             # If not found by ID, try to find by code
             if ts is None and ts_data.code:
-                ts = (
-                    db.query(Timeseries).filter(Timeseries.code == ts_data.code).first()
-                )
+                ts = existing_by_code.get(str(ts_data.code))
                 if ts:
                     updated_codes.append(ts_data.code)
 
@@ -748,7 +765,9 @@ def create_or_update_timeseries_bulk(
                 # Create new timeseries
                 ts = Timeseries(code=ts_data.code)
                 db.add(ts)
-                db.flush()
+                existing_by_code[str(ts_data.code)] = (
+                    ts  # Register for subsequent lookups
+                )
                 created_codes.append(ts_data.code)
 
             # Update fields
@@ -789,14 +808,26 @@ def create_or_update_timeseries_bulk(
             if ts_data.favorite is not None:
                 ts.favorite = ts_data.favorite
 
-            db.commit()
+            # We use a nested transaction (SAVEPOINT) to safely catch individual loop errors
+            # without breaking the entire batch transaction.
+            try:
+                with db.begin_nested():
+                    db.flush()
+            except Exception as nested_e:
+                raise nested_e
 
         except Exception as e:
             identifier = ts_data.id or ts_data.code or "unknown"
             logger.error(f"Error updating timeseries {identifier}: {e}")
             errors.append(f"Error updating {identifier}: {str(e)}")
-            db.rollback()
             continue
+
+    try:
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error committing bulk update: {e}")
+        db.rollback()
+        errors.append(f"Transaction failed: {str(e)}")
 
     response = {
         "message": f"Successfully processed {len(payload)} timeseries objects.",
@@ -1548,41 +1579,43 @@ async def get_custom_timeseries_data(
     try:
         codes = await _parse_codes_from_request(request)
         logger.debug(f"Processing {len(codes)} codes: {codes}")
-        series_list = []
 
-        # Process each code one by one
-        for code in codes:
-            try:
-                # First, try to find in Timeseries table
-                ts = (
-                    db.query(Timeseries)
-                    .options(joinedload(Timeseries.data_record))
-                    .filter(Timeseries.code == code)
-                    .first()
+        def _process_all_codes_sync():
+            series_list = []
+            for code in codes:
+                try:
+                    ts = (
+                        db.query(Timeseries)
+                        .options(joinedload(Timeseries.data_record))
+                        .filter(Timeseries.code == code)
+                        .first()
+                    )
+
+                    if ts:
+                        ts_data = _process_database_timeseries(ts, db)
+                        if ts_data is not None:
+                            series_list.append(ts_data)
+                    else:
+                        evaluated_series = _evaluate_expression(
+                            code, start_date, end_date
+                        )
+                        series_list.extend(evaluated_series)
+                except Exception as e:
+                    logger.warning(f"Error processing custom timeseries {code}: {e}")
+                    continue
+
+            if series_list:
+                df = pd.concat(series_list, axis=1)
+                return _format_dataframe_response(df, series_list, start_date, end_date)
+            else:
+                return Response(
+                    content=json.dumps({"Date": []}, ensure_ascii=False),
+                    media_type="application/json",
                 )
 
-                if ts:
-                    # Found in database - use database data
-                    ts_data = _process_database_timeseries(ts, db)
-                    if ts_data is not None:
-                        series_list.append(ts_data)
-                else:
-                    # Not found in database - try to evaluate as expression
-                    evaluated_series = _evaluate_expression(code, start_date, end_date)
-                    series_list.extend(evaluated_series)
-            except Exception as e:
-                logger.warning(f"Error processing custom timeseries {code}: {e}")
-                continue
+        import asyncio
 
-        # Concatenate all series into a DataFrame
-        if series_list:
-            df = pd.concat(series_list, axis=1)
-            return _format_dataframe_response(df, series_list, start_date, end_date)
-        else:
-            return Response(
-                content=json.dumps({"Date": []}, ensure_ascii=False),
-                media_type="application/json",
-            )
+        return await asyncio.to_thread(_process_all_codes_sync)
 
     except HTTPException:
         raise

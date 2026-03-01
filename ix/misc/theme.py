@@ -69,14 +69,24 @@ class Color:
 
 # Trace types that manage their own internal color schemes.
 # Explicitly excluded from palette assignment.
-_SKIP_COLOR_TYPES = frozenset({
-    "candlestick", "ohlc",
-    "heatmap", "heatmapgl",
-    "choropleth", "choroplethmapbox", "densitymapbox",
-    "parcats", "parcoords",
-    "sunburst", "treemap", "icicle", "funnelarea",
-    "pie",
-})
+_SKIP_COLOR_TYPES = frozenset(
+    {
+        "candlestick",
+        "ohlc",
+        "heatmap",
+        "heatmapgl",
+        "choropleth",
+        "choroplethmapbox",
+        "densitymapbox",
+        "parcats",
+        "parcoords",
+        "sunburst",
+        "treemap",
+        "icicle",
+        "funnelarea",
+        "pie",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -127,7 +137,9 @@ class ChartTheme:
             return False
 
     @staticmethod
-    def _datetime_bounds(values: Any) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
+    def _datetime_bounds(
+        values: Any,
+    ) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
         try:
             s = pd.Series(list(values)).dropna()
             if s.empty:
@@ -149,14 +161,14 @@ class ChartTheme:
             layout_dict = fig.layout.to_plotly_json()
             for k in layout_dict.keys():
                 if k.startswith(prefix) and k != prefix:
-                    suffix = k[len(prefix):]
+                    suffix = k[len(prefix) :]
                     if suffix.isdigit():
                         base.append(k)
         except Exception:
             pass
 
         def _key(name: str) -> int:
-            suffix = name[len(prefix):]
+            suffix = name[len(prefix) :]
             return int(suffix) if suffix.isdigit() else 1
 
         return sorted(list(set(base)), key=_key)
@@ -165,7 +177,7 @@ class ChartTheme:
     def _axis_ref_from_name(axis_name: str, axis_prefix: str) -> str:
         if axis_name == axis_prefix:
             return axis_prefix[0]
-        suffix = axis_name[len(axis_prefix):]
+        suffix = axis_name[len(axis_prefix) :]
         return f"{axis_prefix[0]}{suffix}"
 
     def _x_values_for_axis(self, fig: go.Figure, axis_name: str) -> list[Any]:
@@ -251,7 +263,7 @@ class ChartTheme:
         positive finite value. Used to decide whether log scale is safe.
         """
         prefix = "yaxis"
-        suffix = axis_key[len(prefix):]
+        suffix = axis_key[len(prefix) :]
         axis_ref = f"y{suffix}" if suffix else "y"
 
         for trace in data:
@@ -388,7 +400,13 @@ class ChartTheme:
             line = getattr(trace, "line", None)
             marker = getattr(trace, "marker", None)
 
-            if trace_type in ("scatter", "scattergl", "scatter3d", "scatterpolar", "scattermapbox"):
+            if trace_type in (
+                "scatter",
+                "scattergl",
+                "scatter3d",
+                "scatterpolar",
+                "scattermapbox",
+            ):
                 mode = str(getattr(trace, "mode", "") or "lines")
                 if line is not None:
                     try:
@@ -451,7 +469,14 @@ class ChartTheme:
             if pad <= pd.Timedelta(0):
                 continue
 
-            fig.update_layout({axis_name: {"range": [x0.isoformat(), (x1 + pad).isoformat()], "tickformat": self.datetime_tickformat}})
+            fig.update_layout(
+                {
+                    axis_name: {
+                        "range": [x0.isoformat(), (x1 + pad).isoformat()],
+                        "tickformat": self.datetime_tickformat,
+                    }
+                }
+            )
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -462,12 +487,14 @@ class ChartTheme:
         Apply the full theme to a Plotly figure object.
         Mutates and returns the same figure instance.
         """
-        fig_obj = fig if isinstance(fig, go.Figure) else go.Figure(fig, skip_invalid=True)
+        fig_obj = (
+            fig if isinstance(fig, go.Figure) else go.Figure(fig, skip_invalid=True)
+        )
         is_dark = str(mode).lower() == "dark"
 
         bg_color = self.palette.BG_DARK if is_dark else self.palette.BG_LIGHT
         text_color = "#e5e7eb" if is_dark else "#111111"
-        title_color = "#e5e7eb" if is_dark else "#000000"
+        title_color = text_color
         grid_color = "rgba(148,163,184,0.22)" if is_dark else "rgba(0,0,0,0.14)"
         legend_bg = "rgba(11,14,20,0.82)" if is_dark else "rgba(255,255,255,0.92)"
         legend_border = "rgba(148,163,184,0.38)" if is_dark else "rgba(15,23,42,0.16)"
@@ -492,13 +519,17 @@ class ChartTheme:
             colorway=self.palette.colorway,
             margin=self.margin,
             hovermode="x",
+            hoverdistance=20,
+            spikedistance=-1,
             showlegend=show_legend,
             title=dict(
                 x=self.title_x,
                 y=self.title_y,
                 xanchor="left",
                 yanchor="top",
-                font=dict(size=title_font_size, color=title_color, family=self.font_main),
+                font=dict(
+                    size=title_font_size, color=title_color, family=self.font_main
+                ),
             ),
             legend=dict(
                 orientation="v",
@@ -522,6 +553,8 @@ class ChartTheme:
         )
 
         # --- Axis styling ---
+        spike_color = "rgba(148,163,184,0.25)" if is_dark else "rgba(15,23,42,0.2)"
+
         x_axis_style = dict(
             showline=True,
             linewidth=1,
@@ -534,6 +567,12 @@ class ChartTheme:
             title_font=dict(size=base_font_size, color=text_color),
             showgrid=False,
             zeroline=False,
+            showspikes=True,
+            spikecolor=spike_color,
+            spikethickness=0.5,
+            spikedash="dot",
+            spikemode="across",
+            spikesnap="cursor",
         )
         y_axis_style = dict(
             showline=True,
@@ -550,6 +589,12 @@ class ChartTheme:
             zeroline=True,
             zerolinewidth=1,
             zerolinecolor=grid_color,
+            showspikes=True,
+            spikecolor=spike_color,
+            spikethickness=0.5,
+            spikedash="dot",
+            spikemode="across",
+            spikesnap="cursor",
         )
         fig_obj.update_xaxes(**x_axis_style)
         fig_obj.update_yaxes(**y_axis_style)
@@ -558,7 +603,9 @@ class ChartTheme:
         if fig_obj.layout.annotations:
             for ann in fig_obj.layout.annotations:
                 existing_font = dict(getattr(ann, "font", None) or {})
-                ann.update(font=dict(**existing_font, color=text_color, size=base_font_size))
+                ann.update(
+                    font=dict(**existing_font, color=text_color, size=base_font_size)
+                )
 
         # --- Trace colors, axis sanitization, date padding ---
         self._color_traces(fig_obj)
@@ -580,7 +627,11 @@ class ChartTheme:
             import json as _json
             import plotly.io as _pio
 
-            fig_obj = figure if isinstance(figure, go.Figure) else go.Figure(figure, skip_invalid=True)
+            fig_obj = (
+                figure
+                if isinstance(figure, go.Figure)
+                else go.Figure(figure, skip_invalid=True)
+            )
             fig_themed = self.apply(fig_obj, mode=mode)
             return _json.loads(_pio.to_json(fig_themed, engine="json"))
         except Exception:

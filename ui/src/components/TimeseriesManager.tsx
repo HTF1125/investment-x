@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { apiFetch, apiFetchJson } from '@/lib/api';
+import { useTasks } from './TaskProvider';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -207,18 +208,7 @@ export default function TimeseriesManager() {
 
   const loading = isLoading; // Alias for UI compatibility
 
-  const { data: allProcesses = [] } = useQuery({
-    queryKey: ['task-processes'],
-    queryFn: () => apiFetchJson<ProcessInfo[]>('/api/task/processes'),
-    refetchInterval: (query) => {
-      const data = (query.state.data as ProcessInfo[] | undefined) ?? [];
-      const hasRunning = data.some((p) => p.status === 'running');
-      return hasRunning ? 2500 : 15000;
-    },
-    refetchIntervalInBackground: false,
-    staleTime: 3000,
-    enabled: !!token,
-  });
+  const { processes: allProcesses } = useTasks();
 
   const latestDaily = allProcesses.find((p) => p.name.startsWith('Daily Data Update'));
 
@@ -258,6 +248,49 @@ export default function TimeseriesManager() {
     },
     enabled: !!viewChartItem,
   });
+
+  const plotData = React.useMemo(() => {
+    if (!chartData || !viewChartItem) return [];
+    return [
+      {
+        x: chartData.Date || [],
+        y: chartData[Object.keys(chartData).find(k => k !== 'Date') || ''] || [],
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#6366f1', width: 2.5 },
+        fill: 'tozeroy',
+        fillcolor: 'rgba(99, 102, 241, 0.1)',
+        name: viewChartItem.code
+      }
+    ];
+  }, [chartData, viewChartItem]);
+
+  const plotLayout = React.useMemo(() => ({
+    autosize: true,
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#94a3b8', family: 'Inter, sans-serif' },
+    margin: { l: 60, r: 30, t: 40, b: 50 },
+    xaxis: {
+      gridcolor: 'rgba(255,255,255,0.05)',
+      zerolinecolor: 'rgba(255,255,255,0.1)',
+      showgrid: true,
+      tickfont: { size: 11 },
+    },
+    yaxis: {
+      gridcolor: 'rgba(255,255,255,0.05)',
+      zerolinecolor: 'rgba(255,255,255,0.1)',
+      showgrid: true,
+      tickfont: { size: 11 },
+    },
+    hovermode: 'x' as const,
+    hoverdistance: 20,
+    showlegend: false,
+    dragmode: 'pan' as const
+  }), []);
+
+  const plotConfig = React.useMemo(() => ({ responsive: true, displayModeBar: true, displaylogo: false, scrollZoom: true }), []);
+  const plotStyle = React.useMemo(() => ({ width: '100%', height: '100%' }), []);
 
   // ───── Mutations
   const createMutation = useMutation({
@@ -968,42 +1001,10 @@ export default function TimeseriesManager() {
                {chartData && (
                  <div className="w-full h-full p-6">
                   <Plot
-                      data={[
-                        {
-                          x: chartData.Date || [],
-                          y: chartData[Object.keys(chartData).find(k => k !== 'Date') || ''] || [],
-                          type: 'scatter',
-                          mode: 'lines',
-                          line: { color: '#6366f1', width: 2.5 },
-                          fill: 'tozeroy',
-                          fillcolor: 'rgba(99, 102, 241, 0.1)',
-                          name: viewChartItem.code
-                        }
-                      ]}
-                      layout={{
-                        autosize: true,
-                        paper_bgcolor: 'rgba(0,0,0,0)',
-                        plot_bgcolor: 'rgba(0,0,0,0)',
-                        font: { color: '#94a3b8', family: 'Inter, sans-serif' },
-                        margin: { l: 60, r: 30, t: 40, b: 50 },
-                        xaxis: {
-                          gridcolor: 'rgba(255,255,255,0.05)',
-                          zerolinecolor: 'rgba(255,255,255,0.1)',
-                          showgrid: true,
-                          tickfont: { size: 11 }
-                        },
-                        yaxis: {
-                          gridcolor: 'rgba(255,255,255,0.05)',
-                          zerolinecolor: 'rgba(255,255,255,0.1)',
-                          showgrid: true,
-                          tickfont: { size: 11 }
-                        },
-                        hovermode: 'x unified',
-                        showlegend: false
-                      }}
-                      config={{ responsive: true, displayModeBar: true, displaylogo: false }}
-                      style={{ width: '100%', height: '100%' }}
-                      useResizeHandler={true}
+                      data={plotData}
+                      layout={plotLayout}
+                      config={plotConfig}
+                      style={plotStyle}
                   />
                  </div>
                )}

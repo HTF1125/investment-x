@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
-from typing import Dict, Optional
+import os
+import textwrap
+from io import BytesIO
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -9,8 +12,18 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 import yfinance as yf
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi.responses import StreamingResponse
 from plotly.subplots import make_subplots
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib import utils
+from reportlab.lib.units import inch
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.enum.text import PP_ALIGN
+import markdown
+from PIL import Image
 
 router = APIRouter()
 
@@ -436,6 +449,164 @@ def _compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     return rsi.clip(lower=0.0, upper=100.0)
 
 
+def _compute_squeeze_momentum(
+    df: pd.DataFrame,
+    bb_length: int = 20,
+    bb_mult: float = 2.0,
+    kc_length: int = 20,
+    kc_mult: float = 1.5,
+    use_true_range: bool = True,
+) -> pd.DataFrame:
+    """LazyBear Squeeze Momentum Indicator."""
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    high = pd.to_numeric(df["High"], errors="coerce")
+    low = pd.to_numeric(df["Low"], errors="coerce")
+
+    # Bollinger Bands
+    basis = close.rolling(bb_length).mean()
+    bb_dev = kc_mult * close.rolling(bb_length).std()
+    upper_bb = basis + bb_dev
+    lower_bb = basis - bb_dev
+
+    # Keltner Channels
+    ma_kc = close.rolling(kc_length).mean()
+    if use_true_range:
+        prev_close = close.shift(1)
+        tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
+    else:
+        tr = high - low
+    range_ma = tr.rolling(kc_length).mean()
+    upper_kc = ma_kc + range_ma * kc_mult
+    lower_kc = ma_kc - range_ma * kc_mult
+
+    sqz_on = (lower_bb > lower_kc) & (upper_bb < upper_kc)
+    sqz_off = (lower_bb < lower_kc) & (upper_bb > upper_kc)
+    no_sqz = ~sqz_on & ~sqz_off
+
+    # Momentum value: linear regression of delta source
+    highest_high = high.rolling(kc_length).max()
+    lowest_low = low.rolling(kc_length).min()
+    mid_hl = (highest_high + lowest_low) / 2
+    sma_close = close.rolling(kc_length).mean()
+    delta = close - (mid_hl + sma_close) / 2
+
+    # Linear regression (linreg) over kc_length
+    val = pd.Series(index=close.index, dtype=float)
+    arr = delta.to_numpy(dtype=float)
+    for i in range(kc_length - 1, len(arr)):
+        y = arr[i - kc_length + 1 : i + 1]
+        if np.isnan(y).any():
+            val.iloc[i] = np.nan
+            continue
+        x = np.arange(kc_length, dtype=float)
+        m, b = np.polyfit(x, y, 1)
+        val.iloc[i] = m * (kc_length - 1) + b
+
+    val_prev = val.shift(1)
+    colors = pd.Series("gray", index=close.index)
+    colors[val > 0] = "lime"
+    colors[(val > 0) & (val < val_prev)] = "green"
+    colors[val < 0] = "red"
+    colors[(val < 0) & (val > val_prev)] = "maroon"
+
+    sqz_color = pd.Series("gray", index=close.index)
+    sqz_color[no_sqz] = "blue"
+    sqz_color[sqz_on] = "black"
+
+    return pd.DataFrame({
+        "val": val,
+        "bar_color": colors,
+        "sqz_on": sqz_on,
+        "sqz_off": sqz_off,
+        "no_sqz": no_sqz,
+        "sqz_dot_color": sqz_color,
+    }, index=close.index)
+
+
+def _compute_supertrend(
+    df: pd.DataFrame,
+    atr_period: int = 10,
+    multiplier: float = 3.0,
+) -> pd.DataFrame:
+    """Classic Supertrend indicator."""
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    high = pd.to_numeric(df["High"], errors="coerce")
+    low = pd.to_numeric(df["Low"], errors="coerce")
+    hl2 = (high + low) / 2
+
+    # ATR
+    prev_close = close.shift(1)
+    tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(span=atr_period, adjust=False).mean()
+
+    up = hl2 - multiplier * atr
+    dn = hl2 + multiplier * atr
+
+    up_arr = up.to_numpy(dtype=float)
+    dn_arr = dn.to_numpy(dtype=float)
+    close_arr = close.to_numpy(dtype=float)
+    trend = np.ones(len(close_arr), dtype=int)
+
+    for i in range(1, len(close_arr)):
+        if np.isnan(up_arr[i]) or np.isnan(dn_arr[i]) or np.isnan(close_arr[i]):
+            trend[i] = trend[i - 1]
+            continue
+        # Adjust up/dn
+        up_arr[i] = max(up_arr[i], up_arr[i - 1]) if close_arr[i - 1] > up_arr[i - 1] else up_arr[i]
+        dn_arr[i] = min(dn_arr[i], dn_arr[i - 1]) if close_arr[i - 1] < dn_arr[i - 1] else dn_arr[i]
+        if trend[i - 1] == -1 and close_arr[i] > dn_arr[i - 1]:
+            trend[i] = 1
+        elif trend[i - 1] == 1 and close_arr[i] < up_arr[i - 1]:
+            trend[i] = -1
+        else:
+            trend[i] = trend[i - 1]
+
+    trend_s = pd.Series(trend, index=close.index)
+    up_s = pd.Series(np.where(trend == 1, up_arr, np.nan), index=close.index)
+    dn_s = pd.Series(np.where(trend == -1, dn_arr, np.nan), index=close.index)
+
+    buy_signal = (trend_s == 1) & (trend_s.shift(1) == -1)
+    sell_signal = (trend_s == -1) & (trend_s.shift(1) == 1)
+
+    return pd.DataFrame({
+        "trend": trend_s,
+        "up": up_s,
+        "dn": dn_s,
+        "buy": buy_signal,
+        "sell": sell_signal,
+    }, index=close.index)
+
+
+def _compute_moving_averages(
+    df: pd.DataFrame,
+    configs: List[dict],
+) -> List[dict]:
+    """Return list of MA trace dicts. Each config: {type, period, color}."""
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    traces = []
+    for cfg in configs:
+        ma_type = cfg.get("type", "SMA")
+        period = int(cfg.get("period", 20))
+        color = cfg.get("color", "#94a3b8")
+        if ma_type == "EMA":
+            values = close.ewm(span=period, adjust=False).mean()
+        elif ma_type == "WMA":
+            weights = np.arange(1, period + 1, dtype=float)
+            values = close.rolling(period).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+        else:  # SMA
+            values = close.rolling(period).mean()
+        dates = [d.isoformat() if hasattr(d, "isoformat") else str(d) for d in df.index]
+        traces.append({
+            "name": f"{ma_type} {period}",
+            "x": dates,
+            "y": [None if np.isnan(v) else round(float(v), 4) for v in values],
+            "color": color,
+            "period": period,
+            "type": ma_type,
+        })
+    return traces
+
+
 def _build_figure(
     df: pd.DataFrame,
     ticker: str,
@@ -444,13 +615,31 @@ def _build_figure(
     label_cooldown_bars: int,
     visible_start: Optional[pd.Timestamp] = None,
     visible_end: Optional[pd.Timestamp] = None,
+    show_macd: bool = True,
+    show_rsi: bool = True,
 ) -> go.Figure:
+    rows = 1
+    if show_macd: rows += 1
+    if show_rsi: rows += 1
+    
+    # Map each indicator to its specific row index
+    macd_row = 2 if show_macd else None
+    rsi_row = (2 if not show_macd else 3) if show_rsi else None
+
+    # Calculate row heights
+    if rows == 3:
+        row_heights = [0.62, 0.23, 0.15]
+    elif rows == 2:
+        row_heights = [0.75, 0.25]
+    else:
+        row_heights = [1.0]
+
     fig = make_subplots(
-        rows=3,
+        rows=rows,
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.03,
-        row_heights=[0.62, 0.23, 0.15],
+        vertical_spacing=0.04 if rows > 1 else 0,
+        row_heights=row_heights,
     )
 
     ohlc_hover = [
@@ -669,88 +858,102 @@ def _build_figure(
             col=1,
         )
 
-    ema12 = close.ewm(span=12, adjust=False).mean()
-    ema26 = close.ewm(span=26, adjust=False).mean()
-    macd_line = ema12 - ema26
-    macd_signal = macd_line.ewm(span=9, adjust=False).mean()
-    macd_hist = macd_line - macd_signal
-    hist_prev = macd_hist.shift(1)
-    hist_colors = np.where(
-        macd_hist >= 0,
-        np.where(macd_hist >= hist_prev, "rgba(16,185,129,0.85)", "rgba(16,185,129,0.45)"),
-        np.where(macd_hist <= hist_prev, "rgba(244,63,94,0.85)", "rgba(244,63,94,0.45)"),
-    )
-    fig.add_trace(
-        go.Bar(
-            x=df.index,
-            y=macd_hist,
-            marker_color=hist_colors,
-            name="MACD Hist",
-            showlegend=False,
-            hovertemplate="MACD Hist: %{y:.3f}<extra></extra>",
-        ),
-        row=2,
-        col=1,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=macd_line,
-            mode="lines",
-            line=dict(color="#38bdf8", width=1.8),
-            name="MACD",
-            legendgroup="macd",
-            hovertemplate="MACD: %{y:.3f}<extra></extra>",
-        ),
-        row=2,
-        col=1,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=macd_signal,
-            mode="lines",
-            line=dict(color="#f59e0b", width=1.5),
-            name="Signal",
-            legendgroup="macd",
-            hovertemplate="Signal: %{y:.3f}<extra></extra>",
-        ),
-        row=2,
-        col=1,
-    )
-    fig.add_hline(y=0, line_width=1, line_color="rgba(148,163,184,0.55)", row=2, col=1)
+    # MACD Subplot
+    if show_macd:
+        ema12 = close.ewm(span=12, adjust=False).mean()
+        ema26 = close.ewm(span=26, adjust=False).mean()
+        macd_line = ema12 - ema26
+        macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+        macd_hist = macd_line - macd_signal
+        hist_prev = macd_hist.shift(1)
+        hist_colors = np.where(
+            macd_hist >= 0,
+            np.where(macd_hist >= hist_prev, "rgba(16,185,129,0.85)", "rgba(16,185,129,0.45)"),
+            np.where(macd_hist <= hist_prev, "rgba(244,63,94,0.85)", "rgba(244,63,94,0.45)"),
+        )
+        fig.add_trace(
+            go.Bar(
+                x=df.index,
+                y=macd_hist,
+                marker_color=hist_colors,
+                name="MACD Hist",
+                showlegend=False,
+                hovertemplate="MACD Hist: %{y:.3f}<extra></extra>",
+            ),
+            row=macd_row,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=macd_line,
+                mode="lines",
+                line=dict(color="#38bdf8", width=1.8),
+                name="MACD",
+                legendgroup="macd",
+                hovertemplate="MACD: %{y:.3f}<extra></extra>",
+            ),
+            row=macd_row,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=macd_signal,
+                mode="lines",
+                line=dict(color="#f59e0b", width=1.5),
+                name="Signal",
+                legendgroup="macd",
+                hovertemplate="Signal: %{y:.3f}<extra></extra>",
+            ),
+            row=macd_row,
+            col=1,
+        )
+        fig.add_hline(y=0, line_width=1, line_color="rgba(148,163,184,0.55)", row=macd_row, col=1)
+        fig.update_yaxes(title_text="MACD", row=macd_row, col=1)
 
-    rsi = _compute_rsi(close, period=14)
-    rsi_mean = rsi.rolling(window=9, min_periods=9).mean()
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=rsi,
-            mode="lines",
-            line=dict(color="#60a5fa", width=1.8),
-            name="RSI 14",
-            legendgroup="rsi",
-            hovertemplate="RSI 14: %{y:.1f}<extra></extra>",
-        ),
-        row=3,
-        col=1,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=rsi_mean,
-            mode="lines",
-            line=dict(color="#f59e0b", width=1.4, dash="dot"),
-            name="RSI Mean",
-            legendgroup="rsi",
-            hovertemplate="RSI Mean: %{y:.1f}<extra></extra>",
-        ),
-        row=3,
-        col=1,
-    )
-    fig.add_hline(y=70, line_width=1, line_color="rgba(244,63,94,0.75)", line_dash="dot", row=3, col=1)
-    fig.add_hline(y=50, line_width=1, line_color="rgba(148,163,184,0.45)", line_dash="dash", row=3, col=1)
-    fig.add_hline(y=30, line_width=1, line_color="rgba(34,197,94,0.75)", line_dash="dot", row=3, col=1)
+    # RSI Subplot
+    if show_rsi:
+        rsi = _compute_rsi(close, period=14)
+        rsi_mean = rsi.rolling(window=9, min_periods=9).mean()
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=rsi,
+                mode="lines",
+                line=dict(color="#60a5fa", width=1.8),
+                name="RSI 14",
+                legendgroup="rsi",
+                hovertemplate="RSI 14: %{y:.1f}<extra></extra>",
+            ),
+            row=rsi_row,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=rsi_mean,
+                mode="lines",
+                line=dict(color="#f59e0b", width=1.4, dash="dot"),
+                name="RSI Mean",
+                legendgroup="rsi",
+                hovertemplate="RSI Mean: %{y:.1f}<extra></extra>",
+            ),
+            row=rsi_row,
+            col=1,
+        )
+        fig.add_hline(y=70, line_width=1, line_color="rgba(244,63,94,0.75)", line_dash="dot", row=rsi_row, col=1)
+        fig.add_hline(y=50, line_width=1, line_color="rgba(148,163,184,0.45)", line_dash="dash", row=rsi_row, col=1)
+        fig.add_hline(y=30, line_width=1, line_color="rgba(34,197,94,0.75)", line_dash="dot", row=rsi_row, col=1)
+        fig.update_yaxes(
+            title_text="RSI",
+            range=[0, 100],
+            tickmode="array",
+            tickvals=[30, 50, 70],
+            ticktext=["30", "50", "70"],
+            row=rsi_row,
+            col=1,
+        )
 
     # Visible window controls display range only (does not slice source data).
     if visible_start is not None and visible_end is not None and visible_start < visible_end:
@@ -763,23 +966,28 @@ def _build_figure(
                 pad1 = (y1_max - y1_min) * 0.08
                 fig.update_yaxes(range=[y1_min - pad1, y1_max + pad1], row=1, col=1)
 
-            macd_sub = pd.concat(
-                [macd_line.loc[mask], macd_signal.loc[mask], macd_hist.loc[mask]],
-                axis=1,
-            ).dropna(how="all")
-            if not macd_sub.empty:
-                y2_min = float(macd_sub.min().min())
-                y2_max = float(macd_sub.max().max())
-                if np.isfinite(y2_min) and np.isfinite(y2_max):
-                    if y2_max == y2_min:
-                        y2_min -= 1.0
-                        y2_max += 1.0
-                    pad2 = (y2_max - y2_min) * 0.18
-                    fig.update_yaxes(range=[y2_min - pad2, y2_max + pad2], row=2, col=1)
+            if show_macd:
+                ema12 = close.ewm(span=12, adjust=False).mean()
+                ema26 = close.ewm(span=26, adjust=False).mean()
+                macd_line = ema12 - ema26
+                macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+                macd_hist = macd_line - macd_signal
+                macd_sub = pd.concat(
+                    [macd_line.loc[mask], macd_signal.loc[mask], macd_hist.loc[mask]],
+                    axis=1,
+                ).dropna(how="all")
+                if not macd_sub.empty:
+                    y2_min = float(macd_sub.min().min())
+                    y2_max = float(macd_sub.max().max())
+                    if np.isfinite(y2_min) and np.isfinite(y2_max):
+                        if y2_max == y2_min:
+                            y2_min -= 1.0
+                            y2_max += 1.0
+                        pad2 = (y2_max - y2_min) * 0.18
+                        fig.update_yaxes(range=[y2_min - pad2, y2_max + pad2], row=macd_row, col=1)
 
-            fig.update_xaxes(range=[visible_start, visible_end], row=1, col=1)
-            fig.update_xaxes(range=[visible_start, visible_end], row=2, col=1)
-            fig.update_xaxes(range=[visible_start, visible_end], row=3, col=1)
+            for r in range(1, rows + 1):
+                fig.update_xaxes(range=[visible_start, visible_end], row=r, col=1)
 
     fig.update_layout(
         template=None,
@@ -830,16 +1038,6 @@ def _build_figure(
         showspikes=False,
     )
     fig.update_yaxes(title_text="Price", row=1, col=1)
-    fig.update_yaxes(title_text="MACD", row=2, col=1)
-    fig.update_yaxes(
-        title_text="RSI",
-        range=[0, 100],
-        tickmode="array",
-        tickvals=[30, 50, 70],
-        ticktext=["30", "50", "70"],
-        row=3,
-        col=1,
-    )
     return fig
 
 
@@ -853,6 +1051,8 @@ def technical_elliott(
     setup_from: int = Query(9, ge=1, le=9),
     countdown_from: int = Query(13, ge=1, le=13),
     label_cooldown: int = Query(0, ge=0, le=20),
+    show_macd: bool = Query(True),
+    show_rsi: bool = Query(True),
 ):
     try:
         tk = ticker.strip().upper()
@@ -872,6 +1072,8 @@ def technical_elliott(
             label_cooldown,
             visible_start=vis_start,
             visible_end=vis_end,
+            show_macd=show_macd,
+            show_rsi=show_rsi,
         )
         return json.loads(pio.to_json(fig, engine="json"))
     except HTTPException:
@@ -921,3 +1123,240 @@ def get_technical_summary(
         return {"summary": summary_md}
     except Exception as e:
         return {"summary": f"Failed to generate AI summary: {str(e)}"}
+
+
+@router.get("/technical/overlays")
+def technical_overlays(
+    ticker: str = Query("SPY"),
+    interval: str = Query("1d"),
+    # Squeeze Momentum params
+    sqz: bool = Query(False),
+    sqz_bb_len: int = Query(20, ge=5, le=50),
+    sqz_bb_mult: float = Query(2.0, ge=0.5, le=5.0),
+    sqz_kc_len: int = Query(20, ge=5, le=50),
+    sqz_kc_mult: float = Query(1.5, ge=0.5, le=5.0),
+    # Supertrend params
+    st: bool = Query(False),
+    st_period: int = Query(10, ge=2, le=50),
+    st_mult: float = Query(3.0, ge=0.5, le=10.0),
+    # Moving averages — comma-separated list of "TYPE:period:color"
+    # e.g. "SMA:20:#f59e0b,EMA:50:#38bdf8"
+    mas: Optional[str] = Query(None),
+):
+    """Return overlay data (Squeeze Momentum, Supertrend, extra MAs) as raw series."""
+    try:
+        tk = ticker.strip().upper()
+        period_map = {"1d": "2y", "1wk": "5y", "1mo": "10y"}
+        yf_period = period_map.get(interval, "2y")
+        raw = yf.download(tk, period=yf_period, interval=interval, auto_adjust=False, progress=False)
+        if raw is None or raw.empty:
+            raise HTTPException(status_code=404, detail=f"No data for ticker '{tk}'.")
+        df = _normalize_yf(raw, tk)
+        if df.empty:
+            raise HTTPException(status_code=404, detail=f"No OHLC data for ticker '{tk}'.")
+
+        dates = [d.isoformat() if hasattr(d, "isoformat") else str(d) for d in df.index]
+        result: dict = {"dates": dates}
+
+        if sqz:
+            sqz_df = _compute_squeeze_momentum(
+                df,
+                bb_length=sqz_bb_len,
+                bb_mult=sqz_bb_mult,
+                kc_length=sqz_kc_len,
+                kc_mult=sqz_kc_mult,
+            )
+            result["squeeze"] = {
+                "val": [None if np.isnan(v) else round(float(v), 6) for v in sqz_df["val"]],
+                "bar_color": sqz_df["bar_color"].tolist(),
+                "sqz_on": sqz_df["sqz_on"].tolist(),
+                "sqz_off": sqz_df["sqz_off"].tolist(),
+                "no_sqz": sqz_df["no_sqz"].tolist(),
+                "sqz_dot_color": sqz_df["sqz_dot_color"].tolist(),
+            }
+
+        if st:
+            st_df = _compute_supertrend(df, atr_period=st_period, multiplier=st_mult)
+            result["supertrend"] = {
+                "trend": st_df["trend"].tolist(),
+                "up": [None if np.isnan(v) else round(float(v), 4) for v in st_df["up"]],
+                "dn": [None if np.isnan(v) else round(float(v), 4) for v in st_df["dn"]],
+                "buy": st_df["buy"].tolist(),
+                "sell": st_df["sell"].tolist(),
+            }
+
+        if mas:
+            ma_configs = []
+            for part in mas.split(","):
+                parts = part.strip().split(":")
+                if len(parts) >= 2:
+                    ma_configs.append({
+                        "type": parts[0].upper(),
+                        "period": int(parts[1]),
+                        "color": parts[2] if len(parts) > 2 else "#94a3b8",
+                    })
+            if ma_configs:
+                result["moving_averages"] = _compute_moving_averages(df, ma_configs)
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to compute overlays: {e}")
+
+
+def _render_chart_to_image(fig: go.Figure) -> BytesIO:
+    """Render Plotly figure to a high-res PNG buffer."""
+    img_bytes = pio.to_image(fig, format="png", width=1200, height=700, scale=2)
+    return BytesIO(img_bytes)
+
+
+def _clean_markdown(md_text: str) -> str:
+    """Simple cleanup of markdown symbols for basic PDF/PPTX rendering."""
+    # Remove bold/italic markers
+    text = md_text.replace("**", "").replace("*", "").replace("__", "").replace("_", "")
+    # Remove header markers but keep text
+    lines = text.split("\n")
+    cleaned_lines = []
+    for line in lines:
+        cleaned_lines.append(line.lstrip("#").strip())
+    return "\n".join(cleaned_lines)
+
+
+@router.post("/technical/export")
+def export_technical_report(
+    ticker: str = Query(...),
+    format: str = Query("pdf"), # "pdf" or "pptx"
+    summary: str = Body(..., embed=True),
+    # Chart params to reproduce the image
+    interval: str = Query("1d"),
+    setup_from: int = Query(9),
+    countdown_from: int = Query(13),
+    label_cooldown: int = Query(0),
+    show_macd: bool = Query(True),
+    show_rsi: bool = Query(True),
+):
+    try:
+        tk = ticker.strip().upper()
+        # 1. Generate the chart image
+        raw = yf.download(tk, period="2y", interval=interval, auto_adjust=False, progress=False)
+        if raw is None or raw.empty:
+            raise HTTPException(status_code=404, detail=f"No data for ticker '{ticker}'.")
+        df = _normalize_yf(raw, tk)
+        
+        fig = _build_figure(
+            df, tk, setup_from, countdown_from, label_cooldown,
+            show_macd=show_macd, show_rsi=show_rsi
+        )
+        # Apply export-friendly theme
+        fig.update_layout(
+            template="plotly_white",
+            paper_bgcolor="white",
+            plot_bgcolor="#fcfcfc",
+            font=dict(color="black", size=14),
+            margin=dict(l=80, r=40, t=100, b=80),
+        )
+        chart_img = _render_chart_to_image(fig)
+
+        filename = f"InvestmentX_{tk}_Analysis_{datetime.now().strftime('%Y%m%d')}.{format}"
+
+        if format.lower() == "pptx":
+            prs = Presentation()
+            
+            # Slide 1: Title
+            title_slide_layout = prs.slide_layouts[0]
+            slide = prs.slides.add_slide(title_slide_layout)
+            title = slide.shapes.title
+            subtitle = slide.placeholders[1]
+            title.text = f"Technical Analysis: {tk}"
+            subtitle.text = f"Generated by Investment-X Engine\nDate: {datetime.now().strftime('%Y-%m-%d')}"
+
+            # Slide 2: Chart
+            blank_slide_layout = prs.slide_layouts[6]
+            slide = prs.slides.add_slide(blank_slide_layout)
+            slide.shapes.add_picture(chart_img, Inches(0.5), Inches(1), width=Inches(9))
+            
+            txBox = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(9), Inches(0.5))
+            tf = txBox.text_frame
+            tf.text = f"{tk} Price Action & Indicators ({interval})"
+            p = tf.paragraphs[0]
+            p.font.bold = True
+            p.font.size = Pt(24)
+
+            # Slide 3+: Intelligence Report (Split if too long)
+            content_lines = _clean_markdown(summary).split("\n")
+            chunks = [content_lines[i:i + 15] for i in range(0, len(content_lines), 15)]
+            
+            for i, chunk in enumerate(chunks):
+                slide = prs.slides.add_slide(prs.slide_layouts[1])
+                slide.shapes.title.text = f"Intelligence Report {' (cont.)' if i > 0 else ''}"
+                body_shape = slide.placeholders[1]
+                tf = body_shape.text_frame
+                tf.word_wrap = True
+                tf.text = "\n".join(chunk)
+                for p in tf.paragraphs:
+                    p.font.size = Pt(14)
+
+            buffer = BytesIO()
+            prs.save(buffer)
+            buffer.seek(0)
+            return StreamingResponse(
+                buffer,
+                media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+
+        else: # Default to PDF
+            buffer = BytesIO()
+            c = canvas.Canvas(buffer, pagesize=letter)
+            width, height = letter
+
+            # Header
+            c.setFont("Helvetica-Bold", 24)
+            c.drawString(50, height - 60, f"Technical Analysis: {tk}")
+            c.setFont("Helvetica", 12)
+            c.setStrokeColorRGB(0.2, 0.5, 0.8)
+            c.line(50, height - 75, width - 50, height - 75)
+            
+            c.drawString(50, height - 95, f"Ticker: {tk} | Interval: {interval} | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+
+            # Chart Image (Centered)
+            img_reader = utils.ImageReader(chart_img)
+            c.drawImage(img_reader, 50, height - 420, width=width-100, height=300, preserveAspectRatio=True)
+
+            # Report Text
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(50, height - 450, "Intelligence Report")
+            c.line(50, height - 455, 200, height - 455)
+
+            c.setFont("Helvetica", 10)
+            text_object = c.beginText(50, height - 480)
+            text_object.setLeading(14)
+            
+            wrapped_text = ""
+            for line in _clean_markdown(summary).split("\n"):
+                wrapped_text += "\n".join(textwrap.wrap(line, width=95)) + "\n"
+            
+            for line in wrapped_text.split("\n"):
+                if text_object.getY() < 50:
+                    c.drawText(text_object)
+                    c.showPage()
+                    text_object = c.beginText(50, height - 50)
+                    text_object.setFont("Helvetica", 10)
+                    text_object.setLeading(14)
+                text_object.textLine(line)
+            
+            c.drawText(text_object)
+            c.showPage()
+            c.save()
+            buffer.seek(0)
+            return StreamingResponse(
+                buffer,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")

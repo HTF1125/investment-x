@@ -21,7 +21,8 @@ if not SECRET_KEY or SECRET_KEY == _PLACEHOLDER:
     )
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+# Set to 14 Days (20160 minutes) to prevent users from being logged out when leaving tabs open
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "20160"))
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -141,9 +142,7 @@ def create_user_token(
     """
     resolved_role = (role or "").strip().lower() or "general"
     resolved_is_admin = (
-        is_admin
-        if is_admin is not None
-        else resolved_role in {"owner", "admin"}
+        is_admin if is_admin is not None else resolved_role in {"owner", "admin"}
     )
     token_data = {
         "sub": email,

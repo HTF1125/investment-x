@@ -1311,11 +1311,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                         data={themedPreviewFigure.data}
                         layout={{ 
                             ...themedPreviewFigure.layout, 
-                            autosize: true
+                            autosize: true,
+                            dragmode: 'pan'
                         }}
-                        config={{ responsive: true, displayModeBar: 'hover', displaylogo: false }}
+                        config={{ responsive: true, displayModeBar: 'hover', displaylogo: false, scrollZoom: true }}
                         style={{ width: '100%', height: '100%' }}
-                        useResizeHandler={true}
                         className="w-full h-full"
                         onError={handlePlotError}
                         />

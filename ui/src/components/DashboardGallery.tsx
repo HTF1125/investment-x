@@ -12,17 +12,20 @@ import {
   FoldVertical, UnfoldVertical,
   Square, Rows2, Link2, Link2Off,
   LayoutTemplate, ScanLine, Terminal, MonitorPlay,
-  FileText, FileCode,
+  FileText, FileCode, Play, Code2,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { type ChartStyle, CHART_STYLE_LABELS } from '@/lib/chartTheme';
 import Chart, { type HoverPoint } from './Chart';
 import CustomChartEditor from './CustomChartEditor';
 import NavigatorShell from './NavigatorShell';
+import dynamic from 'next/dynamic';
+
+const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-muted-foreground/40"><Loader2 className="w-5 h-5 animate-spin" /></div> });
 
 type LayoutMode = 'grid' | 'single' | 'stack';
 
@@ -61,6 +64,8 @@ interface ChartCardProps {
   expanded?: boolean;
   syncXRange?: [any, any] | null;
   onXRangeChange?: (range: [any, any] | null) => void;
+  unsavedChanges?: boolean;
+  onSaveChart?: (id: string) => void;
 }
 
 const ChartCard = React.memo(function ChartCard({
@@ -82,6 +87,8 @@ const ChartCard = React.memo(function ChartCard({
   expanded = false,
   syncXRange,
   onXRangeChange,
+  unsavedChanges,
+  onSaveChart,
 }: ChartCardProps) {
   // Viewport-based lazy rendering
   const cardRef = useRef<HTMLDivElement>(null);
@@ -205,6 +212,17 @@ const ChartCard = React.memo(function ChartCard({
             </button>
           )}
 
+          {/* Save (unsaved changes indicator) */}
+          {unsavedChanges && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSaveChart?.(chart.id); }}
+              className="p-1 rounded transition-colors text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 animate-pulse"
+              title="Save changes"
+            >
+              <Save className="w-3 h-3" />
+            </button>
+          )}
+
           {/* Copy */}
           <button
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); }}
@@ -269,14 +287,26 @@ const ChartCard = React.memo(function ChartCard({
         <div className={`bg-background relative w-full p-3 ${expanded ? 'flex-1 min-h-0' : 'h-[290px] min-h-[290px]'}`}>
           {/* Hover data overlay — Feature 2+3 */}
           {hoverPoints && hoverPoints.length > 0 && (
-            <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-2 flex-wrap pointer-events-none">
-              {hoverPoints.map((pt, i) => (
-                <span key={i} className="text-[10px] font-mono bg-background/80 backdrop-blur-sm rounded px-1.5 py-0.5 text-foreground/80 border border-border/30">
-                  {pt.name && <span className="text-muted-foreground/60 mr-1">{pt.name}:</span>}
-                  {typeof pt.y === 'number' ? pt.y.toLocaleString(undefined, { maximumFractionDigits: 4 }) : String(pt.y)}
-                  {pt.x !== undefined && <span className="text-muted-foreground/50 ml-1">@ {String(pt.x)}</span>}
-                </span>
-              ))}
+            <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-x-2 gap-y-0 flex-wrap pointer-events-none">
+              {hoverPoints.map((pt, i) => {
+                const hasZ = pt.z !== undefined || pt.value !== undefined;
+                const val = pt.z ?? pt.value ?? pt.y;
+                const formattedVal = typeof val === 'number' ? val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(val);
+                const suffix = typeof pt.text === 'string' && pt.text.includes('%') && typeof val === 'number' ? '%' : '';
+
+                return (
+                  <span key={i} className="text-[10px] font-mono bg-background/80 backdrop-blur-sm rounded px-1.5 py-0.5 text-foreground/80 border border-border/30 shadow-sm leading-none flex items-center h-5">
+                    {pt.name && !hasZ && <span className="text-muted-foreground/60 mr-1">{pt.name}:</span>}
+                    {hasZ && typeof pt.y === 'string' && <span className="text-muted-foreground/60 mr-1">{pt.y}:</span>}
+                    {formattedVal}{suffix}
+                    {pt.x !== undefined && (
+                      <span className="text-muted-foreground/50 ml-1">
+                        @ {typeof pt.x === 'number' ? pt.x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(pt.x)}
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
             </div>
           )}
           {isInView ? (
@@ -352,6 +382,9 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   const [deletingChartIds, setDeletingChartIds] = useState<Record<string, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [copySignals, setCopySignals] = useState<Record<string, number>>({});
+  const [dirtyChartIds, setDirtyChartIds] = useState<Set<string>>(new Set());
+  // Store code for dirty charts so we can save without re-entering edit mode
+  const dirtyChartData = useRef<Record<string, { code: string; name: string; category: string }>>({});
 
   const [mounted, setMounted] = useState(false);
   const [quickJumpId, setQuickJumpId] = useState('');
@@ -364,6 +397,29 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [collapsedSidebarCategories, setCollapsedSidebarCategories] = useState<Record<string, boolean>>({});
   const [activeStudioChartId, setActiveStudioChartId] = useState<string | null>(null);
+
+  // ── Inline Chart Editor State ──
+  const [editingChartId, setEditingChartId] = useState<string | null>(null);
+  const [editCode, setEditCode] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editPreviewFigure, setEditPreviewFigure] = useState<any>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState<string | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editTsSearch, setEditTsSearch] = useState('');
+  const [editTsQuery, setEditTsQuery] = useState('');
+  const editCodeRef = useRef<any>(null);
+  const prevLayoutBeforeEdit = useRef<LayoutMode>('grid');
+
+  // Timeseries search for inline editor
+  const { data: editTsResults = [], isLoading: editTsLoading } = useQuery<{ id: string; code: string; name?: string | null; category?: string | null }[]>({
+    queryKey: ['inline-ts-search', editTsQuery],
+    queryFn: () => apiFetchJson(`/api/timeseries?limit=20&offset=0&search=${encodeURIComponent(editTsQuery)}`),
+    enabled: editTsQuery.length > 0,
+    staleTime: 1000 * 60 * 2,
+  });
 
   // ── Layout mode (grid / single / stack) ──
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(() =>
@@ -441,18 +497,173 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     }
   }, [searchParams]); // intentionally omit sidebarOpen — we only auto-open on URL change, not on manual toggle
 
-  // Override onOpenStudio to stay in this page
-  const handleOpenInStudio = useCallback((chartId: string | null) => {
-    if (chartId) {
-        router.push(`?chartId=${encodeURIComponent(chartId)}`, { scroll: false });
-    } else {
-        router.push('?new=true', { scroll: false });
+  // Override onOpenStudio → inline editing mode
+  const handleOpenInStudio = useCallback(async (chartId: string | null) => {
+    if (!chartId) return;
+    // Save current layout so we can restore on close
+    prevLayoutBeforeEdit.current = layoutMode;
+    setEditLoading(true);
+    setEditError(null);
+    setEditSuccess(null);
+    setEditPreviewFigure(null);
+    try {
+      const full = await apiFetchJson(`/api/custom/${chartId}`);
+      setEditCode(full.code || '');
+      setEditName(full.name || 'Untitled');
+      setEditCategory(full.category || '');
+      setEditPreviewFigure(full.figure || null);
+      setEditingChartId(chartId);
+      // Switch to single-chart mode, focused on this chart
+      const idx = localCharts.findIndex(c => c.id === chartId);
+      if (idx !== -1) setSingleChartIdx(idx);
+      setLayoutMode('single');
+    } catch (err: any) {
+      setEditError(err?.message || 'Failed to load chart');
+    } finally {
+      setEditLoading(false);
     }
-  }, [router]);
+  }, [layoutMode, localCharts]);
+
+  const handleCloseInlineEdit = useCallback(() => {
+    // Update local chart data with latest run result so dashboard reflects changes
+    if (editingChartId && editPreviewFigure) {
+      setLocalCharts(prev => prev.map(c =>
+        c.id === editingChartId ? { ...c, figure: editPreviewFigure, name: editName } : c
+      ));
+    }
+    setEditingChartId(null);
+    setEditCode('');
+    setEditName('');
+    setEditCategory('');
+    setEditPreviewFigure(null);
+    setEditError(null);
+    setEditSuccess(null);
+    setEditTsSearch('');
+    setEditTsQuery('');
+    setLayoutMode(prevLayoutBeforeEdit.current);
+  }, [editingChartId, editPreviewFigure, editName]);
   
   const handleCloseStudio = useCallback(() => {
     router.push('/', { scroll: false });
   }, [router]);
+
+  // Inline editor: Run code
+  const handleInlineRun = useCallback(async () => {
+    if (!editCode.trim() || !editingChartId) return;
+    setEditLoading(true);
+    setEditError(null);
+    setEditSuccess(null);
+    try {
+      const res = await apiFetch('/api/custom/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: editCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Execution failed');
+      // Update the local chart with the new figure and exit editing to show the chart
+      setLocalCharts(prev => prev.map(c =>
+        c.id === editingChartId ? { ...c, figure: data, name: editName, code: editCode } : c
+      ));
+      // Mark as dirty (unsaved)
+      setDirtyChartIds(prev => new Set(prev).add(editingChartId));
+      dirtyChartData.current[editingChartId] = { code: editCode, name: editName, category: editCategory };
+      setEditingChartId(null);
+    } catch (err: any) {
+      setEditError(err?.message || 'Execution failed');
+    } finally {
+      setEditLoading(false);
+    }
+  }, [editCode, editingChartId, editName]);
+
+  // Inline editor: Save chart
+  const handleInlineSave = useCallback(async () => {
+    if (!editingChartId) return;
+    setEditSaving(true);
+    setEditError(null);
+    setEditSuccess(null);
+    try {
+      const res = await apiFetch(`/api/custom/${editingChartId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName, code: editCode, category: editCategory }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Save failed');
+      if (data?.figure) setEditPreviewFigure(data.figure);
+      setEditSuccess('Saved successfully.');
+      // Refresh dashboard data
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      // Update local chart data
+      setLocalCharts(prev => prev.map(c => c.id === editingChartId ? { ...c, name: editName, category: editCategory, figure: data?.figure || c.figure, code: editCode } : c));
+      // Clear dirty state
+      setDirtyChartIds(prev => { const next = new Set(prev); next.delete(editingChartId); return next; });
+      delete dirtyChartData.current[editingChartId];
+    } catch (err: any) {
+      setEditError(err?.message || 'Save failed');
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editingChartId, editCode, editName, editCategory, queryClient]);
+
+  // Save unsaved chart from card header icon
+  const handleSaveUnsavedChart = useCallback(async (chartId: string) => {
+    const data = dirtyChartData.current[chartId];
+    if (!data) return;
+    try {
+      const res = await apiFetch(`/api/custom/${chartId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: data.name, code: data.code, category: data.category }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result?.detail || 'Save failed');
+      // Update local chart with server figure
+      if (result?.figure) {
+        setLocalCharts(prev => prev.map(c => c.id === chartId ? { ...c, figure: result.figure } : c));
+      }
+      // Clear dirty
+      setDirtyChartIds(prev => { const next = new Set(prev); next.delete(chartId); return next; });
+      delete dirtyChartData.current[chartId];
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    } catch (err: any) {
+      console.error('Save failed:', err);
+    }
+  }, [queryClient]);
+
+  // Inline editor: Insert timeseries snippet
+  const handleInsertTs = useCallback((code: string, name?: string | null) => {
+    const alias = code.replace(/[^A-Za-z0-9_]/g, '_').toLowerCase();
+    const snippet = `\n# ${name || code}\n${alias} = Series('${code}')\n`;
+    const editor = editCodeRef.current;
+    if (editor) {
+      const model = editor.getModel();
+      const pos = editor.getPosition();
+      if (pos && model) {
+        editor.executeEdits('insert-series', [{
+          range: { startLineNumber: pos.lineNumber, startColumn: pos.column, endLineNumber: pos.lineNumber, endColumn: pos.column },
+          text: snippet,
+        }]);
+        editor.focus();
+        setEditSuccess(`Inserted Series('${code}')`);
+        return;
+      }
+    }
+    setEditCode(prev => prev + snippet);
+    setEditSuccess(`Inserted Series('${code}')`);
+  }, []);
+
+  // Keyboard shortcuts for inline editor
+  useEffect(() => {
+    if (!editingChartId) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleInlineRun(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleInlineSave(); }
+      if (e.key === 'Escape') { handleCloseInlineEdit(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editingChartId, handleInlineRun, handleInlineSave, handleCloseInlineEdit]);
 
   const chartAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const mainScrollRef = useRef<HTMLElement>(null);
@@ -498,28 +709,33 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     }
   }, [canRefreshAllCharts, isRefreshing, refreshChartsMutation, queryClient]);
 
+  const triggerBlobDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+
   const handleExportPDF = async () => {
     if (exporting) return;
     setExporting(true);
     try {
-      const res = await apiFetch('/api/custom/pdf', {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('items', JSON.stringify([]));
+      formData.append('theme', 'light');
+      const res = await fetch('/api/custom/pdf', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [], theme }),
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'PDF export failed');
-      }
+      if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `InvestmentX_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      triggerBlobDownload(blob, `InvestmentX_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (err: any) {
       console.error('PDF export error:', err);
     } finally {
@@ -532,24 +748,18 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     if (exportingHtml) return;
     setExportingHtml(true);
     try {
-      const res = await apiFetch('/api/custom/html', {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('items', JSON.stringify([]));
+      formData.append('theme', 'light');
+      const res = await fetch('/api/custom/html', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [], theme }),
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'HTML export failed');
-      }
+      if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `InvestmentX_Portfolio_${new Date().toISOString().slice(0, 10)}.html`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      triggerBlobDownload(blob, `InvestmentX_Portfolio_${new Date().toISOString().slice(0, 10)}.html`);
     } catch (err: any) {
       console.error('HTML export error:', err);
     } finally {
@@ -1245,15 +1455,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       mainScrollRef={mainScrollRef}
     >
       {/* Main Content */}
-      {activeStudioChartId !== null ? (
-        <div className="h-full w-full relative">
-          <CustomChartEditor
-            mode="integrated"
-            initialChartId={activeStudioChartId === '' ? null : activeStudioChartId}
-            onClose={handleCloseStudio}
-          />
-        </div>
-      ) : layoutMode === 'single' ? (
+      {layoutMode === 'single' ? (
         /* ── SINGLE MODE ── */
         <div className="h-full flex flex-col overflow-hidden">
           {/* Chart nav strip */}
@@ -1285,30 +1487,145 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             </button>
           </div>
 
-          {/* Main chart */}
+          {/* Main chart area */}
           <div className="flex-1 min-h-0 p-3">
             {filteredCharts[singleChartIdx] && (
-              <ChartCard
-                key={filteredCharts[singleChartIdx].id}
-                chart={filteredCharts[singleChartIdx]}
-                expanded={true}
-                canEdit={canEditChart(filteredCharts[singleChartIdx])}
-                canRefresh={canRefreshChart(filteredCharts[singleChartIdx])}
-                canDelete={canDeleteChart(filteredCharts[singleChartIdx])}
-                canManageVisibility={canManageVisibility}
-                isReorderable={false}
-                onTogglePdf={handleTogglePdf}
-                onRefreshChart={handleRefreshChart}
-                onCopyChart={handleCopyFromHeader}
-                onDeleteChart={handleDeleteChart}
-                isRefreshingChart={!!refreshingChartIds[filteredCharts[singleChartIdx].id]}
-                isDeletingChart={!!deletingChartIds[filteredCharts[singleChartIdx].id]}
-                onRankChange={handleRankChange}
-                copySignal={copySignals[filteredCharts[singleChartIdx].id] || 0}
-                onOpenStudio={handleOpenInStudio}
-                syncXRange={syncXAxis ? xSyncRange : null}
-                onXRangeChange={handleXRangeChange}
-              />
+              editingChartId === filteredCharts[singleChartIdx].id ? (
+                /* ── INLINE EDITING: code editor replaces chart content inside same card frame ── */
+                <div className="bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col h-full">
+                  {/* Card header — matches ChartCard style */}
+                  <div className="px-4 py-2.5 flex items-center justify-between gap-2 border-b border-border/40">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Code2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      <input
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        className="text-xs font-medium bg-transparent border-none outline-none text-foreground flex-1 min-w-0"
+                        placeholder="Chart name"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={handleInlineRun}
+                        disabled={editLoading}
+                        className="flex items-center gap-1 h-6 px-2 rounded text-[11px] font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+                        title="Run (Ctrl+Enter)"
+                      >
+                        {editLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                        Run
+                      </button>
+                      <button
+                        onClick={handleInlineSave}
+                        disabled={editSaving}
+                        className="flex items-center gap-1 h-6 px-2 rounded text-[11px] font-medium bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 transition-colors disabled:opacity-50"
+                        title="Save (Ctrl+S)"
+                      >
+                        {editSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                        Save
+                      </button>
+                      <button
+                        onClick={handleCloseInlineEdit}
+                        className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
+                        title="Close (Esc)"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Status bar */}
+                  {(editError || editSuccess) && (
+                    <div className={`px-3 py-1 text-[11px] font-mono shrink-0 ${editError ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                      {editError || editSuccess}
+                    </div>
+                  )}
+
+                  {/* Code editor — fills the chart area */}
+                  <div className="flex-1 min-h-0">
+                    <MonacoEditor
+                      height="100%"
+                      language="python"
+                      theme={theme === 'light' ? 'vs' : 'vs-dark'}
+                      value={editCode}
+                      onChange={(v: string | undefined) => setEditCode(v || '')}
+                      onMount={(editor: any) => { editCodeRef.current = editor; }}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        fontFamily: "'JetBrains Mono', monospace",
+                        padding: { top: 8 },
+                        lineNumbers: 'on',
+                        scrollBeyondLastLine: false,
+                        wordWrap: 'on',
+                        tabSize: 4,
+                        automaticLayout: true,
+                      }}
+                    />
+                  </div>
+
+                  {/* Timeseries search strip */}
+                  <div className="h-[100px] shrink-0 border-t border-border/40 flex flex-col">
+                    <div className="px-2 py-1 flex items-center gap-1.5">
+                      <Search className="w-3 h-3 text-muted-foreground/50" />
+                      <input
+                        value={editTsSearch}
+                        onChange={e => setEditTsSearch(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') setEditTsQuery(editTsSearch.trim()); }}
+                        placeholder="Search timeseries..."
+                        className="flex-1 text-xs bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
+                      />
+                      <button
+                        onClick={() => setEditTsQuery(editTsSearch.trim())}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Go
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-1">
+                      {editTsLoading && <div className="p-1 text-[11px] text-muted-foreground/40"><Loader2 className="w-3 h-3 animate-spin inline mr-1" />Searching...</div>}
+                      {editTsResults.map(ts => (
+                        <button
+                          key={ts.id}
+                          onClick={() => handleInsertTs(ts.code, ts.name)}
+                          className="w-full text-left px-2 py-0.5 text-[11px] rounded hover:bg-foreground/[0.04] transition-colors group flex items-center gap-2"
+                        >
+                          <span className="font-mono text-sky-400/80 shrink-0">{ts.code}</span>
+                          <span className="text-muted-foreground/60 truncate flex-1">{ts.name || ''}</span>
+                          <Plus className="w-3 h-3 text-muted-foreground/30 group-hover:text-emerald-400 shrink-0" />
+                        </button>
+                      ))}
+                      {!editTsLoading && editTsQuery && editTsResults.length === 0 && (
+                        <div className="p-1 text-[11px] text-muted-foreground/30">No results</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* ── Normal chart view ── */
+                <ChartCard
+                  key={filteredCharts[singleChartIdx].id}
+                  chart={filteredCharts[singleChartIdx]}
+                  expanded={true}
+                  canEdit={canEditChart(filteredCharts[singleChartIdx])}
+                  canRefresh={canRefreshChart(filteredCharts[singleChartIdx])}
+                  canDelete={canDeleteChart(filteredCharts[singleChartIdx])}
+                  canManageVisibility={canManageVisibility}
+                  isReorderable={false}
+                  onTogglePdf={handleTogglePdf}
+                  onRefreshChart={handleRefreshChart}
+                  onCopyChart={handleCopyFromHeader}
+                  onDeleteChart={handleDeleteChart}
+                  isRefreshingChart={!!refreshingChartIds[filteredCharts[singleChartIdx].id]}
+                  isDeletingChart={!!deletingChartIds[filteredCharts[singleChartIdx].id]}
+                  onRankChange={handleRankChange}
+                  copySignal={copySignals[filteredCharts[singleChartIdx].id] || 0}
+                  onOpenStudio={handleOpenInStudio}
+                  syncXRange={syncXAxis ? xSyncRange : null}
+                  onXRangeChange={handleXRangeChange}
+                  unsavedChanges={dirtyChartIds.has(filteredCharts[singleChartIdx].id)}
+                  onSaveChart={handleSaveUnsavedChart}
+                />
+              )
             )}
           </div>
 
@@ -1364,6 +1681,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                   onOpenStudio={handleOpenInStudio}
                   syncXRange={syncXAxis ? xSyncRange : null}
                   onXRangeChange={handleXRangeChange}
+                  unsavedChanges={dirtyChartIds.has(chart.id)}
+                  onSaveChart={handleSaveUnsavedChart}
                 />
               </div>
               {paneIdx < Math.min(stackChartCount, filteredCharts.length) - 1 && (
@@ -1427,6 +1746,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                           onOpenStudio={handleOpenInStudio}
                           syncXRange={syncXAxis ? xSyncRange : null}
                           onXRangeChange={handleXRangeChange}
+                          unsavedChanges={dirtyChartIds.has(chart.id)}
+                          onSaveChart={handleSaveUnsavedChart}
                         />
                       </motion.div>
                     );

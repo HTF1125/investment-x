@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
-import { Newspaper, Clock, WifiOff, Sparkles, ChevronDown } from 'lucide-react';
+import { Newspaper, Clock, WifiOff, Sparkles, ChevronDown, Check, Filter } from 'lucide-react';
 
 interface UnifiedNewsItem {
   id: string;
@@ -41,12 +41,23 @@ function detectThemes(item: UnifiedNewsItem): string[] {
 
 export default function NewsFeed({ embedded }: { embedded?: boolean }) {
   const [mounted, setMounted] = useState(false);
-  const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const { data = [], isLoading, isError } = useQuery<UnifiedNewsItem[]>({
@@ -57,11 +68,33 @@ export default function NewsFeed({ embedded }: { embedded?: boolean }) {
 
   const allThemes = [...THEME_RULES.map((r) => r.theme), 'General Market'];
   const allSelected = selectedThemes.length === allThemes.length;
-  const filterLabel = allSelected ? 'All' : `${selectedThemes.length}/${allThemes.length}`;
+  
+  const toggleTheme = (theme: string) => {
+    if (selectedThemes.includes(theme)) {
+      if (selectedThemes.length === 1 && !allSelected) return; 
+      if (allSelected) {
+        setSelectedThemes([theme]);
+      } else {
+        setSelectedThemes(prev => prev.filter(t => t !== theme));
+      }
+    } else {
+      const next = [...selectedThemes, theme];
+      setSelectedThemes(next.length === allThemes.length ? allThemes : next);
+    }
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedThemes([allThemes[0]]);
+    } else {
+      setSelectedThemes(allThemes);
+    }
+  };
+
   const rows = data
     .map((item) => ({ ...item, __themes: detectThemes(item) }))
     .filter((item) => {
-      if (allSelected || !selectedThemes.length) return true;
+      if (allSelected) return true;
       return item.__themes.some((t) => selectedThemes.includes(t));
     })
     .sort((a, b) => {
@@ -73,17 +106,6 @@ export default function NewsFeed({ embedded }: { embedded?: boolean }) {
   useEffect(() => {
     setSelectedThemes(allThemes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const onPointerDown = (event: MouseEvent) => {
-      if (!dropdownRef.current) return;
-      if (!dropdownRef.current.contains(event.target as Node)) {
-        setThemeDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
   }, []);
 
   if (isLoading) {
@@ -111,63 +133,73 @@ export default function NewsFeed({ embedded }: { embedded?: boolean }) {
 
   return (
     <section className={outer}>
-      <div className="h-10 flex items-center justify-between px-3 border-b border-border/60 shrink-0">
-        <div className="flex items-center gap-2">
-          <Newspaper className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setThemeDropdownOpen((v) => !v)}
-              className="h-6 px-2 rounded-md border border-border/60 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05]"
-            >
-              Themes {filterLabel}
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            {themeDropdownOpen && (
-              <div className="absolute top-7 left-0 z-20 w-56 rounded-lg border border-border/70 bg-background shadow-xl p-2 space-y-1">
-                <button
-                  onClick={() => {
-                    setSelectedThemes(allThemes);
-                    setThemeDropdownOpen(false);
-                  }}
-                  className="w-full text-left text-[10px] px-2 py-1 rounded hover:bg-foreground/[0.05] text-muted-foreground"
-                >
-                  Select all
-                </button>
-                <div className="h-px bg-border/60 my-1" />
-                {allThemes.map((theme) => {
-                  const checked = selectedThemes.includes(theme);
-                  return (
-                    <label key={theme} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-foreground/[0.04] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedThemes((prev) => [...prev, theme]);
-                          else setSelectedThemes((prev) => prev.filter((t) => t !== theme));
-                        }}
-                      />
-                            <span className="text-[10px] text-foreground/90">{theme}</span>
-                          </label>
-                  );
-                })}
-                <div className="h-px bg-border/60 my-1" />
-                <button
-                  onClick={() => setThemeDropdownOpen(false)}
-                  className="w-full text-left text-[10px] px-2 py-1 rounded hover:bg-foreground/[0.05] text-muted-foreground"
-                >
-                  Done
-                </button>
-              </div>
-            )}
+      <div className="px-3 pt-2.5 pb-2 border-b border-border/60 shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-20">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Newspaper className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
+            <span className="text-xs font-semibold text-foreground">Intelligence Feed</span>
+            <span className="text-muted-foreground/30 text-[11px]">·</span>
+            <span className="text-[10px] text-muted-foreground/60">{rows.length} items</span>
           </div>
-          <span className="text-xs font-semibold text-foreground">Recent News</span>
-          <span className="text-muted-foreground/30 text-[11px]">·</span>
-          <span className="text-[10px] text-muted-foreground/60">{rows.length} items</span>
+          <span className="hidden sm:inline-flex text-[10px] text-muted-foreground/50 uppercase tracking-wider font-mono items-center gap-1.5">
+            <Sparkles className="w-3 h-3" />
+            Chronological
+          </span>
         </div>
-        <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider font-mono inline-flex items-center gap-1.5">
-          <Sparkles className="w-3 h-3" />
-          Chronological
-        </span>
+        
+        <div className="flex items-center gap-2 relative" ref={filterRef}>
+          <button
+            onClick={() => setFilterOpen(!filterOpen)}
+            className={`flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-[11px] font-medium transition-all ${
+              filterOpen || !allSelected
+                ? 'border-sky-500/40 bg-sky-500/5 text-sky-400'
+                : 'border-border/60 bg-foreground/[0.03] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+            }`}
+          >
+            <Filter className="w-3 h-3" />
+            <span>Themes</span>
+            <span className="text-muted-foreground/30">|</span>
+            <span className="truncate max-w-[120px] sm:max-w-none">
+              {allSelected ? 'All Themes' : selectedThemes.join(', ')}
+            </span>
+            <ChevronDown className={`w-3 h-3 ml-0.5 transition-transform duration-200 ${filterOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {filterOpen && (
+            <div className="absolute top-full left-0 mt-1.5 w-64 max-h-[80vh] overflow-y-auto p-1.5 rounded-xl border border-border bg-background shadow-2xl z-50 custom-scrollbar animate-in fade-in zoom-in duration-150">
+              <button
+                onClick={toggleAll}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-foreground hover:bg-foreground/[0.06] transition-colors"
+              >
+                <span>All Themes</span>
+                {allSelected && <Check className="w-3 h-3 text-sky-400" />}
+              </button>
+              <div className="h-px bg-border/60 my-1 mx-1" />
+              {allThemes.map((theme) => {
+                const isSelected = selectedThemes.includes(theme) && !allSelected;
+                return (
+                  <button
+                    key={theme}
+                    onClick={() => toggleTheme(theme)}
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                  >
+                    <span className={isSelected ? 'text-sky-400' : ''}>{theme}</span>
+                    {isSelected && <Check className="w-3 h-3 text-sky-400" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          
+          {!allSelected && (
+            <button
+              onClick={() => setSelectedThemes(allThemes)}
+              className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 decoration-muted-foreground/30"
+            >
+              Reset
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">

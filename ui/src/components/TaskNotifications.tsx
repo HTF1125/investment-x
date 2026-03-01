@@ -7,65 +7,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetchJson } from "@/lib/api";
 
-interface ProcessInfo {
-  id: string;
-  name: string;
-  status: "running" | "completed" | "failed";
-  start_time: string;
-  end_time?: string;
-  message?: string;
-  progress?: string;
-}
+import { useTasks, ProcessInfo } from './TaskProvider';
 
 export default function TaskNotifications({ embedded = false }: { embedded?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-
-  // Push updates (SSE) for near-real-time task refresh
-  useEffect(() => {
-    const es = new EventSource('/api/task/stream');
-    const refresh = () => queryClient.invalidateQueries({ queryKey: ['task-processes'] });
-    es.addEventListener('task', refresh as EventListener);
-    es.addEventListener('ready', refresh as EventListener);
-    es.onerror = () => {
-      // Fallback polling still active; browser auto-reconnects SSE.
-    };
-    return () => {
-      es.removeEventListener('task', refresh as EventListener);
-      es.removeEventListener('ready', refresh as EventListener);
-      es.close();
-    };
-  }, [queryClient]);
-
-  // Click outside to close
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Use React Query for polling
-  const { data: allProcesses = [] } = useQuery({
-    queryKey: ['task-processes'],
-    queryFn: () => apiFetchJson<ProcessInfo[]>("/api/task/processes"),
-    enabled: true,
-    refetchInterval: (query) => {
-      const data = (query.state.data as ProcessInfo[] | undefined) ?? [];
-      const hasRunning = data.some((p) => p.status === "running");
-      if (hasRunning) return 700;
-      if (embedded || isOpen) return 1500;
-      return 5000;
-    },
-    refetchIntervalInBackground: false,
-    staleTime: 3000,
-  });
-
-  const processes = allProcesses;
+  const { processes } = useTasks();
 
   const handleDismiss = async (pid: string) => {
     try {

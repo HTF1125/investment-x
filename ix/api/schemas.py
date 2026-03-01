@@ -4,7 +4,19 @@ Pydantic schemas for request/response models.
 
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any
-from datetime import datetime, date
+from datetime import datetime as raw_datetime, date, timezone
+from typing_extensions import Annotated
+from pydantic.functional_validators import BeforeValidator
+
+
+def ensure_tz(v: Any) -> Any:
+    """Ensure naive datetimes from the DB are encoded natively as UTC."""
+    if isinstance(v, raw_datetime) and v.tzinfo is None:
+        return v.replace(tzinfo=timezone.utc)
+    return v
+
+
+datetime = Annotated[raw_datetime, BeforeValidator(ensure_tz)]
 
 
 # Authentication schemas

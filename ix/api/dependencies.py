@@ -32,8 +32,11 @@ def get_current_user(
     """
     # 1. Check Header (via token param, already handled by oauth2_scheme if present)
     # 2. Check Cookie if Header is missing
+    # 3. Check Query Param if Cookie is missing (for native form downloads)
     if not token:
         token = request.cookies.get("access_token")
+    if not token:
+        token = request.query_params.get("token")
 
     if not token:
         raise HTTPException(
@@ -78,6 +81,8 @@ def get_optional_user(
     """
     if not token:
         token = request.cookies.get("access_token")
+    if not token:
+        token = request.query_params.get("token")
     if not token:
         return None
     payload = verify_token(token)

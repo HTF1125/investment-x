@@ -13,12 +13,27 @@ export async function apiFetch(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  return fetch(url, { 
+  const res = await fetch(url, { 
     ...options, 
     headers,
     credentials: 'include', // CRITICAL: Send HttpOnly cookies to the server
     cache: 'no-store'
   });
+
+  // Global handler for 401 Unauthorized (Session Expired)
+  if (res.status === 401 && typeof window !== 'undefined') {
+    // Only redirect if we thought we were logged in
+    if (localStorage.getItem('token')) {
+      console.warn('Session expired, redirecting to login...');
+      localStorage.removeItem('token');
+      // Use window.location for a hard redirect to clear state
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login?expired=true';
+      }
+    }
+  }
+
+  return res;
 }
 
 async function parseResponseBody(res: Response): Promise<any> {

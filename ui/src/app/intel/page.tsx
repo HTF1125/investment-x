@@ -12,15 +12,7 @@ import { Radio, RefreshCw, Check, AlertTriangle, Youtube, MessageSquare, Newspap
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-interface ProcessInfo {
-  id: string;
-  name: string;
-  status: 'running' | 'completed' | 'failed';
-  start_time: string;
-  end_time?: string;
-  message?: string;
-  progress?: string;
-}
+import { useTasks, ProcessInfo } from '@/components/TaskProvider';
 
 type IntelTab = 'news' | 'youtube' | 'telegram';
 
@@ -63,17 +55,7 @@ export default function IntelPage() {
     if (!opts?.sticky) toastTimerRef.current = setTimeout(() => setToast(null), 4000);
   }, []);
 
-  const { data: allProcesses = [] } = useQuery({
-    queryKey: ['task-processes'],
-    queryFn: () => apiFetchJson<ProcessInfo[]>('/api/task/processes'),
-    refetchInterval: (query) => {
-      const data = (query.state.data as ProcessInfo[] | undefined) ?? [];
-      return data.some((p) => p.status === 'running') ? 2500 : 15000;
-    },
-    refetchIntervalInBackground: false,
-    staleTime: 3000,
-    enabled: isAdmin,
-  });
+  const { processes: allProcesses } = useTasks();
 
   const latestNews = allProcesses.find((p) => p.name.startsWith('News Scraping'));
   const latestYoutube = allProcesses.find((p) => p.name.startsWith('YouTube Sync'));

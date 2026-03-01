@@ -4,19 +4,15 @@ import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } f
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlignLeft,
-  Columns2,
-  ExternalLink,
   FileText,
   Loader2,
-  Maximize2,
-  Minimize2,
   Pin,
   PinOff,
   Plus,
   Save,
   Search,
   Trash2,
+  Presentation as PresentationIcon,
 } from 'lucide-react';
 
 import AppShell from '@/components/AppShell';
@@ -88,14 +84,11 @@ function extractLinks(raw: string): string[] {
   if (typeof window !== 'undefined' && raw.includes('<')) {
     try {
       const doc = new DOMParser().parseFromString(raw, 'text/html');
-      // Regular links
       doc.querySelectorAll('a[href]').forEach((el) => {
         const href = (el.getAttribute('href') || '').trim();
         if (href) urls.add(href);
       });
-    } catch {
-      // Fallback to regex extraction.
-    }
+    } catch { }
   }
 
   while ((match = markdownLinkRegex.exec(raw)) !== null) {
@@ -142,10 +135,6 @@ function countWords(html: string): number {
     return 0;
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Self-contained second note pane for split view
-// ─────────────────────────────────────────────────────────────────────────────
 
 function NoteEditorPane({
   notes,
@@ -212,7 +201,6 @@ function NoteEditorPane({
 
   const updateMutation = useMutation({
     mutationFn: async (payload: { id: string; title: string; content: string }) => {
-      // Reconstruct body preserving non-text blocks
       const currentNote = queryClient.getQueryData<NoteDetail>(['investment-note', payload.id]);
       const existingBlocks = currentNote?.body?.filter(b => b.type !== 'text') || [];
       const updatedBody = [
@@ -230,7 +218,6 @@ function NoteEditorPane({
       setSaveState('saved');
       setLastSavedAt(note.updated_at || null);
       queryClient.setQueryData(['investment-note', note.id], note);
-      
       const textBlock = note.body?.find(b => b.type === 'text');
       const content = textBlock?.value || '';
       originalRef.current = { title: note.title || '', content: content };
@@ -288,13 +275,12 @@ function NoteEditorPane({
   const formStyle = { backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' };
 
   return (
-    <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col">
-      {/* Pane header — note picker + save state */}
-      <div className="h-8 px-2.5 border-b border-border/40 flex items-center gap-2 shrink-0">
+    <div className="report-canvas flex-1 min-w-0 min-h-0 h-full flex flex-col">
+      <div className="h-10 px-4 border-b border-border/30 flex items-center gap-2 shrink-0 bg-background/65 backdrop-blur-xl">
         <select
           value={selectedNoteId || ''}
           onChange={(e) => setSelectedNoteId(e.target.value || null)}
-          className="flex-1 min-w-0 text-[11px] bg-transparent border-none outline-none text-foreground font-medium cursor-pointer"
+          className="h-8 flex-1 min-w-0 rounded-lg border border-border/45 bg-background/80 px-3 text-[11px] outline-none text-foreground font-medium cursor-pointer"
           style={formStyle}
         >
           {notes.length === 0 && <option value="">No notes</option>}
@@ -303,21 +289,20 @@ function NoteEditorPane({
           ))}
         </select>
         {saveHint && (
-          <span className={`text-[10px] shrink-0 ${saveState === 'error' ? 'text-rose-400' : isDirty ? 'text-amber-400/70' : 'text-muted-foreground/40'}`}>
+          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium ${saveState === 'error' ? 'border-rose-500/30 bg-rose-500/10 text-rose-300' : isDirty ? 'border-amber-500/25 bg-amber-500/10 text-amber-200' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'}`}>
             {saveHint}
           </span>
         )}
         <button
           onClick={saveNow}
           disabled={!isDirty || updateMutation.isPending}
-          className="h-5 px-1.5 rounded border border-emerald-500/30 bg-emerald-500/[0.08] text-[10px] font-medium text-emerald-400 hover:bg-emerald-500/15 disabled:opacity-30 transition-colors shrink-0"
+          className="h-8 px-3 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-30 transition-colors shrink-0"
         >
           Save
         </button>
       </div>
 
-      {/* Editor area */}
-      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-6 py-8 md:px-10 bg-background">
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
         {!selectedNoteId ? (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground/50 text-sm">
             <FileText className="w-8 h-8 opacity-20 mb-3" />
@@ -329,22 +314,27 @@ function NoteEditorPane({
             Loading…
           </div>
         ) : (
-          <div className="max-w-4xl mx-auto">
+          <div className="mx-auto max-w-4xl px-6 py-10 md:px-10 md:py-12">
+            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-border/40 bg-background/90 shadow-lg shadow-black/10">
+              <FileText className="w-6 h-6 text-sky-400/80" />
+            </div>
             <input
               value={title}
               onChange={handleTitleChange}
               placeholder="Untitled"
-              className="w-full bg-transparent text-3xl md:text-4xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/20 mb-4"
+              className="report-title-input w-full bg-transparent text-4xl md:text-5xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/20 mb-5"
             />
-            <NotesRichEditor
-              value={editorValue}
-              onChange={handleEditorChange}
-              onImageUpload={handleImageUpload}
-              disabled={!selectedNoteId}
-              chartLibrary={chartLibrary}
-              minHeightClassName="min-h-[60vh] text-lg"
-              onFetchChartSnapshot={onFetchChartSnapshot}
-            />
+            <div className="report-editor-shell">
+              <NotesRichEditor
+                value={editorValue}
+                onChange={handleEditorChange}
+                onImageUpload={handleImageUpload}
+                disabled={!selectedNoteId}
+                chartLibrary={chartLibrary}
+                minHeightClassName="min-h-[56vh] text-lg"
+                onFetchChartSnapshot={onFetchChartSnapshot}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -360,15 +350,14 @@ export default function NotesPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-
     const syncSidebarForViewport = () => {
       if (window.innerWidth < 1024) setSidebarOpen(false);
     };
-
     syncSidebarForViewport();
     window.addEventListener('resize', syncSidebarForViewport);
     return () => window.removeEventListener('resize', syncSidebarForViewport);
   }, []);
+
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [title, setTitle] = useState('');
@@ -378,9 +367,7 @@ export default function NotesPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
-  const [focusMode, setFocusMode] = useState(false);
-  const [dualPane, setDualPane] = useState(false);
-  const [splitRatio, setSplitRatio] = useState(68);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
 
   const originalRef = useRef<{ title: string; content: string; pinned: boolean } | null>(null);
   const hydratedNoteIdRef = useRef<string | null>(null);
@@ -389,8 +376,30 @@ export default function NotesPage() {
   const contentRef = useRef('');
   const pinnedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const splitDraggingRef = useRef(false);
-  const splitResizeRafRef = useRef(0);
+
+  const handleExport = async (format: 'pdf' | 'pptx') => {
+    if (!selectedNoteId) return;
+    setExportingFormat(format);
+    try {
+      const res = await apiFetch(`/api/notes/${selectedNoteId}/export?format=${format}`);
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const date = new Date().toISOString().slice(0, 10);
+      a.download = `InvestmentX_Report_${date}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Failed to generate ' + format.toUpperCase());
+    } finally {
+      setExportingFormat(null);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -417,37 +426,19 @@ export default function NotesPage() {
 
   useEffect(() => {
     if (!notes.length) {
-      setSelectedNoteId(null);
-      setTitle('');
-      setEditorValue('');
-      setPinned(false);
-      setIsDirty(false);
-      setLastSavedAt(null);
-      setSaveState('idle');
-      titleRef.current = '';
-      contentRef.current = '';
-      pinnedRef.current = false;
-      hydratedNoteIdRef.current = null;
-      lastServerUpdatedAtRef.current = null;
-      originalRef.current = null;
-      return;
+      setSelectedNoteId(null); setTitle(''); setEditorValue(''); setPinned(false); setIsDirty(false); setLastSavedAt(null); setSaveState('idle'); titleRef.current = ''; contentRef.current = ''; pinnedRef.current = false; hydratedNoteIdRef.current = null; lastServerUpdatedAtRef.current = null; originalRef.current = null; return;
     }
     if (!selectedNoteId || !notes.some((n) => n.id === selectedNoteId)) {
       setSelectedNoteId(notes[0].id);
     }
   }, [notes, selectedNoteId]);
 
-  useEffect(() => {
-    hydratedNoteIdRef.current = null;
-  }, [selectedNoteId]);
+  useEffect(() => { hydratedNoteIdRef.current = null; }, [selectedNoteId]);
 
   const filteredNotes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return notes;
-    return notes.filter(
-      (n) =>
-        (n.title || '').toLowerCase().includes(q)
-    );
+    return notes.filter((n) => (n.title || '').toLowerCase().includes(q));
   }, [notes, searchQuery]);
 
   const noteQuery = useQuery({
@@ -462,19 +453,30 @@ export default function NotesPage() {
 
   const headings = useMemo(() => extractHeadings(editorValue), [editorValue]);
   const wordCount = useMemo(() => countWords(editorValue), [editorValue]);
+  const readingMinutes = useMemo(() => Math.max(1, Math.round(wordCount / 200)), [wordCount]);
   const chartCount = useMemo(() => (editorValue.match(/data-chart-block/g) || []).length, [editorValue]);
   const imageCount = noteQuery.data?.body?.filter(b => b.type === 'image').length ?? 0;
   const currentLinks = useMemo(() => extractLinks(editorValue), [editorValue]);
+  const selectedNote = useMemo(
+    () => notes.find((note) => note.id === selectedNoteId) ?? null,
+    [notes, selectedNoteId]
+  );
+  const createdLabel = useMemo(
+    () => noteQuery.data?.created_at
+      ? new Date(noteQuery.data.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+      : null,
+    [noteQuery.data?.created_at]
+  );
+  const updatedLabel = useMemo(
+    () => lastSavedAt
+      ? new Date(lastSavedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : null,
+    [lastSavedAt]
+  );
 
   const recomputeDirty = useCallback(() => {
     const original = originalRef.current;
-    const dirty = Boolean(
-      original &&
-        selectedNoteId &&
-        (titleRef.current !== original.title ||
-          contentRef.current !== original.content ||
-          pinnedRef.current !== original.pinned)
-    );
+    const dirty = Boolean(original && selectedNoteId && (titleRef.current !== original.title || contentRef.current !== original.content || pinnedRef.current !== original.pinned));
     setIsDirty((prev) => (prev === dirty ? prev : dirty));
     return dirty;
   }, [selectedNoteId]);
@@ -484,442 +486,165 @@ export default function NotesPage() {
     const textBlock = note.body?.find(b => b.type === 'text');
     const nextContent = textBlock?.value || '';
     const nextPinned = !!note.pinned;
-
-    titleRef.current = nextTitle;
-    contentRef.current = nextContent;
-    pinnedRef.current = nextPinned;
-    setTitle(nextTitle);
-    setEditorValue(nextContent);
-    setPinned(nextPinned);
-    setIsDirty(false);
-    setLastSavedAt(note.updated_at || null);
-    setSaveState('idle');
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    originalRef.current = {
-      title: nextTitle,
-      content: nextContent,
-      pinned: nextPinned,
-    };
+    titleRef.current = nextTitle; contentRef.current = nextContent; pinnedRef.current = nextPinned; setTitle(nextTitle); setEditorValue(nextContent); setPinned(nextPinned); setIsDirty(false); setLastSavedAt(note.updated_at || null); setSaveState('idle');
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    originalRef.current = { title: nextTitle, content: nextContent, pinned: nextPinned };
   }, []);
 
   useEffect(() => {
-    const note = noteQuery.data;
-    if (!note) return;
-
+    const note = noteQuery.data; if (!note) return;
     const incomingUpdatedAt = note.updated_at || null;
     const isFirstHydrationForNote = hydratedNoteIdRef.current !== note.id;
-
-    if (isFirstHydrationForNote) {
-      hydratedNoteIdRef.current = note.id;
-      lastServerUpdatedAtRef.current = incomingUpdatedAt;
-      hydrateFromNote(note);
-      return;
-    }
-
+    if (isFirstHydrationForNote) { hydratedNoteIdRef.current = note.id; lastServerUpdatedAtRef.current = incomingUpdatedAt; hydrateFromNote(note); return; }
     if (!incomingUpdatedAt || incomingUpdatedAt === lastServerUpdatedAtRef.current) return;
     lastServerUpdatedAtRef.current = incomingUpdatedAt;
     if (incomingUpdatedAt === lastSavedAt) return;
-
-    if (recomputeDirty()) {
-      setStatus('This report changed on another session. Save to overwrite, or refresh to sync.');
-      return;
-    }
-
-    hydrateFromNote(note);
-    setStatus('Synced latest updates.');
+    if (recomputeDirty()) { setStatus('This report changed on another session. Save to overwrite, or refresh to sync.'); return; }
+    hydrateFromNote(note); setStatus('Synced latest updates.');
   }, [noteQuery.data, hydrateFromNote, recomputeDirty, lastSavedAt]);
 
-  useEffect(
-    () => () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    const onPointerMove = (event: PointerEvent) => {
-      if (!splitDraggingRef.current) return;
-      const width = window.innerWidth || 1;
-      const ratio = Math.max(46, Math.min(82, (event.clientX / width) * 100));
-      setSplitRatio(ratio);
-      // Notify Plotly (and any other responsive elements) of the container resize
-      if (!splitResizeRafRef.current) {
-        splitResizeRafRef.current = window.requestAnimationFrame(() => {
-          splitResizeRafRef.current = 0;
-          window.dispatchEvent(new Event('resize'));
-        });
-      }
-    };
-    const onPointerUp = () => {
-      splitDraggingRef.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      if (splitResizeRafRef.current) {
-        window.cancelAnimationFrame(splitResizeRafRef.current);
-        splitResizeRafRef.current = 0;
-      }
-      window.dispatchEvent(new Event('resize'));
-    };
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-    };
-  }, []);
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
 
   const createMutation = useMutation({
-    mutationFn: (payload: { title: string; body: NoteBlock[]; pinned: boolean }) =>
-      apiFetchJson<NoteDetail>('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }),
+    mutationFn: (payload: { title: string; body: NoteBlock[]; pinned: boolean }) => apiFetchJson<NoteDetail>('/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
     onSuccess: (note) => {
-      setStatus('Report created.');
-      setSaveState('saved');
-      setLastSavedAt(note.updated_at || null);
-      queryClient.setQueryData(['investment-note', note.id], note);
+      setStatus('Report created.'); setSaveState('saved'); setLastSavedAt(note.updated_at || null); queryClient.setQueryData(['investment-note', note.id], note);
       queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => {
         const imgCount = note.body?.filter(b => b.type === 'image').length || 0;
-        const summary: NoteSummary = {
-          id: note.id,
-          title: note.title || 'Untitled Note',
-          pinned: !!note.pinned,
-          image_count: imgCount,
-          created_at: note.created_at,
-          updated_at: note.updated_at,
-        };
-        const base = prev ? prev.filter((item) => item.id !== note.id) : [];
-        return sortNoteSummaries([summary, ...base]);
+        const summary: NoteSummary = { id: note.id, title: note.title || 'Untitled Note', pinned: !!note.pinned, image_count: imgCount, created_at: note.created_at, updated_at: note.updated_at };
+        const base = prev ? prev.filter((item) => item.id !== note.id) : []; return sortNoteSummaries([summary, ...base]);
       });
       setSelectedNoteId(note.id);
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { id: string; title: string; body: NoteBlock[]; pinned: boolean }) =>
-      apiFetchJson<NoteDetail>(`/api/notes/${payload.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: payload.title,
-          body: payload.body,
-          pinned: payload.pinned,
-        }),
-      }),
+    mutationFn: async (payload: { id: string; title: string; body: NoteBlock[]; pinned: boolean }) => apiFetchJson<NoteDetail>(`/api/notes/${payload.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: payload.title, body: payload.body, pinned: payload.pinned }) }),
     onSuccess: (note, variables) => {
-      setStatus(null);
-      setSaveState('saved');
-      setLastSavedAt(note.updated_at || null);
-      queryClient.setQueryData(['investment-note', note.id], note);
+      setStatus(null); setSaveState('saved'); setLastSavedAt(note.updated_at || null); queryClient.setQueryData(['investment-note', note.id], note);
       queryClient.setQueryData<NoteSummary[]>(['investment-notes'], (prev) => {
         if (!prev) return prev;
-        const next = prev.map((item) =>
-          item.id === note.id
-            ? {
-                ...item,
-                title: note.title || 'Untitled Note',
-                pinned: !!note.pinned,
-                updated_at: note.updated_at,
-                image_count: note.body?.filter(b => b.type === 'image').length || item.image_count,
-              }
-            : item
-        );
-        return sortNoteSummaries(next);
+        return sortNoteSummaries(prev.map((item) => item.id === note.id ? { ...item, title: note.title || 'Untitled Note', pinned: !!note.pinned, updated_at: note.updated_at, image_count: note.body?.filter(b => b.type === 'image').length || item.image_count } : item));
       });
-      
       const textBlock = variables.body?.find(b => b.type === 'text');
-      originalRef.current = {
-        title: variables.title || '',
-        content: textBlock?.value || '',
-        pinned: !!variables.pinned,
-      };
-      recomputeDirty();
+      originalRef.current = { title: variables.title || '', content: textBlock?.value || '', pinned: !!variables.pinned }; recomputeDirty();
     },
-    onError: (err: any) => {
-      setSaveState('error');
-      setStatus(err?.message || 'Save failed.');
-    },
+    onError: (err: any) => { setSaveState('error'); setStatus(err?.message || 'Save failed.'); },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiFetch(`/api/notes/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        throw new Error(await parseErrorMessage(res));
-      }
-    },
-    onSuccess: (_data, deletedId) => {
-      setStatus('Report deleted.');
-      queryClient.removeQueries({ queryKey: ['investment-note', deletedId], exact: true });
-      queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => {
-        if (!prev) return prev;
-        return prev.filter((item) => item.id !== deletedId);
-      });
-    },
+    mutationFn: async (id: string) => { const res = await apiFetch(`/api/notes/${id}`, { method: 'DELETE' }); if (!res.ok) throw new Error(await parseErrorMessage(res)); },
+    onSuccess: (_data, deletedId) => { setStatus('Report deleted.'); queryClient.removeQueries({ queryKey: ['investment-note', deletedId], exact: true }); queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => prev ? prev.filter((item) => item.id !== deletedId) : prev); },
   });
 
   const uploadMutation = useMutation({
-    mutationFn: async ({ id, file }: { id: string; file: File }) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await apiFetch(`/api/notes/${id}/images`, {
-        method: 'POST',
-        body: formData,
-      });
-      if (!res.ok) {
-        throw new Error(await parseErrorMessage(res));
-      }
-      return (await res.json()) as NoteImageMeta;
-    },
-    onError: (err: any) => {
-      setSaveState('error');
-      setStatus(err?.message || 'Image upload failed.');
-    },
+    mutationFn: async ({ id, file }: { id: string; file: File }) => { const formData = new FormData(); formData.append('file', file); const res = await apiFetch(`/api/notes/${id}/images`, { method: 'POST', body: formData }); if (!res.ok) throw new Error(await parseErrorMessage(res)); return (await res.json()) as NoteImageMeta; },
+    onError: (err: any) => { setSaveState('error'); setStatus(err?.message || 'Image upload failed.'); },
   });
 
   const handleFetchChartSnapshot = useCallback(async (chartId: string) => {
-    // 1. Try dedicated figure endpoint
-    try {
-      const res = await apiFetch(`/api/v1/dashboard/charts/${chartId}/figure`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.figure && typeof data.figure === 'object') return { figure: data.figure };
-      }
-    } catch { /* fall through */ }
-    // 2. Try full chart record
-    try {
-      const res = await apiFetch(`/api/custom/${chartId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.figure) return { figure: data.figure };
-      }
-    } catch { /* fall through */ }
-    // 3. Re-execute chart code server-side if no figure stored
-    try {
-      const res = await apiFetch(`/api/custom/${chartId}/refresh`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.figure) return { figure: data.figure };
-      }
-    } catch { /* fall through */ }
+    try { const res = await apiFetch(`/api/v1/dashboard/charts/${chartId}/figure`); if (res.ok) { const data = await res.json(); if (data?.figure && typeof data.figure === 'object') return { figure: data.figure }; } } catch { }
+    try { const res = await apiFetch(`/api/custom/${chartId}`); if (res.ok) { const data = await res.json(); if (data?.figure) return { figure: data.figure }; } } catch { }
+    try { const res = await apiFetch(`/api/custom/${chartId}/refresh`, { method: 'POST' }); if (res.ok) { const data = await res.json(); if (data?.figure) return { figure: data.figure }; } } catch { }
     return { figure: null };
   }, []);
 
-  const handleImageUpload = useCallback(
-    async (file: File): Promise<{ id: string; url: string }> => {
-      if (!selectedNoteId) {
-        throw new Error('Create or select a report first.');
-      }
-      setStatus('Uploading image...');
-      const image = await uploadMutation.mutateAsync({ id: selectedNoteId, file });
-      const nowIso = new Date().toISOString();
-      queryClient.setQueryData<NoteDetail | undefined>(['investment-note', selectedNoteId], (prev) => {
-        if (!prev) return prev;
-        const newBlock = {
-          id: image.id,
-          type: 'image',
-          data: '', // Base64 is managed via the endpoint response, we just push the block structure roughly
-          filename: file.name,
-          content_type: file.type
-        };
-        // The backend handles pushing the block, but we reflect it optimistically
-        return { ...prev, body: [...(prev.body || []), newBlock], updated_at: nowIso };
-      });
-      queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => {
-        if (!prev) return prev;
-        return sortNoteSummaries(
-          prev.map((item) =>
-            item.id === selectedNoteId
-              ? { ...item, image_count: (item.image_count || 0) + 1, updated_at: nowIso }
-              : item
-          )
-        );
-      });
-      setStatus('Image uploaded.');
-      return image;
-    },
-    [selectedNoteId, uploadMutation, queryClient]
-  );
+  const handleImageUpload = useCallback(async (file: File): Promise<{ id: string; url: string }> => {
+    if (!selectedNoteId) throw new Error('Create or select a report first.');
+    setStatus('Uploading image...'); const image = await uploadMutation.mutateAsync({ id: selectedNoteId, file }); const nowIso = new Date().toISOString();
+    queryClient.setQueryData<NoteDetail | undefined>(['investment-note', selectedNoteId], (prev) => prev ? { ...prev, body: [...(prev.body || []), { id: image.id, type: 'image', data: '', filename: file.name, content_type: file.type }], updated_at: nowIso } : prev);
+    queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => prev ? sortNoteSummaries(prev.map((item) => item.id === selectedNoteId ? { ...item, image_count: (item.image_count || 0) + 1, updated_at: nowIso } : item)) : prev);
+    setStatus('Image uploaded.'); return image;
+  }, [selectedNoteId, uploadMutation, queryClient]);
 
   const saveNow = useCallback(() => {
-    if (!selectedNoteId) return;
-    if (uploadMutation.isPending || updateMutation.isPending) return;
-    if (!recomputeDirty()) return;
-    
-    const draftTitle = titleRef.current.trim() || 'Untitled Note';
-    const draftContent = contentRef.current;
-    
-    // Construct the updated body with the new text block and existing non-text blocks
+    if (!selectedNoteId || uploadMutation.isPending || updateMutation.isPending || !recomputeDirty()) return;
+    const draftTitle = titleRef.current.trim() || 'Untitled Note'; const draftContent = contentRef.current;
     const currentNote = queryClient.getQueryData<NoteDetail>(['investment-note', selectedNoteId]);
     const existingBlocks = currentNote?.body?.filter(b => b.type !== 'text') || [];
-    
-    // Generate UUID locally or just assume backend manages text block
-    const updatedBody = [
-      { id: crypto.randomUUID(), type: 'text', value: draftContent },
-      ...existingBlocks
-    ];
-
-    setSaveState('saving');
-    updateMutation.mutate({
-      id: selectedNoteId,
-      title: draftTitle,
-      body: updatedBody,
-      pinned: pinnedRef.current,
-    });
+    const updatedBody = [{ id: crypto.randomUUID(), type: 'text', value: draftContent }, ...existingBlocks];
+    setSaveState('saving'); updateMutation.mutate({ id: selectedNoteId, title: draftTitle, body: updatedBody, pinned: pinnedRef.current });
   }, [selectedNoteId, uploadMutation.isPending, updateMutation, recomputeDirty, queryClient]);
 
   const queueAutoSave = useCallback(() => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    if (!selectedNoteId) return;
-    if (uploadMutation.isPending || updateMutation.isPending) return;
-    if (!recomputeDirty()) return;
-    setSaveState((prev) => (prev === 'saving' ? prev : 'idle'));
-    saveTimerRef.current = setTimeout(() => {
-      saveNow();
-    }, 1700);
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    if (!selectedNoteId || uploadMutation.isPending || updateMutation.isPending || !recomputeDirty()) return;
+    setSaveState((prev) => (prev === 'saving' ? prev : 'idle')); saveTimerRef.current = setTimeout(() => { saveNow(); }, 1700);
   }, [selectedNoteId, uploadMutation.isPending, updateMutation.isPending, recomputeDirty, saveNow]);
 
-  useEffect(() => {
-    if (selectedNoteId && isDirty && !updateMutation.isPending && !uploadMutation.isPending) {
-      queueAutoSave();
-    }
-  }, [selectedNoteId, isDirty, updateMutation.isPending, uploadMutation.isPending, queueAutoSave]);
+  useEffect(() => { if (selectedNoteId && isDirty && !updateMutation.isPending && !uploadMutation.isPending) queueAutoSave(); }, [selectedNoteId, isDirty, updateMutation.isPending, uploadMutation.isPending, queueAutoSave]);
 
-  const handleTitleChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      const nextTitle = event.target.value;
-      titleRef.current = nextTitle;
-      setTitle(nextTitle);
-      queueAutoSave();
-    },
-    [queueAutoSave]
-  );
-
-  const handlePinnedToggle = useCallback(() => {
-    const nextPinned = !pinnedRef.current;
-    pinnedRef.current = nextPinned;
-    setPinned(nextPinned);
-    queueAutoSave();
-  }, [queueAutoSave]);
-
-  const handleEditorChange = useCallback(
-    (html: string) => {
-      contentRef.current = html;
-      setEditorValue(html);
-      queueAutoSave();
-    },
-    [queueAutoSave]
-  );
+  const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => { const nextTitle = event.target.value; titleRef.current = nextTitle; setTitle(nextTitle); queueAutoSave(); }, [queueAutoSave]);
+  const handlePinnedToggle = useCallback(() => { const nextPinned = !pinnedRef.current; pinnedRef.current = nextPinned; setPinned(nextPinned); queueAutoSave(); }, [queueAutoSave]);
+  const handleEditorChange = useCallback((html: string) => { contentRef.current = html; setEditorValue(html); queueAutoSave(); }, [queueAutoSave]);
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        if (saveTimerRef.current) {
-          clearTimeout(saveTimerRef.current);
-          saveTimerRef.current = null;
-        }
-        saveNow();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    const onKeyDown = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; } saveNow(); } };
+    window.addEventListener('keydown', onKeyDown); return () => window.removeEventListener('keydown', onKeyDown);
   }, [saveNow]);
 
-  useEffect(() => {
-    if (!isDirty) return;
-    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isDirty]);
+  useEffect(() => { if (!isDirty) return; const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler); }, [isDirty]);
 
-  const handleCreateNote = () => {
-    setStatus(null);
-    createMutation.mutate({ title: 'New Report Draft', body: [{ id: crypto.randomUUID(), type: 'text', value: '' }], pinned: false });
-  };
+  const handleCreateNote = () => { setStatus(null); createMutation.mutate({ title: 'New Report Draft', body: [{ id: crypto.randomUUID(), type: 'text', value: '' }], pinned: false }); };
+  const handleDeleteNote = () => { if (!selectedNoteId || !confirm('Delete this report?')) return; if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; } deleteMutation.mutate(selectedNoteId); };
 
-  const handleDeleteNote = () => {
-    if (!selectedNoteId) return;
-    if (!confirm('Delete this report?')) return;
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    deleteMutation.mutate(selectedNoteId);
-  };
+  const saveHint = useMemo(() => { if (saveState === 'saving') return 'Saving...'; if (saveState === 'error') return status || 'Save failed'; if (isDirty) return 'Unsaved changes'; if (lastSavedAt) return `Saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`; return 'Saved'; }, [saveState, status, isDirty, lastSavedAt]);
+  const statusToneClass = saveState === 'error'
+    ? 'border-rose-500/35 bg-rose-500/12 text-rose-300'
+    : isDirty
+      ? 'border-amber-500/30 bg-amber-500/12 text-amber-200'
+      : 'border-emerald-500/25 bg-emerald-500/12 text-emerald-200';
+  const publishToneClass = pinned
+    ? 'border-sky-500/30 bg-sky-500/12 text-sky-200 hover:bg-sky-500/18'
+    : 'border-border/45 bg-background/75 text-muted-foreground hover:bg-background hover:text-foreground';
+  const toolbarIconButtonClass = 'h-7 w-8 rounded-lg border border-border/45 bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground inline-flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
 
-  const saveHint = useMemo(() => {
-    if (saveState === 'saving') return 'Saving...';
-    if (saveState === 'error') return status || 'Save failed';
-    if (isDirty) return 'Unsaved changes';
-    if (lastSavedAt)
-      return `Saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    return 'Saved';
-  }, [saveState, status, isDirty, lastSavedAt]);
-
-  if (authLoading || (!isAuthenticated && !authLoading)) {
-    return (
-      <AppShell hideFooter>
-        <div className="h-[calc(100vh-3rem)] flex items-center justify-center text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
-          Loading reports...
-        </div>
-      </AppShell>
-    );
-  }
+  if (authLoading || (!isAuthenticated && !authLoading)) return (<AppShell hideFooter><div className="h-[calc(100vh-3rem)] flex items-center justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading reports...</div></AppShell>);
 
   const sidebarContent = (
     <>
-      <div className="px-2 py-1.5 border-b border-border/40 shrink-0">
+      <div className="px-3 py-2 shrink-0">
         <div className="relative">
-          <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/55" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search..."
-            className="w-full h-6 pl-6 pr-2 rounded border border-border/50 bg-background/50 text-[11px] outline-none focus:ring-1 focus:ring-sky-500/25"
+            placeholder="Search reports"
+            className="w-full h-9 pl-9 pr-3 rounded-xl border border-border/45 bg-background/70 text-[12px] outline-none focus:ring-1 focus:ring-sky-500/20"
           />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto py-1 custom-scrollbar">
-        {notesQuery.isLoading && (
-          <div className="text-[11px] text-muted-foreground px-2.5 py-2">Loading...</div>
-        )}
-        {!notesQuery.isLoading && filteredNotes.length === 0 && (
-          <div className="text-[11px] text-muted-foreground px-2.5 py-2">No reports yet.</div>
-        )}
-        {filteredNotes.map((note) => {
-          const active = note.id === selectedNoteId;
-          return (
-            <button
-              key={note.id}
-              onClick={() => setSelectedNoteId(note.id)}
-              className={`w-full text-left px-2.5 py-1.5 transition-colors border-l-2 ${
-                active
-                  ? 'border-l-sky-500/70 bg-sky-500/8 text-foreground'
-                  : 'border-l-transparent hover:bg-foreground/5 text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-1">
-                <div className="font-medium text-[12px] truncate leading-tight">{note.title || 'Untitled'}</div>
-                {note.pinned && <Pin className="w-2.5 h-2.5 text-sky-400 shrink-0 mt-0.5" />}
-              </div>
-              <div className="mt-0.5 text-[10px] text-muted-foreground/60 truncate">
-                {new Date(note.updated_at).toLocaleDateString()}
-              </div>
-            </button>
-          );
-        })}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 custom-scrollbar">
+        <div className="px-2 pb-2 text-[10px] uppercase tracking-[0.22em] text-muted-foreground/40 text-left">
+          Documents
+        </div>
+        {notesQuery.isLoading && <div className="text-[11px] text-muted-foreground px-3 py-2">Loading...</div>}
+        {!notesQuery.isLoading && filteredNotes.length === 0 && <div className="text-[11px] text-muted-foreground px-3 py-2">No reports yet.</div>}
+        <div className="space-y-1">
+          {filteredNotes.map((note) => {
+            const active = note.id === selectedNoteId;
+            return (
+              <button
+                key={note.id}
+                onClick={() => setSelectedNoteId(note.id)}
+                data-active={active ? 'true' : 'false'}
+                className="report-sidebar-item group"
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl border transition-colors ${active ? 'border-sky-500/25 bg-sky-500/12 text-sky-200' : 'border-border/40 bg-background/70 text-muted-foreground/70 group-hover:text-foreground'}`}>
+                    {note.pinned ? <Pin className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="truncate text-[12px] font-medium leading-tight text-foreground/90 text-left">{note.title || 'Untitled'}</div>
+                      <span className="shrink-0 text-[10px] text-muted-foreground/65">{new Date(note.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </>
   );
@@ -929,271 +654,75 @@ export default function NotesPage() {
       <NavigatorShell
         sidebarOpen={sidebarOpen}
         onSidebarToggle={() => setSidebarOpen((o) => !o)}
-        sidebarIcon={<FileText className="w-3.5 h-3.5 text-sky-400" />}
-        sidebarLabel="Reports"
-        sidebarHeaderActions={
-          <>
-            <button
-              onClick={handleCreateNote}
-              disabled={createMutation.isPending}
-              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-colors disabled:opacity-50"
-              title="New report"
-            >
-              {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-            </button>
-          </>
-        }
+        shellClassName="report-shell"
+        sidebarClassName="report-sidebar"
+        sidebarOpenWidthClassName="w-[260px] xl:w-[280px]"
+        sidebarHeaderClassName="bg-background/55 backdrop-blur-xl"
+        topBarClassName="report-topbar"
+        mainSectionClassName="report-shell"
+        mainClassName="report-main-scroll"
+        sidebarIcon={<FileText className="w-3.5 h-3.5 text-sky-400/80" />}
+        sidebarLabel="Private"
+        sidebarHeaderActions={<button onClick={handleCreateNote} disabled={createMutation.isPending} className="w-6 h-6 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-colors disabled:opacity-50" title="New report">{createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}</button>}
         sidebarContent={sidebarContent}
-        topBarLeft={
-          <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
-            {selectedNoteId && noteQuery.isFetching && (
-              <Loader2 className="w-3 h-3 animate-spin text-sky-400" />
-            )}
-            {saveHint}
-          </div>
-        }
+        topBarLeft={<div className="min-w-0 flex items-center gap-2 text-[11px] text-muted-foreground/70"><span className="font-semibold text-foreground/85">Reports</span>{selectedNoteId && <><span className="text-muted-foreground/35">/</span><span className="truncate max-w-[220px]">{title.trim() || selectedNote?.title || 'Untitled'}</span></>}{selectedNoteId && noteQuery.isFetching && <Loader2 className="w-3 h-3 animate-spin text-sky-400" />}</div>}
         topBarRight={
           <>
-            <button
-              onClick={() => { setFocusMode((v) => !v); if (!focusMode) setDualPane(false); }}
-              className="h-6 px-2 rounded border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
-              title={focusMode ? 'Exit focus mode' : 'Focus mode'}
-            >
-              {focusMode ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
-              {focusMode ? 'Exit Focus' : 'Focus'}
-            </button>
-            <button
-              onClick={handlePinnedToggle}
-              disabled={!selectedNoteId}
-              className="h-6 px-2 rounded border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors"
-            >
-              {pinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
-              {pinned ? 'Unpublish' : 'Publish'}
-            </button>
-            <button
-              onClick={saveNow}
-              disabled={!selectedNoteId || !isDirty || updateMutation.isPending || uploadMutation.isPending}
-              className="h-6 px-2 rounded border border-emerald-500/35 bg-emerald-500/10 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/18 inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors"
-            >
-              {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-              Save
-            </button>
-            <button
-              onClick={handleDeleteNote}
-              disabled={!selectedNoteId || deleteMutation.isPending}
-              className="h-6 px-2 rounded border border-rose-500/35 bg-rose-500/10 text-[11px] font-medium text-rose-300 hover:bg-rose-500/18 inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors"
-            >
-              {deleteMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-              Delete
-            </button>
+            {selectedNoteId && <div className={`hidden md:inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${statusToneClass}`}>{saveHint}</div>}
+            <div className="flex items-center gap-1 mr-1">
+              <button onClick={() => handleExport('pdf')} disabled={!selectedNoteId || !!exportingFormat} className={toolbarIconButtonClass} title="Export to PDF">{exportingFormat === 'pdf' ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}</button>
+              <button onClick={() => handleExport('pptx')} disabled={!selectedNoteId || !!exportingFormat} className={toolbarIconButtonClass} title="Export to PowerPoint">{exportingFormat === 'pptx' ? <Loader2 className="w-3 h-3 animate-spin" /> : <PresentationIcon className="w-3.5 h-3.5" />}</button>
+            </div>
+            <button onClick={saveNow} disabled={!selectedNoteId || !isDirty || updateMutation.isPending || uploadMutation.isPending} className="h-7 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-2.5 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/18 inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors">{updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}Save</button>
+            <button onClick={handleDeleteNote} disabled={!selectedNoteId || deleteMutation.isPending} className="h-7 rounded-lg border border-rose-500/35 bg-rose-500/10 px-2.5 text-[11px] font-medium text-rose-200 hover:bg-rose-500/18 inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors">{deleteMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}Delete</button>
           </>
         }
       >
-        <div className="h-full min-h-0 p-3 md:p-4 overflow-hidden max-w-screen-xl mx-auto w-full">
-          <div className="h-full min-h-0 rounded-xl border border-border/50 bg-background/70 overflow-hidden">
-            <div className="h-full min-h-0 flex">
-              <section
-                className="min-h-0 h-full overflow-y-auto custom-scrollbar bg-background"
-                style={{ width: focusMode ? '100%' : `${splitRatio}%` }}
-              >
+        <div className="h-full min-h-0 px-3 py-3 md:px-4 md:py-4 overflow-hidden max-w-[1600px] mx-auto w-full">
+          <div className="h-full min-h-0 rounded-[28px] border border-border/40 bg-background/55 overflow-hidden shadow-[0_28px_90px_rgba(0,0,0,0.22)]">
+            <div className="h-full min-h-0">
+              <section className="report-canvas min-h-0 h-full overflow-y-auto custom-scrollbar">
                 {!selectedNoteId && (
-                  <div className="h-full flex flex-col items-center justify-center gap-4 text-muted-foreground/60">
-                    <FileText className="w-12 h-12 opacity-20" />
-                    <p className="text-sm font-medium">Select a note or create a new one.</p>
-                    <button
-                      onClick={handleCreateNote}
-                      disabled={createMutation.isPending}
-                      className="mt-2 h-9 px-4 rounded-md border border-border/50 bg-card hover:bg-accent/20 transition-colors disabled:opacity-40 flex items-center shadow-sm"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      New Note
-                    </button>
+                  <div className="report-empty-state h-full flex flex-col items-center justify-center px-6 text-center">
+                    <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[1.4rem] border border-border/40 bg-background/90 shadow-xl shadow-black/10">
+                      <FileText className="w-7 h-7 text-sky-400/80" />
+                    </div>
+                    <h2 className="text-2xl font-semibold tracking-tight text-foreground">Create your next report</h2>
+                    <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground/70">This workspace keeps the document front and center with the same block editor, export flow, and autosave behavior you already had.</p>
+                    <button onClick={handleCreateNote} disabled={createMutation.isPending} className="mt-6 h-10 px-4 rounded-xl border border-border/45 bg-background/85 hover:bg-background text-[12px] font-medium transition-colors disabled:opacity-40 inline-flex items-center shadow-sm"><Plus className="w-4 h-4 mr-2" />New Report</button>
                   </div>
                 )}
-
                 {selectedNoteId && (
-                  <div className="max-w-4xl mx-auto px-6 py-10 md:px-10 md:py-14">
-                    <input
-                      value={title}
-                      onChange={handleTitleChange}
-                      placeholder="Untitled"
-                      disabled={noteLoading}
-                      className="w-full bg-transparent text-4xl md:text-5xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/20 disabled:opacity-50 mb-4"
-                    />
-                    
-                    {noteLoading ? (
-                      <div className="mt-12 flex items-center justify-center text-sm text-muted-foreground gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Loading blocks...
+                  <div className="min-h-full">
+                    <div className="report-cover h-28 md:h-36" />
+                    <div className="relative mx-auto max-w-4xl px-6 pb-16 -mt-10 md:px-12 md:-mt-12">
+                      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[1.4rem] border border-border/40 bg-background/90 shadow-xl shadow-black/10">
+                        <FileText className="w-7 h-7 text-sky-400/80" />
                       </div>
-                    ) : (
-                      <NotesRichEditor
-                        value={editorValue}
-                        onChange={handleEditorChange}
-                        onImageUpload={handleImageUpload}
-                        disabled={!selectedNoteId}
-                        chartLibrary={chartLibrary}
-                        minHeightClassName="min-h-[60vh] text-lg"
-                        onFetchChartSnapshot={handleFetchChartSnapshot}
-                      />
-                    )}
-
-                    {status && (
-                      <div className={`mt-8 text-[12px] font-medium transition-opacity ${saveState === 'error' ? 'text-rose-400' : 'text-muted-foreground/40'}`}>
-                        {status}
+                      <div className="mb-4 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70">
+                        <button onClick={handlePinnedToggle} disabled={!selectedNoteId} className={`rounded-full border px-3 py-1 font-medium transition-colors disabled:opacity-50 ${publishToneClass}`}>{pinned ? <PinOff className="w-3.5 h-3.5 inline mr-1.5 align-[-2px]" /> : <Pin className="w-3.5 h-3.5 inline mr-1.5 align-[-2px]" />}{pinned ? 'Published' : 'Draft'}</button>
+                        <span className={`rounded-full border px-3 py-1 font-medium ${statusToneClass}`}>{saveHint}</span>
                       </div>
-                    )}
+                      <div className="flex items-start justify-between gap-4">
+                        <input value={title} onChange={handleTitleChange} placeholder="Untitled" disabled={noteLoading} className="report-title-input min-w-0 flex-1 bg-transparent text-3xl md:text-4xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/20 disabled:opacity-50" />
+                        <div className="shrink-0 pt-1 text-right text-[12px] text-muted-foreground/60">
+                          {updatedLabel || createdLabel || ''}
+                        </div>
+                      </div>
+                      <div className="mt-4 mb-8 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground/70">
+                        <span>{wordCount.toLocaleString()} words</span>
+                        <span>{readingMinutes} min read</span>
+                        {chartCount > 0 && <span>{chartCount} charts</span>}
+                        {imageCount > 0 && <span>{imageCount} images</span>}
+                      </div>
+                      {noteLoading
+                        ? <div className="mt-12 flex items-center justify-center text-sm text-muted-foreground gap-2"><Loader2 className="w-4 h-4 animate-spin" />Loading blocks...</div>
+                        : <div className="report-editor-shell"><NotesRichEditor value={editorValue} onChange={handleEditorChange} onImageUpload={handleImageUpload} disabled={!selectedNoteId} chartLibrary={chartLibrary} minHeightClassName="min-h-[56vh] text-lg" onFetchChartSnapshot={handleFetchChartSnapshot} /></div>}
+                      {status && <div className={`mt-8 text-[12px] font-medium transition-opacity ${saveState === 'error' ? 'text-rose-400' : 'text-muted-foreground/50'}`}>{status}</div>}
+                    </div>
                   </div>
                 )}
               </section>
-
-              {!focusMode && (
-                <>
-                  <div
-                    className="w-1.5 shrink-0 cursor-col-resize border-l border-r border-border/40 bg-foreground/[0.02] hover:bg-foreground/[0.08] transition-colors"
-                    onPointerDown={() => {
-                      splitDraggingRef.current = true;
-                      document.body.style.cursor = 'col-resize';
-                      document.body.style.userSelect = 'none';
-                    }}
-                    title="Drag to resize panels"
-                  />
-                  {dualPane ? (
-                    <NoteEditorPane
-                      notes={notes}
-                      chartLibrary={chartLibrary}
-                      onFetchChartSnapshot={handleFetchChartSnapshot}
-                    />
-                  ) : (
-                  <aside className="min-h-0 h-full flex-1 overflow-y-auto custom-scrollbar border-l border-border/30 bg-card/20">
-                    {selectedNoteId && !noteLoading ? (
-                      <div className="p-3 space-y-4">
-
-                        {/* Outline */}
-                        {headings.length > 0 && (
-                          <section>
-                            <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">
-                              <AlignLeft className="w-2.5 h-2.5" />
-                              Outline
-                            </div>
-                            <div className="space-y-0.5">
-                              {headings.map((h) => (
-                                <div
-                                  key={h.key}
-                                  className="text-[11px] text-muted-foreground truncate leading-snug py-px"
-                                  style={{ paddingLeft: `${(h.level - 1) * 12}px` }}
-                                  title={h.text}
-                                >
-                                  {h.level === 1 ? (
-                                    <span className="font-medium text-foreground/70">{h.text}</span>
-                                  ) : (
-                                    <span>{h.text}</span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </section>
-                        )}
-
-                        {/* Document stats */}
-                        <section>
-                          <div className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Document</div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div className="rounded-lg border border-border/40 bg-background/40 p-2 text-center">
-                              <div className="text-sm font-mono font-semibold text-foreground/80 leading-none tabular-nums">{wordCount}</div>
-                              <div className="text-[8px] text-muted-foreground/50 uppercase tracking-wider mt-0.5">words</div>
-                            </div>
-                            <div className="rounded-lg border border-border/40 bg-background/40 p-2 text-center">
-                              <div className="text-sm font-mono font-semibold text-foreground/80 leading-none">{Math.max(1, Math.round(wordCount / 200))}<span className="text-[9px] font-normal text-muted-foreground/50">m</span></div>
-                              <div className="text-[8px] text-muted-foreground/50 uppercase tracking-wider mt-0.5">read</div>
-                            </div>
-                            {chartCount > 0 && (
-                              <div className="rounded-lg border border-border/40 bg-background/40 p-2 text-center">
-                                <div className="text-sm font-mono font-semibold text-sky-400/80 leading-none">{chartCount}</div>
-                                <div className="text-[8px] text-muted-foreground/50 uppercase tracking-wider mt-0.5">charts</div>
-                              </div>
-                            )}
-                            {imageCount > 0 && (
-                              <div className="rounded-lg border border-border/40 bg-background/40 p-2 text-center">
-                                <div className="text-sm font-mono font-semibold text-foreground/80 leading-none">{imageCount}</div>
-                                <div className="text-[8px] text-muted-foreground/50 uppercase tracking-wider mt-0.5">images</div>
-                              </div>
-                            )}
-                          </div>
-                        </section>
-
-                        {/* References */}
-                        {currentLinks.length > 0 && (
-                          <section>
-                            <div className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">
-                              References ({currentLinks.length})
-                            </div>
-                            <div className="space-y-0.5">
-                              {currentLinks.slice(0, 8).map((link, i) => {
-                                let display = link;
-                                try { display = new URL(link).hostname.replace(/^www\./, ''); } catch { /* keep raw */ }
-                                return (
-                                  <a
-                                    key={i}
-                                    href={link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-1 text-[10px] text-sky-400/70 hover:text-sky-300 py-px group"
-                                    title={link}
-                                  >
-                                    <ExternalLink className="w-2.5 h-2.5 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity" />
-                                    <span className="truncate">{display}</span>
-                                  </a>
-                                );
-                              })}
-                              {currentLinks.length > 8 && (
-                                <div className="text-[9px] text-muted-foreground/40 pl-3.5">+{currentLinks.length - 8} more</div>
-                              )}
-                            </div>
-                          </section>
-                        )}
-
-                        {/* Properties */}
-                        <section>
-                          <div className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Properties</div>
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between text-[10px]">
-                              <span className="text-muted-foreground/60">Status</span>
-                              <span className={saveState === 'error' ? 'text-rose-400' : isDirty ? 'text-amber-400/80' : 'text-emerald-400/80'}>
-                                {saveHint}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between text-[10px]">
-                              <span className="text-muted-foreground/60">Pinned</span>
-                              <span className={pinned ? 'text-sky-400' : 'text-muted-foreground/40'}>{pinned ? 'Yes' : 'No'}</span>
-                            </div>
-                            {lastSavedAt && (
-                              <div className="flex items-baseline justify-between text-[10px] gap-2">
-                                <span className="text-muted-foreground/60 shrink-0">Updated</span>
-                                <span className="text-muted-foreground/60 font-mono text-[9px] text-right">
-                                  {new Date(lastSavedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              </div>
-                            )}
-                            {noteQuery.data?.created_at && (
-                              <div className="flex items-baseline justify-between text-[10px] gap-2">
-                                <span className="text-muted-foreground/60 shrink-0">Created</span>
-                                <span className="text-muted-foreground/60 font-mono text-[9px] text-right">
-                                  {new Date(noteQuery.data.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </section>
-
-                      </div>
-                    ) : (
-                      <div className="p-4 text-[11px] text-muted-foreground/40">Select a report to view details.</div>
-                    )}
-                  </aside>
-                  )}
-                </>
-              )}
             </div>
           </div>
         </div>
@@ -1201,4 +730,3 @@ export default function NotesPage() {
     </AppShell>
   );
 }
-

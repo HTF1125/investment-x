@@ -194,6 +194,7 @@ export default function Navbar() {
         {/* Desktop nav links */}
         <div className="hidden md:flex items-center gap-2 flex-1 min-w-0 max-w-max">
           <NavLink href="/">Dashboard</NavLink>
+          <NavLink href="/wartime">Wartime</NavLink>
           <NavLink href="/intel">Intel</NavLink>
           <NavLink href="/technical">Technical</NavLink>
           <NavLink href="/notes">Reports</NavLink>
@@ -261,6 +262,7 @@ export default function Navbar() {
             className="md:hidden absolute top-[40px] left-0 right-0 bg-background border-b border-border px-3 py-3 flex flex-col gap-0.5 shadow-lg z-[90]"
           >
             <MobileNavLink href="/">Dashboard</MobileNavLink>
+            <MobileNavLink href="/wartime">Wartime</MobileNavLink>
             <MobileNavLink href="/intel">Intel</MobileNavLink>
             <MobileNavLink href="/technical">Technical</MobileNavLink>
             <MobileNavLink href="/notes">Reports</MobileNavLink>

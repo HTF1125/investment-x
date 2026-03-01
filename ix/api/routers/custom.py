@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Response, Request
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, load_only, joinedload
 from sqlalchemy import func, or_
 from typing import List, Optional, Any, Dict, Callable
@@ -19,6 +18,7 @@ from io import BytesIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib import utils
+from xhtml2pdf import pisa
 import textwrap
 import sys
 import threading
@@ -143,7 +143,9 @@ def _can_view_chart(chart: CustomChart, user: User) -> bool:
     return _is_owner(user) or _is_admin(user) or _is_chart_owner(chart, user)
 
 
-def _assert_owner_only(user: User, detail: str = "Only owner can perform this action.") -> None:
+def _assert_owner_only(
+    user: User, detail: str = "Only owner can perform this action."
+) -> None:
     if not _is_owner(user):
         raise HTTPException(status_code=403, detail=detail)
 
@@ -155,6 +157,7 @@ def _assert_can_create_chart(user: User) -> None:
             status_code=403,
             detail="Admin role is refresh-only for chart operations.",
         )
+
 
 # --- Pydantic Models ---
 
@@ -314,11 +317,6 @@ def execute_custom_code(code: str):
         Clip,
         Ffill,
     )
-    from ix.cht.style import (
-        get_value_label,
-        get_color,
-        add_zero_line,
-    )
 
     def apply_theme(fig: Any, mode: str | None = None, force_dark: bool | None = None):
         """
@@ -379,11 +377,8 @@ def execute_custom_code(code: str):
         "MovingAverage": MovingAverage,
         "Clip": Clip,
         "Ffill": Ffill,
-        "get_value_label": get_value_label,
-        "get_color": get_color,
         "apply_academic_style": apply_theme,
         "apply_theme": apply_theme,
-        "add_zero_line": add_zero_line,
         "df_plot": df_plot,
         "__name__": "__main__",
     }
@@ -393,13 +388,6 @@ def execute_custom_code(code: str):
         import numpy as np
 
         global_scope["np"] = np
-    except ImportError:
-        pass
-
-    try:
-        from ix import cht
-
-        global_scope["cht"] = cht
     except ImportError:
         pass
 
@@ -569,7 +557,9 @@ def get_clean_figure_json(fig: Any) -> Any:
         return json.loads(clean_json_str)
 
 
-def render_chart_image(figure_data: Dict[str, Any], theme: str = "light") -> Optional[bytes]:
+def render_chart_image(
+    figure_data: Dict[str, Any], theme: str = "light"
+) -> Optional[bytes]:
     """Helper to render a single chart figure to PNG bytes using Kaleido PlotlyScope."""
     # Apply the requested theme before rendering (overrides stored theme)
     try:
@@ -592,38 +582,78 @@ def render_chart_image(figure_data: Dict[str, Any], theme: str = "light") -> Opt
 
     def _prepare_pdf_figure(fig: go.Figure) -> go.Figure:
         """Increase typography and spacing for PDF readability."""
-        base_font = 16
+        base_font = 40
         if fig.layout.font and fig.layout.font.size:
-            base_font = max(16, int(fig.layout.font.size))
+            base_font = max(40, int(fig.layout.font.size * 2.5))
         fig.update_layout(
-            font=dict(size=base_font),
-            margin=dict(l=120, r=80, t=120, b=100),
+            font=dict(size=base_font, family="Courier New, Courier, monospace"),
+            margin=dict(l=150, r=100, t=150, b=120),
             autosize=False,
         )
 
         # Ensure chart/axis text remains legible after page scaling.
         fig.for_each_xaxis(
             lambda x: x.update(
-                tickfont=dict(size=max(14, (x.tickfont.size if x.tickfont and x.tickfont.size else 12))),
-                title=dict(font=dict(size=max(16, (x.title.font.size if x.title and x.title.font and x.title.font.size else 14)))),
+                tickfont=dict(
+                    size=max(
+                        35,
+                        int(
+                            x.tickfont.size * 2.5
+                            if x.tickfont and x.tickfont.size
+                            else 30
+                        ),
+                    )
+                ),
+                title=dict(
+                    font=dict(
+                        size=max(
+                            40,
+                            int(
+                                x.title.font.size * 2.5
+                                if x.title and x.title.font and x.title.font.size
+                                else 35
+                            ),
+                        )
+                    )
+                ),
             )
         )
         fig.for_each_yaxis(
             lambda y: y.update(
-                tickfont=dict(size=max(14, (y.tickfont.size if y.tickfont and y.tickfont.size else 12))),
-                title=dict(font=dict(size=max(16, (y.title.font.size if y.title and y.title.font and y.title.font.size else 14)))),
+                tickfont=dict(
+                    size=max(
+                        35,
+                        int(
+                            y.tickfont.size * 2.5
+                            if y.tickfont and y.tickfont.size
+                            else 30
+                        ),
+                    )
+                ),
+                title=dict(
+                    font=dict(
+                        size=max(
+                            40,
+                            int(
+                                y.title.font.size * 2.5
+                                if y.title and y.title.font and y.title.font.size
+                                else 35
+                            ),
+                        )
+                    )
+                ),
             )
         )
         if fig.layout.title:
-            title_size = 20
+            title_size = 50
             if fig.layout.title.font and fig.layout.title.font.size:
-                title_size = max(20, int(fig.layout.title.font.size))
+                title_size = max(50, int(fig.layout.title.font.size * 2.5))
             fig.update_layout(title=dict(font=dict(size=title_size)))
 
         if fig.layout.legend:
-            legend_size = 13
+            legend_size = 32
             if fig.layout.legend.font and fig.layout.legend.font.size:
-                legend_size = max(13, int(fig.layout.legend.font.size))
+                legend_size = max(32, int(fig.layout.legend.font.size * 2.5))
             fig.update_layout(legend=dict(font=dict(size=legend_size)))
 
         # Heatmaps often look tiny in PDF exports. Force visible cell labels when present.
@@ -633,14 +663,16 @@ def render_chart_image(figure_data: Dict[str, Any], theme: str = "light") -> Opt
                 z_data = getattr(trace, "z", None)
                 if not getattr(trace, "text", None) and z_data is not None:
                     try:
-                        trace.update(text=np.round(np.array(z_data, dtype=float), 1).tolist())
+                        trace.update(
+                            text=np.round(np.array(z_data, dtype=float), 1).tolist()
+                        )
                     except Exception:
                         pass
                 if not getattr(trace, "texttemplate", None):
                     trace.update(texttemplate="%{text}")
                 trace.update(
                     textfont=dict(
-                        size=max(14, int(getattr(textfont, "size", 12) or 12))
+                        size=max(35, int((getattr(textfont, "size", 12) or 12) * 2.5))
                     )
                 )
         return fig
@@ -681,16 +713,6 @@ def generate_pdf_buffer(
     theme: str = "light",
 ) -> BytesIO:
     buffer = BytesIO()
-    # Use landscape for charts usually
-    c = canvas.Canvas(buffer, pagesize=landscape(letter))
-    width, height = landscape(letter)
-
-    is_dark = theme.lower() == "dark"
-    # Theme-based colors for PDF pages
-    page_bg_rgb = (11/255, 14/255, 20/255) if is_dark else None   # #0B0E14
-    title_rgb = (0.898, 0.914, 0.945) if is_dark else (0.0, 0.0, 0.0)
-    meta_rgb = (0.580, 0.639, 0.722) if is_dark else (0.3, 0.3, 0.3)
-    desc_rgb = (0.392, 0.455, 0.549) if is_dark else (0.45, 0.45, 0.45)
 
     # 1. Pre-fetch/Filter valid charts
     valid_charts = []
@@ -702,24 +724,17 @@ def generate_pdf_buffer(
         return buffer
 
     # 2. Render images in parallel
-    # Use ThreadPoolExecutor to run IO/C-extension bound tasks in parallel
-    # Kaleido (if used) runs in a separate process, so threads work well here.
     chart_images = []
     logger.info(f"Starting parallel rendering for {len(valid_charts)} charts...")
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        # Submit all render tasks
         future_to_index = {
             executor.submit(render_chart_image, chart.figure, theme): i
             for i, chart in enumerate(valid_charts)
         }
-
-        # Initialize results array with None
         results = [None] * len(valid_charts)
-
-        # Collect results with a timeout to prevent hanging the whole process
         try:
             completed_renders = 0
-            for future in concurrent.futures.as_completed(future_to_index, timeout=30):
+            for future in concurrent.futures.as_completed(future_to_index, timeout=600):
                 index = future_to_index[future]
                 chart_name = valid_charts[index].name
                 try:
@@ -735,7 +750,6 @@ def generate_pdf_buffer(
                     results[index] = data
                     if progress_cb:
                         completed_renders += 1
-                        # First half of progress is image rendering.
                         progress_cb(
                             completed_renders,
                             len(valid_charts) * 2,
@@ -754,76 +768,79 @@ def generate_pdf_buffer(
                         )
         except concurrent.futures.TimeoutError:
             logger.error("PDF generation timed out waiting for chart renders.")
-            # We continue with whatever results we have (None for others)
 
-    # 3. Construct PDF page by page
+    # 3. Construct PDF using xhtml2pdf
+    is_dark = theme.lower() == "dark"
+    body_bg = "#0f172a" if is_dark else "#f8f8f8"
+    text_color = "#f1f5f9" if is_dark else "#1e293b"
+    h1_color = "#f8fafc" if is_dark else "#0f172a"
+    meta_color = "#94a3b8" if is_dark else "#64748b"
+    desc_color = "#cbd5e1" if is_dark else "#475569"
+
+    html_parts = []
+    html_parts.append(
+        f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8" />
+        <style>
+            @page {{ size: landscape; margin: 1.5cm; }}
+            body {{ font-family: 'Courier New', Courier, monospace; background-color: {body_bg}; color: {text_color}; line-height: 1.6; font-size: 11pt; }}
+            h1 {{ color: {h1_color}; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 5px; font-size: 24pt; }}
+            h2 {{ color: {h1_color}; font-size: 18pt; margin-top: 30px; margin-bottom: 5px; }}
+            .meta {{ color: {meta_color}; font-size: 10pt; margin-bottom: 10px; }}
+            .desc {{ color: {desc_color}; font-size: 11pt; margin-bottom: 20px; font-style: italic; }}
+            img {{ max-width: 100%; max-height: 500px; display: block; margin: 20px auto; }}
+            .chart-block {{ page-break-inside: avoid; margin-bottom: 40px; }}
+            .report-title {{ text-align: center; margin-bottom: 40px; font-size: 32pt; font-weight: bold; color: {h1_color}; }}
+            .report-meta {{ text-align: center; color: {meta_color}; margin-bottom: 60px; font-size: 12pt; }}
+        </style>
+    </head>
+    <body>
+        <div class="report-title">Investment-X Dashboard Report</div>
+        <div class="report-meta">Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
+    """
+    )
+
     for i, chart in enumerate(valid_charts):
-        try:
-            # Fill page background for dark theme
-            if is_dark and page_bg_rgb:
-                c.setFillColorRGB(*page_bg_rgb)
-                c.rect(0, 0, width, height, fill=1, stroke=0)
+        title = html.escape(chart.name or "Untitled Analysis")
+        meta = html.escape(
+            f"Category: {chart.category} | Updated: {chart.updated_at.strftime('%Y-%m-%d')}"
+        )
+        desc = html.escape(chart.description or "").replace("\n", "<br/>")
 
-            # 1. Render title
-            c.setFillColorRGB(*title_rgb)
-            c.setFont("Helvetica-Bold", 22)
-            title = chart.name or "Untitled Analysis"
-            c.drawString(50, height - 50, title)
+        html_parts.append(f'<div class="chart-block">')
+        html_parts.append(f"<h2>{title}</h2>")
+        html_parts.append(f'<div class="meta">{meta}</div>')
+        if desc:
+            html_parts.append(f'<div class="desc">{desc}</div>')
 
-            # 2. Render meta
-            c.setFillColorRGB(*meta_rgb)
-            c.setFont("Helvetica", 13)
-            meta = f"Category: {chart.category} | Updated: {chart.updated_at.strftime('%Y-%m-%d')}"
-            c.drawString(50, height - 70, meta)
+        img_bytes = results[i]
+        if img_bytes:
+            b64_chart = base64.b64encode(img_bytes).decode("utf-8")
+            html_parts.append(f'<img src="data:image/png;base64,{b64_chart}" />')
+        else:
+            html_parts.append(
+                f'<div class="meta" style="color: red;">[Chart rendering failed]</div>'
+            )
 
-            # 3. Render description (wrapped)
-            if chart.description:
-                c.setFillColorRGB(*desc_rgb)
-                c.setFont("Helvetica-Oblique", 12)
-                desc_lines = textwrap.wrap(chart.description, width=120)
-                y_desc = height - 90
-                for line in desc_lines[:3]:  # Limit lines
-                    c.drawString(50, y_desc, line)
-                    y_desc -= 12
+        html_parts.append(f"</div>")
 
-            # 4. Render Chart Image
-            img_bytes = results[i]
+        if progress_cb:
+            progress_cb(
+                len(valid_charts) + i + 1,
+                len(valid_charts) * 2,
+                f"Assembling PDF page {i + 1}/{len(valid_charts)}...",
+            )
 
-            if img_bytes:
-                img_buffer = BytesIO(img_bytes)
-                img = utils.ImageReader(img_buffer)
+    html_parts.append("</body></html>")
+    final_html = "".join(html_parts)
 
-                # Draw image
-                # Provide space below header
-                c.drawImage(
-                    img,
-                    40,
-                    50,
-                    width=width - 80,
-                    height=height - 200,
-                    preserveAspectRatio=True,
-                )
-            else:
-                # Fallback for failed render
-                c.setFont("Helvetica", 12)
-                c.drawString(50, height / 2, "Error: Could not render chart image.")
+    pisa_status = pisa.CreatePDF(final_html, dest=buffer)
+    if pisa_status.err:
+        logger.error("pisa.CreatePDF failed")
 
-            if progress_cb:
-                # Second half of progress is page assembly.
-                progress_cb(
-                    len(valid_charts) + i + 1,
-                    len(valid_charts) * 2,
-                    f"Assembling PDF page {i + 1}/{len(valid_charts)}...",
-                )
-            c.showPage()
-
-        except Exception as e:
-            logger.error(f"Failed to add chart {chart.id} page to PDF: {e}")
-            # Ensure we don't break the whole PDF generation for one page error if possible
-            # But usually showPage() resets context.
-            continue
-
-    c.save()
     buffer.seek(0)
     return buffer
 
@@ -834,7 +851,9 @@ def generate_pdf_buffer(
 @router.post("/custom/preview")
 @_limiter.limit("10/minute")
 def preview_custom_chart(
-    request: Request, body: CodePreviewRequest, current_user: User = Depends(get_current_user)
+    request: Request,
+    body: CodePreviewRequest,
+    current_user: User = Depends(get_current_user),
 ):
     """
     Executes code and returns the figure JSON without saving.
@@ -1052,9 +1071,15 @@ def toggle_public(
     return {"message": f"Updated {len(data.ids)} chart(s)"}
 
 
+from fastapi import APIRouter, Depends, HTTPException, Response, Form
+
+...
+
+
 @router.post("/custom/pdf")
 def export_custom_charts_pdf(
-    request: PDFExportRequest,
+    items: str = Form(default="[]"),
+    theme: str = Form(default="light"),
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -1068,19 +1093,24 @@ def export_custom_charts_pdf(
     from ix.api.routers.task import update_process as _update_process
     from ix.api.routers.task import ProcessStatus as _ProcessStatus
 
+    import json
+
+    try:
+        items_list = json.loads(items)
+        if not isinstance(items_list, list):
+            items_list = []
+    except json.JSONDecodeError:
+        items_list = []
+
     user_identifier = str(getattr(current_user, "id", "") or "")
     pid = _start_process("Export PDF Report", user_id=user_identifier)
 
     try:
-        if request.items:
+        if items_list:
             # Explicit list — preserve caller order
-            charts = (
-                db.query(CustomChart).filter(CustomChart.id.in_(request.items)).all()
-            )
+            charts = db.query(CustomChart).filter(CustomChart.id.in_(items_list)).all()
             chart_map = {str(c.id): c for c in charts}
-            ordered_charts = [
-                chart_map[cid] for cid in request.items if cid in chart_map
-            ]
+            ordered_charts = [chart_map[cid] for cid in items_list if cid in chart_map]
         else:
             # Auto-select all charts flagged for export
             ordered_charts = (
@@ -1110,7 +1140,9 @@ def export_custom_charts_pdf(
                 progress=f"{current}/{max(1, total)}",
             )
 
-        pdf_buffer = generate_pdf_buffer(ordered_charts, progress_cb=_on_pdf_progress, theme=request.theme)
+        pdf_buffer = generate_pdf_buffer(
+            ordered_charts, progress_cb=_on_pdf_progress, theme=theme
+        )
 
         filename = f"InvestmentX_Report_{datetime.now().strftime('%Y%m%d')}.pdf"
         _update_process(
@@ -1120,8 +1152,8 @@ def export_custom_charts_pdf(
             progress=f"{total_steps}/{total_steps}",
         )
 
-        return StreamingResponse(
-            pdf_buffer,
+        return Response(
+            content=pdf_buffer.read(),
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
@@ -1133,7 +1165,8 @@ def export_custom_charts_pdf(
 
 @router.post("/custom/html")
 def export_custom_charts_html(
-    request: PDFExportRequest,
+    items: str = Form(default="[]"),
+    theme: str = Form(default="light"),
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -1142,6 +1175,15 @@ def export_custom_charts_html(
     from ix.api.routers.task import start_process as _start_process
     from ix.api.routers.task import update_process as _update_process
     from ix.api.routers.task import ProcessStatus as _ProcessStatus
+
+    import json
+
+    try:
+        items_list = json.loads(items)
+        if not isinstance(items_list, list):
+            items_list = []
+    except json.JSONDecodeError:
+        items_list = []
 
     user_identifier = str(getattr(current_user, "id", "") or "")
     pid = _start_process("Export Interactive Portfolio", user_id=user_identifier)
@@ -1156,14 +1198,12 @@ def export_custom_charts_html(
             CustomChart.figure,
         )
 
-        if request.items:
+        if items_list:
             charts = (
-                db.query(*chart_columns).filter(CustomChart.id.in_(request.items)).all()
+                db.query(*chart_columns).filter(CustomChart.id.in_(items_list)).all()
             )
             chart_map = {str(c.id): c for c in charts}
-            ordered_charts = [
-                chart_map[cid] for cid in request.items if cid in chart_map
-            ]
+            ordered_charts = [chart_map[cid] for cid in items_list if cid in chart_map]
         else:
             ordered_charts = (
                 db.query(*chart_columns)
@@ -1176,23 +1216,35 @@ def export_custom_charts_html(
             _update_process(pid, _ProcessStatus.FAILED, "No charts found")
             raise HTTPException(status_code=404, detail="No charts marked for export")
 
-        _update_process(pid, message="Composing HTML bundle...", progress=f"0/{len(ordered_charts)}")
+        _update_process(
+            pid, message="Composing HTML bundle...", progress=f"0/{len(ordered_charts)}"
+        )
 
-        is_dark_html = request.theme.lower() == "dark"
+        is_dark_html = theme.lower() == "dark"
         # Theme-dependent CSS values
         _body_bg = "#02040a" if is_dark_html else "#f8fafc"
         _body_color = "#94a3b8" if is_dark_html else "#475569"
-        _header_border = "rgba(255,255,255,0.05)" if is_dark_html else "rgba(0,0,0,0.07)"
+        _header_border = (
+            "rgba(255,255,255,0.05)" if is_dark_html else "rgba(0,0,0,0.07)"
+        )
         _h1_color = "#f8fafc" if is_dark_html else "#0f172a"
         _card_bg = "rgba(255,255,255,0.02)" if is_dark_html else "#ffffff"
         _card_border = "rgba(255,255,255,0.05)" if is_dark_html else "rgba(0,0,0,0.08)"
-        _card_shadow = "0 10px 30px -10px rgba(0,0,0,0.5)" if is_dark_html else "0 2px 12px -4px rgba(0,0,0,0.08)"
+        _card_shadow = (
+            "0 10px 30px -10px rgba(0,0,0,0.5)"
+            if is_dark_html
+            else "0 2px 12px -4px rgba(0,0,0,0.08)"
+        )
         _chart_hdr_bg = "rgba(0,0,0,0.2)" if is_dark_html else "#f1f5f9"
-        _chart_hdr_border = "rgba(255,255,255,0.03)" if is_dark_html else "rgba(0,0,0,0.06)"
+        _chart_hdr_border = (
+            "rgba(255,255,255,0.03)" if is_dark_html else "rgba(0,0,0,0.06)"
+        )
         _chart_title_color = "#e2e8f0" if is_dark_html else "#0f172a"
         # JS chart theme values
         _js_font_color = "#94a3b8" if is_dark_html else "#334155"
-        _js_axis_line = "rgba(148,163,184,0.45)" if is_dark_html else "rgba(71,85,105,0.35)"
+        _js_axis_line = (
+            "rgba(148,163,184,0.45)" if is_dark_html else "rgba(71,85,105,0.35)"
+        )
         _js_tick_color = "#cbd5e1" if is_dark_html else "#475569"
 
         # Build premium HTML bundle
@@ -1205,20 +1257,20 @@ def export_custom_charts_html(
             <meta charset="utf-8" />
             <title>Investment-X Research Portfolio</title>
             <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;800&display=swap" rel="stylesheet">
             <style>
                 body {{
                     background-color: {_body_bg};
                     color: {_body_color};
-                    font-family: 'Inter', sans-serif;
+                    font-family: 'JetBrains Mono', 'Courier New', monospace;
                     margin: 0;
                     padding: 40px 20px;
                     line-height: 1.6;
                 }}
                 .container {{ max-width: 1200px; margin: 0 auto; }}
                 header {{ margin-bottom: 60px; border-bottom: 1px solid {_header_border}; padding-bottom: 30px; }}
-                h1 {{ color: {_h1_color}; font-weight: 800; letter-spacing: -0.02em; margin: 0; }}
-                .subtitle {{ font-family: 'JetBrains Mono'; font-size: 11px; text-transform: uppercase; letter-spacing: 0.2em; color: #6366f1; margin-top: 8px; }}
+                h1 {{ color: {_h1_color}; font-weight: 800; letter-spacing: -0.02em; margin: 0; font-family: 'JetBrains Mono', 'Courier New', monospace; }}
+                .subtitle {{ font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.2em; color: #6366f1; margin-top: 8px; }}
                 .chart-card {{
                     background: {_card_bg};
                     border: 1px solid {_card_border};
@@ -1255,13 +1307,15 @@ def export_custom_charts_html(
                 if getattr(chart, "updated_at", None)
                 else "-"
             )
-            desc = html.escape(chart.description or "Analysis pending.", quote=True).replace("\n", "<br/>")
+            desc = html.escape(
+                chart.description or "Analysis pending.", quote=True
+            ).replace("\n", "<br/>")
 
             # Create a unique ID for Plotly div
             div_id = f"chart_{i}"
 
             # Apply canonical theme then compact for HTML delivery
-            themed_figure = chart_theme.apply_json(chart.figure, mode=request.theme)
+            themed_figure = chart_theme.apply_json(chart.figure, mode=theme)
             fig_json = _json_dumps_fast(_compact_figure_for_html(themed_figure))
 
             html_parts.append(
@@ -1279,7 +1333,7 @@ def export_custom_charts_html(
                             fig.layout = fig.layout || {{}};
                             fig.layout.paper_bgcolor = 'rgba(0,0,0,0)';
                             fig.layout.plot_bgcolor = 'rgba(0,0,0,0)';
-                            fig.layout.font = {{ color: '{_js_font_color}', family: 'Inter' }};
+                            fig.layout.font = {{ color: '{_js_font_color}', family: "'JetBrains Mono', 'Courier New', monospace" }};
                             fig.layout.autosize = true;
                             var axisKeyRe = /^(xaxis|yaxis)(\\d+)?$/;
                             Object.keys(fig.layout).forEach(function(key) {{
@@ -1304,7 +1358,7 @@ def export_custom_charts_html(
                             (fig.data || []).forEach(function(t) {{
                                 if (t && t.type === 'heatmap') {{
                                     if (!t.texttemplate && t.text) t.texttemplate = '<b>%{{text}}</b>';
-                                    t.textfont = Object.assign({{color: '{_js_font_color}', size: 10, family: 'Inter, sans-serif'}}, t.textfont || {{}});
+                                    t.textfont = Object.assign({{color: '{_js_font_color}', size: 10, family: "'JetBrains Mono', 'Courier New', monospace"}}, t.textfont || {{}});
                                 }}
                             }});
                             Plotly.newPlot('{div_id}', fig.data, fig.layout, {{
@@ -1341,7 +1395,9 @@ def export_custom_charts_html(
             f"InvestmentX_Portfolio_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
         )
 
-        _update_process(pid, _ProcessStatus.COMPLETED, "Interactive Portfolio Generated")
+        _update_process(
+            pid, _ProcessStatus.COMPLETED, "Interactive Portfolio Generated"
+        )
 
         return Response(
             content=full_html,
@@ -1386,7 +1442,11 @@ def refresh_custom_chart(
         raise HTTPException(status_code=404, detail="Chart not found")
 
     # Owner can refresh everything, admin can refresh all, creators can refresh their own.
-    can_refresh = _is_owner(current_user) or _is_admin(current_user) or _is_chart_owner(chart, current_user)
+    can_refresh = (
+        _is_owner(current_user)
+        or _is_admin(current_user)
+        or _is_chart_owner(chart, current_user)
+    )
     if not can_refresh:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
