@@ -3,6 +3,10 @@ from io import BytesIO
 import fitz
 from typing import Optional
 
+from ix.misc import get_logger
+
+logger = get_logger(__name__)
+
 
 class PDFSummarizer:
     """
@@ -72,7 +76,7 @@ Content :
             pdf_document.close()
             return extracted_text
         except Exception as e:
-            print(f"Error extracting text from PDF: {e}")
+            logger.exception("Error extracting text from PDF: %s", e)
             return ""
 
     def summarize_text(self, content: str) -> Optional[str]:
@@ -95,7 +99,7 @@ Content :
                 return None
             return response.strip()
         except Exception as e:
-            print(f"Error calling OpenAI API: {e}")
+            logger.exception("Error calling OpenAI API: %s", e)
             return ""
 
     def process_insights(self, pdf_bytes: bytes) -> Optional[str]:
@@ -110,12 +114,12 @@ Content :
         """
         text = self.pdf_bytes_to_text(pdf_bytes)
         if not text:
-            print("No text extracted from PDF.")
+            logger.warning("No text extracted from PDF.")
             return None
 
         response = self.summarize_text(text)
         if not response:
-            print("No response from the model.")
+            logger.warning("No response from the model.")
             return None
 
         return response
@@ -281,4 +285,5 @@ Data:
             )
             return completion.choices[0].message.content.strip()
         except Exception as e:
+            logger.exception("Error analyzing technicals for %s: %s", ticker, e)
             return f"Error analyzing technicals: {str(e)}"

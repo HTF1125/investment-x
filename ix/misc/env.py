@@ -1,3 +1,8 @@
+from ix.misc import get_logger
+
+logger = get_logger(__name__)
+
+
 def getEnv(filepath=".env"):
     """
     Get environment variables from a specified .env file.
@@ -18,8 +23,8 @@ def getEnv(filepath=".env"):
                     key, value = line.strip().split("=", 1)
                     variables[key.strip()] = value.strip()
     except FileNotFoundError:
-        print(f"Error: {filepath} not found.")
+        logger.warning("Environment file not found: %s", filepath)
     except Exception as e:
-        print(f"Error reading {filepath}: {e}")
+        logger.error("Error reading environment file %s: %s", filepath, e)
 
     return variables

@@ -5,13 +5,14 @@ import AuthGuard from '@/components/AuthGuard';
 import TimeseriesManager from '@/components/TimeseriesManager';
 import UserManager from '@/components/UserManager';
 import RolePermissionsManager from '@/components/RolePermissionsManager';
+import AdminLogViewer from '@/components/AdminLogViewer';
 import AppShell from '@/components/AppShell';
 import NavigatorShell from '@/components/NavigatorShell';
 import { useAuth } from '@/context/AuthContext';
-import { Database, ShieldAlert, Users, Activity, Server, BarChart3, ShieldCheck } from 'lucide-react';
+import { Database, ShieldAlert, Users, Activity, Server, BarChart3, ShieldCheck, ScrollText } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-type AdminTab = 'timeseries' | 'users' | 'permissions';
+type AdminTab = 'timeseries' | 'users' | 'permissions' | 'logs';
 
 export default function AdminTimeseriesPage() {
   const { user } = useAuth();
@@ -34,6 +35,7 @@ export default function AdminTimeseriesPage() {
       { id: 'timeseries' as const,  label: 'Timeseries',  icon: Database },
       { id: 'users' as const,       label: 'Users',        icon: Users },
       { id: 'permissions' as const, label: 'Permissions',  icon: ShieldCheck },
+      { id: 'logs' as const,        label: 'Logs',         icon: ScrollText },
     ],
     []
   );
@@ -115,6 +117,7 @@ export default function AdminTimeseriesPage() {
               {activeTab === 'timeseries' && <TimeseriesManager />}
               {activeTab === 'users' && <UserManager />}
               {activeTab === 'permissions' && <RolePermissionsManager />}
+              {activeTab === 'logs' && <AdminLogViewer />}
             </motion.div>
           </NavigatorShell>
         )}

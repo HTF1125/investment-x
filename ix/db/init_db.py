@@ -1,10 +1,8 @@
 from ix.db.conn import conn, Base
 from ix.db.models import *  # Import all models to ensure they are registered
-import logging
+from ix.misc import get_logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def init_db():

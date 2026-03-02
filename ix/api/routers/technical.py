@@ -25,7 +25,10 @@ from pptx.enum.text import PP_ALIGN
 import markdown
 from PIL import Image
 
+from ix.misc import get_logger
+
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 class TDSequentialClean:
@@ -1357,6 +1360,11 @@ def export_technical_report(
             )
 
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
+        logger.exception(
+            "Technical report export failed for ticker=%s format=%s interval=%s: %s",
+            ticker,
+            format,
+            interval,
+            e,
+        )
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")

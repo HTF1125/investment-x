@@ -2,6 +2,9 @@ import io
 import boto3
 from typing import List
 from ix.misc.settings import Settings
+from ix.misc import get_logger
+
+logger = get_logger(__name__)
 
 
 class Boto:
@@ -25,10 +28,10 @@ class Boto:
                 filename,
                 ExtraArgs={"ContentType": "application/pdf"},
             )
-            print(f"File {filename} uploaded successfully.")
+            logger.info("Uploaded file to object storage: %s", filename)
             return True
         except Exception as e:
-            print(f"Error uploading file {filename}: {e}")
+            logger.exception("Error uploading file %s: %s", filename, e)
             return False
 
     def list_files(self) -> List[str]:
@@ -41,10 +44,10 @@ class Boto:
                 files = [file["Key"] for file in response["Contents"]]
                 return files
             else:
-                print("No files found in the bucket.")
+                logger.info("No files found in the object storage bucket.")
                 return []
         except Exception as e:
-            print(f"Error listing files in the bucket: {e}")
+            logger.exception("Error listing files in the object storage bucket: %s", e)
             return []
 
     def get_pdf(self, filename: str) -> bytes:
@@ -54,33 +57,33 @@ class Boto:
 
             # Read the content of the file
             pdf_content = response["Body"].read()
-            print(f"Successfully retrieved {filename}.")
+            logger.info("Retrieved file from object storage: %s", filename)
             return pdf_content
         except Exception as e:
-            print(f"Error retrieving PDF {filename}: {e}")
+            logger.exception("Error retrieving PDF %s: %s", filename, e)
             return b""
 
     def file_exists(self, filename: str) -> bool:
         try:
             # Check if the file exists in the bucket by fetching metadata
             self.s3.head_object(Bucket=self.bucket_name, Key=filename)
-            print(f"File {filename} exists.")
+            logger.info("Confirmed file exists in object storage: %s", filename)
             return True
         except self.s3.exceptions.ClientError as e:
             # If a ClientError occurs, the file does not exist
             if e.response["Error"]["Code"] == "NoSuchKey":
-                print(f"File {filename} does not exist.")
+                logger.info("File does not exist in object storage: %s", filename)
                 return False
             else:
                 # If there is another error, re-raise it
-                print(f"Error checking existence of {filename}: {e}")
+                logger.exception("Error checking existence of %s: %s", filename, e)
                 return False
 
     def rename_file(self, old_filename: str, new_filename: str) -> bool:
         try:
             # Check if the file exists
             if not self.file_exists(old_filename):
-                print(f"Cannot rename {old_filename}, file does not exist.")
+                logger.warning("Cannot rename missing file in object storage: %s", old_filename)
                 return False
 
             # Copy the old file to the new file
@@ -89,14 +92,14 @@ class Boto:
                 CopySource={"Bucket": self.bucket_name, "Key": old_filename},
                 Key=new_filename,
             )
-            print(f"File {old_filename} copied to {new_filename}.")
+            logger.info("Copied object %s to %s", old_filename, new_filename)
 
             # Delete the old file after copying
             self.s3.delete_object(Bucket=self.bucket_name, Key=old_filename)
-            print(f"File {old_filename} deleted.")
+            logger.info("Deleted original object after rename: %s", old_filename)
             return True
         except Exception as e:
-            print(f"Error renaming file {old_filename} to {new_filename}: {e}")
+            logger.exception("Error renaming file %s to %s: %s", old_filename, new_filename, e)
             return False
 
     def delete_pdf(self, filename: str) -> bool:
@@ -106,8 +109,8 @@ class Boto:
                 Bucket=self.bucket_name,
                 Key=filename,
             )
-            print(f"File {filename} deleted successfully.")
+            logger.info("Deleted object from storage: %s", filename)
             return True
         except Exception as e:
-            print(f"Error deleting file {filename}: {e}")
+            logger.exception("Error deleting file %s: %s", filename, e)
             return False

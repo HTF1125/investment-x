@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from datetime import date, datetime
 from typing import Optional, Dict
 from ix.db.conn import Base
+from ix.misc import get_logger
 from .user import User
 from .telegram import TelegramMessage
 from .custom_chart import CustomChart
@@ -26,8 +27,11 @@ from .investment_note import InvestmentNote
 from .system_setting import SystemSetting
 from .news_item import NewsItem
 from .audit_log import AuditLog
+from .runtime_log import RuntimeLog
 from .user_preference import UserPreference
 import pandas as pd
+
+logger = get_logger(__name__)
 
 # Re-export Base for convenience
 __all__ = [
@@ -47,6 +51,7 @@ __all__ = [
     "SystemSetting",
     "NewsItem",
     "AuditLog",
+    "RuntimeLog",
     "UserPreference",
 ]
 
@@ -65,6 +70,7 @@ def all():
         InvestmentNote,
         NewsItem,
         AuditLog,
+        RuntimeLog,
         UserPreference,
     ]
 
@@ -152,7 +158,7 @@ class Timeseries(Base):
 
             data = get_naver_data(ticker)[field]
         else:
-            print(f"Unsupported source: {source}")
+            logger.warning("Unsupported source for timeseries update: %s", source)
             return
         self.data = data
 

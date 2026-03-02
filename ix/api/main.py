@@ -19,11 +19,11 @@ from slowapi.errors import RateLimitExceeded
 
 from ix.db.conn import ensure_connection, conn
 from ix.misc import get_logger
-from ix.utils.logger import setup_antigravity_logging
+from ix.utils.logger import setup_logging
 from ix.misc.task import run_daily_tasks
 
-# Initialize Mandatory Antigravity Logger
-logger = setup_antigravity_logging(service_name="backend")
+# Initialize application logging
+logger = setup_logging(service_name="backend")
 # logger = get_logger(__name__)
 
 # Timezone config
@@ -275,6 +275,23 @@ def _ensure_news_items_schema() -> None:
         logger.warning(f"News items schema check failed: {exc}")
 
 
+def _ensure_runtime_logs_schema() -> None:
+    """Idempotent runtime migration for runtime log storage."""
+    if not ensure_connection():
+        logger.warning(
+            "Skipping runtime logs schema check because DB connection is unavailable."
+        )
+        return
+
+    try:
+        from ix.db.models.runtime_log import RuntimeLog
+
+        RuntimeLog.__table__.create(bind=conn.engine, checkfirst=True)
+        logger.info("Runtime logs schema check completed.")
+    except Exception as exc:
+        logger.warning(f"Runtime logs schema check failed: {exc}")
+
+
 def _drop_financial_news_table() -> None:
     """Idempotent runtime migration to remove legacy financial_news table."""
     if not ensure_connection():
@@ -318,6 +335,7 @@ async def lifespan(app: FastAPI):
     _ensure_investment_notes_schema()
     _ensure_system_settings_schema()
     _ensure_news_items_schema()
+    _ensure_runtime_logs_schema()
     _drop_financial_news_table()
 
     scheduler.start()

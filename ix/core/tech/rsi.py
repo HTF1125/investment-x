@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from ix.db.client import get_timeseries
+from ix.misc import get_logger
+
+logger = get_logger(__name__)
 
 
 class RSI:
@@ -66,7 +69,7 @@ class RSI:
             try:
                 px_last.index = pd.to_datetime(px_last.index)
             except Exception as e:
-                print(f"Warning: Could not convert index to DatetimeIndex: {e}")
+                logger.warning("Could not convert index to DatetimeIndex: %s", e)
 
         # Store parameters
         self.px = px_last.astype(float)
@@ -259,7 +262,9 @@ class RSI:
         """
         df = self.to_dataframe(start=start, end=end)
         if df.empty:
-            print("Warning: The DataFrame is empty. Check your input data and filtering parameters.")
+            logger.warning(
+                "RSI plot requested with empty dataframe. Check input data and filters."
+            )
             return go.Figure()
 
         fig = go.Figure()

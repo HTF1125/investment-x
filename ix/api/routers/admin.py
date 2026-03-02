@@ -1,12 +1,17 @@
+import asyncio
+import json
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session as SessionType
 
 from ix.api.dependencies import get_current_admin_user, get_db
+from ix.db.conn import Session
+from ix.db.models.runtime_log import RuntimeLog
 from ix.db.models.user import User
 from ix.db.models.system_setting import SystemSetting
 from ix.misc import get_logger
@@ -112,6 +117,23 @@ class AdminUserUpdate(BaseModel):
     password: Optional[str] = Field(None, min_length=6)
 
 
+class RuntimeLogResponse(BaseModel):
+    id: str
+    level: str
+    logger_name: str
+    module: Optional[str] = None
+    function: Optional[str] = None
+    message: str
+    path: Optional[str] = None
+    line_no: Optional[int] = None
+    service: Optional[str] = None
+    exception: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 def _parse_role_or_raise(role: str) -> str:
     role_clean = (role or "").strip().lower()
     if role_clean not in User.VALID_ROLES:
@@ -151,6 +173,60 @@ def _active_admin_count(db: SessionType) -> int:
     )
 
 
+def _normalize_log_level(level: Optional[str]) -> Optional[str]:
+    level_clean = (level or "").strip().upper()
+    return level_clean or None
+
+
+def _runtime_logs_query(
+    db: SessionType,
+    *,
+    level: Optional[str] = None,
+    search: Optional[str] = None,
+):
+    query = db.query(RuntimeLog)
+
+    normalized_level = _normalize_log_level(level)
+    if normalized_level:
+        query = query.filter(RuntimeLog.level == normalized_level)
+
+    search_term = (search or "").strip()
+    if search_term:
+        pattern = f"%{search_term}%"
+        query = query.filter(
+            or_(
+                RuntimeLog.message.ilike(pattern),
+                RuntimeLog.logger_name.ilike(pattern),
+                RuntimeLog.module.ilike(pattern),
+                RuntimeLog.function.ilike(pattern),
+                RuntimeLog.service.ilike(pattern),
+                RuntimeLog.exception.ilike(pattern),
+            )
+        )
+
+    return query
+
+
+def _latest_runtime_log_signature(
+    *,
+    level: Optional[str] = None,
+    search: Optional[str] = None,
+) -> Optional[dict[str, str]]:
+    with Session() as db:
+        row = (
+            _runtime_logs_query(db, level=level, search=search)
+            .order_by(RuntimeLog.created_at.desc(), RuntimeLog.id.desc())
+            .first()
+        )
+        if not row:
+            return None
+        return {
+            "id": str(row.id),
+            "created_at": row.created_at.isoformat() if row.created_at else "",
+            "level": row.level,
+        }
+
+
 def _to_response(user: User) -> AdminUserResponse:
     role = user.effective_role
     return AdminUserResponse(
@@ -162,6 +238,83 @@ def _to_response(user: User) -> AdminUserResponse:
         is_admin=bool(role in User.ADMIN_ROLES),
         disabled=bool(user.disabled),
         created_at=user.created_at,
+    )
+
+
+@router.get("/admin/logs", response_model=List[RuntimeLogResponse])
+def list_runtime_logs(
+    level: Optional[str] = Query(None, description="Filter by log level"),
+    search: Optional[str] = Query(None, description="Search logger, module, or message"),
+    limit: int = Query(200, ge=1, le=1000),
+    db: SessionType = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+):
+    logs = (
+        _runtime_logs_query(db, level=level, search=search)
+        .order_by(RuntimeLog.created_at.desc(), RuntimeLog.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        RuntimeLogResponse(
+            id=str(log.id),
+            level=log.level,
+            logger_name=log.logger_name,
+            module=log.module,
+            function=log.function,
+            message=log.message,
+            path=log.path,
+            line_no=log.line_no,
+            service=log.service,
+            exception=log.exception,
+            created_at=log.created_at,
+        )
+        for log in logs
+    ]
+
+
+@router.get("/admin/logs/stream")
+async def stream_runtime_logs(
+    level: Optional[str] = Query(None, description="Filter by log level"),
+    search: Optional[str] = Query(None, description="Search logger, module, or message"),
+    current_user: User = Depends(get_current_admin_user),
+):
+    async def event_generator():
+        last_signature = _latest_runtime_log_signature(level=level, search=search)
+        keep_alive = 0
+        yield "event: ready\ndata: {\"ok\":true}\n\n"
+
+        while True:
+            await asyncio.sleep(2)
+            try:
+                latest_signature = _latest_runtime_log_signature(level=level, search=search)
+            except Exception as exc:
+                logger.warning("Runtime log stream poll failed: %s", exc)
+                yield f"event: error\ndata: {json.dumps({'message': str(exc)})}\n\n"
+                continue
+
+            if latest_signature != last_signature:
+                last_signature = latest_signature
+                keep_alive = 0
+                yield (
+                    "event: log\n"
+                    f"data: {json.dumps(latest_signature or {'id': None})}\n\n"
+                )
+                continue
+
+            keep_alive += 1
+            if keep_alive >= 10:
+                keep_alive = 0
+                yield ": keep-alive\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
