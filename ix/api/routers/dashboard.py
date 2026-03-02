@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session, joinedload, load_only
 from sqlalchemy import or_
 from typing import List, Dict, Any
@@ -35,6 +35,15 @@ class DashboardSummary(BaseModel):
     charts_by_category: Dict[str, List[ChartMetaSchema]]
 
 
+class ChartFigureSchema(BaseModel):
+    figure: Any | None = None
+    chart_style: str | None = None
+
+
+class DashboardFigureBatchResponse(BaseModel):
+    charts: Dict[str, ChartFigureSchema]
+
+
 from ix.db.models.user import User
 
 
@@ -43,6 +52,23 @@ def _theme_figure_for_delivery(figure: Any) -> Any:
     if figure is None:
         return None
     return chart_theme.apply_json(figure, mode="light")
+
+
+def _apply_private_cache_headers(response: Response, max_age: int = 60) -> None:
+    response.headers["Cache-Control"] = (
+        f"private, max-age={max_age}, stale-while-revalidate={max_age * 2}"
+    )
+    response.headers["Vary"] = "Cookie, Authorization"
+
+
+def _can_view_chart(chart: Chart, current_user: User | None) -> bool:
+    is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
+    current_uid = str(getattr(current_user, "id", "") or "") if current_user else ""
+    is_owner_chart = bool(
+        current_uid
+        and str(getattr(chart, "created_by_user_id", "") or "") == current_uid
+    )
+    return is_admin or bool(chart.public) or is_owner_chart
 
 
 @router.get("/dashboard/summary", response_model=DashboardSummary)
@@ -57,9 +83,7 @@ def get_dashboard_summary(
     Returns a summary of all categories and chart metadata.
     Figure/code payloads are excluded by default to reduce response size and RAM usage.
     """
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
+    _apply_private_cache_headers(response)
     is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
     current_uid = str(getattr(current_user, "id", "") or "") if current_user else None
     include_code_for_user = bool(include_code and is_admin)
@@ -155,9 +179,7 @@ def get_chart_figure(
     """
     Returns the Plotly JSON figure for a specific custom chart.
     """
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
+    _apply_private_cache_headers(response)
     chart_fields = [
         Chart.id,
         Chart.name,
@@ -173,10 +195,7 @@ def get_chart_figure(
         if not chart:
             raise HTTPException(status_code=404, detail="Chart not found")
 
-    is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
-    current_uid = str(getattr(current_user, "id", "") or "") if current_user else ""
-    is_owner_chart = bool(current_uid and str(getattr(chart, "created_by_user_id", "") or "") == current_uid)
-    if not is_admin and not bool(chart.public) and not is_owner_chart:
+    if not _can_view_chart(chart, current_user):
         raise HTTPException(status_code=404, detail="Chart not found")
 
     if not chart.figure:
@@ -190,3 +209,50 @@ def get_chart_figure(
         "figure": _theme_figure_for_delivery(chart.figure),
         "chart_style": chart.chart_style,
     }
+
+
+@router.get("/dashboard/charts/figures", response_model=DashboardFigureBatchResponse)
+def get_chart_figures(
+    response: Response,
+    ids: List[str] = Query(default=[]),
+    db: Session = Depends(get_session),
+    current_user: User | None = Depends(get_optional_user),
+):
+    """
+    Returns figure payloads for a small batch of dashboard charts.
+    Intended for first-screen hydration to avoid many parallel figure requests.
+    """
+    _apply_private_cache_headers(response)
+
+    requested_ids = [chart_id.strip() for chart_id in ids if chart_id and chart_id.strip()]
+    if not requested_ids:
+        return {"charts": {}}
+
+    # Keep the endpoint intentionally small to protect response size.
+    requested_ids = requested_ids[:12]
+    chart_fields = [
+        Chart.id,
+        Chart.figure,
+        Chart.chart_style,
+        Chart.public,
+        Chart.created_by_user_id,
+    ]
+    charts = (
+        db.query(Chart)
+        .options(load_only(*chart_fields))
+        .filter(Chart.id.in_(requested_ids))
+        .all()
+    )
+
+    chart_map = {str(chart.id): chart for chart in charts}
+    payload: Dict[str, ChartFigureSchema] = {}
+    for chart_id in requested_ids:
+        chart = chart_map.get(chart_id)
+        if chart is None or not _can_view_chart(chart, current_user) or not chart.figure:
+            continue
+        payload[chart_id] = ChartFigureSchema(
+            figure=_theme_figure_for_delivery(chart.figure),
+            chart_style=chart.chart_style,
+        )
+
+    return {"charts": payload}

@@ -30,6 +30,11 @@ from ix.db.models import CustomChart, User
 from ix.api.dependencies import get_current_user
 from ix.misc import get_logger
 from ix.misc.theme import chart_theme
+from ix.utils.safe_custom_code import (
+    SAFE_CUSTOM_CHART_BUILTINS,
+    UnsafeCustomChartCodeError,
+    validate_custom_chart_code,
+)
 
 from ix.api.task_utils import start_process, update_process, ProcessStatus
 
@@ -53,6 +58,10 @@ except Exception:
 
 _LEGACY_STYLE_IMPORT_RE = re.compile(
     r"^\s*from\s+ix\.cht\.style\s+import\s+[^\n]+\n?",
+    flags=re.MULTILINE,
+)
+_LEGACY_IX_STAR_IMPORT_RE = re.compile(
+    r"^\s*from\s+ix\s+import\s+\*\s*\n?",
     flags=re.MULTILINE,
 )
 
@@ -140,6 +149,26 @@ def _normalize_legacy_chart_code(code: str) -> str:
     normalized = _LEGACY_STYLE_IMPORT_RE.sub("", code)
     if normalized != code:
         logger.info("Rewrote legacy ix.cht.style import in custom chart code.")
+    normalized_without_ix_star = _LEGACY_IX_STAR_IMPORT_RE.sub("", normalized)
+    if normalized_without_ix_star != normalized:
+        logger.info("Rewrote legacy `from ix import *` in custom chart code.")
+    normalized = normalized_without_ix_star
+    return normalized
+
+
+def _prepare_custom_chart_code(code: str) -> str:
+    normalized = _normalize_legacy_chart_code(code)
+    try:
+        validate_custom_chart_code(normalized)
+    except UnsafeCustomChartCodeError as exc:
+        logger.warning("Rejected unsafe custom chart code: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Validation Error",
+                "message": str(exc),
+            },
+        ) from exc
     return normalized
 
 
@@ -361,7 +390,7 @@ def _to_custom_chart_list_item(
     return CustomChartListItemResponse(**payload)
 
 
-def execute_custom_code(code: str):
+def execute_custom_code(code: str, *, validated: bool = False):
     """
     Executes user-provided Python code.
     Expected contract: The code must define a 'fig' variable OR return a Plotly figure.
@@ -382,24 +411,23 @@ def execute_custom_code(code: str):
         # Fallback
         return px.line(df, title=title)
 
-    # 2. Prepare execution context
-    import logging
-
-    logger = logging.getLogger("backend")
+    code = code if validated else _prepare_custom_chart_code(code)
 
     from ix.db.conn import conn
     from ix.db.query import (
         Series as OriginalSeries,
+        Cycle,
         MultiSeries,
         MonthEndOffset,
-        StandardScalar,
         Offset,
-        Resample,
-        PctChange,
-        Diff,
-        MovingAverage,
         Clip,
+        Diff,
         Ffill,
+        MovingAverage,
+        PctChange,
+        Rebase,
+        Resample,
+        StandardScalar,
     )
 
     def apply_theme(fig: Any, mode: str | None = None, force_dark: bool | None = None):
@@ -452,9 +480,11 @@ def execute_custom_code(code: str):
         "make_subplots": make_subplots,
         "Series": Series_wrapped,
         "MultiSeries": MultiSeries,
+        "Cycle": Cycle,
         "MonthEndOffset": MonthEndOffset,
         "StandardScalar": StandardScalar,
         "Offset": Offset,
+        "Rebase": Rebase,
         "Resample": Resample,
         "PctChange": PctChange,
         "Diff": Diff,
@@ -467,6 +497,7 @@ def execute_custom_code(code: str):
         "get_color": _legacy_get_color,
         "apply_theme": apply_theme,
         "df_plot": df_plot,
+        "__builtins__": SAFE_CUSTOM_CHART_BUILTINS,
         "__name__": "__main__",
     }
 
@@ -487,7 +518,6 @@ def execute_custom_code(code: str):
         from ix.db.conn import custom_chart_session
 
         # Log snippet for debugging
-        code = _normalize_legacy_chart_code(code)
         code_snippet = (code[:100] + "...") if len(code) > 100 else code
         logger.info(f"Executing custom chart code. Snippet: {code_snippet}")
 
@@ -528,6 +558,15 @@ def execute_custom_code(code: str):
         return fig_result
 
     except BaseException as e:
+        if isinstance(e, UnsafeCustomChartCodeError):
+            logger.warning("Rejected unsafe custom chart code during execution: %s", e)
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Validation Error",
+                    "message": str(e),
+                },
+            ) from e
         if not isinstance(e, HTTPException):
             logger.error(f"Error executing custom chart code: {e}")
             logger.error(traceback.format_exc())
@@ -1001,11 +1040,12 @@ def create_custom_chart(
     """Create a new custom chart."""
     _assert_can_create_chart(current_user)
     logger.info(f"Creating new chart with name: '{chart_data.name}'")
+    normalized_code = _prepare_custom_chart_code(chart_data.code)
 
     # Optional: Validate code by running it once?
     # Let's render it to get the initial figure cache
     try:
-        fig = execute_custom_code(chart_data.code)
+        fig = execute_custom_code(normalized_code, validated=True)
         figure_json = get_clean_figure_json(fig)
     except Exception:
         figure_json = None
@@ -1016,7 +1056,7 @@ def create_custom_chart(
 
     new_chart = CustomChart(
         name=chart_data.name,
-        code=chart_data.code,
+        code=normalized_code,
         category=chart_data.category,
         description=chart_data.description,
         tags=chart_data.tags,
@@ -1605,11 +1645,12 @@ def update_custom_chart(
 
     # If code changes, re-render
     if update_data.code is not None:
-        chart.code = update_data.code
+        normalized_code = _prepare_custom_chart_code(update_data.code)
         try:
             logger.info(f"Re-executing code for chart {chart_id}...")
-            fig = execute_custom_code(update_data.code)
+            fig = execute_custom_code(normalized_code, validated=True)
             figure_json = get_clean_figure_json(fig)
+            chart.code = normalized_code
             chart.figure = figure_json
 
             # Log a snippet of the figure to verify change
@@ -1623,7 +1664,7 @@ def update_custom_chart(
                 status_code=400,
                 detail={
                     "error": "Execution Error",
-                    "message": f"Code saved but figure generation failed: {str(e)}",
+                    "message": f"Code update rejected because figure generation failed: {str(e)}",
                     "traceback": traceback.format_exc(),
                 },
             )

@@ -1072,9 +1072,12 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         method: 'POST',
       });
     },
-    onSuccess: (_data, chartId) => {
-      // Refetch only the specific chart figure — not all of them
-      queryClient.invalidateQueries({ queryKey: ['chart-figure', chartId], exact: true });
+    onSuccess: (data: any, chartId) => {
+      if (data?.figure) {
+        queryClient.setQueryData(['chart-figure', chartId], data.figure);
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['chart-figure', chartId], exact: true });
+      }
       setRefreshingChartIds((prev) => {
         const next = { ...prev };
         delete next[chartId];

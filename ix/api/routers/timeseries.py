@@ -37,6 +37,11 @@ from ix.db.models.user import User
 from ix.db.query import *
 from sqlalchemy.orm import joinedload, Session as SessionType
 from ix.misc import get_logger
+from ix.utils.safe_expression import (
+    TIMESERIES_EXPRESSION_CONTEXT,
+    UnsafeExpressionError,
+    safe_eval_expression,
+)
 
 logger = get_logger(__name__)
 
@@ -1409,7 +1414,7 @@ def _evaluate_expression(
         logger.info(
             f"Code {code} not found in database, attempting to evaluate as expression"
         )
-        evaluated_series = eval(code)
+        evaluated_series = safe_eval_expression(code, TIMESERIES_EXPRESSION_CONTEXT)
         series_list = []
 
         # Handle both Series and DataFrame results
@@ -1452,6 +1457,9 @@ def _evaluate_expression(
             )
 
         return series_list
+    except UnsafeExpressionError as e:
+        logger.warning(f"Rejected custom timeseries expression {code}: {e}")
+        return []
     except Exception as e:
         logger.warning(
             f"Code {code} not found in database and failed to evaluate as expression: {e}"

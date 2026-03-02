@@ -13,11 +13,14 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from ix.db.conn import ensure_connection
-from ix.db.query import *
 from ix.api.dependencies import get_current_user
 from ix.db.models.user import User
 from ix.misc import get_logger
-from ix.core import ContributionToGrowth
+from ix.utils.safe_expression import (
+    EVALUATION_EXPRESSION_CONTEXT,
+    UnsafeExpressionError,
+    safe_eval_expression,
+)
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from fastapi import Request
@@ -49,11 +52,11 @@ async def evaluate_code(
     - code: Code expression that evaluates to a DataFrame or Series
     - format: Response format ('json' or 'csv', default: 'json')
 
-    The code will be evaluated with access to module-level imports.
+    The expression is evaluated in a restricted analytics context.
 
     Example request:
     {
-        "code": "pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})"
+        "code": "MultiSeries(A=Series('SPX Index:PX_LAST'), B=Series('XAU Curncy:PX_LAST'))"
     }
     """
     ensure_connection()
@@ -69,8 +72,7 @@ async def evaluate_code(
     try:
         code = body.code.strip()
 
-        # Evaluate the code expression directly
-        result = eval(code, globals(), {})
+        result = safe_eval_expression(code, EVALUATION_EXPRESSION_CONTEXT)
 
         # Convert result to DataFrame if it's a Series
         if isinstance(result, pd.Series):
@@ -137,6 +139,9 @@ async def evaluate_code(
                 media_type="application/json",
             )
 
+    except UnsafeExpressionError as e:
+        logger.warning(f"Rejected evaluation expression: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

@@ -7,17 +7,18 @@ export async function apiFetch(
   options: RequestInit = {},
 ): Promise<Response> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const method = String(options.method || 'GET').toUpperCase();
 
   const headers = new Headers(options.headers);
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const res = await fetch(url, { 
-    ...options, 
+  const res = await fetch(url, {
+    ...options,
     headers,
     credentials: 'include', // CRITICAL: Send HttpOnly cookies to the server
-    cache: 'no-store'
+    cache: options.cache ?? (method === 'GET' || method === 'HEAD' ? 'default' : 'no-store'),
   });
 
   // Global handler for 401 Unauthorized (Session Expired)

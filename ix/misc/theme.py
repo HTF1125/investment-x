@@ -602,9 +602,17 @@ class ChartTheme:
         # --- Annotations ---
         if fig_obj.layout.annotations:
             for ann in fig_obj.layout.annotations:
-                existing_font = dict(getattr(ann, "font", None) or {})
+                existing_font_obj = getattr(ann, "font", None)
+                if hasattr(existing_font_obj, "to_plotly_json"):
+                    existing_font = dict(existing_font_obj.to_plotly_json() or {})
+                elif isinstance(existing_font_obj, dict):
+                    existing_font = dict(existing_font_obj)
+                else:
+                    existing_font = {}
+                existing_font["color"] = text_color
+                existing_font["size"] = base_font_size
                 ann.update(
-                    font=dict(**existing_font, color=text_color, size=base_font_size)
+                    font=existing_font
                 )
 
         # --- Trace colors, axis sanitization, date padding ---

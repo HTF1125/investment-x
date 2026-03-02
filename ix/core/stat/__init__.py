@@ -37,29 +37,52 @@ def Cycle(series: pd.Series, max_points_per_cycle: Optional[int] = None) -> pd.S
     """
     # 1) Prepare t and y
     series_clean = series.dropna()
+    if series_clean.empty:
+        return series_clean
+
     t = np.arange(len(series_clean))
     y = series_clean.values.astype(float)
+    if len(y) < 4:
+        return pd.Series(y, index=series_clean.index)
 
     # 2) Initial amplitude & offset
     A0 = (y.max() - y.min()) / 2
     C0 = y.mean()
+    if not np.isfinite(A0) or A0 == 0:
+        return pd.Series(np.full(len(y), C0, dtype=float), index=series_clean.index)
 
     # 3) FFT-based frequency & phase guesses
     yf = np.fft.fft(y - C0)
     xf = np.fft.fftfreq(len(t), d=1)
-    peak_idx = np.argmax(np.abs(yf[1 : len(y) // 2])) + 1
-    f0 = abs(xf[peak_idx])
+    if len(y) // 2 <= 1:
+        f0 = 1.0 / max(len(y), 2)
+    else:
+        peak_idx = np.argmax(np.abs(yf[1 : len(y) // 2])) + 1
+        f0 = abs(xf[peak_idx])
+    if not np.isfinite(f0) or f0 <= 0:
+        f0 = 1.0 / max(len(y), 2)
     phi0 = 0.0
 
     # 4) Sine model
     def sine_model(t, A, f, phi, C):
         return A * np.sin(2 * np.pi * f * t + phi) + C
 
+    def linear_sine_fit(freq: float) -> tuple[float, float, float, float]:
+        omega = 2 * np.pi * freq
+        design = np.column_stack(
+            [np.sin(omega * t), np.cos(omega * t), np.ones_like(t, dtype=float)]
+        )
+        coeffs, *_ = np.linalg.lstsq(design, y, rcond=None)
+        sin_coeff, cos_coeff, level = coeffs
+        amplitude = float(np.hypot(sin_coeff, cos_coeff))
+        phase = float(np.arctan2(cos_coeff, sin_coeff))
+        return amplitude, float(freq), phase, float(level)
+
     # 5) Setup bounds and initial guess
     use_bounds = False
     if max_points_per_cycle:
         f_min = 1.0 / max_points_per_cycle
-        f_max = 0.5  # Nyquist limit
+        f_max = 0.5 - 1e-6  # Nyquist limit, keep strictly inside bounds
         bounds = ([0.0, f_min, -np.pi, -np.inf], [np.inf, f_max, np.pi, np.inf])
         # initial f0 must lie strictly inside (f_min, f_max)
         f0 = np.clip(f0, f_min + 1e-6, f_max - 1e-6)
@@ -68,12 +91,16 @@ def Cycle(series: pd.Series, max_points_per_cycle: Optional[int] = None) -> pd.S
     p0 = [A0, f0, phi0, C0]
 
     # 6) Curve fitting
-    if use_bounds:
-        popt, pcov = curve_fit(sine_model, t, y, p0=p0, bounds=bounds)
-    else:
-        popt, pcov = curve_fit(sine_model, t, y, p0=p0)
-
-    A_fit, f_fit, phi_fit, C_fit = popt
+    try:
+        if use_bounds:
+            popt, _ = curve_fit(
+                sine_model, t, y, p0=p0, bounds=bounds, maxfev=10000
+            )
+        else:
+            popt, _ = curve_fit(sine_model, t, y, p0=p0, maxfev=10000)
+        A_fit, f_fit, phi_fit, C_fit = popt
+    except Exception:
+        A_fit, f_fit, phi_fit, C_fit = linear_sine_fit(f0)
 
     # 7) Negative amplitude이면 위상 반전
     if A_fit < 0:
@@ -81,10 +108,14 @@ def Cycle(series: pd.Series, max_points_per_cycle: Optional[int] = None) -> pd.S
 
     # 8) 10/90 백분위수 계산
     p10, p90 = np.percentile(y, 10), np.percentile(y, 90)
+    if not np.isfinite(p10) or not np.isfinite(p90):
+        return pd.Series(np.full(len(y), C_fit, dtype=float), index=series_clean.index)
 
     # 9) 스케일된 사인곡선 생성
     A_scaled = (p90 - p10) / 2
     C_scaled = (p90 + p10) / 2
+    if not np.isfinite(A_scaled) or A_scaled == 0:
+        return pd.Series(np.full(len(y), C_scaled, dtype=float), index=series_clean.index)
     scaled = pd.Series(
         sine_model(t, A_scaled, f_fit, phi_fit, C_scaled), index=series_clean.index
     )

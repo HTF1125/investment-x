@@ -16,6 +16,11 @@ from ix.db.query import Series
 from ix.api.dependencies import get_current_user
 from ix.db.models.user import User
 from ix.misc import get_logger
+from ix.utils.safe_expression import (
+    SERIES_EXPRESSION_CONTEXT,
+    UnsafeExpressionError,
+    safe_eval_expression,
+)
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from fastapi import Request
@@ -78,14 +83,18 @@ async def get_series(
             ):
                 # Split into alias name and series expression
                 alias_name, expression = series_code.split("=", maxsplit=1)
-                series_data = eval(expression)
+                series_data = safe_eval_expression(
+                    expression, SERIES_EXPRESSION_CONTEXT
+                )
 
                 # For Series: set the name attribute
                 if isinstance(series_data, pd.Series):
                     series_data.name = alias_name.strip()
             else:
                 # No alias, evaluate expression as-is
-                series_data = eval(series_code)
+                series_data = safe_eval_expression(
+                    series_code, SERIES_EXPRESSION_CONTEXT
+                )
 
             if series_data.empty:
                 continue
@@ -102,6 +111,9 @@ async def get_series(
             # Add to list for DataFrame creation
             series_data_list.append(series_data)
 
+        except UnsafeExpressionError as e:
+            logger.warning(f"Rejected series expression {series_code}: {e}")
+            continue
         except Exception as e:
             logger.warning(f"Error getting series {series_code}: {e}")
             continue
