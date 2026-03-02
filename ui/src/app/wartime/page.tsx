@@ -35,6 +35,47 @@ interface HorizonStat {
   p75: number | null;
 }
 
+interface DistributionStat {
+  day: number;
+  count: number;
+  mean: number | null;
+  median: number | null;
+  p10: number | null;
+  p25: number | null;
+  p75: number | null;
+  p90: number | null;
+}
+
+interface CurrentCompareStat {
+  day: number | null;
+  current_return: number | null;
+  hist_mean: number | null;
+  hist_median: number | null;
+  hist_std: number | null;
+  hist_p10: number | null;
+  hist_p25: number | null;
+  hist_p75: number | null;
+  hist_p90: number | null;
+  percentile_rank: number | null;
+  sample_size: number;
+}
+
+interface AnalogueRow {
+  conflict: string;
+  matched_return: number;
+  full_return: number;
+  path_rmse: number;
+  path_corr: number | null;
+  matched_mdd: number;
+}
+
+interface AnaloguePayload {
+  days_used: number;
+  available: boolean;
+  min_days_required: number;
+  rows: AnalogueRow[];
+}
+
 interface WartimeFigure {
   data: any[];
   layout: any;
@@ -42,7 +83,13 @@ interface WartimeFigure {
 
 interface WartimeData {
   conflicts: Record<string, { start_date: string; note: string | null }>;
-  spx:  { rebased: Record<string, RebasedSeries>; stats: SpxStat[]; horizon_stats: HorizonStat[] };
+  spx:  {
+    rebased: Record<string, RebasedSeries>;
+    stats: SpxStat[];
+    horizon_stats: HorizonStat[];
+    distribution: DistributionStat[];
+    analogues: AnaloguePayload;
+  };
   gold: { rebased: Record<string, RebasedSeries>; stats: CommodityStat[] };
   oil:  { rebased: Record<string, RebasedSeries>; stats: CommodityStat[] };
   krw:  { rebased: Record<string, RebasedSeries>; stats: CommodityStat[] };
@@ -51,10 +98,19 @@ interface WartimeData {
     spx_return: number | null; spx_low: number | null;
     gold_return: number | null; oil_return: number | null; krw_return: number | null;
   };
+  current_compare: {
+    spx: CurrentCompareStat;
+    gold: CurrentCompareStat;
+    oil: CurrentCompareStat;
+    krw: CurrentCompareStat;
+  };
   summary: {
     avg_mdd: number | null; median_mdd: number | null; mdd_std: number | null;
+    p25_mdd: number | null; p75_mdd: number | null;
     avg_bottom_days: number | null; avg_recovery_days: number | null;
-    recovery_rate: number | null; sample_size: number;
+    recovery_rate: number | null;
+    median_final_return: number | null; p25_final_return: number | null; p75_final_return: number | null;
+    sample_size: number;
   };
 }
 
@@ -127,6 +183,8 @@ const T = {
     avgBottom: 'Avg Days to Low',     avgBottomSub: 'Trading days',
     avgRecovery: 'Avg Recovery',      avgRecoverySub: 'Days from low to breakeven',
     recoveryRate: 'Recovery Rate',    recoveryRateSub: 'Recovered within 200 days',
+    median200d: 'Median 200d Return', median200dSub: 'Historical conflicts',
+    iqr200d: '200d IQR',              iqr200dSub: '25th to 75th percentile',
     sampleSize: 'Sample Size',        sampleSizeSub: 'Excludes current and 2020 outlier',
 
     methodTitle: 'Methodology Note',
@@ -141,6 +199,9 @@ const T = {
     horizonThIqr: 'IQR',
     horizonThPos: 'Positive Rate',
     horizonThN: 'N',
+    distributionTitle: 'S&P 500 Historical Distribution Envelope',
+    distributionSubtitle: 'Median path with 25-75 and 10-90 percentile bands',
+    distributionNote: 'Shaded bands show how wide conflict outcomes have historically dispersed by day. This is more robust than relying on one average path.',
 
     goldTitle: 'Gold',
     goldSubtitle: '— Safe Haven Performance',
@@ -182,6 +243,24 @@ const T = {
     cardGoldReturn: 'Gold Return',        cardGoldReturnSub: 'Cumulative since 2026-02-28',
     cardOilReturn: 'WTI Return',          cardOilReturnSub: 'Cumulative since 2026-02-28',
     cardKrwReturn: 'USD/KRW Return',      cardKrwReturnSub: 'Higher = KRW weaker since 2026-02-28',
+    compareTitle: 'Current Event vs History at Matched Horizon',
+    compareSubtitle: 'Compare the live event against historical conflicts at the same elapsed trading day',
+    compareThAsset: 'Asset',
+    compareThCurrent: 'Current',
+    compareThMedian: 'Hist. Median',
+    compareThIqr: 'Hist. IQR',
+    compareThBand: '10-90 Band',
+    compareThPercentile: 'Percentile',
+    compareThN: 'N',
+    analogTitle: 'Closest Historical Analogues',
+    analogSubtitle: 'Nearest S&P 500 path matches based on the current cumulative path',
+    analogNeedMore: 'Need at least {days} trading days of current-event data before path analogues become meaningful.',
+    analogThConflict: 'Conflict',
+    analogThMatched: 'Same-day Ret.',
+    analogThFull: '200d Ret.',
+    analogThMdd: 'Same-path MDD',
+    analogThRmse: 'Path RMSE',
+    analogThCorr: 'Path Corr.',
 
     scenariosTitle: 'Historical Precedent Scenarios',
     bullLabel: 'Bull scenario — rapid recovery',
@@ -270,6 +349,8 @@ const T = {
     avgBottom: '평균 저점 도달',   avgBottomSub: '거래일 기준',
     avgRecovery: '평균 회복 소요', avgRecoverySub: '저점에서 손익분기까지',
     recoveryRate: '200일 내 회복률', recoveryRateSub: '200거래일 내 회복 비율',
+    median200d: '중앙값 200일 수익률', median200dSub: '역사적 갈등 기준',
+    iqr200d: '200일 IQR',               iqr200dSub: '25~75 분위 범위',
     sampleSize: '표본 수',         sampleSizeSub: '현재 사건 및 2020 왜곡 제외',
 
     methodTitle: '방법론 주의사항',
@@ -284,6 +365,9 @@ const T = {
     horizonThIqr: '사분위 범위',
     horizonThPos: '플러스 비율',
     horizonThN: '표본 수',
+    distributionTitle: 'S&P 500 역사적 분포 밴드',
+    distributionSubtitle: '중앙 경로와 25-75 / 10-90 분위 밴드',
+    distributionNote: '음영 밴드는 갈등별 결과 분산을 보여줍니다. 단일 평균 경로보다 더 견고한 기준입니다.',
 
     goldTitle: '금 (Gold)',
     goldSubtitle: '— 안전자산 성과',
@@ -325,6 +409,24 @@ const T = {
     cardGoldReturn: '금 수익률',        cardGoldReturnSub: '2026-02-28 기준 누적',
     cardOilReturn: 'WTI 수익률',        cardOilReturnSub: '2026-02-28 기준 누적',
     cardKrwReturn: 'USD/KRW 수익률',    cardKrwReturnSub: '상승 = 2026-02-28 이후 원화 약세',
+    compareTitle: '현재 사건 vs 동일 경과일 역사 비교',
+    compareSubtitle: '현재 갈등을 동일 경과 거래일의 역사적 분포와 비교',
+    compareThAsset: '자산',
+    compareThCurrent: '현재',
+    compareThMedian: '역사 중앙값',
+    compareThIqr: '역사 IQR',
+    compareThBand: '10-90 밴드',
+    compareThPercentile: '백분위',
+    compareThN: '표본 수',
+    analogTitle: '가장 유사한 역사적 경로',
+    analogSubtitle: '현재 S&P 500 누적 경로와 가장 비슷한 과거 갈등',
+    analogNeedMore: '경로 유사도 분석은 현재 사건 데이터가 최소 {days}거래일 이상 쌓여야 의미가 있습니다.',
+    analogThConflict: '갈등',
+    analogThMatched: '동일일 수익률',
+    analogThFull: '200일 수익률',
+    analogThMdd: '동일구간 MDD',
+    analogThRmse: '경로 RMSE',
+    analogThCorr: '경로 상관',
 
     scenariosTitle: '역사적 선례 기반 시나리오',
     bullLabel: '낙관 시나리오 — 빠른 회복',
@@ -372,6 +474,11 @@ function pct(v: number | null, decimals = 1): string {
 function absLow(v: number | null): string {
   if (v === null || v === undefined) return 'N/A';
   return `${(v * 100).toFixed(1)}%`;
+}
+
+function percentile(v: number | null): string {
+  if (v === null || v === undefined) return 'N/A';
+  return `${(v * 100).toFixed(0)}%`;
 }
 
 function clonePlotValue<T>(value: T): T {
@@ -450,8 +557,19 @@ function buildLineChart(
 
   // Restore settings that applyChartTheme overrides (keep autosize:true — height via wrapper div)
   fig.layout.hovermode = 'x unified';
-  fig.layout.margin    = { l: 55, r: 220, t: 46, b: 46 };
-  fig.layout.legend    = { ...fig.layout.legend, orientation: 'v', x: 1.02, y: 1, xanchor: 'left', yanchor: 'top', font: { ...fig.layout.legend?.font, size: 9 } };
+  fig.layout.margin    = { l: 55, r: 20, t: 46, b: 110 };
+  fig.layout.legend    = {
+    ...fig.layout.legend,
+    orientation: 'h',
+    x: 0,
+    y: -0.18,
+    xanchor: 'left',
+    yanchor: 'top',
+    font: { ...fig.layout.legend?.font, size: 9 },
+    traceorder: 'normal',
+    entrywidth: 0.2,
+    entrywidthmode: 'fraction',
+  };
 
   return fig;
 }
@@ -485,6 +603,119 @@ function buildBarChart(
   // Restore settings that applyChartTheme overrides (keep autosize:true — height via wrapper div)
   fig.layout.margin     = { l: 35, r: 10, t: 10, b: 110 };
   fig.layout.showlegend = false;
+
+  return fig;
+}
+
+function buildDistributionBandChart(
+  rows: DistributionStat[],
+  currentSeries: RebasedSeries | undefined,
+  title: string,
+  xTitle: string,
+  theme: string,
+  lang: Lang,
+) {
+  const x = rows.map((row) => row.day);
+  const p10 = rows.map((row) => row.p10);
+  const p25 = rows.map((row) => row.p25);
+  const median = rows.map((row) => row.median);
+  const p75 = rows.map((row) => row.p75);
+  const p90 = rows.map((row) => row.p90);
+  const shadeOuter = theme === 'dark' ? 'rgba(56,189,248,0.10)' : 'rgba(14,165,233,0.10)';
+  const shadeInner = theme === 'dark' ? 'rgba(56,189,248,0.20)' : 'rgba(14,165,233,0.18)';
+
+  const data: any[] = [
+    {
+      x,
+      y: p90,
+      type: 'scatter',
+      mode: 'lines',
+      name: '90th',
+      line: { width: 0 },
+      hoverinfo: 'skip',
+      showlegend: false,
+    },
+    {
+      x,
+      y: p10,
+      type: 'scatter',
+      mode: 'lines',
+      name: '10-90',
+      line: { width: 0 },
+      fill: 'tonexty',
+      fillcolor: shadeOuter,
+      hoverinfo: 'skip',
+      showlegend: false,
+    },
+    {
+      x,
+      y: p75,
+      type: 'scatter',
+      mode: 'lines',
+      name: '75th',
+      line: { width: 0 },
+      hoverinfo: 'skip',
+      showlegend: false,
+    },
+    {
+      x,
+      y: p25,
+      type: 'scatter',
+      mode: 'lines',
+      name: '25-75',
+      line: { width: 0 },
+      fill: 'tonexty',
+      fillcolor: shadeInner,
+      hoverinfo: 'skip',
+      showlegend: false,
+    },
+    {
+      x,
+      y: median,
+      type: 'scatter',
+      mode: 'lines',
+      name: lang === 'ko' ? '역사 중앙값' : 'Historical median',
+      line: { width: 2.5, color: '#0EA5E9' },
+      hovertemplate: `Day %{x}<br>${lang === 'ko' ? '중앙값' : 'Median'}: %{y:.1%}<extra></extra>`,
+    },
+  ];
+
+  if (currentSeries) {
+    data.push({
+      x: currentSeries.x,
+      y: currentSeries.y.map((value) => value - 1.0),
+      type: 'scatter',
+      mode: currentSeries.x.length <= 2 ? 'lines+markers' : 'lines',
+      name: lang === 'ko' ? '현재 사건' : 'Current event',
+      line: { width: 3, color: COLOR_CURRENT, dash: 'dot' },
+      marker: currentSeries.x.length <= 2 ? { size: 6, color: COLOR_CURRENT } : undefined,
+      hovertemplate: `Day %{x}<br>${lang === 'ko' ? '현재' : 'Current'}: %{y:.1%}<extra></extra>`,
+    });
+  }
+
+  const layout: any = {
+    title: { text: title, font: { size: 13 } },
+    xaxis: { title: xTitle, tickfont: { size: 10 } },
+    yaxis: { title: lang === 'ko' ? '누적 수익률' : 'Cumulative return', tickformat: '.0%', tickfont: { size: 10 } },
+    hovermode: 'x unified',
+  };
+
+  const fig = applyChartTheme({ layout } as any, theme as any, { chartStyle: 'minimal' }) as any;
+  fig.data = stripUndefinedDeep(data);
+  fig.layout.hovermode = 'x unified';
+  fig.layout.margin = { l: 55, r: 20, t: 46, b: 110 };
+  fig.layout.legend = {
+    ...fig.layout.legend,
+    orientation: 'h',
+    x: 0,
+    y: -0.18,
+    xanchor: 'left',
+    yanchor: 'top',
+    font: { ...fig.layout.legend?.font, size: 9 },
+    traceorder: 'normal',
+    entrywidth: 0.24,
+    entrywidthmode: 'fraction',
+  };
 
   return fig;
 }
@@ -717,6 +948,81 @@ function HorizonStatsTable({ rows, t }: { rows: HorizonStat[]; t: TShape }) {
   );
 }
 
+function CurrentComparisonTable({
+  rows,
+  t,
+}: {
+  rows: Array<{ asset: string; stat: CurrentCompareStat }>;
+  t: TShape;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[11px] border-collapse">
+        <thead>
+          <tr className="border-b border-border/60">
+            <th className="text-left py-2 pr-3 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThAsset}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThCurrent}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThMedian}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThIqr}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThBand}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThPercentile}</th>
+            <th className="text-right py-2 pl-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThN}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ asset, stat }) => (
+            <tr key={asset} className="border-b border-border/30 transition-colors hover:bg-foreground/[0.02]">
+              <td className="py-1.5 pr-3 text-foreground">{asset}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${(stat.current_return ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(stat.current_return)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${(stat.hist_median ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(stat.hist_median)}</td>
+              <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">
+                {stat.hist_p25 !== null && stat.hist_p75 !== null ? `${pct(stat.hist_p25)} / ${pct(stat.hist_p75)}` : 'N/A'}
+              </td>
+              <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">
+                {stat.hist_p10 !== null && stat.hist_p90 !== null ? `${pct(stat.hist_p10)} / ${pct(stat.hist_p90)}` : 'N/A'}
+              </td>
+              <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{percentile(stat.percentile_rank)}</td>
+              <td className="py-1.5 pl-2 text-right text-muted-foreground tabular-nums">{stat.sample_size}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AnaloguesTable({ rows, t, lang }: { rows: AnalogueRow[]; t: TShape; lang: Lang }) {
+  const nameOf = (n: string) => lang === 'ko' ? (CONFLICT_NAMES_KO[n] ?? n) : n;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[11px] border-collapse">
+        <thead>
+          <tr className="border-b border-border/60">
+            <th className="text-left py-2 pr-3 text-muted-foreground/70 font-medium whitespace-nowrap">{t.analogThConflict}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.analogThMatched}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.analogThFull}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.analogThMdd}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.analogThRmse}</th>
+            <th className="text-right py-2 pl-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.analogThCorr}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.conflict} className="border-b border-border/30 transition-colors hover:bg-foreground/[0.02]">
+              <td className="py-1.5 pr-3 text-foreground">{nameOf(row.conflict)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${row.matched_return >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.matched_return)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${row.full_return >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.full_return)}</td>
+              <td className="py-1.5 px-2 text-right text-amber-500 tabular-nums">{absLow(row.matched_mdd)}</td>
+              <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{(row.path_rmse * 100).toFixed(2)}%</td>
+              <td className="py-1.5 pl-2 text-right text-muted-foreground tabular-nums">{row.path_corr !== null ? row.path_corr.toFixed(2) : 'N/A'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function WartimePage() {
@@ -772,6 +1078,28 @@ export default function WartimePage() {
     return buildBarChart(hist.map(r => r.conflict), hist.map(r => r.recovery_days ?? 200),
       hist.map(r => r.recovery_days === null ? '#9CA3AF' : '#10B981'), t.barRecoveryHover, 260, theme, lang);
   }, [data, theme, lang]);
+
+  const distributionBandChart = useMemo(() => {
+    if (!data) return null;
+    return buildDistributionBandChart(
+      data.spx.distribution,
+      data.spx.rebased[data.current.name],
+      t.distributionTitle,
+      t.spxXAxis,
+      theme,
+      lang,
+    );
+  }, [data, theme, lang]);
+
+  const currentCompareRows = useMemo(() => {
+    if (!data) return [];
+    return [
+      { asset: 'S&P 500', stat: data.current_compare.spx },
+      { asset: 'Gold', stat: data.current_compare.gold },
+      { asset: 'WTI', stat: data.current_compare.oil },
+      { asset: 'USD/KRW', stat: data.current_compare.krw },
+    ];
+  }, [data]);
 
   // ── Language toggle button ────────────────────────────────────────────────
   const LangToggle = (
@@ -880,13 +1208,15 @@ export default function WartimePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
             <StatCard label={t.avgMdd}       value={absLow(summary.avg_mdd)}                                                                      sub={t.avgMddSub} />
             <StatCard label={t.medianMdd}    value={absLow(summary.median_mdd)}                                                                   sub={t.medianMddSub} />
             <StatCard label={t.mddStd}       value={summary.mdd_std           !== null ? `${(summary.mdd_std * 100).toFixed(1)}%`       : 'N/A'} sub={t.mddStdSub} />
             <StatCard label={t.avgBottom}    value={summary.avg_bottom_days   !== null ? `${summary.avg_bottom_days.toFixed(0)}d`   : 'N/A'}      sub={t.avgBottomSub} />
             <StatCard label={t.avgRecovery}  value={summary.avg_recovery_days !== null ? `${summary.avg_recovery_days.toFixed(0)}d` : 'N/A'}      sub={t.avgRecoverySub} />
             <StatCard label={t.recoveryRate} value={summary.recovery_rate     !== null ? `${(summary.recovery_rate * 100).toFixed(0)}%` : 'N/A'} sub={t.recoveryRateSub} />
+            <StatCard label={t.median200d}   value={pct(summary.median_final_return)}                                                           sub={t.median200dSub} />
+            <StatCard label={t.iqr200d}      value={summary.p25_final_return !== null && summary.p75_final_return !== null ? `${pct(summary.p25_final_return)} / ${pct(summary.p75_final_return)}` : 'N/A'} sub={t.iqr200dSub} />
             <StatCard label={t.sampleSize}   value={`${summary.sample_size}`}                                                                      sub={t.sampleSizeSub} />
           </div>
 
@@ -902,6 +1232,15 @@ export default function WartimePage() {
               <div className="text-[11px] text-muted-foreground/60">{t.horizonSubtitle}</div>
             </div>
             <HorizonStatsTable rows={data.spx.horizon_stats} t={t} />
+          </div>
+
+          <div className="panel-card p-4">
+            <div className="flex items-baseline justify-between gap-3 mb-3">
+              <div className="stat-label">{t.distributionTitle}</div>
+              <div className="text-[11px] text-muted-foreground/60">{t.distributionSubtitle}</div>
+            </div>
+            {distributionBandChart && <WartimePlot plotId="spx-distribution-band" figure={distributionBandChart} height="420px" theme={theme} lang={lang} />}
+            <p className="text-[11px] text-muted-foreground/55 mt-3">{t.distributionNote}</p>
           </div>
         </section>
 
@@ -1011,6 +1350,36 @@ export default function WartimePage() {
             <StatCard label={t.cardGoldReturn}  value={pct(current.gold_return)}                                                 sub={t.cardGoldReturnSub} />
             <StatCard label={t.cardOilReturn}   value={pct(current.oil_return)}                                                  sub={t.cardOilReturnSub} />
             <StatCard label={t.cardKrwReturn}   value={pct(current.krw_return)}                                                  sub={t.cardKrwReturnSub} />
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-[15px] font-semibold text-foreground">{t.compareTitle}</h2>
+          <div className="panel-card p-4">
+            <div className="flex items-baseline justify-between gap-3 mb-3">
+              <div className="stat-label">{t.compareTitle}</div>
+              <div className="text-[11px] text-muted-foreground/60">
+                {t.compareSubtitle} {data.current_compare.spx.day !== null ? `(${data.current_compare.spx.day}d)` : ''}
+              </div>
+            </div>
+            <CurrentComparisonTable rows={currentCompareRows} t={t} />
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-[15px] font-semibold text-foreground">{t.analogTitle}</h2>
+          <div className="panel-card p-4">
+            <div className="flex items-baseline justify-between gap-3 mb-3">
+              <div className="stat-label">{t.analogTitle}</div>
+              <div className="text-[11px] text-muted-foreground/60">{t.analogSubtitle}</div>
+            </div>
+            {data.spx.analogues.available ? (
+              <AnaloguesTable rows={data.spx.analogues.rows} t={t} lang={lang} />
+            ) : (
+              <p className="text-[12px] text-muted-foreground/70">
+                {t.analogNeedMore.replace('{days}', String(data.spx.analogues.min_days_required))}
+              </p>
+            )}
           </div>
         </section>
 

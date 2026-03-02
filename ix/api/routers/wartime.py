@@ -42,6 +42,7 @@ OIL_TICKER  = "WTI COMDTY:PX_LAST"
 KRW_TICKER  = "USDKRW Curncy:PX_LAST"
 WINDOW      = 200
 HORIZONS    = (5, 20, 60, 120, 199)
+MIN_ANALOG_DAYS = 10
 
 _cache: TTLCache = TTLCache(maxsize=1, ttl=300)
 _lock = threading.Lock()
@@ -70,11 +71,19 @@ def build_rebased(prices: pd.Series) -> dict[str, pd.Series]:
     result: dict[str, pd.Series] = {}
     for name, (start, _) in CONFLICTS.items():
         subset = prices.loc[start:].dropna().iloc[:WINDOW]
-        if len(subset) < 2:
+        if len(subset) < 1:
             continue
         rebased = subset / subset.iloc[0]
         result[name] = rebased.reset_index(drop=True)
     return result
+
+
+def _historical_only(rebased: dict[str, pd.Series]) -> dict[str, pd.Series]:
+    return {
+        name: series
+        for name, series in rebased.items()
+        if name != CURRENT_NAME and "2020" not in name
+    }
 
 
 def compute_spx_stats(rebased: dict[str, pd.Series]) -> list[dict]:
@@ -129,11 +138,7 @@ def compute_commodity_stats(rebased: dict[str, pd.Series]) -> list[dict]:
 
 def compute_horizon_stats(rebased: dict[str, pd.Series]) -> list[dict]:
     rows = []
-    historical = {
-        name: series
-        for name, series in rebased.items()
-        if "Current" not in name and "2020" not in name
-    }
+    historical = _historical_only(rebased)
 
     for horizon in HORIZONS:
         values = [
@@ -168,6 +173,162 @@ def compute_horizon_stats(rebased: dict[str, pd.Series]) -> list[dict]:
     return rows
 
 
+def compute_distribution_bands(rebased: dict[str, pd.Series]) -> list[dict]:
+    rows = []
+    historical = _historical_only(rebased)
+
+    for day in range(WINDOW):
+        values = [
+            float(series.iloc[day]) - 1.0
+            for series in historical.values()
+            if len(series) > day
+        ]
+        if not values:
+            rows.append(
+                {
+                    "day": day,
+                    "count": 0,
+                    "median": None,
+                    "mean": None,
+                    "p10": None,
+                    "p25": None,
+                    "p75": None,
+                    "p90": None,
+                }
+            )
+            continue
+
+        arr = np.array(values, dtype=float)
+        rows.append(
+            {
+                "day": day,
+                "count": len(values),
+                "median": round(float(np.median(arr)), 4),
+                "mean": round(float(np.mean(arr)), 4),
+                "p10": round(float(np.percentile(arr, 10)), 4),
+                "p25": round(float(np.percentile(arr, 25)), 4),
+                "p75": round(float(np.percentile(arr, 75)), 4),
+                "p90": round(float(np.percentile(arr, 90)), 4),
+            }
+        )
+    return rows
+
+
+def _midrank_percentile(arr: np.ndarray, current_value: float) -> float:
+    close_mask = np.isclose(arr, current_value, rtol=1e-9, atol=1e-9)
+    less = int(np.sum(arr < current_value))
+    equal = int(np.sum(close_mask))
+    return (less + 0.5 * equal) / len(arr)
+
+
+def compute_current_vs_history(current_series: pd.Series | None, rebased: dict[str, pd.Series]) -> dict[str, Any]:
+    historical = _historical_only(rebased)
+    if current_series is None or len(current_series) == 0:
+        return {
+            "day": None,
+            "current_return": None,
+            "hist_mean": None,
+            "hist_median": None,
+            "hist_std": None,
+            "hist_p10": None,
+            "hist_p25": None,
+            "hist_p75": None,
+            "hist_p90": None,
+            "percentile_rank": None,
+            "sample_size": 0,
+        }
+
+    day = len(current_series) - 1
+    values = [
+        float(series.iloc[day]) - 1.0
+        for series in historical.values()
+        if len(series) > day
+    ]
+    current_return = float(current_series.iloc[-1]) - 1.0
+
+    if not values:
+        return {
+            "day": day,
+            "current_return": round(current_return, 4),
+            "hist_mean": None,
+            "hist_median": None,
+            "hist_std": None,
+            "hist_p10": None,
+            "hist_p25": None,
+            "hist_p75": None,
+            "hist_p90": None,
+            "percentile_rank": None,
+            "sample_size": 0,
+        }
+
+    arr = np.array(values, dtype=float)
+    return {
+        "day": day,
+        "current_return": round(current_return, 4),
+        "hist_mean": round(float(np.mean(arr)), 4),
+        "hist_median": round(float(np.median(arr)), 4),
+        "hist_std": round(float(np.std(arr, ddof=0)), 4),
+        "hist_p10": round(float(np.percentile(arr, 10)), 4),
+        "hist_p25": round(float(np.percentile(arr, 25)), 4),
+        "hist_p75": round(float(np.percentile(arr, 75)), 4),
+        "hist_p90": round(float(np.percentile(arr, 90)), 4),
+        "percentile_rank": round(float(_midrank_percentile(arr, current_return)), 4),
+        "sample_size": len(values),
+    }
+
+
+def compute_path_analogues(rebased: dict[str, pd.Series]) -> dict[str, Any]:
+    current = rebased.get(CURRENT_NAME)
+    if current is None:
+        return {"days_used": 0, "available": False, "min_days_required": MIN_ANALOG_DAYS, "rows": []}
+
+    days_used = len(current) - 1
+    if days_used + 1 < MIN_ANALOG_DAYS:
+        return {
+            "days_used": max(days_used, 0),
+            "available": False,
+            "min_days_required": MIN_ANALOG_DAYS,
+            "rows": [],
+        }
+
+    historical = _historical_only(rebased)
+    current_path = current.iloc[: days_used + 1].astype(float) - 1.0
+    rows: list[dict[str, Any]] = []
+
+    for name, series in historical.items():
+        if len(series) <= days_used:
+            continue
+        hist_path = series.iloc[: days_used + 1].astype(float) - 1.0
+        diff = hist_path.values - current_path.values
+        rmse = float(np.sqrt(np.mean(np.square(diff))))
+
+        corr = None
+        if len(hist_path) >= 3 and np.std(hist_path.values) > 0 and np.std(current_path.values) > 0:
+            corr = float(np.corrcoef(current_path.values, hist_path.values)[0, 1])
+
+        full_return = float(series.iloc[min(WINDOW - 1, len(series) - 1)]) - 1.0
+        running_peak = series.iloc[: days_used + 1].cummax()
+        matched_mdd = float(((series.iloc[: days_used + 1] - running_peak) / running_peak).min())
+        rows.append(
+            {
+                "conflict": name,
+                "matched_return": round(float(hist_path.iloc[-1]), 4),
+                "full_return": round(full_return, 4),
+                "path_rmse": round(rmse, 4),
+                "path_corr": round(corr, 4) if corr is not None else None,
+                "matched_mdd": round(matched_mdd, 4),
+            }
+        )
+
+    rows.sort(key=lambda row: (row["path_rmse"], -(row["path_corr"] or -1.0)))
+    return {
+        "days_used": days_used,
+        "available": len(rows) > 0,
+        "min_days_required": MIN_ANALOG_DAYS,
+        "rows": rows[:3],
+    }
+
+
 def _series_to_xy(rebased: dict[str, pd.Series]) -> dict[str, dict]:
     return {
         name: {"x": s.index.tolist(), "y": [round(v, 6) for v in s.tolist()]}
@@ -192,23 +353,30 @@ def get_wartime_data() -> dict[str, Any]:
     oil_stats  = compute_commodity_stats(oil_rebased)
     krw_stats  = compute_commodity_stats(krw_rebased)
     spx_horizon_stats = compute_horizon_stats(spx_rebased)
+    spx_distribution = compute_distribution_bands(spx_rebased)
 
     # Summary averages (historical conflicts only, excluding current)
     hist = [
         r for r in spx_stats
-        if "Current" not in r["conflict"] and "2020" not in r["conflict"]
+        if r["conflict"] != CURRENT_NAME and "2020" not in r["conflict"]
     ]
     mdd_vals      = [r["mdd"] for r in hist]
     bottom_vals   = [r["days_to_bottom"] for r in hist]
     recovery_vals = [r["recovery_days"] for r in hist if r["recovery_days"] is not None]
+    final_vals    = [r["final_return"] for r in hist]
 
     summary = {
         "avg_mdd":           round(float(np.mean(mdd_vals)), 4)      if mdd_vals      else None,
         "median_mdd":        round(float(np.median(mdd_vals)), 4)    if mdd_vals      else None,
         "mdd_std":           round(float(np.std(mdd_vals, ddof=0)), 4) if mdd_vals    else None,
+        "p25_mdd":           round(float(np.percentile(mdd_vals, 25)), 4) if mdd_vals else None,
+        "p75_mdd":           round(float(np.percentile(mdd_vals, 75)), 4) if mdd_vals else None,
         "avg_bottom_days":   round(float(np.mean(bottom_vals)), 1)   if bottom_vals   else None,
         "avg_recovery_days": round(float(np.mean(recovery_vals)), 1) if recovery_vals else None,
         "recovery_rate":     round(len(recovery_vals) / len(hist), 4) if hist         else None,
+        "median_final_return": round(float(np.median(final_vals)), 4) if final_vals else None,
+        "p25_final_return":    round(float(np.percentile(final_vals, 25)), 4) if final_vals else None,
+        "p75_final_return":    round(float(np.percentile(final_vals, 75)), 4) if final_vals else None,
         "sample_size":       len(hist),
     }
 
@@ -227,6 +395,14 @@ def get_wartime_data() -> dict[str, Any]:
         "krw_return":       round(float(kc.iloc[-1]) - 1.0, 4)  if kc is not None else None,
     }
 
+    current_compare = {
+        "spx": compute_current_vs_history(cs, spx_rebased),
+        "gold": compute_current_vs_history(gc, gold_rebased),
+        "oil": compute_current_vs_history(oc, oil_rebased),
+        "krw": compute_current_vs_history(kc, krw_rebased),
+    }
+    spx_analogues = compute_path_analogues(spx_rebased)
+
     return {
         "conflicts": {
             name: {"start_date": sd, "note": note}
@@ -236,10 +412,13 @@ def get_wartime_data() -> dict[str, Any]:
             "rebased": _series_to_xy(spx_rebased),
             "stats": spx_stats,
             "horizon_stats": spx_horizon_stats,
+            "distribution": spx_distribution,
+            "analogues": spx_analogues,
         },
         "gold": {"rebased": _series_to_xy(gold_rebased), "stats": gold_stats},
         "oil":  {"rebased": _series_to_xy(oil_rebased),  "stats": oil_stats},
         "krw":  {"rebased": _series_to_xy(krw_rebased),  "stats": krw_stats},
         "current": current,
+        "current_compare": current_compare,
         "summary": summary,
     }
