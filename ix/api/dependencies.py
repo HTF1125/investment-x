@@ -97,6 +97,31 @@ def get_optional_user(
     return user
 
 
+def user_role(user: User) -> str:
+    """Resolve effective role for a user, normalized."""
+    role = getattr(user, "effective_role", None)
+    if callable(role):
+        role = role()
+    if isinstance(role, str) and role:
+        return User.normalize_role(role)
+    return User.normalize_role(getattr(user, "role", None))
+
+
+def is_owner_role(user: User) -> bool:
+    """Check if user has owner role."""
+    return user_role(user) == User.ROLE_OWNER
+
+
+def is_admin_role(user: User) -> bool:
+    """Check if user has admin or owner role."""
+    return user_role(user) in User.ADMIN_ROLES
+
+
+def user_id_str(user: User) -> str:
+    """Return user ID as string."""
+    return str(getattr(user, "id", "") or "")
+
+
 def get_current_admin_user(
     current_user: User = Depends(get_current_user),
 ) -> User:

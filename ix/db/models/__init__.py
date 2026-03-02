@@ -1,5 +1,6 @@
 from sqlalchemy import (
     Column,
+    Index,
     Integer,
     String,
     Date,
@@ -79,6 +80,10 @@ class Timeseries(Base):
     """Timeseries model with metadata and associated data payload."""
 
     __tablename__ = "timeseries"
+    __table_args__ = (
+        Index("ix_timeseries_source_code", "source", "code"),
+        Index("ix_timeseries_source_source_code", "source", "source_code"),
+    )
 
     id = Column(
         UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")

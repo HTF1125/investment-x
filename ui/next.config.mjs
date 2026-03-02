@@ -1,5 +1,15 @@
+import { resolve } from 'path';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  webpack(config) {
+    // Point react-plotly.js (which imports plotly.js/dist/plotly) to the
+    // much smaller plotly.js-dist-min bundle to avoid shipping both.
+    config.resolve.alias['plotly.js/dist/plotly'] = resolve(
+      'node_modules/plotly.js-dist-min/plotly.min.js'
+    );
+    return config;
+  },
   // TODO: re-enable once eslint-plugin-react is compatible with eslint 8
   // (eslint-plugin-react@7.37.5 crashes with "Cannot read properties of undefined (reading 'deprecated')")
   eslint: {

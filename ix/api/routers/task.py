@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from ix.api.dependencies import get_current_user
+from ix.api.dependencies import get_current_user, is_admin_role, user_id_str
 from ix.misc import get_logger
 
 logger = get_logger(__name__)
@@ -31,12 +31,8 @@ from ix.misc.task import (
 router = APIRouter()
 
 
-def _is_admin_user(user: User) -> bool:
-    return bool(getattr(user, "effective_role", User.ROLE_GENERAL) in User.ADMIN_ROLES)
-
-
-def _current_user_id(user: User) -> str:
-    return str(getattr(user, "id", "") or "")
+_is_admin_user = is_admin_role
+_current_user_id = user_id_str
 
 
 def _can_access_task(task_user_id: Optional[str], current_user: User) -> bool:

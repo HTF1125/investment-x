@@ -1,4 +1,5 @@
 import os
+import warnings
 from typing import List
 from dotenv import load_dotenv
 import ast
@@ -7,15 +8,26 @@ import ast
 load_dotenv()
 
 
+def _require_env(name: str) -> str:
+    """Return env var value or raise on missing/empty."""
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(
+            f"Required environment variable {name} is not set. "
+            f"Check your .env file."
+        )
+    return value
+
+
 class Settings:
-    db_url: str = os.getenv("DB_URL", "")
+    db_url: str = _require_env("DB_URL")
     db_name: str = os.getenv("DB_NAME", "")
     public_api_url: str = os.getenv("API_BASE_URL", "")
     r2_access_id: str = os.getenv("R2_ACCESS_ID", "")
     r2_access_key: str = os.getenv("R2_ACCESS_KEY", "")
     r2_account_id: str = os.getenv("R2_CLIENT_ID", "")
     r2_bucket_name: str = os.getenv("R2_BUCKET_NAME", "")
-    secret_key: str = os.getenv("SECRET_KEY", "")
+    secret_key: str = _require_env("SECRET_KEY")
     access_token_expire_minutes: int = int(
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "600")
     )

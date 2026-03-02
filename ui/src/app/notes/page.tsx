@@ -715,7 +715,12 @@ export default function NotesPage() {
                         {chartCount > 0 && <span>{chartCount} charts</span>}
                         {imageCount > 0 && <span>{imageCount} images</span>}
                       </div>
-                      {noteLoading
+                      {noteQuery.isError ? (
+                        <div className="mt-12 flex flex-col items-center justify-center text-sm text-muted-foreground gap-3">
+                          <p className="text-rose-400">Failed to load note.</p>
+                          <button onClick={() => noteQuery.refetch()} className="h-8 px-4 rounded-lg border border-border/45 bg-background/80 text-[11px] font-medium hover:bg-background transition-colors">Retry</button>
+                        </div>
+                      ) : noteLoading
                         ? <div className="mt-12 flex items-center justify-center text-sm text-muted-foreground gap-2"><Loader2 className="w-4 h-4 animate-spin" />Loading blocks...</div>
                         : <div className="report-editor-shell"><NotesRichEditor value={editorValue} onChange={handleEditorChange} onImageUpload={handleImageUpload} disabled={!selectedNoteId} chartLibrary={chartLibrary} minHeightClassName="min-h-[56vh] text-lg" onFetchChartSnapshot={handleFetchChartSnapshot} /></div>}
                       {status && <div className={`mt-8 text-[12px] font-medium transition-opacity ${saveState === 'error' ? 'text-rose-400' : 'text-muted-foreground/50'}`}>{status}</div>}

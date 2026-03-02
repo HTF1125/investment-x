@@ -21,9 +21,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { type ChartStyle, CHART_STYLE_LABELS } from '@/lib/chartTheme';
 import Chart, { type HoverPoint } from './Chart';
-import CustomChartEditor from './CustomChartEditor';
 import NavigatorShell from './NavigatorShell';
 import dynamic from 'next/dynamic';
+
+const CustomChartEditor = dynamic(() => import('./CustomChartEditor'), {
+  ssr: false,
+  loading: () => <div className="flex-1 flex items-center justify-center text-muted-foreground/40"><Loader2 className="w-5 h-5 animate-spin" /></div>,
+});
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-muted-foreground/40"><Loader2 className="w-5 h-5 animate-spin" /></div> });
 

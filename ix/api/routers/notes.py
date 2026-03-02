@@ -27,6 +27,9 @@ from pptx.util import Inches, Pt
 
 from ix.api.dependencies import get_current_user, get_db
 from ix.db.models import InvestmentNote, User
+from ix.misc import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -535,7 +538,8 @@ def export_note(
                     slide.shapes.add_picture(
                         BytesIO(img_data), Inches(1), Inches(1), width=Inches(8)
                     )
-                except:
+                except Exception as e:
+                    logger.warning("Failed to add image to PPTX slide: %s", e)
                     continue
 
         buffer = BytesIO()

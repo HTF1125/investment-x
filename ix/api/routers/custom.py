@@ -27,7 +27,7 @@ from slowapi.util import get_remote_address
 
 from ix.db.conn import get_session
 from ix.db.models import CustomChart, User
-from ix.api.dependencies import get_current_user
+from ix.api.dependencies import get_current_user, user_role as _user_role, is_owner_role as _is_owner, is_admin_role as _is_admin, user_id_str as _user_id
 from ix.misc import get_logger
 from ix.misc.theme import chart_theme
 from ix.utils.safe_custom_code import (
@@ -217,26 +217,6 @@ def _to_custom_chart_response(chart: CustomChart):
     payload.created_by_name = creator_meta["created_by_name"]
     return payload
 
-
-def _user_role(user: User) -> str:
-    role = getattr(user, "effective_role", None)
-    if callable(role):
-        role = role()
-    if isinstance(role, str) and role:
-        return User.normalize_role(role)
-    return User.normalize_role(getattr(user, "role", None))
-
-
-def _is_owner(user: User) -> bool:
-    return _user_role(user) == User.ROLE_OWNER
-
-
-def _is_admin(user: User) -> bool:
-    return _user_role(user) in User.ADMIN_ROLES
-
-
-def _user_id(user: User) -> str:
-    return str(getattr(user, "id", "") or "")
 
 
 def _is_chart_owner(chart: CustomChart, user: User) -> bool:
@@ -993,7 +973,7 @@ def preview_custom_chart(
     logger.info(f"Previewing custom chart. Code length: {len(body.code)}")
     try:
         fig = execute_custom_code(body.code)
-    except BaseException as e:
+    except Exception as e:
         if isinstance(e, HTTPException):
             raise e
 
