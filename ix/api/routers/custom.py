@@ -11,6 +11,7 @@ import plotly.io as pio
 import plotly.graph_objects as go
 import json
 import html
+import re
 import traceback
 import concurrent.futures
 import base64
@@ -50,6 +51,24 @@ except Exception:
     pisa = None
 
 
+_LEGACY_STYLE_IMPORT_RE = re.compile(
+    r"^\s*from\s+ix\.cht\.style\s+import\s+[^\n]+\n?",
+    flags=re.MULTILINE,
+)
+
+_LEGACY_STYLE_PALETTE = [
+    "#38bdf8",
+    "#a855f7",
+    "#f472b6",
+    "#10b981",
+    "#fbbf24",
+    "#6366f1",
+    "#f43f5e",
+    "#2dd4bf",
+    "#f97316",
+]
+
+
 def _theme_figure_for_delivery(figure: Any) -> Any:
     """Apply canonical misc theme when returning figures to dashboard/studio clients."""
     if figure is None:
@@ -69,6 +88,59 @@ def _require_pdf_dependency() -> None:
             status_code=503,
             detail="PDF export dependency is unavailable. Install `xhtml2pdf` and redeploy.",
         )
+
+
+def _legacy_get_color(name: str, index: int = 0) -> str:
+    fixed = {
+        "America": _LEGACY_STYLE_PALETTE[0],
+        "US": _LEGACY_STYLE_PALETTE[0],
+        "Primary": _LEGACY_STYLE_PALETTE[0],
+        "S&P 500": _LEGACY_STYLE_PALETTE[0],
+        "SPY": _LEGACY_STYLE_PALETTE[0],
+        "Europe": _LEGACY_STYLE_PALETTE[1],
+        "EU": _LEGACY_STYLE_PALETTE[1],
+        "Japan": _LEGACY_STYLE_PALETTE[2],
+        "JP": _LEGACY_STYLE_PALETTE[2],
+        "Apac": _LEGACY_STYLE_PALETTE[3],
+        "Emerald": _LEGACY_STYLE_PALETTE[3],
+        "China": _LEGACY_STYLE_PALETTE[3],
+        "CN": _LEGACY_STYLE_PALETTE[3],
+        "KR": _LEGACY_STYLE_PALETTE[4],
+        "Korea": _LEGACY_STYLE_PALETTE[4],
+        "UK": _LEGACY_STYLE_PALETTE[5],
+        "GB": _LEGACY_STYLE_PALETTE[5],
+        "World": "#f8fafc",
+        "Aggregate": "#f8fafc",
+        "Total": "#f8fafc",
+        "Neutral": "#94a3b8",
+        "Secondary": _LEGACY_STYLE_PALETTE[6],
+    }
+    cleaned = name.split("(")[0].strip()
+    if cleaned in fixed:
+        return fixed[cleaned]
+    return _LEGACY_STYLE_PALETTE[index % len(_LEGACY_STYLE_PALETTE)]
+
+
+def _legacy_add_zero_line(fig: go.Figure) -> go.Figure:
+    bg = fig.layout.paper_bgcolor
+    is_dark = bg in ["#0d0f12", "black", "#000000"]
+    line_color = "rgba(255,255,255,0.4)" if is_dark else "rgba(0,0,0,0.3)"
+    fig.add_hline(y=0, line_width=1, line_color=line_color, layer="below")
+    return fig
+
+
+def _legacy_get_value_label(series, name: str, fmt: str = ".2f") -> str:
+    if series is None or series.dropna().empty:
+        return name
+    val = float(series.dropna().iloc[-1])
+    return f"{name} ({val:{fmt}})"
+
+
+def _normalize_legacy_chart_code(code: str) -> str:
+    normalized = _LEGACY_STYLE_IMPORT_RE.sub("", code)
+    if normalized != code:
+        logger.info("Rewrote legacy ix.cht.style import in custom chart code.")
+    return normalized
 
 
 def _compact_figure_for_html(figure: Any) -> Dict[str, Any]:
@@ -390,6 +462,9 @@ def execute_custom_code(code: str):
         "Clip": Clip,
         "Ffill": Ffill,
         "apply_academic_style": apply_theme,
+        "add_zero_line": _legacy_add_zero_line,
+        "get_value_label": _legacy_get_value_label,
+        "get_color": _legacy_get_color,
         "apply_theme": apply_theme,
         "df_plot": df_plot,
         "__name__": "__main__",
@@ -412,6 +487,7 @@ def execute_custom_code(code: str):
         from ix.db.conn import custom_chart_session
 
         # Log snippet for debugging
+        code = _normalize_legacy_chart_code(code)
         code_snippet = (code[:100] + "...") if len(code) > 100 else code
         logger.info(f"Executing custom chart code. Snippet: {code_snippet}")
 

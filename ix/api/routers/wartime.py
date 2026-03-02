@@ -39,7 +39,9 @@ CURRENT_NAME = "Iran Attack — Current (2026-02-28)"
 SPX_TICKER  = "SPX INDEX:PX_LAST"
 GOLD_TICKER = "GC1 COMDTY:PX_LAST"
 OIL_TICKER  = "WTI COMDTY:PX_LAST"
+KRW_TICKER  = "USDKRW Curncy:PX_LAST"
 WINDOW      = 200
+HORIZONS    = (5, 20, 60, 120, 199)
 
 _cache: TTLCache = TTLCache(maxsize=1, ttl=300)
 _lock = threading.Lock()
@@ -48,14 +50,15 @@ _lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # Data loading (TTL-cached)
 # ---------------------------------------------------------------------------
-def _load_prices() -> tuple[pd.Series, pd.Series, pd.Series]:
+def _load_prices() -> tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
     with _lock:
         if "data" in _cache:
             return _cache["data"]
         spx  = Series(SPX_TICKER)
         gold = Series(GOLD_TICKER)
         oil  = Series(OIL_TICKER)
-        result = (spx, gold, oil)
+        krw  = Series(KRW_TICKER)
+        result = (spx, gold, oil, krw)
         _cache["data"] = result
         return result
 
@@ -124,6 +127,47 @@ def compute_commodity_stats(rebased: dict[str, pd.Series]) -> list[dict]:
     return rows
 
 
+def compute_horizon_stats(rebased: dict[str, pd.Series]) -> list[dict]:
+    rows = []
+    historical = {
+        name: series
+        for name, series in rebased.items()
+        if "Current" not in name and "2020" not in name
+    }
+
+    for horizon in HORIZONS:
+        values = [
+            float(series.iloc[horizon]) - 1.0
+            for series in historical.values()
+            if len(series) > horizon
+        ]
+        if not values:
+            rows.append({
+                "day": horizon + 1,
+                "count": 0,
+                "mean": None,
+                "median": None,
+                "std": None,
+                "positive_rate": None,
+                "p25": None,
+                "p75": None,
+            })
+            continue
+
+        arr = np.array(values, dtype=float)
+        rows.append({
+            "day": horizon + 1,
+            "count": len(values),
+            "mean": round(float(np.mean(arr)), 4),
+            "median": round(float(np.median(arr)), 4),
+            "std": round(float(np.std(arr, ddof=0)), 4),
+            "positive_rate": round(float(np.mean(arr > 0)), 4),
+            "p25": round(float(np.percentile(arr, 25)), 4),
+            "p75": round(float(np.percentile(arr, 75)), 4),
+        })
+    return rows
+
+
 def _series_to_xy(rebased: dict[str, pd.Series]) -> dict[str, dict]:
     return {
         name: {"x": s.index.tolist(), "y": [round(v, 6) for v in s.tolist()]}
@@ -136,33 +180,43 @@ def _series_to_xy(rebased: dict[str, pd.Series]) -> dict[str, dict]:
 # ---------------------------------------------------------------------------
 @router.get("/wartime/data")
 def get_wartime_data() -> dict[str, Any]:
-    spx_raw, gold_raw, oil_raw = _load_prices()
+    spx_raw, gold_raw, oil_raw, krw_raw = _load_prices()
 
     spx_rebased  = build_rebased(spx_raw)
     gold_rebased = build_rebased(gold_raw)
     oil_rebased  = build_rebased(oil_raw)
+    krw_rebased  = build_rebased(krw_raw)
 
     spx_stats  = compute_spx_stats(spx_rebased)
     gold_stats = compute_commodity_stats(gold_rebased)
     oil_stats  = compute_commodity_stats(oil_rebased)
+    krw_stats  = compute_commodity_stats(krw_rebased)
+    spx_horizon_stats = compute_horizon_stats(spx_rebased)
 
     # Summary averages (historical conflicts only, excluding current)
-    hist = [r for r in spx_stats if "Current" not in r["conflict"]]
+    hist = [
+        r for r in spx_stats
+        if "Current" not in r["conflict"] and "2020" not in r["conflict"]
+    ]
     mdd_vals      = [r["mdd"] for r in hist]
     bottom_vals   = [r["days_to_bottom"] for r in hist]
     recovery_vals = [r["recovery_days"] for r in hist if r["recovery_days"] is not None]
 
     summary = {
         "avg_mdd":           round(float(np.mean(mdd_vals)), 4)      if mdd_vals      else None,
+        "median_mdd":        round(float(np.median(mdd_vals)), 4)    if mdd_vals      else None,
+        "mdd_std":           round(float(np.std(mdd_vals, ddof=0)), 4) if mdd_vals    else None,
         "avg_bottom_days":   round(float(np.mean(bottom_vals)), 1)   if bottom_vals   else None,
         "avg_recovery_days": round(float(np.mean(recovery_vals)), 1) if recovery_vals else None,
         "recovery_rate":     round(len(recovery_vals) / len(hist), 4) if hist         else None,
+        "sample_size":       len(hist),
     }
 
     # Current conflict live metrics
     cs = spx_rebased.get(CURRENT_NAME)
     gc = gold_rebased.get(CURRENT_NAME)
     oc = oil_rebased.get(CURRENT_NAME)
+    kc = krw_rebased.get(CURRENT_NAME)
     current = {
         "name":             CURRENT_NAME,
         "spx_days_elapsed": max(len(cs) - 1, 0) if cs is not None else 0,
@@ -170,6 +224,7 @@ def get_wartime_data() -> dict[str, Any]:
         "spx_low":          round(float(cs.min())    - 1.0, 4)  if cs is not None else None,
         "gold_return":      round(float(gc.iloc[-1]) - 1.0, 4)  if gc is not None else None,
         "oil_return":       round(float(oc.iloc[-1]) - 1.0, 4)  if oc is not None else None,
+        "krw_return":       round(float(kc.iloc[-1]) - 1.0, 4)  if kc is not None else None,
     }
 
     return {
@@ -177,9 +232,14 @@ def get_wartime_data() -> dict[str, Any]:
             name: {"start_date": sd, "note": note}
             for name, (sd, note) in CONFLICTS.items()
         },
-        "spx":  {"rebased": _series_to_xy(spx_rebased),  "stats": spx_stats},
+        "spx":  {
+            "rebased": _series_to_xy(spx_rebased),
+            "stats": spx_stats,
+            "horizon_stats": spx_horizon_stats,
+        },
         "gold": {"rebased": _series_to_xy(gold_rebased), "stats": gold_stats},
         "oil":  {"rebased": _series_to_xy(oil_rebased),  "stats": oil_stats},
+        "krw":  {"rebased": _series_to_xy(krw_rebased),  "stats": krw_stats},
         "current": current,
         "summary": summary,
     }

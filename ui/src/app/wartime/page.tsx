@@ -24,6 +24,17 @@ interface CommodityStat {
   mdd: number; final_return: number; days_avail: number; note: string | null;
 }
 
+interface HorizonStat {
+  day: number;
+  count: number;
+  mean: number | null;
+  median: number | null;
+  std: number | null;
+  positive_rate: number | null;
+  p25: number | null;
+  p75: number | null;
+}
+
 interface WartimeFigure {
   data: any[];
   layout: any;
@@ -31,17 +42,19 @@ interface WartimeFigure {
 
 interface WartimeData {
   conflicts: Record<string, { start_date: string; note: string | null }>;
-  spx:  { rebased: Record<string, RebasedSeries>; stats: SpxStat[] };
+  spx:  { rebased: Record<string, RebasedSeries>; stats: SpxStat[]; horizon_stats: HorizonStat[] };
   gold: { rebased: Record<string, RebasedSeries>; stats: CommodityStat[] };
   oil:  { rebased: Record<string, RebasedSeries>; stats: CommodityStat[] };
+  krw:  { rebased: Record<string, RebasedSeries>; stats: CommodityStat[] };
   current: {
     name: string; spx_days_elapsed: number;
     spx_return: number | null; spx_low: number | null;
-    gold_return: number | null; oil_return: number | null;
+    gold_return: number | null; oil_return: number | null; krw_return: number | null;
   };
   summary: {
-    avg_mdd: number | null; avg_bottom_days: number | null;
-    avg_recovery_days: number | null; recovery_rate: number | null;
+    avg_mdd: number | null; median_mdd: number | null; mdd_std: number | null;
+    avg_bottom_days: number | null; avg_recovery_days: number | null;
+    recovery_rate: number | null; sample_size: number;
   };
 }
 
@@ -109,9 +122,25 @@ const T = {
     barRecoveryHover: 'Days',
 
     avgMdd: 'Avg Max Drawdown',       avgMddSub: 'Historical conflicts',
+    medianMdd: 'Median Max Drawdown', medianMddSub: 'Less sensitive to outliers',
+    mddStd: 'MDD Dispersion',         mddStdSub: 'Std. dev. across conflicts',
     avgBottom: 'Avg Days to Low',     avgBottomSub: 'Trading days',
     avgRecovery: 'Avg Recovery',      avgRecoverySub: 'Days from low to breakeven',
     recoveryRate: 'Recovery Rate',    recoveryRateSub: 'Recovered within 200 days',
+    sampleSize: 'Sample Size',        sampleSizeSub: 'Excludes current and 2020 outlier',
+
+    methodTitle: 'Methodology Note',
+    methodText: 'Historical averages are reference points, not portfolio stop levels. This sample mixes localized strikes with broader invasions and supply shocks, so dispersion matters as much as the mean.',
+    methodText2: 'To make that visible, the table below shows fixed-horizon mean, median, volatility, and interquartile ranges across historical conflicts excluding the 2020 COVID-distorted event.',
+    horizonTitle: 'S&P 500 Fixed-Horizon Dispersion',
+    horizonSubtitle: 'Cross-conflict return distribution by holding period',
+    horizonThDay: 'Horizon',
+    horizonThMean: 'Mean',
+    horizonThMedian: 'Median',
+    horizonThStd: 'Std. Dev.',
+    horizonThIqr: 'IQR',
+    horizonThPos: 'Positive Rate',
+    horizonThN: 'N',
 
     goldTitle: 'Gold',
     goldSubtitle: '— Safe Haven Performance',
@@ -127,6 +156,13 @@ const T = {
     oilTableLabel: 'Commodity stats — WTI',
     shaleTitle: 'Shale supply buffer:',
     shaleText: 'When WTI reaches USD 60–70/bbl, US shale producers can ramp up drilling within months — meaning oil price spikes from geopolitical events tend to be self-limiting in the medium term.',
+
+    krwTitle: 'USD/KRW',
+    krwSubtitle: '— KRW Stress Proxy',
+    krwChartTitle: 'USD/KRW — Cumulative Performance Since Conflict Onset',
+    krwYAxis: 'Rebased USD/KRW (higher = KRW weaker)',
+    krwTableLabel: 'FX stats — USD/KRW',
+    krwNote: 'A rising USD/KRW path indicates KRW depreciation. USD/KRW history is shorter than the S&P sample, so coverage starts later than the 1990 Gulf War.',
 
     emTitle: 'EM Oil Price Shock Exposure',
     emSubtitle: 'Estimated impact of a USD 10/bbl crude price increase',
@@ -145,6 +181,7 @@ const T = {
     cardSpxLow: 'S&P 500 Low',           cardSpxLowSub: 'Intra-period trough',
     cardGoldReturn: 'Gold Return',        cardGoldReturnSub: 'Cumulative since 2026-02-28',
     cardOilReturn: 'WTI Return',          cardOilReturnSub: 'Cumulative since 2026-02-28',
+    cardKrwReturn: 'USD/KRW Return',      cardKrwReturnSub: 'Higher = KRW weaker since 2026-02-28',
 
     scenariosTitle: 'Historical Precedent Scenarios',
     bullLabel: 'Bull scenario — rapid recovery',
@@ -228,9 +265,25 @@ const T = {
     barRecoveryHover: '거래일',
 
     avgMdd: '평균 최대 낙폭',      avgMddSub: '역사적 갈등 평균',
+    medianMdd: '중앙값 최대 낙폭', medianMddSub: '극단값 영향 축소',
+    mddStd: '낙폭 분산',           mddStdSub: '갈등 간 표준편차',
     avgBottom: '평균 저점 도달',   avgBottomSub: '거래일 기준',
     avgRecovery: '평균 회복 소요', avgRecoverySub: '저점에서 손익분기까지',
     recoveryRate: '200일 내 회복률', recoveryRateSub: '200거래일 내 회복 비율',
+    sampleSize: '표본 수',         sampleSizeSub: '현재 사건 및 2020 왜곡 제외',
+
+    methodTitle: '방법론 주의사항',
+    methodText: '역사적 평균은 참고치일 뿐, 포트폴리오 손절 기준으로 바로 쓰기 어렵습니다. 본 표본은 제한적 공습과 대규모 침공·공급 충격을 함께 포함하므로 평균만큼 분산도 중요합니다.',
+    methodText2: '이를 보완하기 위해 아래 표에 2020년 왜곡 사례를 제외한 고정 보유기간별 평균, 중앙값, 변동성, 사분위 범위를 함께 표시했습니다.',
+    horizonTitle: 'S&P 500 고정 보유기간 분산',
+    horizonSubtitle: '보유기간별 역사적 수익률 분포',
+    horizonThDay: '기간',
+    horizonThMean: '평균',
+    horizonThMedian: '중앙값',
+    horizonThStd: '표준편차',
+    horizonThIqr: '사분위 범위',
+    horizonThPos: '플러스 비율',
+    horizonThN: '표본 수',
 
     goldTitle: '금 (Gold)',
     goldSubtitle: '— 안전자산 성과',
@@ -246,6 +299,13 @@ const T = {
     oilTableLabel: '상품 통계 — WTI',
     shaleTitle: '셰일 공급 완충 효과:',
     shaleText: 'WTI가 60~70달러/배럴 수준에 도달하면 미국 셰일 생산자들이 수개월 내 생산을 늘릴 수 있어, 지정학적 이벤트로 인한 유가 급등은 중기적으로 자기제한적(self-limiting)인 경향이 있습니다.',
+
+    krwTitle: 'USD/KRW',
+    krwSubtitle: '— 원화 스트레스 지표',
+    krwChartTitle: 'USD/KRW — 갈등 발생 후 누적 성과',
+    krwYAxis: '리베이스 USD/KRW (상승 = 원화 약세)',
+    krwTableLabel: '환율 통계 — USD/KRW',
+    krwNote: 'USD/KRW가 상승할수록 원화 약세를 의미합니다. USD/KRW 표본은 S&P 500보다 짧아 1990년 걸프전부터 모두 포함되지는 않습니다.',
 
     emTitle: '원유 가격 충격의 EM 국가별 영향',
     emSubtitle: 'USD 10/배럴 상승 기준 추정 영향',
@@ -264,6 +324,7 @@ const T = {
     cardSpxLow: 'S&P 500 저점',        cardSpxLowSub: '기간 중 최저점',
     cardGoldReturn: '금 수익률',        cardGoldReturnSub: '2026-02-28 기준 누적',
     cardOilReturn: 'WTI 수익률',        cardOilReturnSub: '2026-02-28 기준 누적',
+    cardKrwReturn: 'USD/KRW 수익률',    cardKrwReturnSub: '상승 = 2026-02-28 이후 원화 약세',
 
     scenariosTitle: '역사적 선례 기반 시나리오',
     bullLabel: '낙관 시나리오 — 빠른 회복',
@@ -343,6 +404,7 @@ const COLOR_CURRENT = '#FF4B4B';
 const COLOR_COVID   = '#FFA500';
 const COLOR_GOLD    = '#FFD700';
 const COLOR_OIL     = '#F97316';
+const COLOR_KRW     = '#22C55E';
 
 function buildLineChart(
   rebased: Record<string, RebasedSeries>,
@@ -620,6 +682,41 @@ function CommodityStatsTable({ stats, t, lang }: { stats: CommodityStat[]; t: TS
   );
 }
 
+function HorizonStatsTable({ rows, t }: { rows: HorizonStat[]; t: TShape }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[11px] border-collapse">
+        <thead>
+          <tr className="border-b border-border/60">
+            <th className="text-left py-2 pr-3 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThDay}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThMean}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThMedian}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThStd}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThIqr}</th>
+            <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThPos}</th>
+            <th className="text-right py-2 pl-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThN}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.day} className="border-b border-border/30 transition-colors hover:bg-foreground/[0.02]">
+              <td className="py-1.5 pr-3 text-foreground tabular-nums">{row.day}d</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${(row.mean ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.mean)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${(row.median ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.median)}</td>
+              <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{row.std !== null ? `${(row.std * 100).toFixed(1)}%` : 'N/A'}</td>
+              <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">
+                {row.p25 !== null && row.p75 !== null ? `${pct(row.p25)} / ${pct(row.p75)}` : 'N/A'}
+              </td>
+              <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{row.positive_rate !== null ? `${(row.positive_rate * 100).toFixed(0)}%` : 'N/A'}</td>
+              <td className="py-1.5 pl-2 text-right text-muted-foreground tabular-nums">{row.count}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function WartimePage() {
@@ -648,6 +745,11 @@ export default function WartimePage() {
   const oilLineChart = useMemo(() => {
     if (!data) return null;
     return buildLineChart(data.oil.rebased, t.oilChartTitle, t.oilYAxis, t.spxXAxis, theme, lang);
+  }, [data, theme, lang]);
+
+  const krwLineChart = useMemo(() => {
+    if (!data) return null;
+    return buildLineChart(data.krw.rebased, t.krwChartTitle, t.krwYAxis, t.spxXAxis, theme, lang);
   }, [data, theme, lang]);
 
   const mddBarChart = useMemo(() => {
@@ -778,11 +880,28 @@ export default function WartimePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 xl:grid-cols-6 gap-3">
             <StatCard label={t.avgMdd}       value={absLow(summary.avg_mdd)}                                                                      sub={t.avgMddSub} />
+            <StatCard label={t.medianMdd}    value={absLow(summary.median_mdd)}                                                                   sub={t.medianMddSub} />
+            <StatCard label={t.mddStd}       value={summary.mdd_std           !== null ? `${(summary.mdd_std * 100).toFixed(1)}%`       : 'N/A'} sub={t.mddStdSub} />
             <StatCard label={t.avgBottom}    value={summary.avg_bottom_days   !== null ? `${summary.avg_bottom_days.toFixed(0)}d`   : 'N/A'}      sub={t.avgBottomSub} />
             <StatCard label={t.avgRecovery}  value={summary.avg_recovery_days !== null ? `${summary.avg_recovery_days.toFixed(0)}d` : 'N/A'}      sub={t.avgRecoverySub} />
             <StatCard label={t.recoveryRate} value={summary.recovery_rate     !== null ? `${(summary.recovery_rate * 100).toFixed(0)}%` : 'N/A'} sub={t.recoveryRateSub} />
+            <StatCard label={t.sampleSize}   value={`${summary.sample_size}`}                                                                      sub={t.sampleSizeSub} />
+          </div>
+
+          <div className="panel-card p-4 border-sky-500/20 bg-sky-500/[0.04]">
+            <div className="stat-label mb-2">{t.methodTitle}</div>
+            <p className="text-[12px] text-foreground/85 leading-relaxed">{t.methodText}</p>
+            <p className="text-[11px] text-muted-foreground/70 mt-2 leading-relaxed">{t.methodText2}</p>
+          </div>
+
+          <div className="panel-card p-4">
+            <div className="flex items-baseline justify-between gap-3 mb-3">
+              <div className="stat-label">{t.horizonTitle}</div>
+              <div className="text-[11px] text-muted-foreground/60">{t.horizonSubtitle}</div>
+            </div>
+            <HorizonStatsTable rows={data.spx.horizon_stats} t={t} />
           </div>
         </section>
 
@@ -827,6 +946,24 @@ export default function WartimePage() {
           </div>
         </section>
 
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* USD/KRW                                                           */}
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        <section className="space-y-5">
+          <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
+            <span style={{ color: COLOR_KRW }}>{t.krwTitle}</span>
+            <span className="text-muted-foreground font-normal text-[13px]">{t.krwSubtitle}</span>
+          </h2>
+          <div className="panel-card p-4">
+            {krwLineChart && <WartimePlot plotId="krw-line" figure={krwLineChart} height="460px" theme={theme} lang={lang} />}
+          </div>
+          <div className="panel-card p-4">
+            <div className="stat-label mb-3">{t.krwTableLabel}</div>
+            <CommodityStatsTable stats={data.krw.stats} t={t} lang={lang} />
+            <p className="text-[11px] text-muted-foreground/50 mt-3">{t.krwNote}</p>
+          </div>
+        </section>
+
         {/* ── EM table ───────────────────────────────────────────────────── */}
         <section className="space-y-3">
           <h2 className="text-[15px] font-semibold text-foreground">{t.emTitle}</h2>
@@ -867,12 +1004,13 @@ export default function WartimePage() {
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             {t.iranTitle}
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             <StatCard label={t.cardDaysElapsed} value={`${current.spx_days_elapsed}d`}                                          sub={t.cardDaysElapsedSub} />
             <StatCard label={t.cardSpxReturn}   value={pct(current.spx_return)}                                                  sub={t.cardSpxReturnSub} />
             <StatCard label={t.cardSpxLow}      value={current.spx_low !== null ? absLow(current.spx_low) : 'N/A'}               sub={t.cardSpxLowSub} />
             <StatCard label={t.cardGoldReturn}  value={pct(current.gold_return)}                                                 sub={t.cardGoldReturnSub} />
             <StatCard label={t.cardOilReturn}   value={pct(current.oil_return)}                                                  sub={t.cardOilReturnSub} />
+            <StatCard label={t.cardKrwReturn}   value={pct(current.krw_return)}                                                  sub={t.cardKrwReturnSub} />
           </div>
         </section>
 
