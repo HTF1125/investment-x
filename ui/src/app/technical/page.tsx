@@ -511,7 +511,7 @@ export default function TechnicalPage() {
       hovermode: 'x',
       hoverdistance: 20,
       spikedistance: -1,
-      dragmode: 'pan',
+      dragmode: 'zoom',
     };
 
     ['xaxis', 'yaxis', 'xaxis2', 'yaxis2', 'xaxis3', 'yaxis3'].forEach((ax) => {
@@ -814,7 +814,7 @@ export default function TechnicalPage() {
                   layout={{ ...cleanedFigure.layout, autosize: true }}
                   config={{
                     responsive: true, displaylogo: false, displayModeBar: 'hover',
-                    scrollZoom: true,
+                    scrollZoom: false,
                     modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d', 'toggleSpikelines'],
                   }}
                   style={{ width: '100%', height: '100%' }}

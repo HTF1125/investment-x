@@ -49,12 +49,13 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def verify_token(token: str) -> Optional[dict]:
+def verify_token(token: str, log_invalid: bool = True) -> Optional[dict]:
     """
     Verify and decode a JWT token
 
     Args:
         token: JWT token string
+        log_invalid: Whether to log invalid/expired token warnings
 
     Returns:
         Decoded token data if valid, None if invalid
@@ -63,10 +64,12 @@ def verify_token(token: str) -> Optional[dict]:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
-        logger.warning("Token has expired")
+        if log_invalid:
+            logger.warning("Token has expired")
         return None
     except jwt.InvalidTokenError as e:
-        logger.warning(f"Invalid token: {e}")
+        if log_invalid:
+            logger.warning(f"Invalid token: {e}")
         return None
 
 

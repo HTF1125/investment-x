@@ -2,34 +2,127 @@
  * Shared fetch wrapper that auto-injects the auth token.
  * Centralizes header management and error handling for all API calls.
  */
-export async function apiFetch(
-  url: string,
-  options: RequestInit = {},
-): Promise<Response> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  const method = String(options.method || 'GET').toUpperCase();
+const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 
-  const headers = new Headers(options.headers);
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`);
+export interface ApiRequestOptions extends RequestInit {
+  timeoutMs?: number;
+  skipAuthRedirect?: boolean;
+}
+
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+  url: string;
+
+  constructor(message: string, status: number, url: string, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+    this.url = url;
+  }
+}
+
+function createRequestSignal(
+  timeoutMs: number,
+  upstreamSignal?: AbortSignal | null,
+): { signal: AbortSignal | undefined; cleanup: () => void; didTimeout: () => boolean } {
+  if (timeoutMs <= 0 && !upstreamSignal) {
+    return {
+      signal: undefined,
+      cleanup: () => {},
+      didTimeout: () => false,
+    };
   }
 
-  const res = await fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include', // CRITICAL: Send HttpOnly cookies to the server
-    cache: options.cache ?? (method === 'GET' || method === 'HEAD' ? 'default' : 'no-store'),
-  });
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
+
+  const abortFromUpstream = () => controller.abort(upstreamSignal?.reason);
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      abortFromUpstream();
+    } else {
+      upstreamSignal.addEventListener("abort", abortFromUpstream, { once: true });
+    }
+  }
+
+  if (timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort(new DOMException("Request timed out", "TimeoutError"));
+    }, timeoutMs);
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (upstreamSignal) {
+        upstreamSignal.removeEventListener("abort", abortFromUpstream);
+      }
+    },
+    didTimeout: () => timedOut,
+  };
+}
+
+export async function apiFetch(
+  url: string,
+  options: ApiRequestOptions = {},
+): Promise<Response> {
+  const {
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    skipAuthRedirect = false,
+    signal: upstreamSignal,
+    ...requestInit
+  } = options;
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const method = String(requestInit.method || "GET").toUpperCase();
+
+  const headers = new Headers(requestInit.headers);
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const { signal, cleanup, didTimeout } = createRequestSignal(
+    timeoutMs,
+    upstreamSignal,
+  );
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...requestInit,
+      headers,
+      signal,
+      credentials: "include",
+      cache:
+        requestInit.cache ??
+        (method === "GET" || method === "HEAD" ? "default" : "no-store"),
+    });
+  } catch (error) {
+    cleanup();
+    if (didTimeout()) {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+  cleanup();
 
   // Global handler for 401 Unauthorized (Session Expired)
-  if (res.status === 401 && typeof window !== 'undefined') {
+  if (res.status === 401 && !skipAuthRedirect && typeof window !== "undefined") {
     // Only redirect if we thought we were logged in
-    if (localStorage.getItem('token')) {
-      console.warn('Session expired, redirecting to login...');
-      localStorage.removeItem('token');
+    if (localStorage.getItem("token")) {
+      console.warn("Session expired, redirecting to login...");
+      localStorage.removeItem("token");
       // Use window.location for a hard redirect to clear state
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login?expired=true';
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login?expired=true";
       }
     }
   }
@@ -52,30 +145,40 @@ async function parseResponseBody(res: Response): Promise<any> {
  */
 export async function apiFetchJson<T = any>(
   url: string,
-  options: RequestInit = {},
+  options: ApiRequestOptions = {},
 ): Promise<T> {
   const res = await apiFetch(url, options);
   const body = await parseResponseBody(res);
 
   if (!res.ok) {
     if (typeof body === 'string') {
-      throw new Error(body || `Request failed (${res.status})`);
+      throw new ApiError(
+        body || `Request failed (${res.status})`,
+        res.status,
+        url,
+        body,
+      );
     }
     const detail = body?.detail;
     if (typeof detail === 'string') {
-      throw new Error(detail);
+      throw new ApiError(detail, res.status, url, body);
     }
     if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
-      throw new Error(detail.message);
+      throw new ApiError(detail.message, res.status, url, body);
     }
     if (typeof body?.message === 'string') {
-      throw new Error(body.message);
+      throw new ApiError(body.message, res.status, url, body);
     }
-    throw new Error(`Request failed (${res.status})`);
+    throw new ApiError(`Request failed (${res.status})`, res.status, url, body);
   }
 
   if (typeof body === 'string') {
-    throw new Error(`Expected JSON response from ${url}, received text response.`);
+    throw new ApiError(
+      `Expected JSON response from ${url}, received text response.`,
+      res.status,
+      url,
+      body,
+    );
   }
 
   return (body ?? {}) as T;

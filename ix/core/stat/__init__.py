@@ -15,8 +15,14 @@ def Offset(
     series: pd.Series,
     months: int = 0,
     days: int = 0,
+    start: Optional[str] = None,
 ) -> pd.Series:
-    shifted = series.index + pd.DateOffset(months=months, days=days)
+    if start is not None:
+        if series.empty: return series
+        start_date = pd.to_datetime(start)
+        shifted = series.index + (start_date - series.index[0])
+    else:
+        shifted = series.index + pd.DateOffset(months=months, days=days)
     series.index = shifted
     return series
 

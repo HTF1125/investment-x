@@ -12,7 +12,6 @@ from ix.api.schemas import Token, UserLogin, UserRegister, UserResponse
 from ix.api.dependencies import get_current_user
 from ix.misc.auth import (
     authenticate_user,
-    create_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_user_token,
 )
@@ -38,8 +37,10 @@ def set_auth_cookie(
 ):
     """Utility to set the JWT cookie."""
     max_age = (
-        int(expires_delta.total_seconds()) if expires_delta else 60 * 60 * 24 * 30
-    )  # 30 days default
+        int(expires_delta.total_seconds())
+        if expires_delta
+        else ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
     response.set_cookie(
         key="access_token",
         value=token,

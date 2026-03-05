@@ -1,7 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import React, { createContext, useContext, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/context/AuthContext";
+import { apiFetchJson } from "@/lib/api";
 
 export interface ProcessInfo {
   id: string;
@@ -18,69 +20,112 @@ interface TaskContextType {
 }
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
+export const TASK_PROCESSES_QUERY_KEY = ["task-processes"] as const;
+const INITIAL_RECONNECT_DELAY_MS = 3000;
+const MAX_RECONNECT_DELAY_MS = 30000;
+const TASK_POLL_INTERVAL_MS = 30000;
 
 export function TaskProvider({ children }: { children: React.ReactNode }) {
-  const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const queryClient = useQueryClient();
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY_MS);
+  const { isAuthenticated } = useAuth();
+
+  const { data: processes = [] } = useQuery<ProcessInfo[]>({
+    queryKey: TASK_PROCESSES_QUERY_KEY,
+    queryFn: () => apiFetchJson<ProcessInfo[]>("/api/task/processes"),
+    enabled: isAuthenticated,
+    refetchInterval: isAuthenticated ? TASK_POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: false,
+    initialData: [],
+  });
 
   useEffect(() => {
-    let es: EventSource | null = null;
-    let isConnected = false;
+    if (isAuthenticated) {
+      return;
+    }
+
+    reconnectDelayRef.current = INITIAL_RECONNECT_DELAY_MS;
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    queryClient.removeQueries({ queryKey: TASK_PROCESSES_QUERY_KEY, exact: true });
+  }, [isAuthenticated, queryClient]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    let eventSource: EventSource | null = null;
+    let disposed = false;
+
+    const refreshProcesses = () =>
+      queryClient.invalidateQueries({ queryKey: TASK_PROCESSES_QUERY_KEY });
+
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimeoutRef.current) {
+        return;
+      }
+
+      const delay = reconnectDelayRef.current;
+      reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectTimeoutRef.current = null;
+        if (!disposed) {
+          connectSSE();
+        }
+      }, delay);
+      reconnectDelayRef.current = Math.min(
+        reconnectDelayRef.current * 2,
+        MAX_RECONNECT_DELAY_MS,
+      );
+    };
 
     const connectSSE = () => {
-      es = new EventSource("/api/task/stream");
+      if (disposed) {
+        return;
+      }
 
-      es.addEventListener("ready", () => {
-        isConnected = true;
-        // On connect, fetch the initial state immediately to get true current status
-        // of all ongoing tasks securely via React Query
-        queryClient.invalidateQueries({ queryKey: ["task-processes"] });
+      let receivedReady = false;
+      eventSource = new EventSource("/api/task/stream");
+
+      eventSource.addEventListener("ready", () => {
+        receivedReady = true;
+        reconnectDelayRef.current = INITIAL_RECONNECT_DELAY_MS;
+        void refreshProcesses();
       });
 
-      es.addEventListener("task", (e) => {
-        try {
-          // You can parse e.data if the backend pushes the full updated list
-          // But for strict state sync, invalidating the query and letting react-query handle
-          // the single refetch is extremely stable.
-          queryClient.invalidateQueries({ queryKey: ["task-processes"] });
-        } catch (err) {
-          console.error("Failed to parse SSE task event", err);
+      eventSource.addEventListener("task", () => {
+        void refreshProcesses();
+      });
+
+      eventSource.onerror = () => {
+        if (disposed) {
+          return;
         }
-      });
-
-      es.onerror = () => {
-          if (isConnected) {
-              console.warn("SSE connection lost. Reconnecting...");
-          }
-          isConnected = false;
-          es?.close();
-          // Exponential backoff or simple fixed delay for reconnecting
-          reconnectTimeoutRef.current = setTimeout(connectSSE, 3000);
+        if (receivedReady) {
+          console.warn("Task stream disconnected. Reconnecting...");
+        }
+        eventSource?.close();
+        eventSource = null;
+        scheduleReconnect();
       };
     };
 
     connectSSE();
 
     return () => {
+      disposed = true;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
-      if (es) {
-        es.close();
+      if (eventSource) {
+        eventSource.close();
       }
     };
-  }, [queryClient]);
-
-  // Using contexts to just vend out the centralized cached react-query data 
-  // without re-registering polling.
-  const query = queryClient.getQueryData<ProcessInfo[]>(["task-processes"]);
-
-  useEffect(() => {
-      if (query) {
-          setProcesses(query);
-      }
-  }, [query]);
+  }, [queryClient, isAuthenticated]);
 
   return (
     <TaskContext.Provider value={{ processes }}>

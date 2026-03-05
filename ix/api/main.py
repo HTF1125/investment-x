@@ -3,12 +3,13 @@ Main FastAPI application.
 """
 
 import os
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 import pytz
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Response
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -18,7 +19,6 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from ix.db.conn import ensure_connection, conn
-from ix.misc import get_logger
 from ix.utils.logger import setup_logging
 from ix.misc.task import run_daily_tasks
 
@@ -30,6 +30,7 @@ logger = setup_logging(service_name="backend")
 KST = pytz.timezone("Asia/Seoul")
 
 scheduler = AsyncIOScheduler()
+StartupCheck = tuple[str, Callable[[], None]]
 
 
 def _ensure_user_role_schema() -> None:
@@ -224,7 +225,7 @@ def _ensure_chart_style_column() -> None:
 
 
 def _ensure_investment_notes_schema() -> None:
-    """Idempotent runtime migration for investment notes tables."""
+    """Idempotent runtime migration for the investment_notes table."""
     if not ensure_connection():
         logger.warning(
             "Skipping investment notes schema check because DB connection is unavailable."
@@ -232,10 +233,9 @@ def _ensure_investment_notes_schema() -> None:
         return
 
     try:
-        from ix.db.models.investment_note import InvestmentNote, InvestmentNoteImage
+        from ix.db.models.investment_note import InvestmentNote
 
         InvestmentNote.__table__.create(bind=conn.engine, checkfirst=True)
-        InvestmentNoteImage.__table__.create(bind=conn.engine, checkfirst=True)
         logger.info("Investment notes schema check completed.")
     except Exception as exc:
         logger.warning(f"Investment notes schema check failed: {exc}")
@@ -308,6 +308,29 @@ def _drop_financial_news_table() -> None:
         logger.warning(f"financial_news drop failed: {exc}")
 
 
+_STARTUP_CHECKS: tuple[StartupCheck, ...] = (
+    ("user role schema", _ensure_user_role_schema),
+    ("charts rename", _ensure_charts_rename),
+    ("custom chart owner schema", _ensure_custom_chart_owner_schema),
+    ("chart_style column", _ensure_chart_style_column),
+    ("investment notes schema", _ensure_investment_notes_schema),
+    ("system settings schema", _ensure_system_settings_schema),
+    ("news items schema", _ensure_news_items_schema),
+    ("runtime logs schema", _ensure_runtime_logs_schema),
+    ("legacy financial_news cleanup", _drop_financial_news_table),
+)
+
+
+def _run_startup_checks() -> None:
+    """Run startup schema checks and log each step consistently."""
+    for check_name, check_fn in _STARTUP_CHECKS:
+        logger.info(f"Running startup check: {check_name}")
+        try:
+            check_fn()
+        except Exception as exc:
+            logger.exception(f"Startup check '{check_name}' failed unexpectedly: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -328,23 +351,17 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Scheduled 'run_daily_tasks' for 07:00 KST")
 
-    _ensure_user_role_schema()
-    _ensure_charts_rename()
-    _ensure_custom_chart_owner_schema()
-    _ensure_chart_style_column()
-    _ensure_investment_notes_schema()
-    _ensure_system_settings_schema()
-    _ensure_news_items_schema()
-    _ensure_runtime_logs_schema()
-    _drop_financial_news_table()
+    _run_startup_checks()
 
-    scheduler.start()
+    if not scheduler.running:
+        scheduler.start()
 
     logger.info("FastAPI application started")
     yield
 
     logger.info("Shutting down scheduler...")
-    scheduler.shutdown()
+    if scheduler.running:
+        scheduler.shutdown()
 
 
 # Create FastAPI app
@@ -414,7 +431,11 @@ from ix.api.dependencies import get_current_admin_user as _get_admin_user  # noq
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "service": "Investment-X API"}
+    return {
+        "status": "healthy",
+        "service": "Investment-X API",
+        "scheduler_running": scheduler.running,
+    }
 
 
 _DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
@@ -475,7 +496,10 @@ async def global_exception_handler(request, exc):
 
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "detail": str(exc)},
+        content={
+            "error": "Internal server error",
+            "detail": str(exc) if _DEBUG_MODE else "An unexpected error occurred.",
+        },
     )
 
 
@@ -530,9 +554,6 @@ except Exception as e:
 
 
 # Serve SPA - Static Files
-import os
-
-
 # Try to find static directory
 cwd_static = os.path.join(os.getcwd(), "static")
 root_static = "/app/static"

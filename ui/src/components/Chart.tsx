@@ -204,14 +204,15 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
   const plotLayout = React.useMemo(() => figure ? {
     ...figure.layout,
     autosize: true,
-    dragmode: 'pan'
+    dragmode: 'zoom',
   } : {}, [figure?.layout]);
 
   const plotConfig = React.useMemo(() => ({
     responsive: true,
-    displayModeBar: false,
+    displayModeBar: 'hover' as const,
     displaylogo: false,
     scrollZoom: true,
+    modeBarButtonsToRemove: ['select2d', 'lasso2d', 'sendDataToCloud'] as any[],
   }), []);
 
   const plotStyle = React.useMemo(() => ({ width: '100%', height: '100%' }), []);

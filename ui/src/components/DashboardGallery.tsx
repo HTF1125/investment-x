@@ -29,6 +29,23 @@ const CustomChartEditor = dynamic(() => import('./CustomChartEditor'), {
   loading: () => <div className="flex-1 flex items-center justify-center text-muted-foreground/40"><Loader2 className="w-5 h-5 animate-spin" /></div>,
 });
 
+const DEFAULT_CODE = `# Investment-X Analysis Studio
+# Available: pd, px, go, np, Series, MultiSeries, apply_theme(fig)
+# MUST define a variable 'fig' at the end
+
+import pandas as pd
+import plotly.express as px
+
+data = {
+    'Year': [2020, 2021, 2022, 2023, 2024],
+    'Value': [100, 120, 110, 135, 150]
+}
+df = pd.DataFrame(data)
+
+fig = px.bar(df, x='Year', y='Value', title='New Analysis')
+apply_theme(fig)
+`;
+
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-muted-foreground/40"><Loader2 className="w-5 h-5 animate-spin" /></div> });
 
 type LayoutMode = 'grid' | 'single' | 'stack';
@@ -503,13 +520,24 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
   // Override onOpenStudio → inline editing mode
   const handleOpenInStudio = useCallback(async (chartId: string | null) => {
-    if (!chartId) return;
     // Save current layout so we can restore on close
     prevLayoutBeforeEdit.current = layoutMode;
     setEditLoading(true);
     setEditError(null);
     setEditSuccess(null);
     setEditPreviewFigure(null);
+
+    // If new chart, setup defaults and enter edit mode instantly
+    if (!chartId) {
+      setEditCode(DEFAULT_CODE);
+      setEditName('Untitled Analysis');
+      setEditCategory('ChartPack');
+      setEditingChartId('new');
+      setLayoutMode('single');
+      setEditLoading(false);
+      return;
+    }
+
     try {
       const full = await apiFetchJson(`/api/custom/${chartId}`);
       setEditCode(full.code || '');
@@ -530,7 +558,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
   const handleCloseInlineEdit = useCallback(() => {
     // Update local chart data with latest run result so dashboard reflects changes
-    if (editingChartId && editPreviewFigure) {
+    if (editingChartId && editingChartId !== 'new' && editPreviewFigure) {
       setLocalCharts(prev => prev.map(c =>
         c.id === editingChartId ? { ...c, figure: editPreviewFigure, name: editName } : c
       ));
@@ -553,44 +581,69 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
   // Inline editor: Run code
   const handleInlineRun = useCallback(async () => {
-    if (!editCode.trim() || !editingChartId) return;
+    const latestCode = editCodeRef.current ? editCodeRef.current.getValue() : editCode;
+    if (editCodeRef.current && latestCode !== editCode) setEditCode(latestCode);
+    if (!latestCode.trim() || !editingChartId) return;
     setEditLoading(true);
     setEditError(null);
     setEditSuccess(null);
     try {
-      const res = await apiFetch('/api/custom/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: editCode }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Execution failed');
-      // Update the local chart with the new figure and exit editing to show the chart
-      setLocalCharts(prev => prev.map(c =>
-        c.id === editingChartId ? { ...c, figure: data, name: editName, code: editCode } : c
-      ));
-      // Mark as dirty (unsaved)
-      setDirtyChartIds(prev => new Set(prev).add(editingChartId));
-      dirtyChartData.current[editingChartId] = { code: editCode, name: editName, category: editCategory };
-      setEditingChartId(null);
+      const isNew = editingChartId === 'new';
+      
+      if (isNew) {
+        // Create the chart directly (acting as both Save & Run)
+        const res = await apiFetch('/api/custom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: editName, code: latestCode, category: editCategory }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Execution/Save failed');
+
+        setLocalCharts(prev => [...prev, { ...data, rank: prev.length }]);
+        
+        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+        setEditingChartId(null); // exit inline editor
+      } else {
+        const res = await apiFetch('/api/custom/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: latestCode }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Execution failed');
+        // Update the local chart with the new figure and exit editing to show the chart
+        setLocalCharts(prev => prev.map(c =>
+          c.id === editingChartId ? { ...c, figure: data, name: editName, code: latestCode } : c
+        ));
+        // Mark as dirty (unsaved)
+        setDirtyChartIds(prev => new Set(prev).add(editingChartId));
+        dirtyChartData.current[editingChartId] = { code: latestCode, name: editName, category: editCategory };
+        setEditingChartId(null);
+      }
     } catch (err: any) {
       setEditError(err?.message || 'Execution failed');
     } finally {
       setEditLoading(false);
     }
-  }, [editCode, editingChartId, editName]);
+  }, [editCode, editingChartId, editName, editCategory, queryClient]);
 
   // Inline editor: Save chart
   const handleInlineSave = useCallback(async () => {
     if (!editingChartId) return;
+    const latestCode = editCodeRef.current ? editCodeRef.current.getValue() : editCode;
+    if (editCodeRef.current && latestCode !== editCode) setEditCode(latestCode);
     setEditSaving(true);
     setEditError(null);
     setEditSuccess(null);
     try {
-      const res = await apiFetch(`/api/custom/${editingChartId}`, {
-        method: 'PUT',
+      const isNew = editingChartId === 'new';
+      const url = isNew ? '/api/custom' : `/api/custom/${editingChartId}`;
+      const method = isNew ? 'POST' : 'PUT';
+      const res = await apiFetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName, code: editCode, category: editCategory }),
+        body: JSON.stringify({ name: editName, code: latestCode, category: editCategory }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Save failed');
@@ -598,11 +651,19 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       setEditSuccess('Saved successfully.');
       // Refresh dashboard data
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      // Update local chart data
-      setLocalCharts(prev => prev.map(c => c.id === editingChartId ? { ...c, name: editName, category: editCategory, figure: data?.figure || c.figure, code: editCode } : c));
+      
+      const savedChartId = isNew ? data.id : editingChartId;
+      
+      if (isNew) {
+        setEditingChartId(savedChartId);
+        setLocalCharts(prev => [...prev, { ...data, rank: prev.length }]);
+      } else {
+        setLocalCharts(prev => prev.map(c => c.id === editingChartId ? { ...c, name: editName, category: editCategory, figure: data?.figure || c.figure, code: latestCode } : c));
+      }
+      
       // Clear dirty state
-      setDirtyChartIds(prev => { const next = new Set(prev); next.delete(editingChartId); return next; });
-      delete dirtyChartData.current[editingChartId];
+      setDirtyChartIds(prev => { const next = new Set(prev); next.delete(savedChartId); return next; });
+      delete dirtyChartData.current[savedChartId];
     } catch (err: any) {
       setEditError(err?.message || 'Save failed');
     } finally {
@@ -943,7 +1004,11 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   useEffect(() => {
     keyNavHandlerRef.current = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.contentEditable === 'true') return;
+      if (
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || 
+        target.contentEditable === 'true' || 
+        target.closest('.monaco-editor')
+      ) return;
       const len = filteredCharts.length;
       if (!len) return;
 
@@ -1496,8 +1561,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
           {/* Main chart area */}
           <div className="flex-1 min-h-0 p-3">
-            {filteredCharts[singleChartIdx] && (
-              editingChartId === filteredCharts[singleChartIdx].id ? (
+            {editingChartId ? (
                 /* ── INLINE EDITING: code editor replaces chart content inside same card frame ── */
                 <div className="bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col h-full">
                   {/* Card header — matches ChartCard style */}
@@ -1607,7 +1671,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : filteredCharts[singleChartIdx] ? (
                 /* ── Normal chart view ── */
                 <ChartCard
                   key={filteredCharts[singleChartIdx].id}
@@ -1632,8 +1696,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                   unsavedChanges={dirtyChartIds.has(filteredCharts[singleChartIdx].id)}
                   onSaveChart={handleSaveUnsavedChart}
                 />
-              )
-            )}
+              ) : null}
           </div>
 
           {/* Thumbnail strip */}

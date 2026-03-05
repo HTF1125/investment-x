@@ -286,7 +286,7 @@ export default function TimeseriesManager() {
     hovermode: 'x' as const,
     hoverdistance: 20,
     showlegend: false,
-    dragmode: 'pan' as const
+    dragmode: 'zoom' as const
   }), []);
 
   const plotConfig = React.useMemo(() => ({ responsive: true, displayModeBar: true, displaylogo: false, scrollZoom: true }), []);

@@ -494,11 +494,12 @@ class ChartTheme:
 
         bg_color = self.palette.BG_DARK if is_dark else self.palette.BG_LIGHT
         text_color = "#e5e7eb" if is_dark else "#111111"
+        text_secondary = "rgba(226,232,240,0.4)" if is_dark else "rgba(15,23,42,0.5)"
         title_color = text_color
-        grid_color = "rgba(148,163,184,0.22)" if is_dark else "rgba(0,0,0,0.14)"
-        legend_bg = "rgba(11,14,20,0.82)" if is_dark else "rgba(255,255,255,0.92)"
-        legend_border = "rgba(148,163,184,0.38)" if is_dark else "rgba(15,23,42,0.16)"
-        chart_border = "rgba(255,255,255,0.95)"
+        grid_color = "rgba(148,163,184,0.12)" if is_dark else "rgba(15,23,42,0.08)"
+        legend_bg = "rgba(15,23,42,0.85)" if is_dark else "rgba(255,255,255,0.95)"
+        legend_border = "rgba(148,163,184,0.12)" if is_dark else "rgba(15,23,42,0.08)"
+        chart_border = "rgba(148,163,184,0.15)" if is_dark else "rgba(15,23,42,0.12)"
         base_font_size = 10
         title_font_size = 14
 
@@ -518,7 +519,7 @@ class ChartTheme:
             font=dict(family=self.font_main, color=text_color, size=base_font_size),
             colorway=self.palette.colorway,
             margin=self.margin,
-            hovermode="x",
+            hovermode="x unified",
             hoverdistance=20,
             spikedistance=-1,
             showlegend=show_legend,
@@ -553,7 +554,7 @@ class ChartTheme:
         )
 
         # --- Axis styling ---
-        spike_color = "rgba(148,163,184,0.25)" if is_dark else "rgba(15,23,42,0.2)"
+        spike_color = "rgba(148,163,184,0.20)" if is_dark else "rgba(15,23,42,0.15)"
 
         x_axis_style = dict(
             showline=True,
@@ -561,10 +562,10 @@ class ChartTheme:
             linecolor=chart_border,
             mirror=True,
             ticks="outside",
-            ticklen=5,
-            tickcolor=text_color,
-            tickfont=dict(size=base_font_size, color=text_color),
-            title_font=dict(size=base_font_size, color=text_color),
+            ticklen=4,
+            tickcolor=chart_border,
+            tickfont=dict(size=base_font_size, color=text_secondary),
+            title_font=dict(size=base_font_size, color=text_secondary),
             showgrid=False,
             zeroline=False,
             showspikes=True,
@@ -573,6 +574,7 @@ class ChartTheme:
             spikedash="dot",
             spikemode="across",
             spikesnap="cursor",
+            rangeslider=dict(visible=False),
         )
         y_axis_style = dict(
             showline=True,
@@ -580,12 +582,14 @@ class ChartTheme:
             linecolor=chart_border,
             mirror=True,
             ticks="outside",
-            ticklen=5,
-            tickcolor=text_color,
-            tickfont=dict(size=base_font_size, color=text_color),
-            title_font=dict(size=base_font_size, color=text_color),
+            ticklen=4,
+            tickcolor=chart_border,
+            tickfont=dict(size=base_font_size, color=text_secondary),
+            title_font=dict(size=base_font_size, color=text_secondary),
             showgrid=True,
             gridcolor=grid_color,
+            griddash="dot",
+            gridwidth=1,
             zeroline=True,
             zerolinewidth=1,
             zerolinecolor=grid_color,
@@ -611,9 +615,7 @@ class ChartTheme:
                     existing_font = {}
                 existing_font["color"] = text_color
                 existing_font["size"] = base_font_size
-                ann.update(
-                    font=existing_font
-                )
+                ann.update(font=existing_font)
 
         # --- Trace colors, axis sanitization, date padding ---
         self._color_traces(fig_obj)

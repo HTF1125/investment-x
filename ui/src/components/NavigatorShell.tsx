@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, type RefObject } from 'react';
+import { type ReactNode, type RefObject, useState, useRef, useEffect } from 'react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 interface NavigatorShellProps {
@@ -52,14 +52,55 @@ export default function NavigatorShell({
   shellClassName = '',
   mainSectionClassName = '',
 }: NavigatorShellProps) {
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('navigator-sidebar-width');
+      if (saved) return Number(saved);
+    }
+    if (sidebarOpenWidthClassName.includes('[190px]')) return 190;
+    if (sidebarOpenWidthClassName.includes('[240px]')) return 240;
+    if (sidebarOpenWidthClassName.includes('[250px]')) return 250;
+    return 200;
+  });
+  
+  const isDraggingRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const newWidth = Math.max(150, Math.min(800, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+        document.body.style.cursor = '';
+        localStorage.setItem('navigator-sidebar-width', sidebarWidth.toString());
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [sidebarWidth]);
+
   return (
     <div className={`h-[calc(100vh-40px)] flex overflow-hidden ${shellClassName}`}>
       {/* ── Sidebar ── */}
       <aside
-        className={`shrink-0 transition-all duration-200 overflow-hidden border-r border-border/50 bg-card/20 flex flex-col ${
-          sidebarOpen ? sidebarOpenWidthClassName : 'w-0'
-        } ${sidebarClassName}`}
+        className={`relative shrink-0 overflow-visible border-r border-border/50 bg-card/20 flex flex-col ${sidebarClassName}`}
+        style={{ 
+          width: sidebarOpen ? sidebarWidth : 0, 
+          transition: isDragging ? 'none' : 'width 0.2s',
+          opacity: sidebarOpen ? 1 : 0 
+        }}
       >
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col w-full h-full">
         {/* Header */}
         <div className={`h-8 px-2.5 border-b border-border/50 flex items-center justify-between shrink-0 ${sidebarHeaderClassName}`}>
           <div className="text-[11px] font-semibold tracking-wide flex items-center gap-1.5 text-muted-foreground">
@@ -72,6 +113,22 @@ export default function NavigatorShell({
         </div>
         {/* Body */}
         {sidebarContent}
+        </div>
+
+        {/* Resize Handle */}
+        {sidebarOpen && (
+          <div
+            className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-[50] group flex items-center justify-center hover:bg-sky-500/10 active:bg-sky-500/20"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              isDraggingRef.current = true;
+              setIsDragging(true);
+              document.body.style.cursor = 'col-resize';
+            }}
+          >
+            <div className={`w-[2px] h-8 rounded-full transition-colors ${isDragging ? 'bg-sky-500' : 'bg-transparent group-hover:bg-border/80'}`} />
+          </div>
+        )}
       </aside>
 
       {/* ── Main area ── */}

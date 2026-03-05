@@ -85,7 +85,7 @@ def get_optional_user(
         token = request.query_params.get("token")
     if not token:
         return None
-    payload = verify_token(token)
+    payload = verify_token(token, log_invalid=False)
     if not payload:
         return None
     email: Optional[str] = payload.get("sub")

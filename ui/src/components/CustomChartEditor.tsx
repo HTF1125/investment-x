@@ -1312,9 +1312,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                         layout={{ 
                             ...themedPreviewFigure.layout, 
                             autosize: true,
-                            dragmode: 'pan'
+                            dragmode: 'zoom'
                         }}
-                        config={{ responsive: true, displayModeBar: 'hover', displaylogo: false, scrollZoom: true }}
+                        config={{ responsive: true, displayModeBar: 'hover' as any, displaylogo: false, scrollZoom: true, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'sendDataToCloud'] as any[] }}
                         style={{ width: '100%', height: '100%' }}
                         className="w-full h-full"
                         onError={handlePlotError}

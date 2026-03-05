@@ -467,7 +467,7 @@ def _compute_squeeze_momentum(
 
     # Bollinger Bands
     basis = close.rolling(bb_length).mean()
-    bb_dev = kc_mult * close.rolling(bb_length).std()
+    bb_dev = bb_mult * close.rolling(bb_length).std()
     upper_bb = basis + bb_dev
     lower_bb = basis - bb_dev
 
@@ -620,18 +620,38 @@ def _build_figure(
     visible_end: Optional[pd.Timestamp] = None,
     show_macd: bool = True,
     show_rsi: bool = True,
+    show_sqz: bool = False,
+    sqz_bb_len: int = 20,
+    sqz_bb_mult: float = 2.0,
+    sqz_kc_len: int = 20,
+    sqz_kc_mult: float = 1.5,
 ) -> go.Figure:
     rows = 1
-    if show_macd: rows += 1
-    if show_rsi: rows += 1
-    
-    # Map each indicator to its specific row index
-    macd_row = 2 if show_macd else None
-    rsi_row = (2 if not show_macd else 3) if show_rsi else None
+    if show_macd:
+        rows += 1
+    if show_rsi:
+        rows += 1
+    if show_sqz:
+        rows += 1
+
+    next_row = 2
+    macd_row = next_row if show_macd else None
+    if show_macd:
+        next_row += 1
+    rsi_row = next_row if show_rsi else None
+    if show_rsi:
+        next_row += 1
+    sqz_row = next_row if show_sqz else None
 
     # Calculate row heights
-    if rows == 3:
+    if rows == 4:
+        row_heights = [0.55, 0.16, 0.15, 0.14]
+    elif rows == 3 and show_sqz and not (show_macd and show_rsi):
+        row_heights = [0.66, 0.19, 0.15]
+    elif rows == 3:
         row_heights = [0.62, 0.23, 0.15]
+    elif rows == 2 and show_sqz:
+        row_heights = [0.78, 0.22]
     elif rows == 2:
         row_heights = [0.75, 0.25]
     else:
@@ -958,6 +978,63 @@ def _build_figure(
             col=1,
         )
 
+    if show_sqz:
+        sqz = _compute_squeeze_momentum(
+            df,
+            bb_length=sqz_bb_len,
+            bb_mult=sqz_bb_mult,
+            kc_length=sqz_kc_len,
+            kc_mult=sqz_kc_mult,
+        )
+        sqz_bar_color_map = {
+            "lime": "#4ade80",
+            "green": "#16a34a",
+            "red": "#f87171",
+            "maroon": "#991b1b",
+            "gray": "#64748b",
+        }
+        sqz_dot_color_map = {
+            "blue": "#38bdf8",
+            "black": "#1e293b",
+            "gray": "#64748b",
+        }
+        fig.add_trace(
+            go.Bar(
+                x=df.index,
+                y=sqz["val"],
+                marker_color=[sqz_bar_color_map.get(c, "#64748b") for c in sqz["bar_color"]],
+                name="SQZ Mom",
+                legendgroup="squeeze",
+                hovertemplate="SQZ: %{y:.4f}<extra></extra>",
+            ),
+            row=sqz_row,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=[0.0] * len(df.index),
+                mode="markers",
+                marker=dict(
+                    color=[sqz_dot_color_map.get(c, "#64748b") for c in sqz["sqz_dot_color"]],
+                    size=4,
+                    symbol="cross-thin",
+                    line=dict(
+                        width=1.5,
+                        color=[sqz_dot_color_map.get(c, "#64748b") for c in sqz["sqz_dot_color"]],
+                    ),
+                ),
+                name="SQZ State",
+                legendgroup="squeeze",
+                showlegend=False,
+                hovertemplate="SQZ State<extra></extra>",
+            ),
+            row=sqz_row,
+            col=1,
+        )
+        fig.add_hline(y=0, line_width=1, line_color="rgba(148,163,184,0.55)", row=sqz_row, col=1)
+        fig.update_yaxes(title_text="SQZ", row=sqz_row, col=1)
+
     # Visible window controls display range only (does not slice source data).
     if visible_start is not None and visible_end is not None and visible_start < visible_end:
         mask = (df.index >= visible_start) & (df.index <= visible_end)
@@ -988,6 +1065,24 @@ def _build_figure(
                             y2_max += 1.0
                         pad2 = (y2_max - y2_min) * 0.18
                         fig.update_yaxes(range=[y2_min - pad2, y2_max + pad2], row=macd_row, col=1)
+
+            if show_sqz:
+                sqz_sub = _compute_squeeze_momentum(
+                    df,
+                    bb_length=sqz_bb_len,
+                    bb_mult=sqz_bb_mult,
+                    kc_length=sqz_kc_len,
+                    kc_mult=sqz_kc_mult,
+                ).loc[mask, ["val"]].dropna(how="all")
+                if not sqz_sub.empty:
+                    sqz_min = float(sqz_sub["val"].min())
+                    sqz_max = float(sqz_sub["val"].max())
+                    if np.isfinite(sqz_min) and np.isfinite(sqz_max):
+                        if sqz_max == sqz_min:
+                            sqz_min -= 1.0
+                            sqz_max += 1.0
+                        sqz_pad = (sqz_max - sqz_min) * 0.18
+                        fig.update_yaxes(range=[sqz_min - sqz_pad, sqz_max + sqz_pad], row=sqz_row, col=1)
 
             for r in range(1, rows + 1):
                 fig.update_xaxes(range=[visible_start, visible_end], row=r, col=1)
@@ -1056,6 +1151,11 @@ def technical_elliott(
     label_cooldown: int = Query(0, ge=0, le=20),
     show_macd: bool = Query(True),
     show_rsi: bool = Query(True),
+    show_sqz: bool = Query(False),
+    sqz_bb_len: int = Query(20, ge=5, le=50),
+    sqz_bb_mult: float = Query(2.0, ge=0.5, le=5.0),
+    sqz_kc_len: int = Query(20, ge=5, le=50),
+    sqz_kc_mult: float = Query(1.5, ge=0.5, le=5.0),
 ):
     try:
         tk = ticker.strip().upper()
@@ -1077,6 +1177,11 @@ def technical_elliott(
             visible_end=vis_end,
             show_macd=show_macd,
             show_rsi=show_rsi,
+            show_sqz=show_sqz,
+            sqz_bb_len=sqz_bb_len,
+            sqz_bb_mult=sqz_bb_mult,
+            sqz_kc_len=sqz_kc_len,
+            sqz_kc_mult=sqz_kc_mult,
         )
         return json.loads(pio.to_json(fig, engine="json"))
     except HTTPException:

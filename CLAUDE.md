@@ -42,7 +42,7 @@ docker-compose up --build
 | `ix/api/routers/` | One file per domain: `auth`, `admin`, `timeseries`, `series`, `custom`, `dashboard`, `notes`, `insights`, `technical`, `risk`, `news`, `evaluation`, `task` |
 | `ix/api/dependencies.py` | FastAPI `Depends()` — `get_current_user()`, `get_current_admin_user()`, `get_db()` |
 | `ix/db/conn.py` | SQLAlchemy engine + scoped session (pool: 40 base / 80 overflow) |
-| `ix/db/models/` | ORM models: `User`, `Timeseries`, `TimeseriesData`, `CustomChart`, `InvestmentNote`, `InvestmentNoteImage`, `FinancialNews`, `TaskProcess`, `TelegramMessage` |
+| `ix/db/models/` | ORM models: `User`, `Timeseries`, `TimeseriesData`, `CustomChart`, `InvestmentNote`, `NewsItem`, `TaskProcess`, `TelegramMessage` |
 | `ix/db/query.py` | Data-fetching helpers with TTLCache (default 300s TTL, 48 series) |
 | `ix/cht/` | Chart-building business logic (Plotly figures) |
 | `ix/core/` | Analytics: backtesting, performance, signals, technical indicators, ML prediction |
