@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Body, Form, Response, Request
 from sqlalchemy.orm import Session, load_only, joinedload
 from sqlalchemy import func, or_
 from typing import List, Optional, Any, Dict, Callable
@@ -22,8 +22,6 @@ from reportlab.lib import utils
 import textwrap
 import sys
 import threading
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from ix.db.conn import get_session
 from ix.db.models import CustomChart, User
@@ -43,7 +41,10 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
-_limiter = Limiter(key_func=get_remote_address)
+# Bounded thread pool for custom chart code execution (prevents thread exhaustion)
+_chart_executor = concurrent.futures.ThreadPoolExecutor(max_workers=6, thread_name_prefix="chart-exec")
+
+from ix.api.rate_limit import limiter as _limiter
 
 try:
     import orjson as _orjson
@@ -408,6 +409,13 @@ def execute_custom_code(code: str, *, validated: bool = False):
         Rebase,
         Resample,
         StandardScalar,
+        Correlation as _Correlation,
+        RollingCorrelation as _RollingCorrelation,
+        Regression as _Regression,
+        RollingBeta as _RollingBeta,
+        PCA as _PCA,
+        VaR as _VaR,
+        ExpectedShortfall as _ExpectedShortfall,
     )
 
     def apply_theme(fig: Any, mode: str | None = None, force_dark: bool | None = None):
@@ -440,8 +448,7 @@ def execute_custom_code(code: str, *, validated: bool = False):
             status_code=500,
             detail={
                 "error": "Database Error",
-                "message": "Could not establish a database session for chart execution.",
-                "traceback": str(e),
+                "message": f"Could not establish a database session: {e}",
             },
         )
 
@@ -477,6 +484,13 @@ def execute_custom_code(code: str, *, validated: bool = False):
         "get_color": _legacy_get_color,
         "apply_theme": apply_theme,
         "df_plot": df_plot,
+        "Correlation": _Correlation,
+        "RollingCorrelation": _RollingCorrelation,
+        "Regression": _Regression,
+        "RollingBeta": _RollingBeta,
+        "PCA": _PCA,
+        "VaR": _VaR,
+        "ExpectedShortfall": _ExpectedShortfall,
         "__builtins__": SAFE_CUSTOM_CHART_BUILTINS,
         "__name__": "__main__",
     }
@@ -501,9 +515,21 @@ def execute_custom_code(code: str, *, validated: bool = False):
         code_snippet = (code[:100] + "...") if len(code) > 100 else code
         logger.info(f"Executing custom chart code. Snippet: {code_snippet}")
 
+        # Execute with a timeout to prevent runaway code from hanging the server
+        _EXEC_TIMEOUT_SECONDS = 120
+
+        def _run_exec():
+            exec(code, global_scope)
+
         token = custom_chart_session.set(db_session)
         try:
-            exec(code, global_scope)
+            future = _chart_executor.submit(_run_exec)
+            future.result(timeout=_EXEC_TIMEOUT_SECONDS)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            raise TimeoutError(
+                f"Custom chart execution exceeded {_EXEC_TIMEOUT_SECONDS}s timeout"
+            )
         finally:
             custom_chart_session.reset(token)
 
@@ -537,7 +563,7 @@ def execute_custom_code(code: str, *, validated: bool = False):
 
         return fig_result
 
-    except BaseException as e:
+    except Exception as e:
         if isinstance(e, UnsafeCustomChartCodeError):
             logger.warning("Rejected unsafe custom chart code during execution: %s", e)
             raise HTTPException(
@@ -551,17 +577,11 @@ def execute_custom_code(code: str, *, validated: bool = False):
             logger.error(f"Error executing custom chart code: {e}")
             logger.error(traceback.format_exc())
 
-            # Determine error details
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            tb = traceback.format_exception(exc_type, exc_value, exc_traceback)
-
-            # Provide a more descriptive error message to the frontend as a dict
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": "Execution Error",
                     "message": str(e),
-                    "traceback": "".join(tb),
                 },
             )
         else:
@@ -571,26 +591,6 @@ def execute_custom_code(code: str, *, validated: bool = False):
             db_session.close()
             logger.info("Custom chart DB session closed.")
 
-
-# Global Kaleido scope to be reused for performance
-_KALEIDO_SCOPE = None
-_KALEIDO_LOCK = threading.Lock()
-
-
-def get_kaleido_scope():
-    """Returns a singleton PlotlyScope for image rendering."""
-    global _KALEIDO_SCOPE
-    if _KALEIDO_SCOPE is None:
-        with _KALEIDO_LOCK:
-            if _KALEIDO_SCOPE is None:
-                try:
-                    from kaleido.scopes.plotly import PlotlyScope
-
-                    _KALEIDO_SCOPE = PlotlyScope()
-                    logger.info("Initialized new Kaleido PlotlyScope.")
-                except Exception as e:
-                    logger.error(f"Failed to initialize Kaleido scope: {e}")
-    return _KALEIDO_SCOPE
 
 
 def simplify_figure(figure_data: Any) -> Any:
@@ -785,33 +785,11 @@ def render_chart_image(
         return fig
 
     try:
-        scope = get_kaleido_scope()
         fig = _prepare_pdf_figure(_build_figure(decoded_figure))
-        fig_payload = fig.to_plotly_json()
-        if not scope:
-            logger.error("Kaleido scope not available. Falling back to fig.to_image().")
-            return pio.to_image(
-                fig, format="png", width=2200, height=1300, scale=2, engine="kaleido"
-            )
-
-        # Convert to image bytes using scope directly (more robust than fig.to_image)
-        # Use a lock to prevent concurrent access to the same scope instance
-        with _KALEIDO_LOCK:
-            img_bytes = scope.transform(
-                fig_payload, format="png", width=2200, height=1300, scale=2
-            )
-        return img_bytes
+        return pio.to_image(fig, format="png", width=2200, height=1300, scale=2)
     except Exception as e:
-        logger.error(f"Error rendering chart image with PlotlyScope: {e}")
-        # Try one last fallback
-        try:
-            fig = _prepare_pdf_figure(_build_figure(decoded_figure))
-            return pio.to_image(
-                fig, format="png", width=2200, height=1300, scale=2, engine="kaleido"
-            )
-        except Exception as fallback_e:
-            logger.error(f"Final fallback failed: {fallback_e}")
-            return None
+        logger.error(f"Error rendering chart image: {e}")
+        return None
 
 
 def generate_pdf_buffer(
@@ -978,17 +956,13 @@ def preview_custom_chart(
             raise e
 
         logger.error(f"Execution failed in preview: {e}")
-        # Determine error details
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        tb = traceback.format_exception(exc_type, exc_value, exc_traceback)
+        logger.error(traceback.format_exc())
 
-        # Return as 400 Bad Request with details
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "Execution Error",
                 "message": str(e),
-                "traceback": "".join(tb),
             },
         )
 
@@ -1007,7 +981,7 @@ def preview_custom_chart(
         logger.error(f"Failed to serialize figure: {e}")
         logger.error(traceback.format_exc())
         raise HTTPException(
-            status_code=500, detail=f"Failed to serialize figure to JSON: {str(e)}"
+            status_code=500, detail="Failed to serialize figure to JSON"
         )
 
 
@@ -1180,11 +1154,6 @@ def toggle_public(
     return {"message": f"Updated {len(data.ids)} chart(s)"}
 
 
-from fastapi import APIRouter, Depends, HTTPException, Response, Form
-
-...
-
-
 @router.post("/custom/pdf")
 def export_custom_charts_pdf(
     items: str = Form(default="[]"),
@@ -1271,7 +1240,7 @@ def export_custom_charts_pdf(
             raise
         logger.error(f"PDF Export failed: {e}")
         _update_process(pid, _ProcessStatus.FAILED, str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="PDF export failed")
 
 
 @router.post("/custom/html")
@@ -1518,7 +1487,7 @@ def export_custom_charts_html(
     except Exception as e:
         logger.error(f"HTML Export failed: {e}")
         _update_process(pid, _ProcessStatus.FAILED, str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="HTML export failed")
 
 
 @router.get("/custom/{chart_id}", response_model=CustomChartResponse)

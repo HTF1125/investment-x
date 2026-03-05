@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import TimeseriesManager from '@/components/TimeseriesManager';
 import UserManager from '@/components/UserManager';
@@ -9,6 +9,7 @@ import AdminLogViewer from '@/components/AdminLogViewer';
 import AppShell from '@/components/AppShell';
 import NavigatorShell from '@/components/NavigatorShell';
 import { useAuth } from '@/context/AuthContext';
+import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
 import { Database, ShieldAlert, Users, Activity, Server, BarChart3, ShieldCheck, ScrollText } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -18,17 +19,7 @@ export default function AdminTimeseriesPage() {
   const { user } = useAuth();
   const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const [activeTab, setActiveTab] = useState<AdminTab>('timeseries');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const syncSidebarForViewport = () => {
-      if (window.innerWidth < 1024) setSidebarOpen(false);
-    };
-    syncSidebarForViewport();
-    window.addEventListener('resize', syncSidebarForViewport);
-    return () => window.removeEventListener('resize', syncSidebarForViewport);
-  }, []);
+  const { sidebarOpen, toggleSidebar } = useResponsiveSidebar();
 
   const tabs = useMemo(
     () => [
@@ -60,7 +51,7 @@ export default function AdminTimeseriesPage() {
         ) : (
           <NavigatorShell
             sidebarOpen={sidebarOpen}
-            onSidebarToggle={() => setSidebarOpen((o) => !o)}
+            onSidebarToggle={toggleSidebar}
             sidebarIcon={<Server className="w-3.5 h-3.5 text-sky-400" />}
             sidebarLabel="Admin"
             sidebarContent={

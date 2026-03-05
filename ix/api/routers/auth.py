@@ -24,12 +24,8 @@ router = APIRouter()
 
 _COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
 
-# Rate limiter — instance is attached to app.state by main.py
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from fastapi import Request
-
-_limiter = Limiter(key_func=get_remote_address)
+from ix.api.rate_limit import limiter as _limiter
 
 
 def set_auth_cookie(

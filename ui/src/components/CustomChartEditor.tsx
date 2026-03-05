@@ -5,8 +5,10 @@ import dynamic from 'next/dynamic';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiFetch, apiFetchJson } from '@/lib/api';
-import { applyChartTheme, type ChartStyle, CHART_STYLE_LABELS, CHART_STYLE_CONFIGS } from '@/lib/chartTheme';
+import { apiFetch, apiFetchJson, getDirectApiBase } from '@/lib/api';
+import { applyChartTheme } from '@/lib/chartTheme';
+import { DEFAULT_CHART_CODE } from '@/lib/constants';
+import type { CustomChartListItem } from '@/types/chart';
 import {
   Loader2, Play, Save, Code, FileText,
   Download, Copy, Trash2, Plus, Terminal, Search,
@@ -16,6 +18,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import Editor from '@monaco-editor/react';
+import { registerIxCompletions } from '@/lib/monacoCompletions';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -25,23 +28,6 @@ const Plot = dynamic(() => import('react-plotly.js'), {
     </div>
   ),
 }) as React.ComponentType<Record<string, unknown>>;
-
-const DEFAULT_CODE = `# Investment-X Analysis Studio
-# Available: pd, px, go, np, Series, MultiSeries, apply_theme(fig)
-# MUST define a variable 'fig' at the end
-
-import pandas as pd
-import plotly.express as px
-
-data = {
-    'Year': [2020, 2021, 2022, 2023, 2024],
-    'Value': [100, 120, 110, 135, 150]
-}
-df = pd.DataFrame(data)
-
-fig = px.bar(df, x='Year', y='Value', title='New Analysis')
-apply_theme(fig)
-`;
 
 interface CustomChartEditorProps {
   mode?: 'standalone' | 'integrated';
@@ -58,21 +44,6 @@ interface TimeseriesLookupItem {
   source?: string | null;
 }
 
-interface CustomChartListItem {
-  id: string;
-  name?: string | null;
-  category?: string | null;
-  description?: string | null;
-  tags?: string[];
-  public?: boolean;
-  rank?: number;
-  created_by_user_id?: string | null;
-  created_by_email?: string | null;
-  created_by_name?: string | null;
-  code?: string | null;
-  figure?: any;
-}
-
 export default function CustomChartEditor({ mode = 'standalone', initialChartId, onClose }: CustomChartEditorProps) {
   const { user } = useAuth();
   const { theme } = useTheme();
@@ -85,7 +56,20 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const currentUserId = user?.id || null;
 
   // --- State ---
-  const [code, setCode] = useState<string>(DEFAULT_CODE);
+  const [code, _setCode] = useState<string>(DEFAULT_CHART_CODE);
+  const codeRef = useRef<string>(DEFAULT_CHART_CODE);
+  const setCode = useCallback((v: string | ((prev: string) => string)) => {
+    if (typeof v === 'function') {
+      _setCode((prev) => {
+        const next = v(prev);
+        codeRef.current = next;
+        return next;
+      });
+    } else {
+      codeRef.current = v; // sync immediately, before React batches
+      _setCode(v);
+    }
+  }, []);
   const [name, setName] = useState('Untitled Analysis');
   const [category, setCategory] = useState('ChartPack');
   const [description, setDescription] = useState('');
@@ -93,7 +77,6 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const [currentChartId, setCurrentChartId] = useState<string | null>(initialChartId || null);
   const [currentChartOwnerId, setCurrentChartOwnerId] = useState<string | null>(null);
   const [exportPdf, setExportPdf] = useState(true);
-  const [chartStyle, setChartStyle] = useState<ChartStyle>('default');
   const [createdByEmail, setCreatedByEmail] = useState<string | null>(null);
   const [createdByName, setCreatedByName] = useState<string | null>(null);
 
@@ -328,11 +311,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   });
 
   const previewMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (codeToRun: string) => {
       const res = await apiFetch('/api/custom/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code: codeToRun }),
       });
 
       const data = await parseBodySafe(res);
@@ -358,9 +341,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   });
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (codeToSave: string) => {
       const tagList = tags.split(',').map((t: string) => t.trim()).filter(Boolean);
-      const payload = { name, code, category, description, tags: tagList, public: exportPdf, chart_style: chartStyle };
+      const payload = { name, code: codeToSave, category, description, tags: tagList, public: exportPdf };
       const url = currentChartId ? `/api/custom/${currentChartId}` : '/api/custom';
       const method = currentChartId ? 'PUT' : 'POST';
       
@@ -404,7 +387,10 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       }
 
       // If we don't have a figure yet, run preview
-      if (!previewFigure && !data?.figure) previewMutation.mutate();
+      if (!previewFigure && !data?.figure) {
+        const fallbackCode = codeEditorRef.current ? codeEditorRef.current.getValue() : codeRef.current;
+        previewMutation.mutate(fallbackCode);
+      }
     },
     onError: (err: any) => {
       setPreviewError(err);
@@ -449,9 +435,10 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
 
   // --- Handlers ---
   const handlePreview = useCallback(() => {
+    const currentCode = codeEditorRef.current ? codeEditorRef.current.getValue() : codeRef.current;
     setSuccessMsg(null);
     setPreviewError(null);
-    previewMutation.mutate();
+    previewMutation.mutate(currentCode);
   }, [previewMutation]);
 
   const handleSave = useCallback(() => {
@@ -463,9 +450,10 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
       });
       return;
     }
+    const currentCode = codeEditorRef.current ? codeEditorRef.current.getValue() : codeRef.current;
     setSuccessMsg(null);
     setPreviewError(null);
-    saveMutation.mutate();
+    saveMutation.mutate(currentCode);
   }, [canEditCurrentChart, saveMutation]);
 
   // Stable refs for keyboard shortcuts
@@ -479,7 +467,8 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setCopying(true);
     try {
       const Plotly = (await import('plotly.js-dist-min')).default;
-      const themed = applyChartTheme(previewFigure, theme, { transparentBackground: false, chartStyle });
+      const themed = applyChartTheme(previewFigure, theme, { transparentBackground: false });
+      if (!themed) return;
       const url = await Plotly.toImage(
         { data: themed.data, layout: { ...themed.layout, width: 1200, height: 800 } },
         { format: 'png', scale: 2 }
@@ -501,10 +490,15 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setPreviewError(null);
     try {
       // Send empty items array — backend will auto-select public=true charts
-      const res = await apiFetch('/api/custom/pdf', {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const formData = new FormData();
+      formData.append('items', JSON.stringify([]));
+      formData.append('theme', 'light');
+      const res = await fetch(`${getDirectApiBase()}/api/custom/pdf`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [] }),
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+        body: formData,
       });
       if (!res.ok) {
         const errData = await parseBodySafe(res);
@@ -661,12 +655,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setCurrentChartId(chart.id);
     setCurrentChartOwnerId(chart.created_by_user_id || null);
     setName(chart.name || 'Untitled Analysis');
-    setCode(chart.code || DEFAULT_CODE);
+    setCode(chart.code || DEFAULT_CHART_CODE);
     setCategory(chart.category || 'ChartPack');
     setDescription(chart.description || '');
     setTags(chart.tags ? chart.tags.join(', ') : '');
     setExportPdf(chart.public ?? true);
-    setChartStyle((chart.chart_style as ChartStyle) || 'default');
     setCreatedByEmail(chart.created_by_email || null);
     setCreatedByName(chart.created_by_name || null);
     setPreviewFigure(chart.figure || null);
@@ -716,12 +709,11 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
     setCurrentChartId(null);
     setCurrentChartOwnerId(null);
     setName('Untitled Analysis');
-    setCode(DEFAULT_CODE);
+    setCode(DEFAULT_CHART_CODE);
     setCategory('ChartPack');
     setDescription('');
     setTags('');
     setExportPdf(true);
-    setChartStyle('default');
     setCreatedByEmail(null);
     setCreatedByName(null);
     setPreviewFigure(null);
@@ -746,7 +738,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
 
     if (initialChartId === null && currentChartId !== null) {
       // CREATE clicked — reset to blank state
-      setCode(DEFAULT_CODE);
+      setCode(DEFAULT_CHART_CODE);
       setName('Untitled Analysis');
       setCategory('ChartPack');
       setDescription('');
@@ -785,12 +777,12 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
   const themedPreviewFigure = useMemo(
     () => {
       try {
-        return applyChartTheme(previewFigure, theme, { transparentBackground: true, chartStyle });
+        return applyChartTheme(previewFigure, theme, { transparentBackground: true });
       } catch {
         return previewFigure;
       }
     },
-    [previewFigure, theme, chartStyle]
+    [previewFigure, theme]
   );
 
   useEffect(() => {
@@ -1249,27 +1241,6 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                 />
                             </div>
 
-                            <div className="col-span-4 min-w-0 space-y-1">
-                                <label className="text-[10px] text-muted-foreground mb-0.5 block">Chart Style</label>
-                                <div className="flex gap-1.5 flex-wrap">
-                                    {(Object.keys(CHART_STYLE_LABELS) as ChartStyle[]).map((s) => (
-                                        <button
-                                            key={s}
-                                            type="button"
-                                            disabled={!canEditCurrentChart}
-                                            onClick={() => setChartStyle(s)}
-                                            className={`px-2.5 py-1 rounded-md border text-[10px] font-medium transition-all ${
-                                                chartStyle === s
-                                                    ? 'border-border/80 bg-foreground/[0.09] text-foreground'
-                                                    : 'border-border/40 text-muted-foreground hover:border-border/60 hover:text-foreground'
-                                            } disabled:opacity-40 disabled:cursor-not-allowed`}
-                                            title={CHART_STYLE_CONFIGS[s] ? `Font: ${CHART_STYLE_CONFIGS[s].fontFamily.split(',')[0]}` : ''}
-                                        >
-                                            {CHART_STYLE_LABELS[s]}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
                         </div>
 
                         {mode === 'standalone' && (
@@ -1361,64 +1332,66 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
             ) : (
                 <div className="flex-grow flex flex-col min-h-0 gap-2 p-3">
 
-                    {/* Timeseries Search — top bar */}
+                    {/* Timeseries Search */}
                     <div className="shrink-0 rounded-xl border border-border/60 overflow-hidden bg-background">
-                        {/* Search row */}
-                        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60">
-                            <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider shrink-0">
-                                Timeseries
-                            </span>
-                            <input
-                                value={timeseriesSearch}
-                                onChange={(e) => setTimeseriesSearch(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); runTimeseriesSearch(); } }}
-                                placeholder="Search series… (Enter)"
-                                className="flex-1 min-w-0 px-2 py-1.5 rounded-md text-[11px] font-mono bg-transparent border border-border/50 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-border transition-colors"
-                            />
-                            <button
-                                onClick={runTimeseriesSearch}
-                                className="shrink-0 px-3 py-1.5 rounded-md text-[11px] font-medium text-muted-foreground border border-border/50 hover:text-foreground hover:border-border transition-colors"
-                            >
-                                Go
-                            </button>
-                            {timeseriesLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />}
+                        <div className="flex items-center gap-2 px-3 py-2">
+                            <div className="relative flex-1 min-w-0">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
+                                <input
+                                    value={timeseriesSearch}
+                                    onChange={(e) => setTimeseriesSearch(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); runTimeseriesSearch(); } }}
+                                    placeholder="Search timeseries… (Enter)"
+                                    className="w-full pl-7 pr-7 py-1.5 rounded-md text-[11px] font-mono bg-transparent border border-border/50 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-border transition-colors"
+                                />
+                                {timeseriesSearch && (
+                                    <button
+                                        onClick={() => { setTimeseriesSearch(''); setTimeseriesQuery(''); }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-foreground/[0.06] text-muted-foreground/40"
+                                    >
+                                        <X className="w-2.5 h-2.5" />
+                                    </button>
+                                )}
+                            </div>
+                            {timeseriesLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground/50 shrink-0" />}
                         </div>
 
-                        {/* Results — compact scrollable list, max ~4 rows */}
                         {(timeseriesQuery.length > 0 || timeseriesMatches.length > 0) && (
-                            <div className="max-h-40 overflow-y-auto">
+                            <div className="max-h-44 overflow-y-auto border-t border-border/50">
                                 {!timeseriesLoading && timeseriesQuery.length > 0 && timeseriesMatches.length === 0 && (
-                                    <div className="px-3 py-3 text-center text-[11px] text-muted-foreground">
+                                    <div className="px-3 py-3 text-center text-[11px] text-muted-foreground/50">
                                         No results for &ldquo;{timeseriesQuery}&rdquo;
                                     </div>
                                 )}
                                 {timeseriesMatches.map((ts) => (
                                     <div
                                         key={ts.id}
-                                        className="flex items-center gap-2 px-3 py-1.5 border-b border-border/40 hover:bg-foreground/[0.03]"
+                                        className="group flex items-center gap-2.5 px-3 py-1.5 border-b border-border/30 last:border-b-0 hover:bg-foreground/[0.03] transition-colors"
                                     >
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-[11px] font-medium text-foreground truncate">
-                                                {ts.name || ts.code}
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[11px] font-mono text-sky-400/80">{ts.code}</span>
+                                                {ts.frequency && <span className="text-[9px] text-muted-foreground/40">{ts.frequency}</span>}
                                             </div>
-                                            <div className="text-[10px] font-mono text-muted-foreground truncate">
-                                                {ts.code}{ts.frequency ? ` · ${ts.frequency}` : ''}
-                                            </div>
+                                            {ts.name && ts.name !== ts.code && (
+                                                <div className="text-[10px] text-muted-foreground/50 truncate">{ts.name}</div>
+                                            )}
                                         </div>
-                                        <div className="flex gap-1 shrink-0">
+                                        <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button
                                                 onClick={() => insertSeriesSnippet(ts)}
-                                                className="px-2 py-0.5 rounded-md text-[10px] font-medium border border-border/50 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                                                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-emerald-500/80 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
                                                 title="Insert Series() into code"
                                             >
+                                                <Plus className="w-3 h-3" />
                                                 Insert
                                             </button>
                                             <button
                                                 onClick={() => copySeriesSnippet(ts)}
-                                                className="px-2 py-0.5 rounded-md text-[10px] font-medium border border-border/50 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                                                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                                                 title="Copy snippet"
                                             >
-                                                Copy
+                                                <Copy className="w-3 h-3" />
                                             </button>
                                         </div>
                                     </div>
@@ -1435,9 +1408,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                 language="python"
                                 value={code}
                                 onChange={(v) => setCode(v ?? '')}
+                                beforeMount={registerIxCompletions}
                                 onMount={(editor) => {
                                     codeEditorRef.current = editor;
-                                    // Save cursor position on every change so Insert works after blur
                                     editor.onDidChangeCursorPosition((e) => {
                                         savedCursorPos.current = { lineNumber: e.position.lineNumber, column: e.position.column };
                                     });
@@ -1454,6 +1427,9 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                                     padding: { top: 16, bottom: 16 },
                                     renderLineHighlight: 'none',
                                     contextmenu: true,
+                                    quickSuggestions: true,
+                                    suggestOnTriggerCharacters: true,
+                                    parameterHints: { enabled: true },
                                     scrollbar: {
                                         verticalScrollbarSize: 4,
                                         horizontalScrollbarSize: 4,

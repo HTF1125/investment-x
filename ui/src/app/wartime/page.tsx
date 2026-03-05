@@ -482,10 +482,7 @@ function percentile(v: number | null): string {
 }
 
 function clonePlotValue<T>(value: T): T {
-  if (typeof structuredClone === 'function') {
-    return structuredClone(value);
-  }
-  return JSON.parse(JSON.stringify(value));
+  return structuredClone(value);
 }
 
 function stripUndefinedDeep<T>(value: T): T {
@@ -551,7 +548,7 @@ function buildLineChart(
   };
 
   // applyChartTheme overrides the layout; use the return value
-  const fig = applyChartTheme({ layout } as any, theme as any, { chartStyle: 'minimal' }) as any;
+  const fig = applyChartTheme({ layout } as any, theme as any, {}) as any;
 
   fig.data = data; // re-attach the original data array bypassing any clone dropping
 
@@ -596,7 +593,7 @@ function buildBarChart(
   };
 
   // applyChartTheme overrides the layout; use the return value
-  const fig = applyChartTheme({ layout } as any, theme as any, { chartStyle: 'minimal' }) as any;
+  const fig = applyChartTheme({ layout } as any, theme as any, {}) as any;
 
   fig.data = data; // re-attach the original data array bypassing any clone dropping
 
@@ -700,7 +697,7 @@ function buildDistributionBandChart(
     hovermode: 'x unified',
   };
 
-  const fig = applyChartTheme({ layout } as any, theme as any, { chartStyle: 'minimal' }) as any;
+  const fig = applyChartTheme({ layout } as any, theme as any, {}) as any;
   fig.data = stripUndefinedDeep(data);
   fig.layout.hovermode = 'x unified';
   fig.layout.margin = { l: 55, r: 20, t: 46, b: 110 };

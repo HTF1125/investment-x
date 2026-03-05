@@ -37,6 +37,7 @@ from ix.db.models.user import User
 from ix.db.query import *
 from sqlalchemy.orm import joinedload, Session as SessionType
 from ix.misc import get_logger
+from ix.api.rate_limit import limiter as _limiter
 from ix.utils.safe_expression import (
     TIMESERIES_EXPRESSION_CONTEXT,
     UnsafeExpressionError,
@@ -98,15 +99,16 @@ def _apply_timeseries_updates(ts: Timeseries, data: dict) -> None:
 
 @router.get("/timeseries", response_model=List[TimeseriesResponse])
 def get_timeseries(
-    limit: Optional[int] = Query(None, description="Limit number of results"),
-    offset: int = Query(0, description="Offset for pagination"),
+    limit: Optional[int] = Query(None, ge=1, le=1000, description="Limit number of results"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
     search: Optional[str] = Query(
         None,
+        max_length=200,
         description="Search by code/name/source/category/provider/asset class/country",
     ),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    asset_class: Optional[str] = Query(None, description="Filter by asset class"),
-    provider: Optional[str] = Query(None, description="Filter by provider"),
+    category: Optional[str] = Query(None, max_length=100, description="Filter by category"),
+    asset_class: Optional[str] = Query(None, max_length=100, description="Filter by asset class"),
+    provider: Optional[str] = Query(None, max_length=100, description="Filter by provider"),
     db: SessionType = Depends(get_db),
 ):
     """
@@ -704,7 +706,9 @@ def _run_upload_background_task(pid: str, contents: bytes):
 
 
 @router.post("/timeseries")
+@_limiter.limit("10/minute")
 def create_or_update_timeseries_bulk(
+    request: Request,
     payload: List[TimeseriesCreate],
     db: SessionType = Depends(get_db),
 ):
@@ -1240,7 +1244,7 @@ def get_favorite_timeseries_data(
 
     except Exception as e:
         logger.exception(f"Error retrieving favorite timeseries: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 async def _parse_codes_from_request(request: Request) -> List[str]:
@@ -1629,11 +1633,13 @@ async def get_custom_timeseries_data(
         raise
     except Exception as e:
         logger.exception(f"Error retrieving custom timeseries: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/upload_data")
+@_limiter.limit("10/minute")
 def upload_data(
+    request: Request,
     payload: TimeseriesDataUpload,
     db: SessionType = Depends(get_db),
 ):
@@ -1758,12 +1764,14 @@ def upload_data(
     except Exception as e:
         logger.exception("Failed to process data upload")
         raise HTTPException(
-            status_code=500, detail=f"Failed to process data upload: {str(e)}"
+            status_code=500, detail="Failed to process data upload"
         )
 
 
 @router.post("/upload_data_columnar")
+@_limiter.limit("10/minute")
 def upload_data_columnar(
+    request: Request,
     payload: TimeseriesColumnarUpload,
     db: SessionType = Depends(get_db),
 ):
@@ -1904,5 +1912,5 @@ def upload_data_columnar(
     except Exception as e:
         logger.exception("Failed to process columnar data upload")
         raise HTTPException(
-            status_code=500, detail=f"Failed to process data upload: {str(e)}"
+            status_code=500, detail="Failed to process data upload"
         )

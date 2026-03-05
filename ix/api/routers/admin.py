@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -383,7 +383,7 @@ def create_user(
         role=resolved_role,
         is_admin=bool(resolved_role in User.ADMIN_ROLES),
         disabled=bool(payload.disabled),
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.add(new_user)
     db.commit()

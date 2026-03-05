@@ -183,3 +183,14 @@ export async function apiFetchJson<T = any>(
 
   return (body ?? {}) as T;
 }
+
+/**
+ * Returns the direct backend API base URL (bypasses Next.js proxy).
+ * Use for long-running requests like PDF/HTML exports that exceed proxy timeout.
+ */
+export function getDirectApiBase(): string {
+  if (typeof window !== 'undefined') {
+    return process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+  }
+  return process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+}

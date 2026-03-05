@@ -107,7 +107,7 @@ class ChartTheme:
     margin: Dict[str, int] = field(default_factory=lambda: dict(t=50, l=0, r=0, b=0))
     font_main: str = "Arial, Helvetica, sans-serif"
     font_mono: str = "Inter, SF Mono, monospace"
-    right_padding_ratio: float = 0.05
+    padding_ratio: float = 0.10
     datetime_tickformat: str = "%Y-%m-%d"
     title_x: float = 0.01
     title_y: float = 0.98
@@ -449,8 +449,8 @@ class ChartTheme:
     # Date axis padding                                                    #
     # ------------------------------------------------------------------ #
 
-    def _apply_datetime_right_padding(self, fig: go.Figure) -> None:
-        """Add right-side breathing room on date x-axes."""
+    def _apply_datetime_padding(self, fig: go.Figure) -> None:
+        """Add symmetric breathing room on date x-axes."""
         for axis_name in self._axis_names(fig, "xaxis"):
             axis_obj = getattr(fig.layout, axis_name, None)
             axis_type = getattr(axis_obj, "type", None) if axis_obj else None
@@ -465,18 +465,80 @@ class ChartTheme:
             if x0 is None or x1 is None or x0 == x1:
                 continue
 
-            pad = (x1 - x0) * self.right_padding_ratio
+            pad = (x1 - x0) * self.padding_ratio
             if pad <= pd.Timedelta(0):
                 continue
 
             fig.update_layout(
                 {
                     axis_name: {
-                        "range": [x0.isoformat(), (x1 + pad).isoformat()],
+                        "type": "date",
+                        "range": [
+                            x0.isoformat(),
+                            (x1 + pad).isoformat(),
+                        ],
+                        "autorange": False,
                         "tickformat": self.datetime_tickformat,
                     }
                 }
             )
+
+    # ------------------------------------------------------------------ #
+    # Year-end boundary lines                                              #
+    # ------------------------------------------------------------------ #
+
+    def _add_year_boundary_lines(
+        self, fig: go.Figure, is_dark: bool
+    ) -> None:
+        """Add subtle vertical lines at Jan 1 boundaries for datetime x-axes."""
+        grid_color = (
+            "rgba(148,163,184,0.12)" if is_dark else "rgba(15,23,42,0.08)"
+        )
+        new_shapes: list[dict] = []
+
+        for axis_name in self._axis_names(fig, "xaxis"):
+            axis_obj = getattr(fig.layout, axis_name, None)
+            axis_type = getattr(axis_obj, "type", None) if axis_obj else None
+            if axis_type == "category":
+                continue
+
+            x_values = self._x_values_for_axis(fig, axis_name)
+            if not x_values or not self._is_datetime_values(x_values):
+                continue
+
+            x0, x1 = self._datetime_bounds(x_values)
+            if x0 is None or x1 is None or x0 == x1:
+                continue
+
+            axis_ref = self._axis_ref_from_name(axis_name, "xaxis")
+
+            start_year = x0.year + 1
+            end_year = x1.year + 1
+            for year in range(start_year, end_year + 1):
+                jan1 = pd.Timestamp(f"{year}-01-01")
+                if x0 < jan1 <= x1:
+                    new_shapes.append(
+                        dict(
+                            type="line",
+                            xref=axis_ref,
+                            yref="paper",
+                            x0=jan1.isoformat(),
+                            x1=jan1.isoformat(),
+                            y0=0,
+                            y1=1,
+                            line=dict(
+                                color=grid_color,
+                                width=0.5,
+                                dash="solid",
+                            ),
+                            layer="below",
+                            name="year_boundary",
+                        )
+                    )
+
+        if new_shapes:
+            existing = list(fig.layout.shapes or [])
+            fig.update_layout(shapes=existing + new_shapes)
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -617,10 +679,11 @@ class ChartTheme:
                 existing_font["size"] = base_font_size
                 ann.update(font=existing_font)
 
-        # --- Trace colors, axis sanitization, date padding ---
+        # --- Trace colors, axis sanitization, year lines, date padding ---
         self._color_traces(fig_obj)
         self._sanitize_axes(fig_obj)
-        self._apply_datetime_right_padding(fig_obj)
+        self._add_year_boundary_lines(fig_obj, is_dark)
+        self._apply_datetime_padding(fig_obj)
 
         return fig_obj
 

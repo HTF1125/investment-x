@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Boolean, DateTime, text, func
 from sqlalchemy.dialects.postgresql import UUID
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import bcrypt
 from ix.db.conn import Base
 
@@ -112,7 +112,7 @@ class User(Base):
             last_name=last_name,
             role=resolved_role,
             is_admin=cls.role_to_is_admin(resolved_role),
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
 
         with Session() as session:

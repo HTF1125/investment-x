@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import TaskNotifications from '@/components/TaskNotifications';
 import { useTheme } from '@/context/ThemeContext';
-import { CHART_STYLE_LABELS, type ChartStyle } from '@/lib/chartTheme';
 import { AnimatePresence, motion } from 'framer-motion';
 
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
@@ -156,6 +155,7 @@ function ThemeToggle() {
       onClick={toggleTheme}
       className="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-all"
       title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+      aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
     >
       {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
     </button>
@@ -197,6 +197,7 @@ export default function Navbar() {
           <NavLink href="/wartime">Wartime</NavLink>
           <NavLink href="/intel">Intel</NavLink>
           <NavLink href="/technical">Technical</NavLink>
+          <NavLink href="/quant">Quant</NavLink>
           <NavLink href="/notes">Reports</NavLink>
           {isRealAdmin && !viewAsUser && (
             <NavLink href="/admin/timeseries">System</NavLink>
@@ -265,6 +266,7 @@ export default function Navbar() {
             <MobileNavLink href="/wartime">Wartime</MobileNavLink>
             <MobileNavLink href="/intel">Intel</MobileNavLink>
             <MobileNavLink href="/technical">Technical</MobileNavLink>
+            <MobileNavLink href="/quant">Quant</MobileNavLink>
             <MobileNavLink href="/notes">Reports</MobileNavLink>
             {isRealAdmin && !viewAsUser && (
               <MobileNavLink href="/admin/timeseries">System</MobileNavLink>

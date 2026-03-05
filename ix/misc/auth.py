@@ -3,7 +3,7 @@ Authentication utilities for JWT token management and session handling
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import jwt
 from ix.misc import get_logger
@@ -21,8 +21,9 @@ if not SECRET_KEY or SECRET_KEY == _PLACEHOLDER:
     )
 
 ALGORITHM = "HS256"
-# Set to 14 Days (20160 minutes) to prevent users from being logged out when leaving tabs open
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "20160"))
+# Default 24 hours; override via ACCESS_TOKEN_EXPIRE_MINUTES env var.
+# "Remember me" on login extends to 30 days separately (see auth router).
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -39,9 +40,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -151,7 +152,7 @@ def create_user_token(
         "sub": email,
         "role": resolved_role,
         "is_admin": bool(resolved_is_admin),  # keep for backward compatibility
-        "iat": datetime.utcnow(),
+        "iat": datetime.now(timezone.utc),
     }
 
     return create_access_token(token_data, expires_delta=expires_delta)

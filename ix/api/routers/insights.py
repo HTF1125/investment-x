@@ -173,7 +173,7 @@ async def upload_insight(
     except Exception as e:
         logger.exception(f"Upload failed: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Upload failed")
 
 
 class InsightUpdate(BaseModel):
@@ -224,7 +224,7 @@ def update_insight(
         return insight
     except Exception as e:
         logger.exception(f"Update failed for insight {insight_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Backend Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Update failed")
 
 
 @router.delete("/insights/{insight_id}")

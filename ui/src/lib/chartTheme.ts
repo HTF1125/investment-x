@@ -1,13 +1,16 @@
 type UiTheme = 'light' | 'dark';
 
+/** @deprecated Kept for backward compatibility with DB values. Only 'default' is used. */
 export type ChartStyle = 'default' | 'minimal' | 'terminal' | 'presentation';
 
-export const CHART_STYLE_LABELS: Record<ChartStyle, string> = {
-  default: 'Default',
-  minimal: 'Minimal',
-  terminal: 'Terminal',
-  presentation: 'Presentation',
-};
+/** Loose Plotly figure shape — full Plotly types are too strict for server-generated figures. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface PlotlyFigure {
+  data?: any[];
+  layout?: any;
+  frames?: any[];
+  [key: string]: any;
+}
 
 interface ChartStyleConfig {
   showGrid: boolean;
@@ -26,75 +29,26 @@ interface ChartStyleConfig {
   legendBorderWidth: number;
 }
 
-export const CHART_STYLE_CONFIGS: Record<ChartStyle, ChartStyleConfig> = {
-  default: {
-    showGrid: true,
-    showXGrid: false,
-    showZeroline: true,
-    showLine: true,
-    mirror: true,
-    fontFamily: 'Inter, -apple-system, sans-serif',
-    baseFontSize: 10,
-    titleFontSize: 13,
-    legend: { x: 0.01, y: 0.99, xanchor: 'left', yanchor: 'top', orientation: 'v' },
-    margin: { t: 44, l: 0, r: 0, b: 0 },
-    gridOpacityScale: 1.0,
-    showSpikes: true,
-    ticksOutside: true,
-    legendBorderWidth: 1,
-  },
-  minimal: {
-    showGrid: false,
-    showXGrid: false,
-    showZeroline: false,
-    showLine: false,
-    mirror: false,
-    fontFamily: 'Inter, -apple-system, sans-serif',
-    baseFontSize: 10,
-    titleFontSize: 12,
-    legend: { x: 0.99, y: 0.01, xanchor: 'right', yanchor: 'bottom', orientation: 'h' },
-    margin: { t: 36, l: 5, r: 5, b: 5 },
-    gridOpacityScale: 0,
-    showSpikes: false,
-    ticksOutside: false,
-    legendBorderWidth: 0,
-  },
-  terminal: {
-    showGrid: true,
-    showXGrid: false,
-    showZeroline: true,
-    showLine: true,
-    mirror: true,
-    fontFamily: 'JetBrains Mono, Fira Mono, Consolas, monospace',
-    baseFontSize: 9,
-    titleFontSize: 11,
-    legend: { x: 0.01, y: 0.99, xanchor: 'left', yanchor: 'top', orientation: 'v' },
-    margin: { t: 40, l: 0, r: 0, b: 0 },
-    gridOpacityScale: 1.8,
-    showSpikes: true,
-    ticksOutside: true,
-    legendBorderWidth: 1,
-  },
-  presentation: {
-    showGrid: true,
-    showXGrid: false,
-    showZeroline: true,
-    showLine: true,
-    mirror: false,
-    fontFamily: 'Inter, -apple-system, sans-serif',
-    baseFontSize: 12,
-    titleFontSize: 16,
-    legend: { x: 0.99, y: 0.99, xanchor: 'right', yanchor: 'top', orientation: 'v' },
-    margin: { t: 56, l: 10, r: 10, b: 10 },
-    gridOpacityScale: 0.7,
-    showSpikes: true,
-    ticksOutside: true,
-    legendBorderWidth: 1,
-  },
+const STYLE: ChartStyleConfig = {
+  showGrid: false,
+  showXGrid: false,
+  showZeroline: false,
+  showLine: false,
+  mirror: false,
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
+  baseFontSize: 11,
+  titleFontSize: 13,
+  legend: { x: 0.01, y: 0.99, xanchor: 'left', yanchor: 'top', orientation: 'h' },
+  margin: { t: 30, l: 0, r: 0, b: 0 },
+  gridOpacityScale: 0,
+  showSpikes: true,
+  ticksOutside: false,
+  legendBorderWidth: 0,
 };
 
 interface ApplyChartThemeOptions {
   transparentBackground?: boolean;
+  /** @deprecated No longer used — single unified style is applied. */
   chartStyle?: ChartStyle;
 }
 
@@ -131,28 +85,28 @@ const THEME_TOKENS: Record<UiTheme, {
   spikeColor: string;
 }> = {
   light: {
-    text: 'rgb(15 23 42)',
-    textSecondary: 'rgba(15,23,42,0.5)',
-    grid: 'rgba(15,23,42,0.08)',
+    text: 'rgb(19 23 34)',
+    textSecondary: 'rgba(19,23,34,0.5)',
+    grid: 'rgba(42,46,57,0.08)',
     paperBg: '#ffffff',
     plotBg: '#ffffff',
-    chartBorder: 'rgba(15,23,42,0.12)',
-    legendBg: 'rgba(255,255,255,0.95)',
-    legendBorder: 'rgba(15,23,42,0.08)',
+    chartBorder: 'rgba(42,46,57,0.12)',
+    legendBg: 'rgba(0,0,0,0)',
+    legendBorder: 'rgba(0,0,0,0)',
     hoverBg: 'rgba(255,255,255,0.98)',
-    spikeColor: 'rgba(15,23,42,0.15)',
+    spikeColor: 'rgba(42,46,57,0.12)',
   },
   dark: {
-    text: 'rgb(226 232 240)',
-    textSecondary: 'rgba(226,232,240,0.4)',
-    grid: 'rgba(148,163,184,0.12)',
-    paperBg: '#0b0e14',
-    plotBg: '#0b0e14',
-    chartBorder: 'rgba(148,163,184,0.15)',
-    legendBg: 'rgba(15,23,42,0.85)',
-    legendBorder: 'rgba(148,163,184,0.12)',
-    hoverBg: 'rgba(11,14,20,0.96)',
-    spikeColor: 'rgba(148,163,184,0.20)',
+    text: 'rgb(209 212 220)',
+    textSecondary: 'rgba(209,212,220,0.5)',
+    grid: 'rgba(54,60,78,0.6)',
+    paperBg: '#131722',
+    plotBg: '#131722',
+    chartBorder: 'rgba(54,60,78,0.8)',
+    legendBg: 'rgba(0,0,0,0)',
+    legendBorder: 'rgba(0,0,0,0)',
+    hoverBg: 'rgba(19,23,34,0.96)',
+    spikeColor: 'rgba(120,123,134,0.2)',
   },
 };
 
@@ -229,6 +183,10 @@ function axisHasPositiveData(data: any[], axisKey: string): boolean {
 
 function sanitizeAxisRange(axis: any) {
   if (!Array.isArray(axis?.range)) return;
+
+  // Backend sets autorange=false with an explicit padded range — trust it.
+  if (axis.autorange === false) return;
+
   if (axis.range.length < 2) {
     delete axis.range;
     axis.autorange = true;
@@ -254,25 +212,6 @@ function sanitizeAxisRange(axis: any) {
   if (!isValid) {
     delete axis.range;
     axis.autorange = true;
-  } else if (axis.type === 'date') {
-    // PAD RIGHT BY 5%
-    const tStart = Date.parse(String(start));
-    let tEnd = Date.parse(String(end));
-    
-    const isReversed = tStart > tEnd;
-    const dur = Math.abs(tEnd - tStart);
-    const pad = dur * 0.05;
-
-    if (isReversed) {
-      tEnd -= pad;
-    } else {
-      tEnd += pad;
-    }
-    
-    axis.range = [
-        new Date(tStart).toISOString(),
-        new Date(tEnd).toISOString()
-    ];
   }
 }
 
@@ -305,22 +244,18 @@ function shouldShowLegend(data: any[]): boolean | undefined {
 }
 
 export function applyChartTheme(
-  figure: any,
+  figure: PlotlyFigure | null | undefined,
   theme: UiTheme,
   options: ApplyChartThemeOptions = {}
-) {
+): PlotlyFigure | null | undefined {
   if (!figure) return figure;
 
-  const cleaned =
-    typeof structuredClone === 'function'
-      ? structuredClone(figure)
-      : JSON.parse(JSON.stringify(figure));
+  const cleaned = structuredClone(figure);
   const tokens = THEME_TOKENS[theme];
   const transparent = options.transparentBackground ?? false;
   const data = Array.isArray(cleaned.data) ? cleaned.data : [];
 
-  const styleKey = (options.chartStyle ?? 'default') as ChartStyle;
-  const style = CHART_STYLE_CONFIGS[styleKey] ?? CHART_STYLE_CONFIGS.default;
+  const style = STYLE;
   const scaledGrid = scaleRgbaAlpha(tokens.grid, style.gridOpacityScale);
 
   if (!cleaned.layout) {
@@ -343,7 +278,7 @@ export function applyChartTheme(
   cleaned.layout.colorway = COLORWAY;
 
   cleaned.layout.hovermode = 'x unified';
-  cleaned.layout.dragmode = 'zoom';
+  cleaned.layout.dragmode = 'pan';
   cleaned.layout.hoverdistance = 20;
   cleaned.layout.spikedistance = -1;
 
@@ -448,7 +383,7 @@ export function applyChartTheme(
       axis.showspikes = false;
     }
 
-    // Date formatting
+    // Date formatting — always enforce yyyy-mm-dd
     if (isXAxis && axis.type === 'date') {
       axis.tickformat = DATE_TICK_FORMAT;
     }
@@ -474,6 +409,19 @@ export function applyChartTheme(
     }
   });
 
+  // ── Re-color year-end boundary shapes for current theme ──
+  if (Array.isArray(cleaned.layout.shapes)) {
+    cleaned.layout.shapes = cleaned.layout.shapes.map((shape: any) => {
+      if (shape?.name === 'year_boundary') {
+        return {
+          ...shape,
+          line: { ...shape.line, color: tokens.grid },
+        };
+      }
+      return shape;
+    });
+  }
+
   // ── Legend ──
   cleaned.layout.legend = {
     ...(cleaned.layout.legend || {}),
@@ -484,7 +432,7 @@ export function applyChartTheme(
     yanchor: style.legend.yanchor,
     bgcolor: tokens.legendBg,
     bordercolor: tokens.legendBorder,
-    borderwidth: style.legendBorderWidth,
+    borderwidth: 0,
     tracegroupgap: 2,
     itemwidth: 30,
     itemsizing: 'constant',

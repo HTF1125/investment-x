@@ -21,14 +21,12 @@ from ix.utils.safe_expression import (
     UnsafeExpressionError,
     safe_eval_expression,
 )
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from fastapi import Request
+from ix.api.rate_limit import limiter as _limiter
 
 logger = get_logger(__name__)
 
 router = APIRouter()
-_limiter = Limiter(key_func=get_remote_address)
 
 
 class EvaluationRequest(BaseModel):
@@ -146,4 +144,4 @@ async def evaluate_code(
         raise
     except Exception as e:
         logger.exception(f"Error evaluating code: {e}")
-        raise HTTPException(status_code=500, detail=f"Error executing code: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error executing code")

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FileDown, Loader2, Check, Monitor } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import { getDirectApiBase } from '@/lib/api';
 
 /**
  * Compact status bar showing data pipeline health and region.
@@ -41,13 +42,14 @@ export default function Header() {
     setExportStatus('idle');
 
     try {
-      const res = await fetch('/api/custom/pdf', {
+      const formData = new FormData();
+      formData.append('items', JSON.stringify([]));
+      formData.append('theme', 'light');
+      const res = await fetch(`${getDirectApiBase()}/api/custom/pdf`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${token}` 
-        },
-        body: JSON.stringify({ items: [] }),
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        body: formData,
       });
 
       if (!res.ok) throw new Error('PDF failed');
@@ -78,13 +80,14 @@ export default function Header() {
     setExportHtmlStatus('idle');
 
     try {
-      const res = await fetch('/api/custom/html', {
+      const formData = new FormData();
+      formData.append('items', JSON.stringify([]));
+      formData.append('theme', 'light');
+      const res = await fetch(`${getDirectApiBase()}/api/custom/html`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${token}` 
-        },
-        body: JSON.stringify({ items: [] }),
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        body: formData,
       });
 
       if (!res.ok) throw new Error('HTML failed');

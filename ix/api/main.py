@@ -14,8 +14,6 @@ from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import text
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from ix.db.conn import ensure_connection, conn
@@ -374,8 +372,9 @@ app = FastAPI(
 
 logger.info("FastAPI app created successfully")
 
-# Rate limiter
-limiter = Limiter(key_func=get_remote_address)
+# Rate limiter — single shared instance used by all routers
+from ix.api.rate_limit import limiter
+
 app.state.limiter = limiter
 
 
@@ -535,6 +534,8 @@ try:
     app.include_router(insights.router, prefix="/api", tags=["Insights"])
     app.include_router(technical.router, prefix="/api", tags=["Technical"])
     app.include_router(notes.router, prefix="/api", tags=["Notes"])
+    from ix.api.routers import quant
+    app.include_router(quant.router, prefix="/api", tags=["Quant"])
     from ix.api.routers import wartime
     app.include_router(wartime.router, prefix="/api", tags=["Wartime"])
     from ix.api.routers import dashboard

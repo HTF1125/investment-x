@@ -488,6 +488,7 @@ function ChartBlockNodeView({ node, selected, deleteNode, updateAttributes, edit
     let cancelled = false; let figure: any;
     try { figure = JSON.parse(figureJson); } catch { return; }
     const themed = applyChartTheme(figure, theme);
+    if (!themed) return;
     (async () => {
       const Plotly = (await import('plotly.js-dist-min')) as any;
       if (cancelled || !plotRef.current) return;

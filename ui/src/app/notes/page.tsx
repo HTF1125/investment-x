@@ -15,11 +15,17 @@ import {
   Presentation as PresentationIcon,
 } from 'lucide-react';
 
+import dynamic from 'next/dynamic';
 import AppShell from '@/components/AppShell';
 import NavigatorShell from '@/components/NavigatorShell';
-import NotesRichEditor from '@/components/NotesRichEditor';
+
+const NotesRichEditor = dynamic(() => import('@/components/NotesRichEditor'), {
+  ssr: false,
+  loading: () => <div className="flex-1 flex items-center justify-center text-muted-foreground/40 min-h-[200px]"><Loader2 className="w-5 h-5 animate-spin" /></div>,
+});
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch, apiFetchJson } from '@/lib/api';
+import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
 
 interface NoteSummary {
   id: string;
@@ -53,13 +59,8 @@ interface NoteDetail {
   updated_at: string;
 }
 
-interface CustomChartListItem {
-  id: string;
-  name?: string | null;
-  category?: string | null;
-  description?: string | null;
-  updated_at?: string | null;
-}
+// Re-use the shared chart type (superset of what we need here)
+import type { CustomChartListItem } from '@/types/chart';
 
 interface NoteImageMeta {
   id: string;
@@ -161,7 +162,10 @@ function NoteEditorPane({
   const hydratedRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => { hydratedRef.current = null; }, [selectedNoteId]);
+  useEffect(() => {
+    hydratedRef.current = null;
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+  }, [selectedNoteId]);
   useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
 
   const noteQuery = useQuery({
@@ -347,16 +351,7 @@ export default function NotesPage() {
   const queryClient = useQueryClient();
   const { isAuthenticated, loading: authLoading } = useAuth();
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const syncSidebarForViewport = () => {
-      if (window.innerWidth < 1024) setSidebarOpen(false);
-    };
-    syncSidebarForViewport();
-    window.addEventListener('resize', syncSidebarForViewport);
-    return () => window.removeEventListener('resize', syncSidebarForViewport);
-  }, []);
+  const { sidebarOpen, toggleSidebar } = useResponsiveSidebar();
 
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -433,7 +428,10 @@ export default function NotesPage() {
     }
   }, [notes, selectedNoteId]);
 
-  useEffect(() => { hydratedNoteIdRef.current = null; }, [selectedNoteId]);
+  useEffect(() => {
+    hydratedNoteIdRef.current = null;
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+  }, [selectedNoteId]);
 
   const filteredNotes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -551,20 +549,27 @@ export default function NotesPage() {
 
   const handleImageUpload = useCallback(async (file: File): Promise<{ id: string; url: string }> => {
     if (!selectedNoteId) throw new Error('Create or select a report first.');
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    if (file.size > MAX_SIZE) throw new Error('Image must be under 10MB.');
+    if (!file.type.startsWith('image/')) throw new Error('Only image files are allowed.');
     setStatus('Uploading image...'); const image = await uploadMutation.mutateAsync({ id: selectedNoteId, file }); const nowIso = new Date().toISOString();
     queryClient.setQueryData<NoteDetail | undefined>(['investment-note', selectedNoteId], (prev) => prev ? { ...prev, body: [...(prev.body || []), { id: image.id, type: 'image', data: '', filename: file.name, content_type: file.type }], updated_at: nowIso } : prev);
     queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => prev ? sortNoteSummaries(prev.map((item) => item.id === selectedNoteId ? { ...item, image_count: (item.image_count || 0) + 1, updated_at: nowIso } : item)) : prev);
     setStatus('Image uploaded.'); return image;
   }, [selectedNoteId, uploadMutation, queryClient]);
 
+  const selectedNoteIdRef = useRef(selectedNoteId);
+  selectedNoteIdRef.current = selectedNoteId;
+
   const saveNow = useCallback(() => {
-    if (!selectedNoteId || uploadMutation.isPending || updateMutation.isPending || !recomputeDirty()) return;
+    const noteId = selectedNoteIdRef.current;
+    if (!noteId || uploadMutation.isPending || updateMutation.isPending || !recomputeDirty()) return;
     const draftTitle = titleRef.current.trim() || 'Untitled Note'; const draftContent = contentRef.current;
-    const currentNote = queryClient.getQueryData<NoteDetail>(['investment-note', selectedNoteId]);
+    const currentNote = queryClient.getQueryData<NoteDetail>(['investment-note', noteId]);
     const existingBlocks = currentNote?.body?.filter(b => b.type !== 'text') || [];
     const updatedBody = [{ id: crypto.randomUUID(), type: 'text', value: draftContent }, ...existingBlocks];
-    setSaveState('saving'); updateMutation.mutate({ id: selectedNoteId, title: draftTitle, body: updatedBody, pinned: pinnedRef.current });
-  }, [selectedNoteId, uploadMutation.isPending, updateMutation, recomputeDirty, queryClient]);
+    setSaveState('saving'); updateMutation.mutate({ id: noteId, title: draftTitle, body: updatedBody, pinned: pinnedRef.current });
+  }, [uploadMutation.isPending, updateMutation, recomputeDirty, queryClient]);
 
   const queueAutoSave = useCallback(() => {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
@@ -653,7 +658,7 @@ export default function NotesPage() {
     <AppShell hideFooter>
       <NavigatorShell
         sidebarOpen={sidebarOpen}
-        onSidebarToggle={() => setSidebarOpen((o) => !o)}
+        onSidebarToggle={toggleSidebar}
         shellClassName="report-shell"
         sidebarClassName="report-sidebar"
         sidebarOpenWidthClassName="w-[260px] xl:w-[280px]"

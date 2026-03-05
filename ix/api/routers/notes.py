@@ -6,7 +6,7 @@ import textwrap
 import re
 import html
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import List, Optional, Any, Dict
 from urllib.parse import urljoin, urlparse
@@ -322,7 +322,7 @@ def update_note(
         note.pinned = bool(payload.pinned)
 
     note.version += 1
-    note.updated_at = datetime.utcnow()
+    note.updated_at = datetime.now(timezone.utc)
 
     db.add(note)
     db.commit()
@@ -369,14 +369,14 @@ async def upload_note_image(
         "data": base64_data,
         "filename": (file.filename or "note-image")[:255],
         "content_type": content_type[:128],
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
     current_body = list(note.body or [])
     current_body.append(image_block)
     note.body = current_body
 
-    note.updated_at = datetime.utcnow()
+    note.updated_at = datetime.now(timezone.utc)
     note.version += 1
     db.add(note)
     db.commit()
@@ -439,7 +439,7 @@ def delete_note_image(
 
     new_body = [b for b in note.body if b.get("id") != image_id]
     note.body = new_body
-    note.updated_at = datetime.utcnow()
+    note.updated_at = datetime.now(timezone.utc)
     note.version += 1
 
     db.add(note)

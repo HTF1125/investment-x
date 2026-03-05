@@ -6,10 +6,10 @@ import { Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
-import { applyChartTheme, type ChartStyle } from '@/lib/chartTheme';
+import { applyChartTheme } from '@/lib/chartTheme';
 
 const ChartSkeleton = () => (
-  <div className="w-full h-full p-6 flex flex-col gap-4 bg-background/80 rounded-xl animate-pulse overflow-hidden relative min-h-[290px]">
+  <div role="status" aria-busy="true" aria-label="Loading chart" className="w-full h-full p-6 flex flex-col gap-4 bg-background/80 rounded-xl animate-pulse overflow-hidden relative min-h-[290px]">
     {/* Grid Lines Pattern */}
     <div className="absolute inset-x-8 inset-y-12 flex flex-col justify-between opacity-10">
       {[...Array(8)].map((_, i) => (
@@ -56,17 +56,18 @@ export interface HoverPoint {
 interface ChartProps {
   id: string;
   initialFigure?: any;
-  /** Per-chart style override. Falls back to global chartStyle from ThemeContext. */
-  chartStyle?: ChartStyle;
   copySignal?: number;
   onHoverData?: (points: HoverPoint[] | null) => void;
   syncXRange?: [any, any] | null;
   onXRangeChange?: (range: [any, any] | null) => void;
+  /** Enable mouse-wheel zoom. Default false to prevent jitter on scrollable pages. */
+  scrollZoom?: boolean;
+  /** When false, disables zoom/pan/modebar — view-only mode for grid cards. Default true. */
+  interactive?: boolean;
 }
 
-export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, copySignal = 0, onHoverData, syncXRange, onXRangeChange }: ChartProps) {
-  const { theme, chartStyle: globalChartStyle } = useTheme();
-  const effectiveStyle = chartStyleProp ?? globalChartStyle;
+export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, syncXRange, onXRangeChange, scrollZoom = false, interactive = true }: ChartProps) {
+  const { theme } = useTheme();
 
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
   const [plotRenderError, setPlotRenderError] = React.useState<string | null>(null);
@@ -74,18 +75,17 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
   const [copyState, setCopyState] = React.useState<'idle' | 'copying' | 'done'>('idle');
   const [isVisible, setIsVisible] = React.useState(true);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  // Keep a ref to graphDiv so the ResizeObserver callback never goes stale
   const graphDivRef = React.useRef<HTMLElement | null>(null);
 
   const safelyThemeFigure = React.useCallback(
     (figure: any) => {
       try {
-        return applyChartTheme(figure, theme, { transparentBackground: true, chartStyle: effectiveStyle });
+        return applyChartTheme(figure, theme, { transparentBackground: true });
       } catch {
         return figure;
       }
     },
-    [theme, effectiveStyle]
+    [theme]
   );
 
   const { data: rawFigure, isLoading, error } = useQuery({
@@ -147,7 +147,7 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
 
   React.useEffect(() => {
     setPlotRenderError(null);
-  }, [id, theme, effectiveStyle, rawFigure]);
+  }, [id, theme, rawFigure]);
 
   // Keep ref current so the ResizeObserver callback is never stale
   React.useEffect(() => {
@@ -204,16 +204,16 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
   const plotLayout = React.useMemo(() => figure ? {
     ...figure.layout,
     autosize: true,
-    dragmode: 'zoom',
-  } : {}, [figure?.layout]);
+    dragmode: interactive ? 'zoom' : false,
+  } : {}, [figure?.layout, interactive]);
 
   const plotConfig = React.useMemo(() => ({
     responsive: true,
-    displayModeBar: 'hover' as const,
+    displayModeBar: interactive ? ('hover' as const) : (false as const),
     displaylogo: false,
-    scrollZoom: true,
+    scrollZoom: interactive ? scrollZoom : false,
     modeBarButtonsToRemove: ['select2d', 'lasso2d', 'sendDataToCloud'] as any[],
-  }), []);
+  }), [scrollZoom, interactive]);
 
   const plotStyle = React.useMemo(() => ({ width: '100%', height: '100%' }), []);
 
@@ -281,7 +281,7 @@ export default function Chart({ id, initialFigure, chartStyle: chartStyleProp, c
           >
             {!plotRenderError ? (
               <Plot
-                key={`${id}-${theme}-${effectiveStyle}-${plotRetryNonce}`}
+                key={`${id}-${theme}-${plotRetryNonce}`}
                 data={figure.data}
                 layout={plotLayout}
                 config={plotConfig}

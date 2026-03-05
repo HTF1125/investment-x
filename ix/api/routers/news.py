@@ -103,7 +103,7 @@ _YOUTUBE_CHANNEL_URLS = [
 
 
 def _now_utc() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _parse_iso8601(s: str) -> datetime:
@@ -560,7 +560,7 @@ def get_news_aggregate(db: Session = Depends(get_session)):
     - Telegram messages from last 24 hours
     - YouTube video summaries from last 7 days
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     telegram_cutoff = now - timedelta(days=7)
     youtube_cutoff = now - timedelta(days=7)
 

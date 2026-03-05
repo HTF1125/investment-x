@@ -229,4 +229,4 @@ async def get_risk_report():
         return HTMLResponse(content=html_content)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

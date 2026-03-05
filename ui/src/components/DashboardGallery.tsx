@@ -11,16 +11,16 @@ import {
   ChevronDown, ChevronLeft, ChevronRight,
   FoldVertical, UnfoldVertical,
   Square, Rows2, Link2, Link2Off,
-  LayoutTemplate, ScanLine, Terminal, MonitorPlay,
   FileText, FileCode, Play, Code2,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { apiFetch, apiFetchJson } from '@/lib/api';
-import { type ChartStyle, CHART_STYLE_LABELS } from '@/lib/chartTheme';
-import Chart, { type HoverPoint } from './Chart';
+import { apiFetch, apiFetchJson, getDirectApiBase } from '@/lib/api';
+import { registerIxCompletions } from '@/lib/monacoCompletions';
+import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
+import Chart from './Chart';
 import NavigatorShell from './NavigatorShell';
 import dynamic from 'next/dynamic';
 
@@ -87,6 +87,8 @@ interface ChartCardProps {
   onXRangeChange?: (range: [any, any] | null) => void;
   unsavedChanges?: boolean;
   onSaveChart?: (id: string) => void;
+  interactive?: boolean;
+  onClick?: () => void;
 }
 
 const ChartCard = React.memo(function ChartCard({
@@ -110,11 +112,12 @@ const ChartCard = React.memo(function ChartCard({
   onXRangeChange,
   unsavedChanges,
   onSaveChart,
+  interactive = true,
+  onClick,
 }: ChartCardProps) {
   // Viewport-based lazy rendering
   const cardRef = useRef<HTMLDivElement>(null);
   const [isInView, setIsInView] = useState(false);
-  const [hoverPoints, setHoverPoints] = useState<HoverPoint[] | null>(null);
 
   useEffect(() => {
     const el = cardRef.current;
@@ -216,6 +219,7 @@ const ChartCard = React.memo(function ChartCard({
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTogglePdf(chart.id, !chart.public); }}
               className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
               title={chart.public ? 'Public' : 'Private'}
+              aria-label={chart.public ? 'Set private' : 'Set public'}
             >
               {chart.public ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
             </button>
@@ -228,6 +232,7 @@ const ChartCard = React.memo(function ChartCard({
               disabled={!!isRefreshingChart}
               className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-40"
               title="Refresh"
+              aria-label="Refresh chart"
             >
               <RefreshCw className={`w-3 h-3 ${isRefreshingChart ? 'animate-spin' : ''}`} />
             </button>
@@ -239,6 +244,7 @@ const ChartCard = React.memo(function ChartCard({
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSaveChart?.(chart.id); }}
               className="p-1 rounded transition-colors text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 animate-pulse"
               title="Save changes"
+              aria-label="Save changes"
             >
               <Save className="w-3 h-3" />
             </button>
@@ -249,6 +255,7 @@ const ChartCard = React.memo(function ChartCard({
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); }}
             className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
             title="Copy image"
+            aria-label="Copy chart image"
           >
             <Copy className="w-3 h-3" />
           </button>
@@ -260,6 +267,7 @@ const ChartCard = React.memo(function ChartCard({
               disabled={!!isDeletingChart}
               className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-40"
               title="Delete"
+              aria-label="Delete chart"
             >
               <Trash2 className={`w-3 h-3 ${isDeletingChart ? 'animate-pulse' : ''}`} />
             </button>
@@ -303,42 +311,17 @@ const ChartCard = React.memo(function ChartCard({
         </div>
       </div>
 
-      <div ref={cardRef} className="flex flex-col flex-1 min-h-0">
+      <div ref={cardRef} className={`flex flex-col flex-1 min-h-0${onClick ? ' cursor-pointer' : ''}`} onClick={onClick}>
         {/* Chart Area — only render Plotly when in viewport */}
         <div className={`bg-background relative w-full p-3 ${expanded ? 'flex-1 min-h-0' : 'h-[290px] min-h-[290px]'}`}>
-          {/* Hover data overlay — Feature 2+3 */}
-          {hoverPoints && hoverPoints.length > 0 && (
-            <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-x-2 gap-y-0 flex-wrap pointer-events-none">
-              {hoverPoints.map((pt, i) => {
-                const hasZ = pt.z !== undefined || pt.value !== undefined;
-                const val = pt.z ?? pt.value ?? pt.y;
-                const formattedVal = typeof val === 'number' ? val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(val);
-                const suffix = typeof pt.text === 'string' && pt.text.includes('%') && typeof val === 'number' ? '%' : '';
-
-                return (
-                  <span key={i} className="text-[10px] font-mono bg-background/80 backdrop-blur-sm rounded px-1.5 py-0.5 text-foreground/80 border border-border/30 shadow-sm leading-none flex items-center h-5">
-                    {pt.name && !hasZ && <span className="text-muted-foreground/60 mr-1">{pt.name}:</span>}
-                    {hasZ && typeof pt.y === 'string' && <span className="text-muted-foreground/60 mr-1">{pt.y}:</span>}
-                    {formattedVal}{suffix}
-                    {pt.x !== undefined && (
-                      <span className="text-muted-foreground/50 ml-1">
-                        @ {typeof pt.x === 'number' ? pt.x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(pt.x)}
-                      </span>
-                    )}
-                  </span>
-                );
-              })}
-            </div>
-          )}
           {isInView ? (
             <Chart
               id={chart.id}
               initialFigure={chart.figure}
-              chartStyle={(chart.chart_style ?? undefined) as ChartStyle | undefined}
               copySignal={copySignal}
-              onHoverData={setHoverPoints}
               syncXRange={syncXRange}
               onXRangeChange={onXRangeChange}
+              interactive={interactive}
             />
           ) : (
             <div className="relative h-full w-full overflow-hidden rounded-lg border border-border/20 bg-background/90">
@@ -380,7 +363,7 @@ interface DashboardGalleryProps {
 
 export default function DashboardGallery({ chartsByCategory }: DashboardGalleryProps) {
   const { user } = useAuth();
-  const { theme, chartStyle, setChartStyle } = useTheme();
+  const { theme } = useTheme();
   const role = String(user?.role || '').toLowerCase();
   const isOwner = !!user && role === 'owner';
   const isAdminRole = !!user && (role === 'admin' || user.is_admin);
@@ -415,7 +398,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { sidebarOpen, setSidebarOpen, toggleSidebar } = useResponsiveSidebar();
   const [collapsedSidebarCategories, setCollapsedSidebarCategories] = useState<Record<string, boolean>>({});
   const [activeStudioChartId, setActiveStudioChartId] = useState<string | null>(null);
 
@@ -465,17 +448,6 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     typeof window !== 'undefined' ? localStorage.getItem('dashboard-sync-xaxis') === 'true' : false
   );
   const [xSyncRange, setXSyncRange] = useState<[any, any] | null>(null);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const syncSidebarForViewport = () => {
-      if (window.innerWidth < 1024) setSidebarOpen(false);
-    };
-
-    syncSidebarForViewport();
-    window.addEventListener('resize', syncSidebarForViewport);
-    return () => window.removeEventListener('resize', syncSidebarForViewport);
-  }, []);
 
   // Persist layout mode
   useEffect(() => {
@@ -589,9 +561,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     setEditSuccess(null);
     try {
       const isNew = editingChartId === 'new';
-      
+
       if (isNew) {
-        // Create the chart directly (acting as both Save & Run)
         const res = await apiFetch('/api/custom', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -601,9 +572,11 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Execution/Save failed');
 
         setLocalCharts(prev => [...prev, { ...data, rank: prev.length }]);
-        
+
         queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-        setEditingChartId(null); // exit inline editor
+        setEditSuccess('Created successfully.');
+        // Brief delay so user sees success before switching to chart
+        setTimeout(() => setEditingChartId(null), 300);
       } else {
         const res = await apiFetch('/api/custom/preview', {
           method: 'POST',
@@ -612,14 +585,15 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Execution failed');
-        // Update the local chart with the new figure and exit editing to show the chart
         setLocalCharts(prev => prev.map(c =>
           c.id === editingChartId ? { ...c, figure: data, name: editName, code: latestCode } : c
         ));
-        // Mark as dirty (unsaved)
+        // Update the Chart component's query cache so it shows the new figure
+        queryClient.setQueryData(['chart-figure', editingChartId], data);
         setDirtyChartIds(prev => new Set(prev).add(editingChartId));
         dirtyChartData.current[editingChartId] = { code: latestCode, name: editName, category: editCategory };
-        setEditingChartId(null);
+        setEditSuccess('Executed.');
+        setTimeout(() => setEditingChartId(null), 300);
       }
     } catch (err: any) {
       setEditError(err?.message || 'Execution failed');
@@ -660,7 +634,12 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       } else {
         setLocalCharts(prev => prev.map(c => c.id === editingChartId ? { ...c, name: editName, category: editCategory, figure: data?.figure || c.figure, code: latestCode } : c));
       }
-      
+
+      // Update the Chart component's query cache so it shows the new figure
+      if (data?.figure && savedChartId) {
+        queryClient.setQueryData(['chart-figure', savedChartId], data.figure);
+      }
+
       // Clear dirty state
       setDirtyChartIds(prev => { const next = new Set(prev); next.delete(savedChartId); return next; });
       delete dirtyChartData.current[savedChartId];
@@ -683,9 +662,10 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result?.detail || 'Save failed');
-      // Update local chart with server figure
+      // Update local chart and query cache with server figure
       if (result?.figure) {
         setLocalCharts(prev => prev.map(c => c.id === chartId ? { ...c, figure: result.figure } : c));
+        queryClient.setQueryData(['chart-figure', chartId], result.figure);
       }
       // Clear dirty
       setDirtyChartIds(prev => { const next = new Set(prev); next.delete(chartId); return next; });
@@ -793,9 +773,10 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       const formData = new FormData();
       formData.append('items', JSON.stringify([]));
       formData.append('theme', 'light');
-      const res = await fetch('/api/custom/pdf', {
+      const res = await fetch(`${getDirectApiBase()}/api/custom/pdf`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
         body: formData,
       });
       if (!res.ok) throw new Error(await res.text());
@@ -817,9 +798,10 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       const formData = new FormData();
       formData.append('items', JSON.stringify([]));
       formData.append('theme', 'light');
-      const res = await fetch('/api/custom/html', {
+      const res = await fetch(`${getDirectApiBase()}/api/custom/html`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
         body: formData,
       });
       if (!res.ok) throw new Error(await res.text());
@@ -986,6 +968,12 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         setSidebarOpen(false);
       }
 
+      // If inline editor is open, switch to the selected chart
+      if (editingChartId) {
+        handleOpenInStudio(chartId);
+        return;
+      }
+
       // If we are in Studio view, switch the active chart via URL
       if (activeStudioChartId !== null) {
         router.push(`?chartId=${encodeURIComponent(chartId)}`, { scroll: false });
@@ -996,7 +984,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         scrollToChart(chartId);
       }
     },
-    [scrollToChart, activeStudioChartId, router, layoutMode, filteredCharts]
+    [scrollToChart, activeStudioChartId, router, layoutMode, filteredCharts, editingChartId, handleOpenInStudio]
   );
 
   // ── Keyboard navigation ──
@@ -1387,7 +1375,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   return (
     <NavigatorShell
       sidebarOpen={sidebarOpen}
-      onSidebarToggle={() => setSidebarOpen((o) => !o)}
+      onSidebarToggle={toggleSidebar}
       sidebarIcon={<LayoutGrid className="w-3.5 h-3.5 text-sky-400" />}
       sidebarLabel="Dashboard"
       sidebarHeaderActions={
@@ -1466,29 +1454,6 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             {syncXAxis ? <Link2 className="w-3 h-3" /> : <Link2Off className="w-3 h-3" />}
           </button>
 
-          <div className="w-px h-3 bg-border/40 mx-0.5" />
-
-          {/* Group 3: Chart style */}
-          {([
-            { style: 'default' as ChartStyle, icon: <LayoutTemplate className="w-3 h-3" />, label: 'Default' },
-            { style: 'minimal' as ChartStyle, icon: <ScanLine className="w-3 h-3" />, label: 'Minimal' },
-            { style: 'terminal' as ChartStyle, icon: <Terminal className="w-3 h-3" />, label: 'Terminal' },
-            { style: 'presentation' as ChartStyle, icon: <MonitorPlay className="w-3 h-3" />, label: 'Presentation' },
-          ]).map(({ style, icon, label }) => (
-            <button
-              key={style}
-              onClick={() => setChartStyle(style)}
-              className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
-                chartStyle === style
-                  ? 'bg-foreground text-background'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
-              }`}
-              title={label}
-            >
-              {icon}
-            </button>
-          ))}
-
           {(canRefreshAllCharts || isOwner) && <div className="w-px h-3 bg-border/40 mx-0.5" />}
 
           {/* Group 4: Actions */}
@@ -1563,7 +1528,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
           <div className="flex-1 min-h-0 p-3">
             {editingChartId ? (
                 /* ── INLINE EDITING: code editor replaces chart content inside same card frame ── */
-                <div className="bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col h-full">
+                <div className="bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col h-full animate-in fade-in duration-150">
                   {/* Card header — matches ChartCard style */}
                   <div className="px-4 py-2.5 flex items-center justify-between gap-2 border-b border-border/40">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1612,13 +1577,22 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                   )}
 
                   {/* Code editor — fills the chart area */}
-                  <div className="flex-1 min-h-0">
+                  <div className="flex-1 min-h-0 relative">
+                    {editLoading && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-background border border-border/50 shadow-lg">
+                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">Executing...</span>
+                        </div>
+                      </div>
+                    )}
                     <MonacoEditor
                       height="100%"
                       language="python"
                       theme={theme === 'light' ? 'vs' : 'vs-dark'}
                       value={editCode}
                       onChange={(v: string | undefined) => setEditCode(v || '')}
+                      beforeMount={registerIxCompletions}
                       onMount={(editor: any) => { editCodeRef.current = editor; }}
                       options={{
                         minimap: { enabled: false },
@@ -1630,45 +1604,54 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                         wordWrap: 'on',
                         tabSize: 4,
                         automaticLayout: true,
+                        quickSuggestions: true,
+                        suggestOnTriggerCharacters: true,
+                        parameterHints: { enabled: true },
                       }}
                     />
                   </div>
 
                   {/* Timeseries search strip */}
-                  <div className="h-[100px] shrink-0 border-t border-border/40 flex flex-col">
-                    <div className="px-2 py-1 flex items-center gap-1.5">
-                      <Search className="w-3 h-3 text-muted-foreground/50" />
-                      <input
-                        value={editTsSearch}
-                        onChange={e => setEditTsSearch(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') setEditTsQuery(editTsSearch.trim()); }}
-                        placeholder="Search timeseries..."
-                        className="flex-1 text-xs bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
-                      />
-                      <button
-                        onClick={() => setEditTsQuery(editTsSearch.trim())}
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        Go
-                      </button>
+                  <div className="shrink-0 border-t border-border/40">
+                    <div className="px-3 py-1.5 flex items-center gap-2">
+                      <div className="relative flex-1 min-w-0">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
+                        <input
+                          value={editTsSearch}
+                          onChange={e => setEditTsSearch(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') setEditTsQuery(editTsSearch.trim()); }}
+                          placeholder="Search timeseries… (Enter)"
+                          className="w-full pl-7 pr-2 py-1 text-[11px] font-mono bg-transparent border border-border/50 rounded-md text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-border transition-colors"
+                        />
+                        {editTsSearch && (
+                          <button
+                            onClick={() => { setEditTsSearch(''); setEditTsQuery(''); }}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-foreground/[0.06] text-muted-foreground/40"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        )}
+                      </div>
+                      {editTsLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground/50 shrink-0" />}
                     </div>
-                    <div className="flex-1 overflow-y-auto px-1">
-                      {editTsLoading && <div className="p-1 text-[11px] text-muted-foreground/40"><Loader2 className="w-3 h-3 animate-spin inline mr-1" />Searching...</div>}
-                      {editTsResults.map(ts => (
-                        <button
-                          key={ts.id}
-                          onClick={() => handleInsertTs(ts.code, ts.name)}
-                          className="w-full text-left px-2 py-0.5 text-[11px] rounded hover:bg-foreground/[0.04] transition-colors group flex items-center gap-2"
-                        >
-                          <span className="font-mono text-sky-400/80 shrink-0">{ts.code}</span>
-                          <span className="text-muted-foreground/60 truncate flex-1">{ts.name || ''}</span>
-                          <Plus className="w-3 h-3 text-muted-foreground/30 group-hover:text-emerald-400 shrink-0" />
-                        </button>
-                      ))}
-                      {!editTsLoading && editTsQuery && editTsResults.length === 0 && (
-                        <div className="p-1 text-[11px] text-muted-foreground/30">No results</div>
-                      )}
-                    </div>
+                    {(editTsQuery.length > 0 || editTsResults.length > 0) && (
+                      <div className="max-h-32 overflow-y-auto border-t border-border/40">
+                        {editTsResults.map(ts => (
+                          <button
+                            key={ts.id}
+                            onClick={() => handleInsertTs(ts.code, ts.name)}
+                            className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-foreground/[0.04] transition-colors group flex items-center gap-2 border-b border-border/30 last:border-b-0"
+                          >
+                            <span className="font-mono text-sky-400/80 shrink-0">{ts.code}</span>
+                            <span className="text-muted-foreground/50 truncate flex-1">{ts.name || ''}</span>
+                            <Plus className="w-3 h-3 text-muted-foreground/20 group-hover:text-emerald-400 shrink-0 transition-colors" />
+                          </button>
+                        ))}
+                        {!editTsLoading && editTsQuery && editTsResults.length === 0 && (
+                          <div className="px-3 py-2 text-[11px] text-muted-foreground/40 text-center">No results for &ldquo;{editTsQuery}&rdquo;</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : filteredCharts[singleChartIdx] ? (
@@ -1699,29 +1682,6 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
               ) : null}
           </div>
 
-          {/* Thumbnail strip */}
-          <div className="h-[68px] border-t border-border/40 flex overflow-x-auto no-scrollbar shrink-0 bg-background/50">
-            {filteredCharts.map((chart, idx) => {
-              const isActive = idx === singleChartIdx;
-              return (
-                <button
-                  key={chart.id}
-                  onClick={() => { setSingleChartIdx(idx); setQuickJumpId(chart.id); }}
-                  className={`shrink-0 h-full px-3 flex flex-col justify-center items-start border-b-2 transition-all duration-100 text-left ${
-                    isActive
-                      ? 'border-sky-500 bg-sky-500/[0.07] text-foreground'
-                      : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
-                  }`}
-                  style={{ minWidth: '90px', maxWidth: '150px' }}
-                >
-                  <span className="text-[10px] font-medium leading-tight truncate w-full">{chart.name}</span>
-                  {chart.category && (
-                    <span className="text-[9px] text-muted-foreground/50 truncate w-full mt-0.5">{chart.category}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
         </div>
       ) : layoutMode === 'stack' ? (
         /* ── STACK MODE ── */

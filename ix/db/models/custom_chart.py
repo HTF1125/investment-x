@@ -16,7 +16,7 @@ class CustomChart(Base):
         UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
     )
     created_by_user_id = Column(
-        UUID(as_uuid=False), ForeignKey("user.id"), nullable=True, index=True
+        UUID(as_uuid=False), ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
     code = Column(Text, nullable=False)  # The Python code
@@ -47,3 +47,8 @@ class CustomChart(Base):
 
 # GIN index for tags containment queries
 Index("ix_charts_tags_gin", CustomChart.tags, postgresql_using="gin")
+
+# Indexes for common query patterns
+Index("ix_charts_updated_at", CustomChart.updated_at.desc())
+Index("ix_charts_category", CustomChart.category)
+Index("ix_charts_public", CustomChart.public)

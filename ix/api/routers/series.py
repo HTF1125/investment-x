@@ -21,14 +21,12 @@ from ix.utils.safe_expression import (
     UnsafeExpressionError,
     safe_eval_expression,
 )
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from fastapi import Request
+from ix.api.rate_limit import limiter as _limiter
 
 logger = get_logger(__name__)
 
 router = APIRouter()
-_limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/series")

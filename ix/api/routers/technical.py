@@ -610,6 +610,87 @@ def _compute_moving_averages(
     return traces
 
 
+def _compute_bollinger_bands(
+    df: pd.DataFrame,
+    length: int = 20,
+    mult: float = 2.0,
+) -> dict:
+    """Bollinger Bands: middle (SMA), upper, lower."""
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    middle = close.rolling(length).mean()
+    std = close.rolling(length).std()
+    upper = middle + mult * std
+    lower = middle - mult * std
+    dates = [d.isoformat() if hasattr(d, "isoformat") else str(d) for d in df.index]
+    return {
+        "middle": [None if np.isnan(v) else round(float(v), 4) for v in middle],
+        "upper": [None if np.isnan(v) else round(float(v), 4) for v in upper],
+        "lower": [None if np.isnan(v) else round(float(v), 4) for v in lower],
+        "dates": dates,
+    }
+
+
+def _compute_vwap(df: pd.DataFrame) -> dict:
+    """Cumulative VWAP."""
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    high = pd.to_numeric(df["High"], errors="coerce")
+    low = pd.to_numeric(df["Low"], errors="coerce")
+    volume = pd.to_numeric(df["Volume"], errors="coerce")
+    typical_price = (high + low + close) / 3
+    cum_tp_vol = (typical_price * volume).cumsum()
+    cum_vol = volume.cumsum().replace(0, np.nan)
+    vwap = cum_tp_vol / cum_vol
+    dates = [d.isoformat() if hasattr(d, "isoformat") else str(d) for d in df.index]
+    return {
+        "vwap": [None if np.isnan(v) else round(float(v), 4) for v in vwap],
+        "dates": dates,
+    }
+
+
+def _compute_stochastic(
+    df: pd.DataFrame,
+    k_period: int = 14,
+    d_period: int = 3,
+    smooth_k: int = 3,
+) -> dict:
+    """Stochastic Oscillator — smoothed %K and %D."""
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    high = pd.to_numeric(df["High"], errors="coerce")
+    low = pd.to_numeric(df["Low"], errors="coerce")
+    lowest_low = low.rolling(k_period).min()
+    highest_high = high.rolling(k_period).max()
+    denom = (highest_high - lowest_low).replace(0, np.nan)
+    raw_k = 100 * (close - lowest_low) / denom
+    k = raw_k.rolling(smooth_k).mean()
+    d = k.rolling(d_period).mean()
+    dates = [dd.isoformat() if hasattr(dd, "isoformat") else str(dd) for dd in df.index]
+    return {
+        "k": [None if np.isnan(v) else round(float(v), 2) for v in k],
+        "d": [None if np.isnan(v) else round(float(v), 2) for v in d],
+        "dates": dates,
+    }
+
+
+def _compute_atr(
+    df: pd.DataFrame,
+    period: int = 14,
+) -> dict:
+    """Average True Range."""
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    high = pd.to_numeric(df["High"], errors="coerce")
+    low = pd.to_numeric(df["Low"], errors="coerce")
+    prev_close = close.shift(1)
+    tr = pd.concat(
+        [high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1
+    ).max(axis=1)
+    atr = tr.ewm(span=period, adjust=False).mean()
+    dates = [d.isoformat() if hasattr(d, "isoformat") else str(d) for d in df.index]
+    return {
+        "atr": [None if np.isnan(v) else round(float(v), 4) for v in atr],
+        "dates": dates,
+    }
+
+
 def _build_figure(
     df: pd.DataFrame,
     ticker: str,
@@ -683,10 +764,10 @@ def _build_figure(
             low=df["Low"],
             close=df["Close"],
             name=f"{ticker.upper()} Price",
-            increasing_line_color="#22c55e",
-            increasing_fillcolor="rgba(34,197,94,0.55)",
-            decreasing_line_color="#f43f5e",
-            decreasing_fillcolor="rgba(244,63,94,0.55)",
+            increasing_line_color="#26a69a",
+            increasing_fillcolor="#26a69a",
+            decreasing_line_color="#ef5350",
+            decreasing_fillcolor="#ef5350",
             line_width=1.0,
             whiskerwidth=0.2,
             legendgroup="price",
@@ -1187,7 +1268,7 @@ def technical_elliott(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to build technical chart: {e}")
+        raise HTTPException(status_code=500, detail="Failed to build technical chart")
 
 
 @router.get("/technical/summary")
@@ -1250,6 +1331,20 @@ def technical_overlays(
     # Moving averages — comma-separated list of "TYPE:period:color"
     # e.g. "SMA:20:#f59e0b,EMA:50:#38bdf8"
     mas: Optional[str] = Query(None),
+    # Bollinger Bands
+    bb: bool = Query(False),
+    bb_len: int = Query(20, ge=5, le=100),
+    bb_mult: float = Query(2.0, ge=0.5, le=5.0),
+    # VWAP
+    vwap: bool = Query(False),
+    # Stochastic Oscillator
+    stoch: bool = Query(False),
+    stoch_k: int = Query(14, ge=2, le=50),
+    stoch_d: int = Query(3, ge=1, le=20),
+    stoch_smooth: int = Query(3, ge=1, le=10),
+    # ATR
+    atr: bool = Query(False),
+    atr_period: int = Query(14, ge=2, le=50),
 ):
     """Return overlay data (Squeeze Momentum, Supertrend, extra MAs) as raw series."""
     try:
@@ -1306,11 +1401,25 @@ def technical_overlays(
             if ma_configs:
                 result["moving_averages"] = _compute_moving_averages(df, ma_configs)
 
+        if bb:
+            result["bollinger"] = _compute_bollinger_bands(df, length=bb_len, mult=bb_mult)
+
+        if vwap:
+            result["vwap"] = _compute_vwap(df)
+
+        if stoch:
+            result["stochastic"] = _compute_stochastic(
+                df, k_period=stoch_k, d_period=stoch_d, smooth_k=stoch_smooth
+            )
+
+        if atr:
+            result["atr"] = _compute_atr(df, period=atr_period)
+
         return result
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to compute overlays: {e}")
+        raise HTTPException(status_code=500, detail="Failed to compute overlays")
 
 
 def _render_chart_to_image(fig: go.Figure) -> BytesIO:
@@ -1472,4 +1581,4 @@ def export_technical_report(
             interval,
             e,
         )
-        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Export failed")

@@ -7,6 +7,7 @@ import YouTubeIntelFeed from '@/components/YouTubeIntelFeed';
 import TelegramFeed from '@/components/TelegramFeed';
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch, apiFetchJson } from '@/lib/api';
+import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Radio, RefreshCw, Check, AlertTriangle, Youtube, MessageSquare, Newspaper } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -25,16 +26,8 @@ const TABS: { id: IntelTab; label: string; icon: React.ReactNode }[] = [
 export default function IntelPage() {
   const { user } = useAuth();
   const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { sidebarOpen, toggleSidebar } = useResponsiveSidebar();
   const [intelTab, setIntelTab] = useState<IntelTab>('news');
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const sync = () => { if (window.innerWidth < 1024) setSidebarOpen(false); };
-    sync();
-    window.addEventListener('resize', sync);
-    return () => window.removeEventListener('resize', sync);
-  }, []);
 
   const queryClient = useQueryClient();
   const [syncingNews, setSyncingNews] = useState(false);
@@ -129,7 +122,7 @@ export default function IntelPage() {
     <AppShell hideFooter>
       <NavigatorShell
         sidebarOpen={sidebarOpen}
-        onSidebarToggle={() => setSidebarOpen((o) => !o)}
+        onSidebarToggle={toggleSidebar}
         sidebarIcon={<Radio className="w-3.5 h-3.5 text-sky-400" />}
         sidebarLabel="Intel"
         sidebarContent={

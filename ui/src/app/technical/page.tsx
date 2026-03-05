@@ -8,9 +8,11 @@ import {
   Activity, Loader2, BrainCircuit, BarChart2, Settings2, Plus, X, Search, ChevronRight, Minimize2, Maximize2,
   ChevronUp, ChevronDown, FileText, Presentation as PresentationIcon
 } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetchJson, apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import { useDebounce } from '@/lib/hooks/useDebounce';
+import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
 import ReactMarkdown from 'react-markdown';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
@@ -27,14 +29,6 @@ const Plot = dynamic(() => import('react-plotly.js'), {
 
 // ─── Utilities & Constants ───────────────────────────────────────────────────
 
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
-}
 
 type Frequency = 'D' | 'W' | 'M';
 const FREQ_CONFIG: Record<Frequency, { years: number; interval: string; label: string }> = {
@@ -56,6 +50,8 @@ const DEFAULT_MA_CONFIGS = [
   { type: 'SMA', period: 200, color: '#8b5cf6', enabled: true },
 ];
 type MaConfig = { type: string; period: number; color: string; enabled: boolean };
+const MA_COLORS = ['#f59e0b', '#38bdf8', '#8b5cf6', '#22c55e', '#f43f5e', '#06b6d4', '#a3e635', '#fb923c', '#e879f9', '#94a3b8', '#14b8a6', '#ec4899'];
+const COMMON_PERIODS = [5, 10, 20, 50, 100, 200] as const;
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 function isoDateYearsAgo(years: number) {
@@ -218,13 +214,16 @@ export default function TechnicalPage() {
     startDate: isoDateYearsAgo(FREQ_CONFIG.D.years),
     endDate: today,
     
-    showCandle: true,
     showElliott: true,
     showTD: true,
     showMACD: true,
     showRSI: true,
     showSqz: false,
     showST: false,
+    showBB: false,
+    showVWAP: false,
+    showStoch: false,
+    showATR: false,
 
     setupFrom: 9,
     countdownFrom: 13,
@@ -233,6 +232,9 @@ export default function TechnicalPage() {
     rsiPeriod: 14,
     sqzBbLen: 20, sqzBbMult: 2.0, sqzKcLen: 20, sqzKcMult: 1.5,
     stPeriod: 10, stMult: 3.0,
+    bbLen: 20, bbMult: 2.0,
+    stochK: 14, stochD: 3, stochSmooth: 3,
+    atrPeriod: 14,
     maConfigs: DEFAULT_MA_CONFIGS,
   });
 
@@ -247,9 +249,12 @@ export default function TechnicalPage() {
   }, [tickerInput, state.ticker]);
 
   // ── Layout & UI State ─────────────────────────────────────────────────────
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { sidebarOpen, toggleSidebar } = useResponsiveSidebar();
   const [openSettings, setOpenSettings] = useState<string | null>(null);
   const [showAiSummary, setShowAiSummary] = useState(false);
+  const [maAdderOpen, setMaAdderOpen] = useState(false);
+  const [maAdderType, setMaAdderType] = useState<'SMA' | 'EMA' | 'WMA'>('SMA');
+  const [maAdderPeriods, setMaAdderPeriods] = useState<Set<number>>(new Set());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
 
@@ -308,6 +313,38 @@ export default function TechnicalPage() {
   const plotContainerRef = useRef<HTMLDivElement>(null);
   const plotGraphDivRef = useRef<HTMLElement | null>(null);
 
+  // Track user's zoom/pan state to preserve across indicator changes
+  const userAxisState = useRef<Record<string, any>>({});
+  const lastTicker = useRef(state.ticker);
+
+  // Reset zoom state when ticker changes
+  if (state.ticker !== lastTicker.current) {
+    userAxisState.current = {};
+    lastTicker.current = state.ticker;
+  }
+
+  const handleRelayout = useCallback((e: any) => {
+    if (!e) return;
+    const updated: Record<string, any> = {};
+    // Capture any axis range changes from user interaction (zoom/pan/double-click reset)
+    for (const key of Object.keys(e)) {
+      if (/^[xy]axis\d*\.range\[\d\]$/.test(key) || /^[xy]axis\d*\.autorange$/.test(key)) {
+        updated[key] = e[key];
+      }
+    }
+    if (Object.keys(updated).length > 0) {
+      // If user resets via double-click (autorange:true), clear saved state for that axis
+      for (const key of Object.keys(updated)) {
+        if (key.endsWith('.autorange') && updated[key] === true) {
+          const axName = key.replace('.autorange', '');
+          delete userAxisState.current[`${axName}.range[0]`];
+          delete userAxisState.current[`${axName}.range[1]`];
+        }
+      }
+      userAxisState.current = { ...userAxisState.current, ...updated };
+    }
+  }, []);
+
   function toggleSettings(key: string) {
     setOpenSettings((prev) => (prev === key ? null : key));
   }
@@ -356,6 +393,10 @@ export default function TechnicalPage() {
       showTD: s.technical_show_td ?? prev.showTD,
       showMACD: s.technical_show_macd ?? prev.showMACD,
       showRSI: s.technical_show_rsi ?? prev.showRSI,
+      showBB: s.technical_show_bb ?? prev.showBB,
+      showVWAP: s.technical_show_vwap ?? prev.showVWAP,
+      showStoch: s.technical_show_stoch ?? prev.showStoch,
+      showATR: s.technical_show_atr ?? prev.showATR,
       maConfigs: s.technical_ma_configs || prev.maConfigs,
     }));
     setTickerInput(s.technical_ticker || 'SPY');
@@ -374,11 +415,16 @@ export default function TechnicalPage() {
       technical_show_td: debouncedState.showTD,
       technical_show_macd: debouncedState.showMACD,
       technical_show_rsi: debouncedState.showRSI,
+      technical_show_bb: debouncedState.showBB,
+      technical_show_vwap: debouncedState.showVWAP,
+      technical_show_stoch: debouncedState.showStoch,
+      technical_show_atr: debouncedState.showATR,
       technical_ma_configs: debouncedState.maConfigs,
     });
   }, [
     debouncedState.ticker, debouncedState.freq, debouncedState.showSqz, debouncedState.showST,
     debouncedState.showElliott, debouncedState.showTD, debouncedState.showMACD, debouncedState.showRSI,
+    debouncedState.showBB, debouncedState.showVWAP, debouncedState.showStoch, debouncedState.showATR,
     debouncedState.maConfigs
   ]);
 
@@ -397,24 +443,54 @@ export default function TechnicalPage() {
       `/api/technical/elliott?ticker=${encodeURIComponent(debouncedState.ticker)}&period=10y&interval=${encodeURIComponent(interval)}&start=${encodeURIComponent(debouncedState.startDate)}&end=${encodeURIComponent(debouncedState.endDate)}&setup_from=${debouncedState.setupFrom}&countdown_from=${debouncedState.countdownFrom}&label_cooldown=${debouncedState.cooldown}&show_macd=${debouncedState.showMACD}&show_rsi=${debouncedState.showRSI}`
     ),
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
-  const hasOverlays = debouncedState.showSqz || debouncedState.showST || debouncedState.maConfigs.some(m => m.enabled);
+  const hasOverlays = debouncedState.showSqz || debouncedState.showST || debouncedState.showBB || debouncedState.showVWAP || debouncedState.showStoch || debouncedState.showATR || debouncedState.maConfigs.some(m => m.enabled);
   const masStr = debouncedState.maConfigs.filter(m => m.enabled).map(m => `${m.type}:${m.period}:${m.color}`).join(',');
 
   const overlayQueryKey = useMemo(() => [
     'technical-overlays', debouncedState.ticker, interval,
     debouncedState.showSqz, debouncedState.sqzBbLen, debouncedState.sqzBbMult, debouncedState.sqzKcLen, debouncedState.sqzKcMult,
-    debouncedState.showST, debouncedState.stPeriod, debouncedState.stMult, masStr
+    debouncedState.showST, debouncedState.stPeriod, debouncedState.stMult,
+    debouncedState.showBB, debouncedState.bbLen, debouncedState.bbMult,
+    debouncedState.showVWAP,
+    debouncedState.showStoch, debouncedState.stochK, debouncedState.stochD, debouncedState.stochSmooth,
+    debouncedState.showATR, debouncedState.atrPeriod,
+    masStr
   ], [debouncedState, interval, masStr]);
 
   const { data: overlayData, isFetching: isFetchingOverlays } = useQuery({
     queryKey: overlayQueryKey,
-    queryFn: () => apiFetchJson(
-      `/api/technical/overlays?ticker=${encodeURIComponent(debouncedState.ticker)}&interval=${encodeURIComponent(interval)}&sqz=${debouncedState.showSqz}&sqz_bb_len=${debouncedState.sqzBbLen}&sqz_bb_mult=${debouncedState.sqzBbMult}&sqz_kc_len=${debouncedState.sqzKcLen}&sqz_kc_mult=${debouncedState.sqzKcMult}&st=${debouncedState.showST}&st_period=${debouncedState.stPeriod}&st_mult=${debouncedState.stMult}${masStr ? `&mas=${encodeURIComponent(masStr)}` : ''}`
-    ),
+    queryFn: () => {
+      const p = new URLSearchParams({
+        ticker: debouncedState.ticker,
+        interval,
+        sqz: String(debouncedState.showSqz),
+        sqz_bb_len: String(debouncedState.sqzBbLen),
+        sqz_bb_mult: String(debouncedState.sqzBbMult),
+        sqz_kc_len: String(debouncedState.sqzKcLen),
+        sqz_kc_mult: String(debouncedState.sqzKcMult),
+        st: String(debouncedState.showST),
+        st_period: String(debouncedState.stPeriod),
+        st_mult: String(debouncedState.stMult),
+        bb: String(debouncedState.showBB),
+        bb_len: String(debouncedState.bbLen),
+        bb_mult: String(debouncedState.bbMult),
+        vwap: String(debouncedState.showVWAP),
+        stoch: String(debouncedState.showStoch),
+        stoch_k: String(debouncedState.stochK),
+        stoch_d: String(debouncedState.stochD),
+        stoch_smooth: String(debouncedState.stochSmooth),
+        atr: String(debouncedState.showATR),
+        atr_period: String(debouncedState.atrPeriod),
+      });
+      if (masStr) p.set('mas', masStr);
+      return apiFetchJson(`/api/technical/overlays?${p}`);
+    },
     enabled: hasOverlays,
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const summaryQuery = useQuery({
@@ -429,7 +505,7 @@ export default function TechnicalPage() {
   // ── Chart Assembly ────────────────────────────────────────────────────────
   const cleanedFigure = useMemo(() => {
     if (!fig) return null;
-    const cloned = JSON.parse(JSON.stringify(fig));
+    const cloned = structuredClone(fig);
     const fg = isLight ? '#020617' : '#dbeafe';
     const grid = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(148,163,184,0.06)';
 
@@ -462,34 +538,149 @@ export default function TechnicalPage() {
         type: 'scatter', x: overlayData.dates, y: st.dn, mode: 'lines', line: { color: isLight ? '#dc2626' : '#f43f5e', width: 1.5 }, name: 'ST ↓', legendgroup: 'supertrend', connectgaps: false, hovertemplate: 'ST Down: %{y:.2f}<extra></extra>',
       });
     }
+    if (overlayData?.bollinger) {
+      const bb = overlayData.bollinger;
+      overlayTraces.push({
+        type: 'scatter', x: bb.dates, y: bb.upper, mode: 'lines',
+        line: { color: 'rgba(33,150,243,0.5)', width: 1 },
+        name: 'BB Upper', legendgroup: 'bb', hovertemplate: 'BB Upper: %{y:.2f}<extra></extra>',
+      });
+      overlayTraces.push({
+        type: 'scatter', x: bb.dates, y: bb.lower, mode: 'lines',
+        line: { color: 'rgba(33,150,243,0.5)', width: 1 },
+        fill: 'tonexty', fillcolor: isLight ? 'rgba(33,150,243,0.06)' : 'rgba(33,150,243,0.08)',
+        name: 'BB Lower', legendgroup: 'bb', hovertemplate: 'BB Lower: %{y:.2f}<extra></extra>',
+      });
+      overlayTraces.push({
+        type: 'scatter', x: bb.dates, y: bb.middle, mode: 'lines',
+        line: { color: 'rgba(33,150,243,0.7)', width: 1, dash: 'dot' },
+        name: 'BB Mid', legendgroup: 'bb', hovertemplate: 'BB Mid: %{y:.2f}<extra></extra>',
+      });
+    }
+    if (overlayData?.vwap) {
+      overlayTraces.push({
+        type: 'scatter', x: overlayData.vwap.dates, y: overlayData.vwap.vwap, mode: 'lines',
+        line: { color: '#ff9800', width: 1.5 }, name: 'VWAP', legendgroup: 'vwap',
+        hovertemplate: 'VWAP: %{y:.2f}<extra></extra>',
+      });
+    }
 
     if (overlayTraces.length) {
       cloned.data = [cloned.data[0], ...overlayTraces, ...cloned.data.slice(1)];
     }
 
-    if (overlayData?.squeeze) {
-      const sqz = overlayData.squeeze;
-      const barColors = sqz.bar_color.map((c: string) => SQZ_BAR_COLOR[c] ?? '#64748b');
-      const dotColors = sqz.sqz_dot_color.map((c: string) => SQZ_DOT_COLOR[c] ?? '#64748b');
-      
-      const lastAxisIndex = (debouncedState.showMACD && debouncedState.showRSI) ? '3' : ((debouncedState.showMACD || debouncedState.showRSI) ? '2' : '');
-      const yaxisKey = `yaxis${lastAxisIndex ? (parseInt(lastAxisIndex) + 1) : '2'}`;
-      const overlayingY = `y${lastAxisIndex || '1'}`;
-      const xaxisKey = lastAxisIndex ? `x${lastAxisIndex}` : 'x';
+    // === Sub-chart layout: recalculate domains to add oscillator rows ===
+    // Determine how many backend sub-chart rows exist
+    const backendSubCount = (debouncedState.showMACD ? 1 : 0) + (debouncedState.showRSI ? 1 : 0);
+    // Frontend oscillator sub-charts
+    const frontendOscillators: string[] = [];
+    if (overlayData?.squeeze && debouncedState.showSqz) frontendOscillators.push('sqz');
+    if (overlayData?.stochastic && debouncedState.showStoch) frontendOscillators.push('stoch');
+    if (overlayData?.atr && debouncedState.showATR) frontendOscillators.push('atr');
 
-      cloned.data.push({
-        type: 'bar', x: overlayData.dates, y: sqz.val, marker: { color: barColors }, name: 'SQZ Mom', yaxis: yaxisKey.replace('axis', ''), xaxis: xaxisKey.replace('axis', ''), legendgroup: 'squeeze', hovertemplate: 'SQZ: %{y:.4f}<extra></extra>',
-      });
-      cloned.data.push({
-        type: 'scatter', x: overlayData.dates, y: overlayData.dates.map(() => 0), mode: 'markers', marker: { color: dotColors, size: 4, symbol: 'cross-thin', line: { width: 1.5, color: dotColors } }, name: 'SQZ State', yaxis: yaxisKey.replace('axis', ''), xaxis: xaxisKey.replace('axis', ''), legendgroup: 'squeeze', showlegend: false, hovertemplate: 'SQZ State<extra></extra>',
-      });
-      cloned.layout[yaxisKey] = {
-        overlaying: overlayingY, side: 'right', showgrid: false, showticklabels: false, zeroline: true, zerolinecolor: isLight ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.1)', zerolinewidth: 1,
-      };
-    }
+    const totalSubCharts = backendSubCount + frontendOscillators.length;
+    const totalRows = 1 + totalSubCharts;
 
-    if (!debouncedState.showCandle && cloned.data.length > 0) {
-      cloned.data[0] = { ...cloned.data[0], visible: false };
+    if (totalSubCharts > 0) {
+      const SPACING = 0.035;
+      const mainWeight = 3;
+      const totalWeight = mainWeight + totalSubCharts;
+      const totalSpacingUsed = SPACING * totalSubCharts;
+      const available = 1.0 - totalSpacingUsed;
+
+      let top = 1.0;
+      const domains: [number, number][] = [];
+      const weights = [mainWeight, ...Array(totalSubCharts).fill(1)];
+      for (let i = 0; i < totalRows; i++) {
+        const height = (weights[i] / totalWeight) * available;
+        const bottom = top - height;
+        domains.push([Math.max(0, bottom), top]);
+        top = bottom - SPACING;
+      }
+
+      // Apply domains to main chart
+      if (cloned.layout.yaxis) cloned.layout.yaxis.domain = domains[0];
+
+      // Apply domains to backend sub-chart rows (yaxis2, yaxis3, ...)
+      for (let i = 0; i < backendSubCount; i++) {
+        const axNum = i + 2;
+        const yKey = `yaxis${axNum}`;
+        if (cloned.layout[yKey]) {
+          cloned.layout[yKey].domain = domains[1 + i];
+          // Remove any anchoring that conflicts with the new domain
+          delete cloned.layout[yKey].overlaying;
+        }
+      }
+
+      // Create frontend oscillator sub-chart rows
+      const nextAxisNum = 1 + backendSubCount + 1; // e.g., 4 if MACD+RSI exist
+      for (let i = 0; i < frontendOscillators.length; i++) {
+        const axNum = nextAxisNum + i;
+        const domain = domains[1 + backendSubCount + i];
+        const yRef = `y${axNum}`;
+        const xRef = `x${axNum}`;
+        const yKey = `yaxis${axNum}`;
+        const xKey = `xaxis${axNum}`;
+
+        cloned.layout[yKey] = {
+          domain,
+          showgrid: true, gridcolor: grid,
+          zeroline: true, zerolinecolor: grid,
+          linecolor: isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)',
+          tickfont: { color: fg, size: 10 },
+          showticklabels: true,
+          anchor: xRef,
+        };
+        cloned.layout[xKey] = {
+          matches: 'x',
+          showticklabels: i === frontendOscillators.length - 1 && !backendSubCount ? true : false,
+          anchor: yRef,
+        };
+
+        const osc = frontendOscillators[i];
+        if (osc === 'sqz') {
+          const sqz = overlayData.squeeze;
+          const barColors = sqz.bar_color.map((c: string) => SQZ_BAR_COLOR[c] ?? '#64748b');
+          const dotColors = sqz.sqz_dot_color.map((c: string) => SQZ_DOT_COLOR[c] ?? '#64748b');
+          cloned.data.push({
+            type: 'bar', x: overlayData.dates, y: sqz.val, marker: { color: barColors },
+            name: 'SQZ Mom', yaxis: yRef, xaxis: xRef, legendgroup: 'squeeze',
+            hovertemplate: 'SQZ: %{y:.4f}<extra></extra>',
+          });
+          cloned.data.push({
+            type: 'scatter', x: overlayData.dates, y: overlayData.dates.map(() => 0), mode: 'markers',
+            marker: { color: dotColors, size: 4, symbol: 'cross-thin', line: { width: 1.5, color: dotColors } },
+            name: 'SQZ State', yaxis: yRef, xaxis: xRef, legendgroup: 'squeeze', showlegend: false,
+            hovertemplate: 'SQZ State<extra></extra>',
+          });
+          cloned.layout[yKey].zeroline = true;
+          cloned.layout[yKey].zerolinecolor = isLight ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.1)';
+          cloned.layout[yKey].zerolinewidth = 1;
+        } else if (osc === 'stoch') {
+          const stoch = overlayData.stochastic;
+          cloned.data.push({
+            type: 'scatter', x: stoch.dates, y: stoch.k, mode: 'lines',
+            line: { color: '#2196f3', width: 1.5 }, name: '%K',
+            yaxis: yRef, xaxis: xRef, legendgroup: 'stoch',
+            hovertemplate: '%K: %{y:.1f}<extra></extra>',
+          });
+          cloned.data.push({
+            type: 'scatter', x: stoch.dates, y: stoch.d, mode: 'lines',
+            line: { color: '#ff5722', width: 1.5, dash: 'dot' }, name: '%D',
+            yaxis: yRef, xaxis: xRef, legendgroup: 'stoch',
+            hovertemplate: '%D: %{y:.1f}<extra></extra>',
+          });
+          cloned.layout[yKey].range = [0, 100];
+        } else if (osc === 'atr') {
+          const atrData = overlayData.atr;
+          cloned.data.push({
+            type: 'scatter', x: atrData.dates, y: atrData.atr, mode: 'lines',
+            line: { color: '#ab47bc', width: 1.5 }, name: 'ATR',
+            yaxis: yRef, xaxis: xRef, legendgroup: 'atr',
+            hovertemplate: 'ATR: %{y:.4f}<extra></extra>',
+          });
+        }
+      }
     }
 
     cloned.layout = {
@@ -511,17 +702,53 @@ export default function TechnicalPage() {
       hovermode: 'x',
       hoverdistance: 20,
       spikedistance: -1,
-      dragmode: 'zoom',
+      dragmode: 'pan',
+      uirevision: debouncedState.ticker,
     };
 
-    ['xaxis', 'yaxis', 'xaxis2', 'yaxis2', 'xaxis3', 'yaxis3'].forEach((ax) => {
-      if (cloned.layout?.[ax]) {
-        cloned.layout[ax].gridcolor = grid;
-        cloned.layout[ax].zerolinecolor = grid;
-        cloned.layout[ax].linecolor = isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)';
-        cloned.layout[ax].tickfont = { ...(cloned.layout[ax].tickfont || {}), color: fg, size: 10 };
+    // Add per-axis uirevision to preserve zoom/pan when sub-charts change
+    for (let i = 0; i <= 8; i++) {
+      const suffix = i === 0 ? '' : `${i + 1}`;
+      const xKey = `xaxis${suffix}`;
+      const yKey = `yaxis${suffix}`;
+      if (cloned.layout[xKey]) cloned.layout[xKey].uirevision = debouncedState.ticker;
+      if (cloned.layout[yKey]) cloned.layout[yKey].uirevision = debouncedState.ticker;
+    }
+
+    // Style all axes (main + up to 8 sub-chart axes)
+    for (let i = 0; i <= 8; i++) {
+      const suffix = i === 0 ? '' : `${i + 1}`;
+      for (const prefix of ['xaxis', 'yaxis']) {
+        const ax = `${prefix}${suffix}`;
+        if (cloned.layout?.[ax]) {
+          cloned.layout[ax].gridcolor = grid;
+          cloned.layout[ax].zerolinecolor = cloned.layout[ax].zerolinecolor ?? grid;
+          cloned.layout[ax].linecolor = isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)';
+          cloned.layout[ax].tickfont = { ...(cloned.layout[ax].tickfont || {}), color: fg, size: 10 };
+        }
       }
-    });
+    }
+
+    // Reapply user's zoom/pan state over the computed layout
+    const axState = userAxisState.current;
+    for (const key of Object.keys(axState)) {
+      // key is like "xaxis.range[0]", "xaxis.range[1]", "xaxis.autorange"
+      const match = key.match(/^([xy]axis\d*)\.(.+)$/);
+      if (match) {
+        const [, axName, prop] = match;
+        if (!cloned.layout[axName]) continue;
+        const rangeMatch = prop.match(/^range\[(\d)\]$/);
+        if (rangeMatch) {
+          if (!cloned.layout[axName].range) cloned.layout[axName].range = [undefined, undefined];
+          cloned.layout[axName].range[Number(rangeMatch[1])] = axState[key];
+          cloned.layout[axName].autorange = false;
+        } else if (prop === 'autorange') {
+          cloned.layout[axName].autorange = axState[key];
+          if (axState[key]) delete cloned.layout[axName].range;
+        }
+      }
+    }
+
     return cloned;
   }, [fig, overlayData, isLight, debouncedState]);
 
@@ -555,17 +782,23 @@ export default function TechnicalPage() {
 
         <div className="flex-1 overflow-y-auto custom-scrollbar pb-6">
           {/* On Chart group */}
-          {(match('Candles') || match('Elliott Wave') || match('TD Sequential')) && (
+          {(match('Elliott Wave') || match('TD Sequential') || match('Bollinger') || match('VWAP') || match('Supertrend')) && (
             <>
               <SectionLabel>On Chart</SectionLabel>
-              {match('Candles') && (
-                <IndicatorRow color="#64748b" label="Candles" checked={state.showCandle} onCheck={(v: boolean) => setState(s => ({ ...s, showCandle: v }))} onSettingsOpen={() => toggleSettings('candle')} settingsOpen={openSettings === 'candle'} settingsContent={<div className="text-[12px] text-muted-foreground/60 py-2">No adjustable parameters for candles.</div>} />
-              )}
               {match('Elliott Wave') && (
                 <IndicatorRow color="#22c55e" label="Elliott Wave" sublabel="Auto" checked={state.showElliott} onCheck={(v: boolean) => setState(s => ({ ...s, showElliott: v }))} onSettingsOpen={() => toggleSettings('elliott')} settingsOpen={openSettings === 'elliott'} settingsContent={<div className="text-[12px] text-muted-foreground/60 py-2 leading-relaxed">Automatic detection of motive (1–5) and corrective (A–B–C) wave patterns. Calculation is based on fractal swing highs/lows.</div>} />
               )}
               {match('TD Sequential') && (
                 <IndicatorRow color="#f59e0b" label="TD Sequential" checked={state.showTD} onCheck={(v: boolean) => setState(s => ({ ...s, showTD: v }))} onSettingsOpen={() => toggleSettings('td')} settingsOpen={openSettings === 'td'} settingsContent={<div className="space-y-4"><ParamSelect label="Setup from" value={state.setupFrom} onChange={(v: number) => setState(s => ({ ...s, setupFrom: v }))} options={[1, 5, 7, 9].map((v) => ({ value: v, label: `${v}+` }))} /><ParamSelect label="Countdown from" value={state.countdownFrom} onChange={(v: number) => setState(s => ({ ...s, countdownFrom: v }))} options={[9, 10, 11, 12, 13].map((v) => ({ value: v, label: `${v}+` }))} /><ParamSelect label="Cooldown bars" value={state.cooldown} onChange={(v: number) => setState(s => ({ ...s, cooldown: v }))} options={[0, 5, 10, 15, 20].map((v) => ({ value: v, label: `${v}` }))} /></div>} />
+              )}
+              {match('Bollinger') && (
+                <IndicatorRow color="#2196f3" label="Bollinger Bands" sublabel={state.showBB ? `${state.bbLen} ${state.bbMult}σ` : undefined} checked={state.showBB} onCheck={(v: boolean) => setState(s => ({ ...s, showBB: v }))} onSettingsOpen={() => toggleSettings('bb')} settingsOpen={openSettings === 'bb'} settingsContent={<div className="space-y-4"><ParamRow label="Length" value={state.bbLen} min={5} max={100} onChange={(v: number) => setState(s => ({ ...s, bbLen: v }))} /><ParamRow label="Multiplier" value={state.bbMult} min={0.5} max={5} step={0.1} onChange={(v: number) => setState(s => ({ ...s, bbMult: v }))} /></div>} />
+              )}
+              {match('VWAP') && (
+                <IndicatorRow color="#ff9800" label="VWAP" checked={state.showVWAP} onCheck={(v: boolean) => setState(s => ({ ...s, showVWAP: v }))} onSettingsOpen={() => toggleSettings('vwap')} settingsOpen={openSettings === 'vwap'} settingsContent={<div className="text-[12px] text-muted-foreground/60 py-2">Volume Weighted Average Price. Cumulative, no adjustable parameters.</div>} />
+              )}
+              {match('Supertrend') && (
+                <IndicatorRow color="#f43f5e" label="Supertrend" sublabel={state.showST ? `ATR ${state.stPeriod} × ${state.stMult}` : undefined} checked={state.showST} onCheck={(v: boolean) => setState(s => ({ ...s, showST: v }))} onSettingsOpen={() => toggleSettings('st')} settingsOpen={openSettings === 'st'} settingsContent={<div className="space-y-4"><ParamRow label="ATR Period" value={state.stPeriod} min={2} max={50} onChange={(v: number) => setState(s => ({ ...s, stPeriod: v }))} /><ParamRow label="Multiplier" value={state.stMult} min={0.5} max={10} step={0.1} onChange={(v: number) => setState(s => ({ ...s, stMult: v }))} /></div>} />
               )}
             </>
           )}
@@ -574,33 +807,101 @@ export default function TechnicalPage() {
           {(match('MA') || match('Moving Average') || match('SMA') || match('EMA') || match('WMA')) ? (
             <>
               <SectionLabel>Moving Averages</SectionLabel>
-              {state.maConfigs.map((cfg, idx) => (
-                <IndicatorRow 
-                  key={`${cfg.type}-${cfg.period}-${idx}`} 
-                  color={cfg.color} 
-                  label={`${cfg.type} ${cfg.period}`} 
-                  checked={cfg.enabled} 
-                  onCheck={(v: boolean) => setState(s => ({ ...s, maConfigs: s.maConfigs.map((c, i) => i === idx ? { ...c, enabled: v } : c) }))} 
-                  onSettingsOpen={() => toggleSettings(`ma-${idx}`)} 
-                  settingsOpen={openSettings === `ma-${idx}`} 
-                  onMoveUp={() => moveMA(idx, 'up')}
-                  onMoveDown={() => moveMA(idx, 'down')}
-                  isFirst={idx === 0}
-                  isLast={idx === state.maConfigs.length - 1}
-                  extra={<button onClick={(e) => { e.stopPropagation(); setState(s => ({ ...s, maConfigs: s.maConfigs.filter((_, i) => i !== idx) })); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-rose-500/10 text-muted-foreground/40 hover:text-rose-500"><X className="w-3 h-3" /></button>} 
-                  settingsContent={<div className="space-y-4"><div className="flex items-center justify-between gap-4"><span className="text-[12px] text-muted-foreground/80 font-medium">Color</span><input type="color" value={cfg.color} onChange={(e) => setState(s => ({ ...s, maConfigs: s.maConfigs.map((c, i) => i === idx ? { ...c, color: e.target.value } : c) }))} className="w-12 h-7 rounded-md cursor-pointer border border-border/40 p-0.5 bg-foreground/[0.02]" /></div><ParamSelect label="Type" value={cfg.type} onChange={(v: string) => setState(s => ({ ...s, maConfigs: s.maConfigs.map((c, i) => i === idx ? { ...c, type: v } : c) }))} options={['SMA', 'EMA', 'WMA'].map((v) => ({ value: v, label: v }))} /><ParamRow label="Period" value={cfg.period} min={2} max={500} onChange={(v: number) => setState(s => ({ ...s, maConfigs: s.maConfigs.map((c, i) => i === idx ? { ...c, period: v } : c) }))} /></div>} 
-                />
-              ))}
-              <div className="px-4 py-2">
-                <button onClick={() => setState(s => ({ ...s, maConfigs: [...s.maConfigs, { type: 'SMA', period: 100, color: '#94a3b8', enabled: true }] }))} className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-[11px] font-medium border border-dashed border-border/50 text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.02] hover:border-border transition-all">
-                  <Plus className="w-3 h-3" /> Add MA
-                </button>
+              {(['SMA', 'EMA', 'WMA'] as const).map((maType) => {
+                const typeConfigs = state.maConfigs.filter(c => c.type === maType);
+                if (typeConfigs.length === 0) return null;
+                const anyEnabled = typeConfigs.some(c => c.enabled);
+                const firstColor = typeConfigs.find(c => c.enabled)?.color ?? typeConfigs[0].color;
+                return (
+                  <IndicatorRow
+                    key={maType}
+                    color={firstColor}
+                    label={maType}
+                    sublabel={anyEnabled ? typeConfigs.filter(c => c.enabled).map(c => c.period).sort((a, b) => a - b).join(', ') : undefined}
+                    checked={anyEnabled}
+                    onCheck={(v: boolean) => setState(s => ({ ...s, maConfigs: s.maConfigs.map(c => c.type === maType ? { ...c, enabled: v } : c) }))}
+                    onSettingsOpen={() => toggleSettings(`ma-group-${maType}`)}
+                    settingsOpen={openSettings === `ma-group-${maType}`}
+                    settingsContent={
+                      <div className="space-y-4">
+                        {typeConfigs.map((cfg) => {
+                          const idx = state.maConfigs.indexOf(cfg);
+                          return (
+                            <div key={idx} className="flex items-center gap-3 group/ma">
+                              <input type="color" value={cfg.color} onChange={(e) => setState(s => ({ ...s, maConfigs: s.maConfigs.map((c, i) => i === idx ? { ...c, color: e.target.value } : c) }))} className="w-6 h-6 rounded cursor-pointer border border-border/40 p-0 bg-transparent shrink-0" />
+                              <span className="text-[12px] font-mono font-medium text-foreground/80 w-10">{cfg.period}</span>
+                              <button
+                                onClick={() => setState(s => ({ ...s, maConfigs: s.maConfigs.map((c, i) => i === idx ? { ...c, enabled: !c.enabled } : c) }))}
+                                className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${cfg.enabled ? 'border-sky-500/40 bg-sky-500/10 text-sky-400' : 'border-border/30 text-muted-foreground/40'}`}
+                              >{cfg.enabled ? 'On' : 'Off'}</button>
+                              <div className="flex-1" />
+                              <button onClick={() => setState(s => ({ ...s, maConfigs: s.maConfigs.filter((_, i) => i !== idx) }))} className="opacity-0 group-hover/ma:opacity-100 transition-opacity p-1 rounded hover:bg-rose-500/10 text-muted-foreground/40 hover:text-rose-500"><X className="w-3 h-3" /></button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    }
+                  />
+                );
+              })}
+              <div className="px-4 py-2 space-y-2">
+                {maAdderOpen ? (
+                  <div className="p-3 rounded-lg border border-border/50 bg-foreground/[0.02] space-y-3">
+                    {/* Type selector */}
+                    <div className="flex p-0.5 bg-foreground/[0.03] border border-border/40 rounded-lg">
+                      {(['SMA', 'EMA', 'WMA'] as const).map((t) => (
+                        <button key={t} onClick={() => setMaAdderType(t)}
+                          className={`flex-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-all ${maAdderType === t ? 'bg-background shadow-sm text-foreground ring-1 ring-border/50' : 'text-muted-foreground/60 hover:text-foreground'}`}
+                        >{t}</button>
+                      ))}
+                    </div>
+                    {/* Period checkboxes */}
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {COMMON_PERIODS.map((p) => {
+                        const checked = maAdderPeriods.has(p);
+                        const alreadyExists = state.maConfigs.some(m => m.type === maAdderType && m.period === p);
+                        return (
+                          <button key={p} disabled={alreadyExists}
+                            onClick={() => setMaAdderPeriods(prev => { const n = new Set(prev); if (n.has(p)) n.delete(p); else n.add(p); return n; })}
+                            className={`px-2 py-1.5 rounded-md text-[11px] font-mono font-medium border transition-all ${alreadyExists ? 'opacity-30 cursor-not-allowed border-border/30 text-muted-foreground/40' : checked ? 'border-sky-500/50 bg-sky-500/10 text-sky-400' : 'border-border/40 text-muted-foreground/60 hover:border-border hover:text-foreground'}`}
+                          >{p}</button>
+                        );
+                      })}
+                    </div>
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (maAdderPeriods.size === 0) return;
+                          const usedColors = new Set(state.maConfigs.map(m => m.color));
+                          const newMAs: MaConfig[] = [];
+                          for (const period of Array.from(maAdderPeriods).sort((a, b) => a - b)) {
+                            if (state.maConfigs.some(m => m.type === maAdderType && m.period === period)) continue;
+                            const color = MA_COLORS.find(c => !usedColors.has(c)) ?? MA_COLORS[newMAs.length % MA_COLORS.length];
+                            usedColors.add(color);
+                            newMAs.push({ type: maAdderType, period, color, enabled: true });
+                          }
+                          if (newMAs.length) setState(s => ({ ...s, maConfigs: [...s.maConfigs, ...newMAs] }));
+                          setMaAdderPeriods(new Set());
+                          setMaAdderOpen(false);
+                        }}
+                        disabled={maAdderPeriods.size === 0}
+                        className="flex-1 py-1.5 rounded-md text-[11px] font-medium bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 disabled:opacity-30 transition-all"
+                      >Add {maAdderPeriods.size > 0 ? `${maAdderPeriods.size} ${maAdderType}${maAdderPeriods.size > 1 ? 's' : ''}` : maAdderType}</button>
+                      <button onClick={() => { setMaAdderOpen(false); setMaAdderPeriods(new Set()); }} className="px-3 py-1.5 rounded-md text-[11px] font-medium text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.04] transition-all">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setMaAdderOpen(true)} className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-[11px] font-medium border border-dashed border-border/50 text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.02] hover:border-border transition-all">
+                    <Plus className="w-3 h-3" /> Add MA
+                  </button>
+                )}
               </div>
             </>
           ) : null}
 
           {/* Oscillators group */}
-          {(match('MACD') || match('RSI') || match('Squeeze Momentum') || match('Supertrend')) && (
+          {(match('MACD') || match('RSI') || match('Squeeze Momentum') || match('Stochastic') || match('ATR')) && (
             <>
               <SectionLabel>Oscillators</SectionLabel>
               {match('MACD') && (
@@ -609,24 +910,27 @@ export default function TechnicalPage() {
               {match('RSI') && (
                 <IndicatorRow color="#60a5fa" label="RSI" sublabel={`${state.rsiPeriod}`} checked={state.showRSI} onCheck={(v: boolean) => setState(s => ({ ...s, showRSI: v }))} onSettingsOpen={() => toggleSettings('rsi')} settingsOpen={openSettings === 'rsi'} settingsContent={<div className="space-y-4"><ParamRow label="RSI Length" value={state.rsiPeriod} min={2} max={100} onChange={(v: number) => setState(s => ({ ...s, rsiPeriod: v }))} /></div>} />
               )}
+              {match('Stochastic') && (
+                <IndicatorRow color="#2196f3" label="Stochastic" sublabel={state.showStoch ? `${state.stochK} ${state.stochD}` : undefined} checked={state.showStoch} onCheck={(v: boolean) => setState(s => ({ ...s, showStoch: v }))} onSettingsOpen={() => toggleSettings('stoch')} settingsOpen={openSettings === 'stoch'} settingsContent={<div className="space-y-4"><ParamRow label="%K Period" value={state.stochK} min={2} max={50} onChange={(v: number) => setState(s => ({ ...s, stochK: v }))} /><ParamRow label="%D Period" value={state.stochD} min={1} max={20} onChange={(v: number) => setState(s => ({ ...s, stochD: v }))} /><ParamRow label="Smoothing" value={state.stochSmooth} min={1} max={10} onChange={(v: number) => setState(s => ({ ...s, stochSmooth: v }))} /></div>} />
+              )}
+              {match('ATR') && (
+                <IndicatorRow color="#ab47bc" label="ATR" sublabel={state.showATR ? `${state.atrPeriod}` : undefined} checked={state.showATR} onCheck={(v: boolean) => setState(s => ({ ...s, showATR: v }))} onSettingsOpen={() => toggleSettings('atr')} settingsOpen={openSettings === 'atr'} settingsContent={<div className="space-y-4"><ParamRow label="ATR Period" value={state.atrPeriod} min={2} max={50} onChange={(v: number) => setState(s => ({ ...s, atrPeriod: v }))} /></div>} />
+              )}
               {match('Squeeze Momentum') && (
                 <IndicatorRow color="#4ade80" label="Squeeze Momentum" sublabel={state.showSqz ? `${state.sqzBbLen} ${state.sqzKcLen}` : undefined} checked={state.showSqz} onCheck={(v: boolean) => setState(s => ({ ...s, showSqz: v }))} onSettingsOpen={() => toggleSettings('sqz')} settingsOpen={openSettings === 'sqz'} settingsContent={<div className="space-y-4"><ParamRow label="BB Length" value={state.sqzBbLen} min={5} max={50} onChange={(v: number) => setState(s => ({ ...s, sqzBbLen: v }))} /><ParamRow label="BB Mult" value={state.sqzBbMult} min={0.5} max={5} step={0.1} onChange={(v: number) => setState(s => ({ ...s, sqzBbMult: v }))} /><ParamRow label="KC Length" value={state.sqzKcLen} min={5} max={50} onChange={(v: number) => setState(s => ({ ...s, sqzKcLen: v }))} /><ParamRow label="KC Mult" value={state.sqzKcMult} min={0.5} max={5} step={0.1} onChange={(v: number) => setState(s => ({ ...s, sqzKcMult: v }))} /></div>} />
-              )}
-              {match('Supertrend') && (
-                <IndicatorRow color="#f43f5e" label="Supertrend" sublabel={state.showST ? `ATR ${state.stPeriod} × ${state.stMult}` : undefined} checked={state.showST} onCheck={(v: boolean) => setState(s => ({ ...s, showST: v }))} onSettingsOpen={() => toggleSettings('st')} settingsOpen={openSettings === 'st'} settingsContent={<div className="space-y-4"><ParamRow label="ATR Period" value={state.stPeriod} min={2} max={50} onChange={(v: number) => setState(s => ({ ...s, stPeriod: v }))} /><ParamRow label="Multiplier" value={state.stMult} min={0.5} max={10} step={0.1} onChange={(v: number) => setState(s => ({ ...s, stMult: v }))} /></div>} />
               )}
             </>
           )}
         </div>
       </div>
     );
-  }, [sidebarSearch, state, openSettings]);
+  }, [sidebarSearch, state, openSettings, maAdderOpen, maAdderType, maAdderPeriods]);
 
   return (
     <AppShell hideFooter>
       <NavigatorShell
         sidebarOpen={sidebarOpen && !isFullscreen}
-        onSidebarToggle={() => setSidebarOpen((o) => !o)}
+        onSidebarToggle={toggleSidebar}
         sidebarIcon={<BarChart2 className="w-4 h-4 text-sky-500" />}
         sidebarLabel="Indicators"
         sidebarContent={sidebarContent}
@@ -814,11 +1118,13 @@ export default function TechnicalPage() {
                   layout={{ ...cleanedFigure.layout, autosize: true }}
                   config={{
                     responsive: true, displaylogo: false, displayModeBar: 'hover',
-                    scrollZoom: false,
+                    scrollZoom: true,
                     modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d', 'toggleSpikelines'],
                   }}
                   style={{ width: '100%', height: '100%' }}
+                  useResizeHandler
                   onInitialized={(_f: any, gd: any) => { plotGraphDivRef.current = gd; }}
+                  onRelayout={handleRelayout}
                 />
               )}
             </div>

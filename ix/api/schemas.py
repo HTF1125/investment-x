@@ -2,7 +2,7 @@
 Pydantic schemas for request/response models.
 """
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime as raw_datetime, date, timezone
 from typing_extensions import Annotated
@@ -50,6 +50,23 @@ class UserRegister(BaseModel):
     password: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+
+    @classmethod
+    def _validate_password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        return cls._validate_password_strength(v)
 
 
 class UserResponse(BaseModel):
