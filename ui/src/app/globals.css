@@ -6,61 +6,63 @@
 
 @layer base {
   :root {
-    /* Default (Dark / Pure Black) */
-    --background: 0 0 0; 
+    /* Default (Modern Dark Theme - Softer Black) */
+    --background: 9 9 11;
     --foreground: 248 250 252;
-    
-    --card: 5 5 5;
+
+    --card: 15 15 18;
     --card-foreground: 248 250 252;
-    --popover: 5 5 5;
+    --popover: 15 15 18;
     --popover-foreground: 248 250 252;
     --primary: 56 189 248;
     --primary-foreground: 15 23 42;
     --secondary: 30 41 59;
     --secondary-foreground: 248 250 252;
     --muted: 30 41 59;
-    --muted-foreground: 148 163 184;
+    --muted-foreground: 161 161 170;
     --accent: 30 41 59;
     --accent-foreground: 248 250 252;
     --destructive: 127 29 29;
     --destructive-foreground: 248 250 252;
-    --border: 30 41 59;
-    --input: 30 41 59;
+    --border: 39 39 42;
+    --input: 39 39 42;
     --ring: 56 189 248;
-    
-    --radius: 0.5rem;
-    
-    /* Glass Effect (Dark) */
-    --glass-bg: rgba(255, 255, 255, 0.03);
-    --glass-border: rgba(255, 255, 255, 0.08);
+
+    --radius: 0.75rem;
+
+    /* Enhanced Glass Effect (Dark) */
+    --glass-bg: rgba(255, 255, 255, 0.04);
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
   }
 
   /* Explicit light class overrides */
   html.light {
-    --background: 255 255 255; /* Pure White */
-    --foreground: 15 23 42;
-    
+    --background: 250 250 250; /* Softer White for better eye comfort */
+    --foreground: 9 9 11;
+
     --card: 255 255 255;
-    --card-foreground: 15 23 42;
+    --card-foreground: 9 9 11;
     --popover: 255 255 255;
-    --popover-foreground: 15 23 42;
+    --popover-foreground: 9 9 11;
     --primary: 15 23 42;
     --primary-foreground: 248 250 252;
-    --secondary: 241 245 249;
-    --secondary-foreground: 15 23 42;
-    --muted: 241 245 249;
-    --muted-foreground: 100 116 139;
-    --accent: 241 245 249;
-    --accent-foreground: 15 23 42;
+    --secondary: 244 244 245;
+    --secondary-foreground: 9 9 11;
+    --muted: 244 244 245;
+    --muted-foreground: 113 113 122;
+    --accent: 244 244 245;
+    --accent-foreground: 9 9 11;
     --destructive: 239 68 68;
     --destructive-foreground: 248 250 252;
-    --border: 226 232 240;
-    --input: 226 232 240;
+    --border: 228 228 231;
+    --input: 228 228 231;
     --ring: 15 23 42;
-    
-     /* Glass Effect (Light) */
-    --glass-bg: rgba(0, 0, 0, 0.03);
-    --glass-border: rgba(0, 0, 0, 0.08);
+
+     /* Enhanced Glass Effect (Light) */
+    --glass-bg: rgba(255, 255, 255, 0.6);
+    --glass-border: rgba(0, 0, 0, 0.05);
+    --glass-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
   }
 
 
@@ -70,6 +72,8 @@
     font-family: 'Inter', sans-serif;
     min-height: 100vh;
     transition: background-color 0.3s ease, color 0.3s ease;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
@@ -80,19 +84,23 @@
 
   .glass-card {
     background: var(--glass-bg);
-    backdrop-filter: blur(12px);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
-    border-radius: 1rem;
-    transition: all 0.3s ease-out;
+    border-radius: var(--radius);
+    box-shadow: var(--glass-shadow);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .glass-card:hover {
-    background: rgba(var(--background), 0.8);
-    border-color: rgba(var(--foreground), 0.15);
+    background: rgba(var(--background), 0.9);
+    border-color: rgba(var(--foreground), 0.1);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
   }
 
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-sky-400 to-purple-500;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-sky-400 via-indigo-400 to-purple-500;
   }
 
   .no-scrollbar::-webkit-scrollbar {
@@ -105,55 +113,67 @@
 
   /* Reusable stat label — monospace uppercase label in header/status bars */
   .stat-label {
-    @apply text-[10px] font-mono uppercase tracking-wider text-muted-foreground/50;
+    @apply text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60;
   }
 
   /* Standard panel card — used across admin, technical, dashboard sections */
   .panel-card {
-    @apply rounded-xl border border-border/60 bg-background;
+    @apply rounded-xl border border-border/60 bg-card shadow-sm hover:shadow-md transition-shadow duration-300;
   }
 
   /* Compact toolbar button — the small h-6 action buttons in notes/dashboard */
   .btn-toolbar {
-    @apply h-6 px-2 rounded-md border border-border/50 text-[11px] font-semibold
-           text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5
-           transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    @apply h-6 px-2.5 rounded-md border border-border/50 text-[11px] font-medium
+           text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] inline-flex items-center gap-1.5
+           transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
   /* Icon button — the square w-7 h-7 icon buttons used in navbar/toolbars */
   .btn-icon {
     @apply flex items-center justify-center w-7 h-7 rounded-md
-           text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]
-           transition-all;
+           text-muted-foreground hover:text-foreground hover:bg-foreground/[0.08]
+           active:scale-95 transition-all duration-200;
+  }
+
+  /* Focus ring utility — consistent across all interactive elements */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring/40 focus:ring-offset-1 focus:ring-offset-background;
   }
 }
 
-/* Adaptive Scrollbar */
+/* Adaptive Modern Scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.2) transparent;
+  scrollbar-color: rgba(155, 155, 155, 0.3) transparent;
 }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
-  background: rgba(155, 155, 155, 0.2);
-  border-radius: 9999px;
+  background: rgba(155, 155, 155, 0.3);
+  border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(155, 155, 155, 0.4);
+  background: rgba(155, 155, 155, 0.5);
 }
 
 /* Monaco editor scrollbar — match navigator style */
 .monaco-scrollable-element > .scrollbar > .slider {
-  border-radius: 9999px !important;
-  background: rgba(155, 155, 155, 0.2) !important;
+  border-radius: 10px !important;
+  background: rgba(155, 155, 155, 0.3) !important;
 }
 .monaco-scrollable-element > .scrollbar > .slider:hover,
 .monaco-scrollable-element > .scrollbar > .slider.active {
-  background: rgba(155, 155, 155, 0.4) !important;
+  background: rgba(155, 155, 155, 0.5) !important;
 }
 
 h1, h2, h3, h4 {
   font-family: 'Inter', sans-serif;
+  letter-spacing: -0.02em;
 }
 
 /* Notes editor - Notion style */
@@ -489,20 +509,28 @@ h1, h2, h3, h4 {
   margin: 0;
 }
 
+/* ── Report / Notes page ─────────────────────────────────────────────────── */
+
 .report-shell {
-  background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.08), transparent 28%),
-    linear-gradient(180deg, rgba(var(--card), 0.58), rgba(var(--background), 0.98));
+  background: rgb(var(--background));
 }
 
 .report-sidebar {
-  background: linear-gradient(180deg, rgb(var(--card) / 0.9), rgb(var(--background) / 0.96));
-  backdrop-filter: blur(18px);
+  background: rgb(var(--card) / 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.report-sidebar-header {
+  background: rgb(var(--card) / 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .report-topbar {
-  background: rgb(var(--background) / 0.78);
-  backdrop-filter: blur(18px);
+  background: rgb(var(--background) / 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .report-main-scroll {
@@ -510,9 +538,7 @@ h1, h2, h3, h4 {
 }
 
 .report-canvas {
-  background:
-    linear-gradient(180deg, rgb(var(--card) / 0.18), transparent 10rem),
-    rgb(var(--background) / 0.96);
+  background: rgb(var(--background));
 }
 
 .report-cover {
@@ -521,24 +547,47 @@ h1, h2, h3, h4 {
   border-bottom: 1px solid rgb(var(--border) / 0.3);
 }
 
+/* Sidebar list items */
+.report-sidebar-item {
+  position: relative;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.65rem 0.55rem 0.9rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+}
+
+.report-sidebar-item:hover {
+  background: rgb(var(--foreground) / 0.04);
+  border-color: rgb(var(--border) / 0.35);
+}
+
+.report-sidebar-item[data-active='true'] {
+  background: rgb(var(--primary) / 0.08);
+  border-color: rgb(var(--primary) / 0.2);
+}
+
+/* Editor shell — clean card feel, not floating */
 .report-editor-shell {
-  border: 1px solid rgb(var(--border) / 0.45);
-  border-radius: 1.5rem;
-  background: rgb(var(--background) / 0.82);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
+  border: 1px solid rgb(var(--border) / 0.3);
+  border-radius: 1rem;
+  background: rgb(var(--card) / 0.35);
   overflow: hidden;
 }
 
 .report-editor-shell .notes-editor .ProseMirror {
   min-height: 56vh;
   font-size: 1.04rem;
-  line-height: 1.72;
+  line-height: 1.75;
 }
 
+/* Title input placeholder */
 .report-title-input::placeholder {
-  color: rgb(var(--muted-foreground) / 0.32);
+  color: rgb(var(--muted-foreground) / 0.25);
 }
 
+/* Legacy card + property row (kept for compat) */
 .report-rail-card {
   border: 1px solid rgb(var(--border) / 0.4);
   border-radius: 1.25rem;
@@ -568,52 +617,23 @@ h1, h2, h3, h4 {
   text-align: right;
 }
 
-.report-sidebar-item {
-  width: 100%;
-  border: 1px solid transparent;
-  border-radius: 1rem;
-  padding: 0.8rem 0.85rem;
-  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
-}
-
-.report-sidebar-item:hover {
-  background: rgb(var(--foreground) / 0.04);
-  border-color: rgb(var(--border) / 0.45);
-}
-
-.report-sidebar-item[data-active='true'] {
-  background: linear-gradient(135deg, rgb(var(--primary) / 0.12), rgb(var(--background) / 0.88));
-  border-color: rgb(var(--primary) / 0.28);
-}
-
-html.light .report-shell {
-  background:
-    radial-gradient(circle at top left, rgba(14, 165, 233, 0.1), transparent 30%),
-    linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 1));
-}
-
+/* Light mode overrides */
 html.light .report-sidebar {
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.94), rgba(255, 255, 255, 0.98));
+  background: rgb(var(--card) / 0.75);
 }
 
 html.light .report-topbar {
-  background: rgba(255, 255, 255, 0.84);
+  background: rgb(var(--background) / 0.9);
 }
 
-html.light .report-canvas {
-  background:
-    linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 1) 14rem),
-    rgba(255, 255, 255, 0.98);
+html.light .report-editor-shell {
+  background: rgb(var(--card) / 0.6);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.04);
 }
 
 html.light .report-cover {
   background:
     linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(255, 255, 255, 0.72) 46%, rgba(226, 232, 240, 0.9));
-}
-
-html.light .report-editor-shell,
-html.light .report-rail-card {
-  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
 }
 
 @keyframes shimmer {

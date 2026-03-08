@@ -8,6 +8,7 @@ when other routers need to track background processes.
 from datetime import datetime
 from typing import Optional
 from enum import Enum
+from dataclasses import dataclass
 import uuid
 import asyncio
 
@@ -33,8 +34,14 @@ class ProcessInfo(BaseModel):
     user_id: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class TaskEventSubscriber:
+    loop: asyncio.AbstractEventLoop
+    queue: asyncio.Queue
+
+
 # SSE subscriber queues — shared across the application
-SSE_SUBSCRIBERS: set[asyncio.Queue] = set()
+SSE_SUBSCRIBERS: set[TaskEventSubscriber] = set()
 
 
 def _ensure_task_table():
@@ -44,16 +51,55 @@ def _ensure_task_table():
     TaskProcess.__table__.create(bind=conn.engine, checkfirst=True)
 
 
+def subscribe_task_events(
+    queue: asyncio.Queue,
+    loop: Optional[asyncio.AbstractEventLoop] = None,
+) -> TaskEventSubscriber:
+    subscriber = TaskEventSubscriber(loop=loop or asyncio.get_running_loop(), queue=queue)
+    SSE_SUBSCRIBERS.add(subscriber)
+    return subscriber
+
+
+def unsubscribe_task_events(subscriber: TaskEventSubscriber) -> None:
+    SSE_SUBSCRIBERS.discard(subscriber)
+
+
+def _deliver_task_event(subscriber: TaskEventSubscriber, payload: dict) -> None:
+    if subscriber.queue.full():
+        try:
+            subscriber.queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+    try:
+        subscriber.queue.put_nowait(payload)
+    except asyncio.QueueFull:
+        try:
+            subscriber.queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        try:
+            subscriber.queue.put_nowait(payload)
+        except asyncio.QueueFull:
+            pass
+
+
 def _broadcast_task_event(event: str, pid: str):
     payload = {"event": event, "task_id": pid, "ts": datetime.now().isoformat()}
     stale = []
-    for q in list(SSE_SUBSCRIBERS):
+    for subscriber in list(SSE_SUBSCRIBERS):
         try:
-            q.put_nowait(payload)
+            if subscriber.loop.is_closed():
+                stale.append(subscriber)
+                continue
+            subscriber.loop.call_soon_threadsafe(
+                _deliver_task_event,
+                subscriber,
+                payload,
+            )
         except Exception:
-            stale.append(q)
-    for q in stale:
-        SSE_SUBSCRIBERS.discard(q)
+            stale.append(subscriber)
+    for subscriber in stale:
+        SSE_SUBSCRIBERS.discard(subscriber)
 
 
 def start_process(name: str, user_id: str = None) -> str:

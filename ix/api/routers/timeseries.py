@@ -34,7 +34,6 @@ from ix.api.dependencies import get_db, get_current_admin_user
 from ix.db.models import Timeseries
 from ix.db.conn import ensure_connection, Session
 from ix.db.models.user import User
-from ix.db.query import *
 from sqlalchemy.orm import joinedload, Session as SessionType
 from ix.misc import get_logger
 from ix.api.rate_limit import limiter as _limiter

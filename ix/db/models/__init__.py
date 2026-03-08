@@ -30,9 +30,45 @@ from .news_item import NewsItem
 from .audit_log import AuditLog
 from .runtime_log import RuntimeLog
 from .user_preference import UserPreference
+from .macro_outlook import MacroOutlook
 import pandas as pd
+import threading
 
 logger = get_logger(__name__)
+
+# ── In-memory cache for parsed timeseries data ──
+# Key: timeseries_id (str)
+# Value: (updated_timestamp: datetime, parsed_series: pd.Series)
+_ts_cache: Dict[str, tuple] = {}
+_ts_cache_lock = threading.Lock()
+_TS_CACHE_MAX = 512  # max entries before eviction
+
+
+def _cache_get(ts_id: str, updated: Optional[datetime]) -> Optional[pd.Series]:
+    """Return cached Series if still valid, else None."""
+    entry = _ts_cache.get(str(ts_id))
+    if entry is None:
+        return None
+    cached_updated, cached_series = entry
+    if updated is not None and cached_updated == updated:
+        return cached_series.copy()
+    return None
+
+
+def _cache_put(ts_id: str, updated: Optional[datetime], series: pd.Series) -> None:
+    """Store parsed Series in cache."""
+    with _ts_cache_lock:
+        if len(_ts_cache) >= _TS_CACHE_MAX:
+            # Evict oldest 25%
+            to_remove = list(_ts_cache.keys())[: _TS_CACHE_MAX // 4]
+            for k in to_remove:
+                _ts_cache.pop(k, None)
+        _ts_cache[str(ts_id)] = (updated, series.copy())
+
+
+def _cache_invalidate(ts_id: str) -> None:
+    """Remove a specific entry from cache."""
+    _ts_cache.pop(str(ts_id), None)
 
 # Re-export Base for convenience
 __all__ = [
@@ -54,6 +90,7 @@ __all__ = [
     "AuditLog",
     "RuntimeLog",
     "UserPreference",
+    "MacroOutlook",
 ]
 
 
@@ -73,6 +110,7 @@ def all():
         AuditLog,
         RuntimeLog,
         UserPreference,
+        MacroOutlook,
     ]
 
 
@@ -196,13 +234,32 @@ class Timeseries(Base):
                 name=self.code if hasattr(self, "code") else "", dtype=float
             )
 
-        # Increment num_data_queried (tracked even in shared session)
-        ts.num_data_queried = (ts.num_data_queried or 0) + 1
-
-        data_record = ts._get_or_create_data_record(session)
-        column_data = data_record.data if data_record and data_record.data else {}
         code = ts.code
         frequency = ts.frequency
+        ts_id = str(ts.id)
+
+        # Check cache: query only the updated timestamp (no JSONB load)
+        data_record_ref = (
+            session.query(TimeseriesData.updated)
+            .filter(TimeseriesData.timeseries_id == ts_id)
+            .first()
+        )
+        record_updated = data_record_ref[0] if data_record_ref else None
+
+        cached = _cache_get(ts_id, record_updated)
+        if cached is not None:
+            cached.name = code
+            try:
+                if frequency and len(cached) > 0:
+                    return cached.sort_index().resample(str(frequency)).last().dropna()
+                else:
+                    return cached.sort_index()
+            except Exception:
+                return cached.sort_index()
+
+        # Cache miss — load full JSONB data
+        data_record = ts._get_or_create_data_record(session)
+        column_data = data_record.data if data_record and data_record.data else {}
 
         if not column_data or len(column_data) == 0:
             return pd.Series(name=code, dtype=float)
@@ -234,14 +291,19 @@ class Timeseries(Base):
                 data_record.updated = datetime.now()
 
         series = series.map(lambda x: pd.to_numeric(x, errors="coerce")).dropna()
+        series = series.sort_index()
         series.name = code
+
+        # Store raw (pre-resample) series in cache
+        _cache_put(ts_id, data_record.updated, series)
+
         try:
             if frequency and len(series) > 0:
-                return series.sort_index().resample(str(frequency)).last().dropna()
+                return series.resample(str(frequency)).last().dropna()
             else:
-                return series.sort_index()
+                return series
         except Exception:
-            return series.sort_index()
+            return series
 
     @data.setter
     def data(self, data):
@@ -329,6 +391,9 @@ class Timeseries(Base):
 
         ts.updated = datetime.now()
 
+        # Invalidate cache for this series (and parent if exists)
+        _cache_invalidate(str(ts.id))
+
         # Feed to parent if exists
         self._feed_to_parent_with_session(data, session)
 
@@ -405,6 +470,7 @@ class Timeseries(Base):
             parent_ts.num_data = 0
             parent_ts.latest_value = None
         parent_ts.updated = datetime.now()
+        _cache_invalidate(str(parent_ts.id))
 
     def _get_parent(self):
         """Get parent timeseries."""
@@ -471,8 +537,14 @@ class Timeseries(Base):
                         .filter(Timeseries.id == cur.parent_id)
                         .first()
                     )
-        except Exception:
-            return False
+        except Exception as exc:
+            logger.warning(
+                "Failed to validate parent cycle for timeseries %s -> %s: %s",
+                getattr(self, "id", None),
+                candidate_parent_id,
+                exc,
+            )
+            raise ValueError("Unable to validate parent relationship.") from exc
         return False
 
     def set_parent(self, parent):
@@ -568,6 +640,7 @@ class Timeseries(Base):
                 parent_ts.num_data = 0
                 parent_ts.latest_value = None
             parent_ts.updated = datetime.now()
+            _cache_invalidate(str(parent_ts.id))
 
     def reset(self) -> bool:
         """Reset timeseries data."""
@@ -585,6 +658,7 @@ class Timeseries(Base):
                 ts.num_data = 0
                 ts.latest_value = None
                 ts.updated = datetime.now()
+                _cache_invalidate(str(ts.id))
                 return True
             return False
 
@@ -677,14 +751,23 @@ class Universe(Base):
         end: str | None = None,
     ):
         """Get series for universe assets."""
-        from ix.db.query import D_MultiSeries
-        import pandas as pd
+        from ix.db.query import Series as QuerySeries
 
-        codes = [
-            f"{asset.get('name', '')}={asset.get('code', '')}"
-            for asset in (self.assets or [])
-        ]
-        multiseries = D_MultiSeries(codes=codes, field=field, freq=freq)
+        series_list = []
+        for asset in (self.assets or []):
+            alias = asset.get("name", "")
+            code = asset.get("code", "")
+            s = QuerySeries(f"{code}:{field}", freq=freq)
+            if alias:
+                s.name = alias
+            if not s.empty:
+                series_list.append(s)
+        if not series_list:
+            return pd.DataFrame()
+        multiseries = pd.concat(series_list, axis=1)
+        multiseries.index = pd.to_datetime(multiseries.index)
+        multiseries = multiseries.sort_index()
+        multiseries.index.name = "Date"
         if start:
             multiseries = multiseries.loc[start:]
         if end:

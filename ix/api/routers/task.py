@@ -14,7 +14,8 @@ from ix.db.conn import Session
 from ix.api.task_utils import (
     ProcessStatus,
     ProcessInfo,
-    SSE_SUBSCRIBERS,
+    subscribe_task_events,
+    unsubscribe_task_events,
     start_process,
     get_process as _get_process,
     update_process,
@@ -300,8 +301,8 @@ def get_processes(current_user: User = Depends(get_current_user)):
 @router.get("/task/stream")
 async def stream_process_events(current_user: User = Depends(get_current_user)):
     """SSE stream for task updates. Client should refetch /task/processes on each event."""
-    queue: asyncio.Queue = asyncio.Queue()
-    SSE_SUBSCRIBERS.add(queue)
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+    subscriber = subscribe_task_events(queue, asyncio.get_running_loop())
 
     async def event_generator():
         try:
@@ -315,7 +316,7 @@ async def stream_process_events(current_user: User = Depends(get_current_user)):
                     # Keep-alive comment
                     yield ": keep-alive\n\n"
         finally:
-            SSE_SUBSCRIBERS.discard(queue)
+            unsubscribe_task_events(subscriber)
 
     return StreamingResponse(
         event_generator(),

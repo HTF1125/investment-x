@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { FileDown, Loader2, Check, Monitor } from 'lucide-react';
-import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { getDirectApiBase } from '@/lib/api';
 
@@ -13,9 +12,6 @@ import { getDirectApiBase } from '@/lib/api';
 export default function Header() {
   const [mounted, setMounted] = useState(false);
   const { token } = useAuth();
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
-
   // PDF State
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');

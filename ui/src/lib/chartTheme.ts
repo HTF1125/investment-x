@@ -85,28 +85,32 @@ const THEME_TOKENS: Record<UiTheme, {
   spikeColor: string;
 }> = {
   light: {
-    text: 'rgb(19 23 34)',
-    textSecondary: 'rgba(19,23,34,0.5)',
-    grid: 'rgba(42,46,57,0.08)',
-    paperBg: '#ffffff',
-    plotBg: '#ffffff',
-    chartBorder: 'rgba(42,46,57,0.12)',
+    // Matches --foreground: 9 9 11 and --muted-foreground: 113 113 122
+    text: 'rgb(9,9,11)',
+    textSecondary: 'rgba(113,113,122,0.9)',
+    grid: 'rgba(9,9,11,0.06)',
+    // Matches --card: 255 255 255 and --background: 250 250 250
+    paperBg: 'rgb(255,255,255)',
+    plotBg: 'rgb(255,255,255)',
+    chartBorder: 'rgba(9,9,11,0.08)',
     legendBg: 'rgba(0,0,0,0)',
     legendBorder: 'rgba(0,0,0,0)',
     hoverBg: 'rgba(255,255,255,0.98)',
-    spikeColor: 'rgba(42,46,57,0.12)',
+    spikeColor: 'rgba(9,9,11,0.08)',
   },
   dark: {
-    text: 'rgb(209 212 220)',
-    textSecondary: 'rgba(209,212,220,0.5)',
-    grid: 'rgba(54,60,78,0.6)',
-    paperBg: '#131722',
-    plotBg: '#131722',
-    chartBorder: 'rgba(54,60,78,0.8)',
+    // Matches --foreground: 248 250 252 and --muted-foreground: 161 161 170
+    text: 'rgb(226,232,240)',
+    textSecondary: 'rgba(161,161,170,0.9)',
+    grid: 'rgba(39,39,42,0.8)',
+    // Matches --card: 15 15 18 and --background: 9 9 11
+    paperBg: 'rgb(15,15,18)',
+    plotBg: 'rgb(15,15,18)',
+    chartBorder: 'rgba(39,39,42,0.9)',
     legendBg: 'rgba(0,0,0,0)',
     legendBorder: 'rgba(0,0,0,0)',
-    hoverBg: 'rgba(19,23,34,0.96)',
-    spikeColor: 'rgba(120,123,134,0.2)',
+    hoverBg: 'rgba(9,9,11,0.96)',
+    spikeColor: 'rgba(161,161,170,0.15)',
   },
 };
 
@@ -277,7 +281,28 @@ export function applyChartTheme(
   // Colorway — unified palette across all charts
   cleaned.layout.colorway = COLORWAY;
 
-  cleaned.layout.hovermode = 'x unified';
+  // Detect if chart has any non-date/non-category x-axis (e.g. scatter quadrant charts)
+  const isScatterLayout = (() => {
+    const xKeys = Object.keys(cleaned.layout).filter((k) => /^xaxis\d*$/.test(k));
+    if (xKeys.length === 0) xKeys.push('xaxis');
+    for (const k of xKeys) {
+      const ax = cleaned.layout[k];
+      if (!ax || typeof ax !== 'object') continue;
+      if (ax.type === 'linear' || ax.type === 'log') return true;
+      // If type isn't set, check if trace data is numeric (not date strings)
+      if (!ax.type) {
+        for (const trace of data) {
+          const ref = `x${k === 'xaxis' ? '' : k.replace('xaxis', '')}`;
+          const traceXAxis = trace?.xaxis || 'x';
+          if (traceXAxis !== ref) continue;
+          if (Array.isArray(trace?.x) && trace.x.length > 0 && typeof trace.x[0] === 'number') return true;
+        }
+      }
+    }
+    return false;
+  })();
+
+  cleaned.layout.hovermode = isScatterLayout ? 'closest' : 'x unified';
   cleaned.layout.dragmode = 'pan';
   cleaned.layout.hoverdistance = 20;
   cleaned.layout.spikedistance = -1;
@@ -328,9 +353,12 @@ export function applyChartTheme(
 
     const isXAxis = axisKey.startsWith('x');
 
-    // Scale-linked axes are a common source of Plotly relayout crashes.
-    delete axis.scaleanchor;
-    delete axis.scaleratio;
+    // Scale-linked axes can cause Plotly relayout crashes, but are needed
+    // for quadrant/scatter charts that require square aspect ratios.
+    if (!isScatterLayout) {
+      delete axis.scaleanchor;
+      delete axis.scaleratio;
+    }
 
     sanitizeAxisRange(axis);
 
@@ -383,13 +411,13 @@ export function applyChartTheme(
       axis.showspikes = false;
     }
 
-    // Date formatting — always enforce yyyy-mm-dd
+    // Date formatting — only enforce on confirmed date axes
     if (isXAxis && axis.type === 'date') {
       axis.tickformat = DATE_TICK_FORMAT;
     }
 
-    // Remove rangeslider for cleaner look
-    if (isXAxis) {
+    // Remove rangeslider for cleaner look (only on date/timeseries axes)
+    if (isXAxis && !isScatterLayout) {
       axis.rangeslider = { visible: false };
     }
 

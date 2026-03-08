@@ -3,13 +3,14 @@ import json
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session as SessionType
 
 from ix.api.dependencies import get_current_admin_user, get_db
+from ix.api.rate_limit import limiter as _limiter
 from ix.db.conn import Session
 from ix.db.models.runtime_log import RuntimeLog
 from ix.db.models.user import User
@@ -49,7 +50,9 @@ def _load_permissions(db: SessionType) -> dict[str, str]:
 
 
 @router.get("/admin/settings/role_permissions")
+@_limiter.limit("120/minute")
 def get_role_permissions(
+    request: Request,
     db: SessionType = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ) -> dict:
@@ -57,7 +60,9 @@ def get_role_permissions(
 
 
 @router.put("/admin/settings/role_permissions")
+@_limiter.limit("30/minute")
 def set_role_permissions(
+    request: Request,
     payload: RolePermissionsPayload,
     db: SessionType = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
@@ -242,7 +247,9 @@ def _to_response(user: User) -> AdminUserResponse:
 
 
 @router.get("/admin/logs", response_model=List[RuntimeLogResponse])
+@_limiter.limit("120/minute")
 def list_runtime_logs(
+    request: Request,
     level: Optional[str] = Query(None, description="Filter by log level"),
     search: Optional[str] = Query(None, description="Search logger, module, or message"),
     limit: int = Query(200, ge=1, le=1000),
@@ -319,7 +326,9 @@ async def stream_runtime_logs(
 
 
 @router.get("/admin/users", response_model=List[AdminUserResponse])
+@_limiter.limit("120/minute")
 def list_users(
+    request: Request,
     search: Optional[str] = Query(None, description="Search by email or name"),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -361,7 +370,9 @@ def list_users(
 
 
 @router.post("/admin/users", response_model=AdminUserResponse, status_code=201)
+@_limiter.limit("30/minute")
 def create_user(
+    request: Request,
     payload: AdminUserCreate,
     db: SessionType = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
@@ -394,7 +405,9 @@ def create_user(
 
 
 @router.patch("/admin/users/{user_id}", response_model=AdminUserResponse)
+@_limiter.limit("30/minute")
 def update_user(
+    request: Request,
     user_id: str,
     payload: AdminUserUpdate,
     db: SessionType = Depends(get_db),
@@ -449,7 +462,9 @@ def update_user(
 
 
 @router.delete("/admin/users/{user_id}")
+@_limiter.limit("30/minute")
 def delete_user(
+    request: Request,
     user_id: str,
     db: SessionType = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),

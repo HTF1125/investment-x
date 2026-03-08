@@ -5,7 +5,7 @@ from ix.misc.crawler import get_yahoo_data
 from ix.misc.crawler import get_fred_data
 from ix.misc.crawler import get_naver_data
 from ix.db.models import Timeseries
-from ix.db.query import macro_data
+from ix.db.custom.macro import macro_data
 from ix.db.conn import Session
 
 logger = get_logger(__name__)

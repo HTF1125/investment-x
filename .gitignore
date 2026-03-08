@@ -173,6 +173,7 @@ dmypy.json
 # misc
 .DS_Store
 *.pem
+*.session
 
 # debug
 npm-debug.log*
@@ -195,3 +196,9 @@ ix/data/
 # Temporary files
 /hovered.png
 /implementation/
+
+# Claude config
+.claude/
+
+# Gemini config
+GEMINI.md

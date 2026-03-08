@@ -9,10 +9,11 @@ import json
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import List, Optional, Any, Dict
+import urllib.error
 from urllib.parse import urljoin, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request as UrllibRequest, urlopen
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, String
@@ -26,6 +27,7 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 
 from ix.api.dependencies import get_current_user, get_db
+from ix.api.rate_limit import limiter as _limiter
 from ix.db.models import InvestmentNote, User
 from ix.misc import get_logger
 
@@ -145,8 +147,8 @@ def _extract_meta_content(raw_html: str, meta_names: list[str]) -> Optional[str]
 
 
 def _fetch_generic_link_preview(url: str) -> LinkPreviewResponse:
-    request = Request(url, headers={"User-Agent": "investment-x/1.0"})
-    with urlopen(request, timeout=10) as response:
+    req = UrllibRequest(url, headers={"User-Agent": "investment-x/1.0"})
+    with urlopen(req, timeout=10) as response:
         final_url = response.geturl()
         raw_html = response.read(512_000).decode("utf-8", errors="ignore")
 
@@ -182,9 +184,9 @@ def _fetch_youtube_link_preview(url: str) -> Optional[LinkPreviewResponse]:
 
     watch_url = f"https://www.youtube.com/watch?v={video_id}"
     oembed_url = f"https://www.youtube.com/oembed?url={watch_url}&format=json"
-    request = Request(oembed_url, headers={"User-Agent": "investment-x/1.0"})
+    req = UrllibRequest(oembed_url, headers={"User-Agent": "investment-x/1.0"})
 
-    with urlopen(request, timeout=12) as response:
+    with urlopen(req, timeout=12) as response:
         payload = json.loads(response.read().decode("utf-8"))
 
     thumbnail_url = (
@@ -266,6 +268,25 @@ def get_note(
     return InvestmentNoteResponse.model_validate(note)
 
 
+def _is_private_hostname(hostname: str) -> bool:
+    import ipaddress
+    import socket
+
+    try:
+        addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        try:
+            resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
+            for _, _, _, _, sockaddr in resolved:
+                addr = ipaddress.ip_address(sockaddr[0])
+                if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+                    return True
+            return False
+        except socket.gaierror:
+            return False
+    return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
+
+
 @router.get("/notes/link-preview", response_model=LinkPreviewResponse)
 def get_link_preview(
     url: str = Query(..., min_length=3),
@@ -277,19 +298,34 @@ def get_link_preview(
     if not re.match(r"^https?://", value, flags=re.IGNORECASE):
         value = f"https://{value}"
 
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Only HTTP(S) URLs are allowed.")
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Invalid URL: no hostname.")
+    if _is_private_hostname(parsed.hostname):
+        raise HTTPException(status_code=400, detail="Requests to private/internal addresses are not allowed.")
+
     try:
         youtube_preview = _fetch_youtube_link_preview(value)
         if youtube_preview:
             return youtube_preview
         return _fetch_generic_link_preview(value)
-    except Exception as exc:
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
         raise HTTPException(
             status_code=400, detail=f"Unable to load link preview: {exc}"
+        ) from exc
+    except Exception as exc:
+        logger.warning("Unexpected error fetching link preview for %s: %s", value, exc)
+        raise HTTPException(
+            status_code=400, detail="Unable to load link preview."
         ) from exc
 
 
 @router.post("/notes", response_model=InvestmentNoteResponse, status_code=201)
+@_limiter.limit("30/minute")
 def create_note(
+    request: Request,
     payload: InvestmentNoteCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -307,7 +343,9 @@ def create_note(
 
 
 @router.put("/notes/{note_id}", response_model=InvestmentNoteResponse)
+@_limiter.limit("60/minute")
 def update_note(
+    request: Request,
     note_id: str,
     payload: InvestmentNoteUpdate,
     db: Session = Depends(get_db),
@@ -331,7 +369,9 @@ def update_note(
 
 
 @router.delete("/notes/{note_id}", status_code=204)
+@_limiter.limit("30/minute")
 def delete_note(
+    request: Request,
     note_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

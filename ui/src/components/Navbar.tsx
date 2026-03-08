@@ -21,6 +21,7 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   return (
     <Link
       href={href}
+      aria-current={isActive ? 'page' : undefined}
       className={`relative px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 after:absolute after:left-2 after:right-2 after:-bottom-[2px] after:h-[1.5px] after:rounded-full after:transition-all after:duration-200 ${
         isActive
           ? 'text-foreground bg-foreground/[0.07] after:bg-sky-400/90'
@@ -171,8 +172,15 @@ export default function Navbar() {
 
   React.useEffect(() => { setMenuOpen(false); }, [pathname]);
 
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [menuOpen]);
+
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[100] h-[40px] bg-background border-b border-border/60">
+    <nav className="fixed top-0 left-0 right-0 z-[100] h-[40px] bg-background/70 backdrop-blur-md border-b border-border/60">
       <div className="max-w-[1920px] mx-auto px-3 sm:px-4 h-full flex items-center gap-1.5 sm:gap-3">
 
         {/* Logo */}
@@ -197,7 +205,7 @@ export default function Navbar() {
           <NavLink href="/wartime">Wartime</NavLink>
           <NavLink href="/intel">Intel</NavLink>
           <NavLink href="/technical">Technical</NavLink>
-          <NavLink href="/quant">Quant</NavLink>
+          <NavLink href="/macro">Macro</NavLink>
           <NavLink href="/notes">Reports</NavLink>
           {isRealAdmin && !viewAsUser && (
             <NavLink href="/admin/timeseries">System</NavLink>
@@ -266,7 +274,7 @@ export default function Navbar() {
             <MobileNavLink href="/wartime">Wartime</MobileNavLink>
             <MobileNavLink href="/intel">Intel</MobileNavLink>
             <MobileNavLink href="/technical">Technical</MobileNavLink>
-            <MobileNavLink href="/quant">Quant</MobileNavLink>
+            <MobileNavLink href="/macro">Macro</MobileNavLink>
             <MobileNavLink href="/notes">Reports</MobileNavLink>
             {isRealAdmin && !viewAsUser && (
               <MobileNavLink href="/admin/timeseries">System</MobileNavLink>

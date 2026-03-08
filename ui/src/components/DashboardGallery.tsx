@@ -185,7 +185,7 @@ const ChartCard = React.memo(function ChartCard({
       </span>
     );
 
-  const cardClassName = `bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col group transition-all duration-200 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/30 hover:border-border relative ${expanded ? 'h-full' : 'h-full min-h-[380px]'}`;
+  const cardClassName = `bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col group transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/25 hover:border-border/80 relative ${expanded ? 'h-full' : 'h-full min-h-[380px]'}`;
 
   const [infoOpen, setInfoOpen] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
@@ -1725,20 +1725,20 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
           ))}
         </div>
       ) : (
-        <div className="transition-all duration-300 p-4 md:p-6 max-w-screen-xl mx-auto w-full">
-          {/* 🖼️ Grid Display — grouped by category */}
-          <div className="space-y-8">
+        <div className="transition-all duration-300 p-4 md:p-6 max-w-screen-2xl mx-auto w-full">
+          {/* Grid Display — grouped by category */}
+          <div className="space-y-10">
           {groupedCharts.map(({ category, charts: groupCharts }) => {
             return (
               <div key={category}>
                 {/* Category Section Header */}
                 {groupedCharts.length > 1 && (
                   <div className="flex items-center gap-3 mb-5 px-1">
-                    <span className="text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider shrink-0">
+                    <span className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-widest shrink-0">
                       {category}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0">{groupCharts.length}</span>
-                    <div className="h-px flex-1 bg-border/40" />
+                    <span className="text-[10px] text-muted-foreground/35 font-mono shrink-0 tabular-nums">{groupCharts.length}</span>
+                    <div className="h-px flex-1 bg-gradient-to-r from-border/50 to-transparent" />
                   </div>
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
@@ -1807,21 +1807,21 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-4 py-2.5 bg-popover border border-amber-500/30 rounded-2xl shadow-2xl shadow-amber-500/10"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-4 py-2.5 bg-popover/95 backdrop-blur-md border border-amber-500/30 rounded-2xl shadow-2xl shadow-black/20"
           >
             <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-[11px] font-mono text-amber-300 uppercase tracking-widest">Unsaved order changes</span>
-            <div className="flex items-center gap-2 ml-2">
+            <span className="text-[11px] font-mono text-amber-400 uppercase tracking-widest">Unsaved order</span>
+            <div className="flex items-center gap-2 ml-1">
               <button
                 onClick={handleResetOrder}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/50 text-muted-foreground hover:text-foreground text-[10px] font-bold transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/50 text-muted-foreground hover:text-foreground text-[10px] font-semibold transition-colors"
               >
                 <RotateCcw className="w-3 h-3" /> Reset
               </button>
               <button
                 onClick={handleSaveOrder}
                 disabled={reorderMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-bold transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-400 text-[10px] font-bold transition-colors disabled:opacity-50"
               >
                 {reorderMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 Save Order
@@ -1835,14 +1835,14 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       <AnimatePresence>
         {deleteTarget && (
           <motion.div
-            className="fixed inset-0 z-[220] flex items-center justify-center bg-foreground/40 dark:bg-black/60 px-4"
+            className="fixed inset-0 z-[220] flex items-center justify-center bg-foreground/40 dark:bg-black/70 backdrop-blur-md px-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setDeleteTarget(null)}
           >
             <motion.div
-              className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-popover shadow-2xl shadow-rose-900/20 p-5"
+              className="w-full max-w-sm rounded-2xl border border-border/60 bg-popover shadow-2xl p-5"
               initial={{ y: 16, scale: 0.97, opacity: 0 }}
               animate={{ y: 0, scale: 1, opacity: 1 }}
               exit={{ y: 10, scale: 0.98, opacity: 0 }}
@@ -1850,7 +1850,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             >
               <div className="text-sm font-semibold text-foreground mb-1">Delete Chart</div>
               <div className="text-xs text-muted-foreground mb-4">
-                Delete <span className="text-rose-300 font-mono">{deleteTarget.name}</span>? This action cannot be undone.
+                Delete <span className="text-rose-400 font-mono font-medium">{deleteTarget.name}</span>? This action cannot be undone.
               </div>
               <div className="flex items-center justify-end gap-2">
                 <button
@@ -1861,7 +1861,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                 </button>
                 <button
                   onClick={confirmDeleteChart}
-                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/30 hover:bg-rose-500/25 text-rose-400 text-xs font-semibold transition-colors"
                 >
                   Delete
                 </button>

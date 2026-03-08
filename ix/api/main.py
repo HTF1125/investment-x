@@ -306,6 +306,23 @@ def _drop_financial_news_table() -> None:
         logger.warning(f"financial_news drop failed: {exc}")
 
 
+def _ensure_macro_outlook_schema() -> None:
+    """Idempotent migration for macro_outlook table."""
+    if not ensure_connection():
+        logger.warning(
+            "Skipping macro_outlook schema check because DB connection is unavailable."
+        )
+        return
+
+    try:
+        from ix.db.models.macro_outlook import MacroOutlook
+
+        MacroOutlook.__table__.create(bind=conn.engine, checkfirst=True)
+        logger.info("Macro outlook schema check completed.")
+    except Exception as exc:
+        logger.warning(f"Macro outlook schema check failed: {exc}")
+
+
 _STARTUP_CHECKS: tuple[StartupCheck, ...] = (
     ("user role schema", _ensure_user_role_schema),
     ("charts rename", _ensure_charts_rename),
@@ -316,6 +333,7 @@ _STARTUP_CHECKS: tuple[StartupCheck, ...] = (
     ("news items schema", _ensure_news_items_schema),
     ("runtime logs schema", _ensure_runtime_logs_schema),
     ("legacy financial_news cleanup", _drop_financial_news_table),
+    ("macro outlook schema", _ensure_macro_outlook_schema),
 )
 
 
@@ -348,6 +366,30 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=3600,
     )
     logger.info("Scheduled 'run_daily_tasks' for 07:00 KST")
+
+    # Schedule macro outlook refresh every 4 hours
+    from ix.core.macro.pipeline import compute_all_targets as _macro_refresh
+
+    scheduler.add_job(
+        _macro_refresh,
+        CronTrigger(hour="*/4", minute=30, timezone=KST),
+        id="macro_refresh",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    logger.info("Scheduled 'macro_refresh' every 4 hours at :30")
+
+    # Schedule YouTube channel scan every 6 hours
+    from ix.misc.task.youtube import scan_youtube_channels
+
+    scheduler.add_job(
+        scan_youtube_channels,
+        CronTrigger(hour="*/6", minute=0, timezone=KST),
+        id="youtube_scan",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    logger.info("Scheduled 'youtube_scan' every 6 hours")
 
     _run_startup_checks()
 
@@ -538,6 +580,8 @@ try:
     app.include_router(quant.router, prefix="/api", tags=["Quant"])
     from ix.api.routers import wartime
     app.include_router(wartime.router, prefix="/api", tags=["Wartime"])
+    from ix.api.routers import macro
+    app.include_router(macro.router, prefix="/api", tags=["Macro"])
     from ix.api.routers import dashboard
 
     app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])

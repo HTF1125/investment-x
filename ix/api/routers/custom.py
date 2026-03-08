@@ -14,6 +14,8 @@ import html
 import re
 import traceback
 import concurrent.futures
+import multiprocessing as mp
+import queue
 import base64
 from io import BytesIO
 from reportlab.pdfgen import canvas
@@ -21,7 +23,6 @@ from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib import utils
 import textwrap
 import sys
-import threading
 
 from ix.db.conn import get_session
 from ix.db.models import CustomChart, User
@@ -41,19 +42,18 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
-# Bounded thread pool for custom chart code execution (prevents thread exhaustion)
-_chart_executor = concurrent.futures.ThreadPoolExecutor(max_workers=6, thread_name_prefix="chart-exec")
+_CUSTOM_CHART_EXEC_TIMEOUT_SECONDS = 120
 
 from ix.api.rate_limit import limiter as _limiter
 
 try:
     import orjson as _orjson
-except Exception:
+except ImportError:
     _orjson = None
 
 try:
     from xhtml2pdf import pisa
-except Exception:
+except ImportError:
     pisa = None
 
 
@@ -234,7 +234,12 @@ def _can_edit_chart(chart: CustomChart, user: User) -> bool:
 
 
 def _can_view_chart(chart: CustomChart, user: User) -> bool:
-    return _is_owner(user) or _is_admin(user) or _is_chart_owner(chart, user)
+    return (
+        bool(getattr(chart, "public", False))
+        or _is_owner(user)
+        or _is_admin(user)
+        or _is_chart_owner(chart, user)
+    )
 
 
 def _assert_owner_only(
@@ -371,34 +376,68 @@ def _to_custom_chart_list_item(
     return CustomChartListItemResponse(**payload)
 
 
-def execute_custom_code(code: str, *, validated: bool = False):
-    """
-    Executes user-provided Python code.
-    Expected contract: The code must define a 'fig' variable OR return a Plotly figure.
-    WE ARE INJECTING 'df_plot' into the scope.
-    """
+def _load_explicit_export_charts(
+    db: Session,
+    current_user: User,
+    requested_ids: List[str],
+    *columns: Any,
+) -> List[Any]:
+    if not requested_ids:
+        return []
 
-    # 1. Define the safe/standard plotting helper
-    def df_plot(df: pd.DataFrame, x=None, y=None, kind="line", title=None, **kwargs):
-        """
-        Generic plotter for DataFrames.
-        """
-        if kind == "line":
-            return px.line(df, x=x, y=y, title=title, **kwargs)
-        elif kind == "bar":
-            return px.bar(df, x=x, y=y, title=title, **kwargs)
-        elif kind == "scatter":
-            return px.scatter(df, x=x, y=y, title=title, **kwargs)
-        # Fallback
-        return px.line(df, title=title)
+    query = db.query(*columns) if columns else db.query(CustomChart)
+    charts = query.filter(CustomChart.id.in_(requested_ids)).all()
+    chart_map = {str(chart.id): chart for chart in charts}
 
-    code = code if validated else _prepare_custom_chart_code(code)
+    missing_ids = [chart_id for chart_id in requested_ids if chart_id not in chart_map]
+    if missing_ids:
+        raise HTTPException(status_code=404, detail="Chart not found")
 
-    from ix.db.conn import conn
-    from ix.db.query import (
-        Series as OriginalSeries,
-        Cycle,
-        MultiSeries,
+    ordered = [chart_map[chart_id] for chart_id in requested_ids]
+    if any(not _can_view_chart(chart, current_user) for chart in ordered):
+        raise HTTPException(status_code=404, detail="Chart not found")
+
+    return ordered
+
+
+def _df_plot(
+    df: pd.DataFrame,
+    x: Any = None,
+    y: Any = None,
+    kind: str = "line",
+    title: Optional[str] = None,
+    **kwargs: Any,
+):
+    """Generic plotter for DataFrames used inside custom chart scripts."""
+    if kind == "line":
+        return px.line(df, x=x, y=y, title=title, **kwargs)
+    if kind == "bar":
+        return px.bar(df, x=x, y=y, title=title, **kwargs)
+    if kind == "scatter":
+        return px.scatter(df, x=x, y=y, title=title, **kwargs)
+    return px.line(df, title=title)
+
+
+def _custom_chart_apply_theme(
+    fig: Any,
+    mode: Optional[str] = None,
+    force_dark: Optional[bool] = None,
+):
+    resolved_mode = mode
+    if resolved_mode not in {"light", "dark"}:
+        if force_dark is True:
+            resolved_mode = "dark"
+        elif force_dark is False:
+            resolved_mode = "light"
+        else:
+            resolved_mode = "light"
+    return chart_theme.apply(fig, mode=resolved_mode)
+
+
+def _build_custom_chart_global_scope(db_session: Optional[Session]) -> Dict[str, Any]:
+    from ix.db.query import Series as OriginalSeries, MultiSeries
+    from ix.core.stat import Cycle
+    from ix.core.transforms import (
         MonthEndOffset,
         Offset,
         Clip,
@@ -409,6 +448,8 @@ def execute_custom_code(code: str, *, validated: bool = False):
         Rebase,
         Resample,
         StandardScalar,
+    )
+    from ix.core.quant_dsl import (
         Correlation as _Correlation,
         RollingCorrelation as _RollingCorrelation,
         Regression as _Regression,
@@ -418,50 +459,29 @@ def execute_custom_code(code: str, *, validated: bool = False):
         ExpectedShortfall as _ExpectedShortfall,
     )
 
-    def apply_theme(fig: Any, mode: str | None = None, force_dark: bool | None = None):
-        """
-        Backward-compatible wrapper around ix.misc.theme chart theme.
-        - mode: 'light' or 'dark'
-        - force_dark: legacy flag supported by older custom scripts
-        """
-        resolved_mode = mode
-        if resolved_mode not in {"light", "dark"}:
-            if force_dark is True:
-                resolved_mode = "dark"
-            elif force_dark is False:
-                resolved_mode = "light"
-            else:
-                resolved_mode = "light"
-        return chart_theme.apply(fig, mode=resolved_mode)
-
-    # Create a single session for all queries in this execution
-    # This dramatically improves performance for charts with many tickers
-    db_session = None
-    try:
-        from ix.db.conn import ensure_connection
-
-        ensure_connection()
-        db_session = conn.SessionLocal()
-    except Exception as e:
-        logger.error(f"Error creating DB session for custom chart: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "Database Error",
-                "message": f"Could not establish a database session: {e}",
-            },
+    def Series_wrapped(
+        code,
+        freq=None,
+        name=None,
+        ccy=None,
+        scale=None,
+        _skip_fx=False,
+        strict=True,
+    ):
+        return OriginalSeries(
+            code,
+            freq=freq,
+            name=name,
+            ccy=ccy,
+            scale=scale,
+            session=db_session,
+            _skip_fx=_skip_fx,
+            strict=strict,
         )
 
-    # Optimized Series that reuses the session
-    def Series_wrapped(code, freq=None, ccy=None):
-        return OriginalSeries(code, freq=freq, ccy=ccy, session=db_session)
-
-    # Pre-import common libraries used in Investment-X charts
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
-
-    global_scope = {
+    return {
         "pd": pd,
+        "np": np,
         "px": px,
         "go": go,
         "make_subplots": make_subplots,
@@ -478,12 +498,12 @@ def execute_custom_code(code: str, *, validated: bool = False):
         "MovingAverage": MovingAverage,
         "Clip": Clip,
         "Ffill": Ffill,
-        "apply_academic_style": apply_theme,
+        "apply_academic_style": _custom_chart_apply_theme,
         "add_zero_line": _legacy_add_zero_line,
         "get_value_label": _legacy_get_value_label,
         "get_color": _legacy_get_color,
-        "apply_theme": apply_theme,
-        "df_plot": df_plot,
+        "apply_theme": _custom_chart_apply_theme,
+        "df_plot": _df_plot,
         "Correlation": _Correlation,
         "RollingCorrelation": _RollingCorrelation,
         "Regression": _Regression,
@@ -495,101 +515,127 @@ def execute_custom_code(code: str, *, validated: bool = False):
         "__name__": "__main__",
     }
 
-    # 3. Import common modules for convenience
+
+def _run_custom_chart_code_worker(code: str, result_queue: Any) -> None:
+    db_session = None
     try:
-        import numpy as np
+        from ix.db.conn import conn, ensure_connection
 
-        global_scope["np"] = np
-    except ImportError:
-        pass
+        if not ensure_connection():
+            raise ConnectionError("Failed to establish database connection")
 
-    # 4. Execute
-    try:
-        # Wrap in a function to allow 'return' statements
-        # or just exec.
-        # Use single scope for globals/locals to ensure function closures work as expected
-        # Enable shared session context for imports
-        from ix.db.conn import custom_chart_session
-
-        # Log snippet for debugging
+        db_session = conn.SessionLocal()
+        global_scope = _build_custom_chart_global_scope(db_session)
         code_snippet = (code[:100] + "...") if len(code) > 100 else code
-        logger.info(f"Executing custom chart code. Snippet: {code_snippet}")
+        logger.info("Executing custom chart code. Snippet: %s", code_snippet)
 
-        # Execute with a timeout to prevent runaway code from hanging the server
-        _EXEC_TIMEOUT_SECONDS = 120
+        exec(code, global_scope)
+        fig_result = global_scope.get("fig")
 
-        def _run_exec():
-            exec(code, global_scope)
-
-        token = custom_chart_session.set(db_session)
-        try:
-            future = _chart_executor.submit(_run_exec)
-            future.result(timeout=_EXEC_TIMEOUT_SECONDS)
-        except concurrent.futures.TimeoutError:
-            future.cancel()
-            raise TimeoutError(
-                f"Custom chart execution exceeded {_EXEC_TIMEOUT_SECONDS}s timeout"
-            )
-        finally:
-            custom_chart_session.reset(token)
-
-        logger.info("exec() completed successfully.")
-
-        # 5. Extract Figure from the modified scope
-        # Check if 'fig' variable is defined
-        if "fig" in global_scope:
-            logger.info("Found 'fig' variable in scope.")
-            fig_result = global_scope["fig"]
-        else:
-            # Check for any go.Figure in the scope if 'fig' is missing
-            fig_result = None
+        if fig_result is None:
             for key, value in global_scope.items():
                 if isinstance(value, go.Figure):
-                    logger.info(f"Using alternative figure found in scope: {key}")
+                    logger.info("Using alternative figure found in scope: %s", key)
                     fig_result = value
                     break
 
-            if fig_result is None:
-                logger.error("No figure found in scope after execution.")
-                raise ValueError(
-                    "The code must define a variable named 'fig' containing the Plotly figure."
-                )
+        if fig_result is None:
+            raise ValueError(
+                "The code must define a variable named 'fig' containing the Plotly figure."
+            )
 
-        # Enforce the misc chart theme before returning to frontend/storage.
         try:
-            fig_result = apply_theme(fig_result)
+            fig_result = _custom_chart_apply_theme(fig_result)
         except Exception as theme_err:
-            logger.warning(f"Theme application skipped due to error: {theme_err}")
+            logger.warning("Theme application skipped due to error: %s", theme_err)
 
-        return fig_result
+        result_queue.put({"ok": True, "figure": get_clean_figure_json(fig_result)})
+    except Exception as exc:
+        logger.error("Error executing custom chart code: %s", exc)
+        logger.error(traceback.format_exc())
+        result_queue.put(
+            {
+                "ok": False,
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+        )
+    finally:
+        if db_session is not None:
+            db_session.close()
 
-    except Exception as e:
-        if isinstance(e, UnsafeCustomChartCodeError):
-            logger.warning("Rejected unsafe custom chart code during execution: %s", e)
+
+def _run_custom_chart_code_isolated(code: str) -> Dict[str, Any]:
+    ctx = mp.get_context("spawn")
+    result_queue = ctx.Queue(maxsize=1)
+    proc = ctx.Process(
+        target=_run_custom_chart_code_worker,
+        args=(code, result_queue),
+        daemon=True,
+    )
+
+    try:
+        proc.start()
+        proc.join(timeout=_CUSTOM_CHART_EXEC_TIMEOUT_SECONDS)
+
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=5)
+            raise TimeoutError(
+                f"Custom chart execution exceeded {_CUSTOM_CHART_EXEC_TIMEOUT_SECONDS}s timeout"
+            )
+
+        try:
+            payload = result_queue.get(timeout=1)
+        except queue.Empty as exc:
+            raise RuntimeError(
+                f"Custom chart worker exited without returning a result (exitcode={proc.exitcode})"
+            ) from exc
+
+        if not payload.get("ok"):
+            raise RuntimeError(payload.get("message") or "Custom chart execution failed")
+
+        figure = payload.get("figure")
+        if not isinstance(figure, dict):
+            raise RuntimeError("Custom chart worker returned an invalid figure payload")
+        return figure
+    finally:
+        result_queue.close()
+        result_queue.join_thread()
+
+
+def execute_custom_code(code: str, *, validated: bool = False):
+    """
+    Executes user-provided Python code.
+    Expected contract: The code must define a 'fig' variable OR return a Plotly figure.
+    WE ARE INJECTING 'df_plot' into the scope.
+    """
+    code = code if validated else _prepare_custom_chart_code(code)
+    try:
+        return _run_custom_chart_code_isolated(code)
+    except Exception as exc:
+        if isinstance(exc, UnsafeCustomChartCodeError):
+            logger.warning("Rejected unsafe custom chart code during execution: %s", exc)
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": "Validation Error",
-                    "message": str(e),
+                    "message": str(exc),
                 },
-            ) from e
-        if not isinstance(e, HTTPException):
-            logger.error(f"Error executing custom chart code: {e}")
-            logger.error(traceback.format_exc())
+            ) from exc
+        if isinstance(exc, HTTPException):
+            raise
 
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "Execution Error",
-                    "message": str(e),
-                },
-            )
-        else:
-            raise e
-    finally:
-        if db_session:
-            db_session.close()
-            logger.info("Custom chart DB session closed.")
+        logger.error("Error executing custom chart code: %s", exc)
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Execution Error",
+                "message": str(exc),
+            },
+        ) from exc
 
 
 
@@ -651,6 +697,9 @@ def get_clean_figure_json(fig: Any) -> Any:
             return super().default(obj)
 
     try:
+        if isinstance(fig, dict):
+            clean_json_str = json.dumps(fig, cls=NumpyEncoder)
+            return json.loads(clean_json_str)
         # pio.to_json correctly converts pandas/numpy Timestamps to ISO strings
         json_str = pio.to_json(fig, engine="json")
         return json.loads(json_str)
@@ -968,7 +1017,10 @@ def preview_custom_chart(
 
     try:
         logger.info("Serializing figure to JSON string (Plotly native)...")
-        json_str = pio.to_json(fig)
+        if isinstance(fig, dict):
+            json_str = _json_dumps_fast(fig)
+        else:
+            json_str = pio.to_json(fig)
 
         duration = time.time() - start_time
         logger.info(
@@ -1179,21 +1231,21 @@ def export_custom_charts_pdf(
             items_list = []
     except json.JSONDecodeError:
         items_list = []
+    requested_ids = [str(item) for item in items_list if item]
 
     user_identifier = str(getattr(current_user, "id", "") or "")
     pid = _start_process("Export PDF Report", user_id=user_identifier)
 
     try:
-        if items_list:
-            # Explicit list — preserve caller order
-            charts = db.query(CustomChart).filter(CustomChart.id.in_(items_list)).all()
-            chart_map = {str(c.id): c for c in charts}
-            ordered_charts = [chart_map[cid] for cid in items_list if cid in chart_map]
+        if requested_ids:
+            ordered_charts = _load_explicit_export_charts(
+                db, current_user, requested_ids
+            )
         else:
             # Auto-select all charts flagged for export
             ordered_charts = (
                 db.query(CustomChart)
-                .filter(CustomChart.public == True)
+                .filter(CustomChart.public.is_(True))
                 .order_by(CustomChart.rank.asc())
                 .all()
             )
@@ -1264,6 +1316,7 @@ def export_custom_charts_html(
             items_list = []
     except json.JSONDecodeError:
         items_list = []
+    requested_ids = [str(item) for item in items_list if item]
 
     user_identifier = str(getattr(current_user, "id", "") or "")
     pid = _start_process("Export Interactive Portfolio", user_id=user_identifier)
@@ -1274,16 +1327,19 @@ def export_custom_charts_html(
             CustomChart.name,
             CustomChart.category,
             CustomChart.description,
+            CustomChart.public,
+            CustomChart.created_by_user_id,
             CustomChart.updated_at,
             CustomChart.figure,
         )
 
-        if items_list:
-            charts = (
-                db.query(*chart_columns).filter(CustomChart.id.in_(items_list)).all()
+        if requested_ids:
+            ordered_charts = _load_explicit_export_charts(
+                db,
+                current_user,
+                requested_ids,
+                *chart_columns,
             )
-            chart_map = {str(c.id): c for c in charts}
-            ordered_charts = [chart_map[cid] for cid in items_list if cid in chart_map]
         else:
             ordered_charts = (
                 db.query(*chart_columns)

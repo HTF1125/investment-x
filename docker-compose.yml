@@ -24,16 +24,12 @@ services:
     container_name: investment-x-backend
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/investmentx
-      # Override .env if needed, or use .env values
     env_file:
       - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ~/.gemini/antigravity/logs:/root/.gemini/antigravity/logs
-    depends_on:
-      db:
-        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -42,6 +38,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=http://localhost:8000
+        - INTERNAL_API_URL=http://backend:8000
     container_name: investment-x-frontend
     ports:
       - "3000:3000"

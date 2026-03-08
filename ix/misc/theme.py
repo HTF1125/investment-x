@@ -131,6 +131,11 @@ class ChartTheme:
                 return True
             if isinstance(s.iloc[0], (datetime, pd.Timestamp)):
                 return True
+            # Reject purely numeric data — pd.to_datetime interprets numbers
+            # as nanosecond offsets from epoch, giving false positives for
+            # scatter/quadrant charts with numeric axes (e.g. -200 to 200).
+            if pd.api.types.is_numeric_dtype(s):
+                return False
             parsed = pd.to_datetime(s, errors="coerce")
             return parsed.notna().mean() >= 0.8
         except Exception:
@@ -314,11 +319,21 @@ class ChartTheme:
 
             updates: Dict[str, Any] = {}
 
-            # Remove scale anchors that can cause relayout crashes.
-            if getattr(axis_obj, "scaleanchor", None) is not None:
-                updates["scaleanchor"] = None
-            if getattr(axis_obj, "scaleratio", None) is not None:
-                updates["scaleratio"] = None
+            # Remove scale anchors that can cause relayout crashes,
+            # but preserve them for non-datetime axes (e.g. quadrant charts
+            # that need square aspect ratio via scaleanchor).
+            is_datetime_axis = False
+            if key.startswith("xaxis"):
+                x_vals = self._x_values_for_axis(fig, key)
+                is_datetime_axis = bool(x_vals) and self._is_datetime_values(x_vals)
+            else:
+                is_datetime_axis = getattr(axis_obj, "type", None) == "date"
+
+            if is_datetime_axis:
+                if getattr(axis_obj, "scaleanchor", None) is not None:
+                    updates["scaleanchor"] = None
+                if getattr(axis_obj, "scaleratio", None) is not None:
+                    updates["scaleratio"] = None
 
             axis_type = getattr(axis_obj, "type", None)
             axis_range = getattr(axis_obj, "range", None)
@@ -338,11 +353,19 @@ class ChartTheme:
                 elif axis_type in ("category", "multicategory"):
                     valid = True  # label-based ranges are always valid
                 else:
+                    # Try numeric first, then fall back to date parsing for
+                    # auto-typed axes that were given ISO-string date ranges
+                    # (e.g. by a previous theme application).
                     try:
                         mn, mx = float(start), float(end)
                         valid = math.isfinite(mn) and math.isfinite(mx) and mn != mx
                     except Exception:
-                        valid = False
+                        try:
+                            ts0 = pd.Timestamp(str(start))
+                            ts1 = pd.Timestamp(str(end))
+                            valid = pd.notna(ts0) and pd.notna(ts1) and ts0 != ts1
+                        except Exception:
+                            valid = False
 
                 if not valid:
                     updates["range"] = None
@@ -450,13 +473,35 @@ class ChartTheme:
     # ------------------------------------------------------------------ #
 
     def _apply_datetime_padding(self, fig: go.Figure) -> None:
-        """Add symmetric breathing room on date x-axes."""
+        """Add symmetric breathing room on date x-axes.
+
+        Only pads axes that are *confirmed* date axes — either explicitly
+        set to ``type="date"`` by the chart code or containing trace data
+        that is unambiguously datetime.  The axis type is never forced to
+        ``"date"`` so that charts with non-date x-axes (scatter/quadrant,
+        category labels that happen to parse as dates, etc.) are left alone.
+        """
         for axis_name in self._axis_names(fig, "xaxis"):
             axis_obj = getattr(fig.layout, axis_name, None)
             axis_type = getattr(axis_obj, "type", None) if axis_obj else None
-            if axis_type == "category":
+
+            # Skip axes whose type is explicitly non-date.
+            if axis_type in ("category", "linear", "log"):
                 continue
 
+            # Skip axes that already have a finite numeric range (quadrant
+            # / scatter charts typically set numeric ranges).
+            axis_range = getattr(axis_obj, "range", None)
+            if axis_range is not None and len(axis_range) >= 2:
+                try:
+                    r0, r1 = float(axis_range[0]), float(axis_range[1])
+                    if math.isfinite(r0) and math.isfinite(r1):
+                        continue
+                except (TypeError, ValueError):
+                    pass
+
+            # For auto-detected axes (type is None / "-"), only proceed if
+            # the trace x-values are clearly datetime.
             x_values = self._x_values_for_axis(fig, axis_name)
             if not x_values or not self._is_datetime_values(x_values):
                 continue
@@ -469,19 +514,22 @@ class ChartTheme:
             if pad <= pd.Timedelta(0):
                 continue
 
-            fig.update_layout(
-                {
-                    axis_name: {
-                        "type": "date",
-                        "range": [
-                            x0.isoformat(),
-                            (x1 + pad).isoformat(),
-                        ],
-                        "autorange": False,
-                        "tickformat": self.datetime_tickformat,
-                    }
-                }
-            )
+            # Never force `type: "date"` — let Plotly auto-detect axis type
+            # from the data.  We only set the padded range and tickformat.
+            update: Dict[str, Any] = {
+                "range": [
+                    x0.isoformat(),
+                    (x1 + pad).isoformat(),
+                ],
+                "autorange": False,
+                "tickformat": self.datetime_tickformat,
+            }
+            # Only explicitly mark the type when the chart code already
+            # declared it as "date" — otherwise leave it for Plotly to infer.
+            if axis_type == "date":
+                update["type"] = "date"
+
+            fig.update_layout({axis_name: update})
 
     # ------------------------------------------------------------------ #
     # Year-end boundary lines                                              #
@@ -499,8 +547,17 @@ class ChartTheme:
         for axis_name in self._axis_names(fig, "xaxis"):
             axis_obj = getattr(fig.layout, axis_name, None)
             axis_type = getattr(axis_obj, "type", None) if axis_obj else None
-            if axis_type == "category":
+            if axis_type in ("category", "linear", "log"):
                 continue
+
+            axis_range = getattr(axis_obj, "range", None)
+            if axis_range is not None and len(axis_range) >= 2:
+                try:
+                    r0, r1 = float(axis_range[0]), float(axis_range[1])
+                    if math.isfinite(r0) and math.isfinite(r1):
+                        continue
+                except (TypeError, ValueError):
+                    pass
 
             x_values = self._x_values_for_axis(fig, axis_name)
             if not x_values or not self._is_datetime_values(x_values):
@@ -567,6 +624,20 @@ class ChartTheme:
 
         show_legend = self._should_show_legend(fig_obj)
 
+        # Detect if chart has non-datetime x-axes (scatter/quadrant charts)
+        has_numeric_xaxis = False
+        for axis_name in self._axis_names(fig_obj, "xaxis"):
+            axis_obj = getattr(fig_obj.layout, axis_name, None)
+            axis_type = getattr(axis_obj, "type", None) if axis_obj else None
+            if axis_type in ("linear", "log"):
+                has_numeric_xaxis = True
+                break
+            if axis_type not in ("date", "category", "multicategory"):
+                x_vals = self._x_values_for_axis(fig_obj, axis_name)
+                if x_vals and not self._is_datetime_values(x_vals):
+                    has_numeric_xaxis = True
+                    break
+
         # --- Core layout ---
         # NOTE: Deliberately no `template` here. Setting a Plotly built-in template
         # (plotly_dark / simple_white) serialises template defaults into the JSON,
@@ -581,7 +652,7 @@ class ChartTheme:
             font=dict(family=self.font_main, color=text_color, size=base_font_size),
             colorway=self.palette.colorway,
             margin=self.margin,
-            hovermode="x unified",
+            hovermode="closest" if has_numeric_xaxis else "x unified",
             hoverdistance=20,
             spikedistance=-1,
             showlegend=show_legend,

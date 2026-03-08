@@ -126,6 +126,8 @@ def quant_correlation_matrix(
         fig.update_yaxes(showticklabels=False, row=1, col=2)
 
         return json.loads(pio.to_json(fig, engine="json"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -146,8 +148,12 @@ def quant_rolling_correlation(
         if s1.empty or s2.empty:
             raise HTTPException(status_code=404, detail="One or both series not found.")
 
-        rc = rolling_correlation(s1, s2, window=window)
-        rc = rc.dropna()
+        rc = rolling_correlation(s1, s2, window=window).dropna()
+        if rc.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="Not enough overlapping return data to compute rolling correlation.",
+            )
 
         n1, n2 = _short_name(code1), _short_name(code2)
         fig = go.Figure()
@@ -164,6 +170,8 @@ def quant_rolling_correlation(
             margin=dict(l=20, r=20, t=50, b=20),
         )
         return json.loads(pio.to_json(fig, engine="json"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -257,6 +265,8 @@ def quant_ols_regression(
             showlegend=False,
         )
         return json.loads(pio.to_json(fig, engine="json"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -278,6 +288,11 @@ def quant_rolling_beta(
             raise HTTPException(status_code=404, detail="Series not found.")
 
         beta = rolling_beta(s_y, s_x, window=window).dropna()
+        if beta.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="Not enough overlapping return data to compute rolling beta.",
+            )
         yn, xn = _short_name(y), _short_name(x)
 
         fig = go.Figure()
@@ -296,6 +311,8 @@ def quant_rolling_beta(
             margin=dict(l=20, r=20, t=50, b=20),
         )
         return json.loads(pio.to_json(fig, engine="json"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -375,6 +392,8 @@ def quant_pca(
             margin=dict(l=20, r=20, t=50, b=20),
         )
         return json.loads(pio.to_json(fig, engine="json"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -406,6 +425,11 @@ def quant_var(
         returns = es_result["returns"]
         var_val = var_result["var"]
         es_val = es_result["es"]
+        if returns.empty or not np.isfinite(var_val) or not np.isfinite(es_val):
+            raise HTTPException(
+                status_code=400,
+                detail="Not enough clean return history to compute VaR/CVaR.",
+            )
 
         name = _short_name(code)
         fig = go.Figure()
@@ -430,6 +454,8 @@ def quant_var(
             margin=dict(l=20, r=20, t=50, b=20),
         )
         return json.loads(pio.to_json(fig, engine="json"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -450,6 +476,11 @@ def quant_rolling_var(
             raise HTTPException(status_code=404, detail="Series not found.")
 
         rvar = rolling_var(s, confidence=confidence, window=window).dropna()
+        if rvar.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="Not enough clean return history to compute rolling VaR.",
+            )
         price = s.reindex(rvar.index)
         name = _short_name(code)
 
@@ -477,6 +508,8 @@ def quant_rolling_var(
         fig.update_yaxes(title_text="Price", secondary_y=True)
 
         return json.loads(pio.to_json(fig, engine="json"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

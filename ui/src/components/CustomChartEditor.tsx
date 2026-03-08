@@ -1521,7 +1521,7 @@ export default function CustomChartEditor({ mode = 'standalone', initialChartId,
                animate={{ opacity: 1 }} 
                exit={{ opacity: 0 }}
                onClick={() => setDeleteConfirm(null)}
-               className="absolute inset-0 backdrop-blur-sm bg-background/60"
+               className="absolute inset-0 bg-foreground/40 dark:bg-black/70 backdrop-blur-md"
             />
             <motion.div
                initial={{ scale: 0.9, opacity: 0, y: 20 }}

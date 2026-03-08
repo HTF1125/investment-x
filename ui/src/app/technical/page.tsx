@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '@/components/AppShell';
+import Modal from '@/components/Modal';
 import NavigatorShell from '@/components/NavigatorShell';
 import {
   Activity, Loader2, BrainCircuit, BarChart2, Settings2, Plus, X, Search, ChevronRight, Minimize2, Maximize2,
@@ -18,10 +19,15 @@ import ReactMarkdown from 'react-markdown';
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
   loading: () => (
-    <div className="h-full w-full flex items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 className="w-6 h-6 animate-spin text-sky-500/50" />
-        <span className="text-[11px] text-muted-foreground/50 tracking-widest uppercase">Initializing Chart</span>
+    <div className="h-full w-full flex items-center justify-center bg-background/50 backdrop-blur-sm animate-in fade-in duration-500">
+      <div className="flex flex-col items-center gap-6">
+        <div className="relative">
+          <div className="absolute inset-0 -m-3 border border-sky-500/20 rounded-full animate-[spin_3s_linear_infinite]" />
+          <div className="absolute inset-0 -m-1.5 border border-indigo-500/20 rounded-full animate-[spin_2s_linear_infinite_reverse]" />
+          <div className="w-12 h-12 border-4 border-sky-500/10 border-t-sky-400 rounded-full animate-spin shadow-[0_0_15px_rgba(56,189,248,0.2)]" />
+          <div className="absolute inset-0 m-auto w-1.5 h-1.5 bg-sky-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.6)]" />
+        </div>
+        <span className="text-[11px] text-muted-foreground/60 tracking-[0.2em] font-medium uppercase animate-pulse">Initializing Chart</span>
       </div>
     </div>
   ),
@@ -60,26 +66,17 @@ function isoDateYearsAgo(years: number) {
 
 // ─── UI Components ───────────────────────────────────────────────────────────
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-[320px] overflow-hidden rounded-xl border border-border/60 bg-background/95 shadow-2xl animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl">
-        <div className="flex items-center justify-between border-b border-border/50 px-4 py-3 bg-foreground/[0.02]">
-          <h3 className="text-[13px] font-semibold tracking-tight text-foreground/90">{title}</h3>
-          <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground/60 hover:bg-foreground/10 hover:text-foreground transition-colors">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <div className="p-5 space-y-5 max-h-[60vh] overflow-y-auto custom-scrollbar">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
+interface ParamRowProps {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
 }
 
-function ParamRow({ label, value, onChange, min, max, step }: any) {
+function ParamRow({ label, value, onChange, min, max, step }: ParamRowProps) {
+  const { theme } = useTheme();
   return (
     <div className="flex items-center justify-between gap-4 group">
       <span className="text-[12px] text-muted-foreground/80 font-medium group-hover:text-foreground/90 transition-colors">{label}</span>
@@ -87,20 +84,21 @@ function ParamRow({ label, value, onChange, min, max, step }: any) {
         type="number" value={value as number} min={min} max={max} step={step ?? 1}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-20 text-right text-[12px] bg-foreground/[0.02] border border-border/40 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 text-foreground transition-all"
-        style={{ colorScheme: 'dark' }}
+        style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
       />
     </div>
   );
 }
 
 function ParamSelect({ label, value, onChange, options }: any) {
+  const { theme } = useTheme();
   return (
     <div className="flex items-center justify-between gap-4 group">
       <span className="text-[12px] text-muted-foreground/80 font-medium group-hover:text-foreground/90 transition-colors">{label}</span>
       <select
         value={value as any} onChange={(e) => onChange(e.target.value)}
         className="text-[12px] bg-foreground/[0.02] border border-border/40 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 text-foreground cursor-pointer transition-all appearance-none pr-8 relative"
-        style={{ colorScheme: 'dark', backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2371717A%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.7rem top 50%', backgroundSize: '0.65rem auto' }}
+        style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))', backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2371717A%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.7rem top 50%', backgroundSize: '0.65rem auto' }}
       >
         {options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -182,7 +180,7 @@ function IndicatorRow({
         </button>
       </div>
 
-      {settingsOpen && <Modal title={`${label} Settings`} onClose={onSettingsOpen}>{settingsContent}</Modal>}
+      <Modal open={settingsOpen} title={`${label} Settings`} onClose={onSettingsOpen} maxWidth="max-w-[320px]">{settingsContent}</Modal>
     </div>
   );
 }
@@ -199,6 +197,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function TechnicalPage() {
+  useEffect(() => { document.title = 'Technical Analysis | Investment-X'; }, []);
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const queryClient = useQueryClient();
@@ -257,6 +256,7 @@ export default function TechnicalPage() {
   const [maAdderPeriods, setMaAdderPeriods] = useState<Set<number>>(new Set());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [toastError, setToastError] = useState<string | null>(null);
 
   // ── Export Logic ──
   const handleExport = async (format: 'pdf' | 'pptx') => {
@@ -294,7 +294,7 @@ export default function TechnicalPage() {
       document.body.removeChild(a);
     } catch (err) {
       console.error('Export error:', err);
-      alert('Failed to generate ' + format.toUpperCase());
+      setToastError('Failed to generate ' + format.toUpperCase());
     } finally {
       setExportingFormat(null);
     }
@@ -926,7 +926,7 @@ export default function TechnicalPage() {
     );
   }, [sidebarSearch, state, openSettings, maAdderOpen, maAdderType, maAdderPeriods]);
 
-  return (
+  return (<>
     <AppShell hideFooter>
       <NavigatorShell
         sidebarOpen={sidebarOpen && !isFullscreen}
@@ -936,9 +936,9 @@ export default function TechnicalPage() {
         sidebarContent={sidebarContent}
       >
         <div className={`h-full flex flex-col bg-background relative ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
-          
+
           {/* ── Top Bar ── */}
-          <div className="h-12 px-4 border-b border-border/40 flex items-center justify-between shrink-0 bg-background/95 backdrop-blur z-10 shadow-sm">
+          <div className="h-12 px-4 border-b border-border/50 flex items-center justify-between shrink-0 bg-background/95 backdrop-blur-md z-10 shadow-sm">
             <div className="flex items-center gap-4">
               {/* Ticker Input */}
               <div className="relative flex items-center">
@@ -1020,8 +1020,8 @@ export default function TechnicalPage() {
           <div className="flex-1 relative min-h-0 bg-background">
             {/* Floating AI Panel */}
             {showAiSummary && (
-              <div className={`absolute top-4 left-4 z-20 w-[400px] max-h-[85%] flex flex-col ${isLight ? 'bg-white/95 border-sky-200' : 'bg-[#0a0f1d]/95 border-sky-500/20'} backdrop-blur-2xl border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ring-1 ${isLight ? 'ring-black/5' : 'ring-white/5'}`}>
-                <div className={`px-5 py-3.5 border-b flex items-center justify-between ${isLight ? 'border-sky-100 bg-sky-50/50' : 'border-white/5 bg-sky-500/5'}`}>
+              <div className="absolute top-4 left-4 z-20 w-[400px] max-h-[85%] flex flex-col bg-background/95 border border-border/60 backdrop-blur-2xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ring-1 ring-foreground/5">
+                <div className="px-5 py-3.5 border-b border-border/50 flex items-center justify-between bg-foreground/[0.02]">
                   <div className="flex items-center gap-2.5 text-sky-500">
                     <div className={`p-1 rounded-lg ${isLight ? 'bg-sky-500/10' : 'bg-sky-500/10'}`}>
                       <BrainCircuit className="w-4 h-4" />
@@ -1030,11 +1030,11 @@ export default function TechnicalPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {summaryQuery.data?.summary && (
-                      <div className={`flex items-center gap-1 mr-2 border-r pr-2 ${isLight ? 'border-sky-100' : 'border-white/10'}`}>
+                      <div className="flex items-center gap-1 mr-2 border-r border-border/40 pr-2">
                         <button
                           onClick={() => handleExport('pdf')}
                           disabled={!!exportingFormat}
-                          className={`p-1.5 rounded-md transition-all ${isLight ? 'hover:bg-sky-500/5 text-muted-foreground hover:text-sky-600' : 'hover:bg-white/5 text-muted-foreground hover:text-sky-400'}`}
+                          className="p-1.5 rounded-md transition-all text-muted-foreground hover:text-sky-500 hover:bg-sky-500/[0.07]"
                           title="Export to PDF"
                         >
                           {exportingFormat === 'pdf' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
@@ -1042,7 +1042,7 @@ export default function TechnicalPage() {
                         <button
                           onClick={() => handleExport('pptx')}
                           disabled={!!exportingFormat}
-                          className={`p-1.5 rounded-md transition-all ${isLight ? 'hover:bg-amber-500/5 text-muted-foreground hover:text-amber-600' : 'hover:bg-white/5 text-muted-foreground hover:text-amber-400'}`}
+                          className="p-1.5 rounded-md transition-all text-muted-foreground hover:text-amber-500 hover:bg-amber-500/[0.07]"
                           title="Export to PowerPoint"
                         >
                           {exportingFormat === 'pptx' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PresentationIcon className="w-3.5 h-3.5" />}
@@ -1060,11 +1060,11 @@ export default function TechnicalPage() {
                 </div>
                 <div className="p-4 overflow-y-auto custom-scrollbar">
                   {summaryQuery.data?.summary ? (
-                    <div className={`prose ${isLight ? 'prose-slate' : 'prose-invert'} prose-xs max-w-none`}>
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
                       <ReactMarkdown
                         components={{
-                          h1: ({node, ...props}) => <h1 className="text-sky-500 font-bold text-[15px] mb-4 mt-2 border-b border-sky-500/20 pb-2 flex items-center gap-2" {...props} />,
-                          h2: ({node, ...props}) => <h2 className="text-foreground font-bold text-[13px] mb-3 mt-6 flex items-center gap-2 before:w-1 before:h-3.5 before:bg-sky-500 before:rounded-full" {...props} />,
+                          h1: ({node, ...props}) => <h1 className="text-sky-500 font-bold text-[15px] mb-4 mt-2 border-b border-sky-500/20 pb-2" {...props} />,
+                          h2: ({node, ...props}) => <h2 className="text-foreground font-bold text-[13px] mb-3 mt-6" {...props} />,
                           h3: ({node, ...props}) => <h3 className="text-foreground/90 font-bold text-[12px] mb-2 mt-4 underline decoration-sky-500/30 underline-offset-4" {...props} />,
                           p: ({node, ...props}) => <p className="mb-4 text-[12px] leading-[1.6] text-foreground/70" {...props} />,
                           ul: ({node, ...props}) => <ul className="mb-4 space-y-2 list-none pl-0" {...props} />,
@@ -1074,9 +1074,9 @@ export default function TechnicalPage() {
                               <span>{props.children}</span>
                             </li>
                           ),
-                          strong: ({node, ...props}) => <strong className={`${isLight ? 'text-sky-700' : 'text-sky-200/90'} font-semibold`} {...props} />,
+                          strong: ({node, ...props}) => <strong className="text-sky-500 font-semibold" {...props} />,
                           blockquote: ({node, ...props}) => (
-                            <blockquote className={`my-4 p-3 rounded-xl border-l-2 italic ${isLight ? 'bg-sky-50 border-sky-200 text-sky-800' : 'bg-sky-500/5 border-sky-500/40 text-foreground/80'}`} {...props} />
+                            <blockquote className="my-4 p-3 rounded-xl border-l-2 border-sky-500/40 bg-sky-500/[0.05] italic text-foreground/80" {...props} />
                           ),
                         }}
                       >
@@ -1094,7 +1094,7 @@ export default function TechnicalPage() {
                   )}
                 </div>
                 {summaryQuery.data?.summary && (
-                  <div className={`px-5 py-3 border-t text-center ${isLight ? 'border-sky-100 bg-sky-50/30' : 'border-white/5 bg-black/20'}`}>
+                  <div className="px-5 py-3 border-t border-border/40 text-center bg-foreground/[0.01]">
                     <span className="text-[10px] text-muted-foreground/40 uppercase tracking-[0.2em]">End of Analysis</span>
                   </div>
                 )}
@@ -1132,5 +1132,16 @@ export default function TechnicalPage() {
         </div>
       </NavigatorShell>
     </AppShell>
+    {toastError && <Toast message={toastError} onDismiss={() => setToastError(null)} />}
+  </>);
+}
+
+function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  useEffect(() => { const t = setTimeout(onDismiss, 4000); return () => clearTimeout(t); }, [onDismiss]);
+  return (
+    <div className="fixed bottom-4 right-4 z-[200] bg-rose-500/90 text-white px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
+      {message}
+      <button onClick={onDismiss} className="ml-1 opacity-70 hover:opacity-100">&times;</button>
+    </div>
   );
 }

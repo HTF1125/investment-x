@@ -42,6 +42,7 @@ function ControlInput({ label, value, onChange, placeholder, type = 'text', min,
   label: string; value: string | number; onChange: (v: string) => void;
   placeholder?: string; type?: string; min?: number; max?: number; step?: number;
 }) {
+  const { theme } = useTheme();
   return (
     <div className="space-y-1">
       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">{label}</label>
@@ -49,8 +50,8 @@ function ControlInput({ label, value, onChange, placeholder, type = 'text', min,
         type={type} value={value} placeholder={placeholder}
         min={min} max={max} step={step}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-foreground/[0.03] border border-border/40 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/10 text-foreground transition-all"
-        style={{ colorScheme: 'dark' }}
+        className="w-full border border-border/50 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/10 text-foreground transition-all placeholder:text-muted-foreground/40"
+        style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
       />
     </div>
   );
@@ -60,13 +61,14 @@ function ControlSelect({ label, value, onChange, options }: {
   label: string; value: string; onChange: (v: string) => void;
   options: { value: string; label: string }[];
 }) {
+  const { theme } = useTheme();
   return (
     <div className="space-y-1">
       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">{label}</label>
       <select
         value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-foreground/[0.03] border border-border/40 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/10 text-foreground cursor-pointer transition-all"
-        style={{ colorScheme: 'dark' }}
+        className="w-full border border-border/50 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/10 text-foreground cursor-pointer transition-all"
+        style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -86,6 +88,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function QuantPage() {
+  useEffect(() => { document.title = 'Quantitative Analysis | Investment-X'; }, []);
   const { theme } = useTheme();
   const isLight = theme === 'light';
 

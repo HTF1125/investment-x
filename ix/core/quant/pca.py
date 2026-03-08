@@ -1,5 +1,6 @@
 """Principal Component Analysis decomposition."""
 
+import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
@@ -21,8 +22,30 @@ def pca_decomposition(df: pd.DataFrame, n_components: int = 3) -> dict:
       - loadings : DataFrame (assets × components)
       - components : DataFrame (dates × components)
     """
-    returns = df.pct_change().dropna()
+    if n_components < 1:
+        raise ValueError("n_components must be at least 1.")
+
+    prices = df.apply(pd.to_numeric, errors="coerce")
+    prices = prices.replace([np.inf, -np.inf], np.nan)
+    prices = prices.sort_index().dropna(how="all")
+    if prices.shape[1] < 2:
+        raise ValueError("Need at least 2 price series for PCA.")
+
+    returns = prices.pct_change(fill_method=None)
+    returns = returns.replace([np.inf, -np.inf], np.nan).dropna(how="any")
+    if len(returns) < 2:
+        raise ValueError("Need at least 2 overlapping return observations for PCA.")
+
+    varying = returns.var(ddof=0)
+    keep_columns = varying[varying > 0].index.tolist()
+    dropped_columns = [col for col in returns.columns if col not in keep_columns]
+    if len(keep_columns) < 1:
+        raise ValueError("All series have zero return variance; PCA is undefined.")
+    returns = returns[keep_columns]
+
     n_components = min(n_components, len(returns.columns), len(returns))
+    if n_components < 1:
+        raise ValueError("Not enough data left after PCA input cleaning.")
 
     scaler = StandardScaler()
     scaled = scaler.fit_transform(returns)
@@ -51,4 +74,5 @@ def pca_decomposition(df: pd.DataFrame, n_components: int = 3) -> dict:
         "cumulative_variance": cumvar,
         "loadings": loadings,
         "components": components,
+        "dropped_columns": dropped_columns,
     }

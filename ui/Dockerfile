@@ -13,7 +13,9 @@ COPY . .
 # Set environment variables for build
 # This is needed during 'next build' for static generation or setting client-side env vars
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG INTERNAL_API_URL=http://backend:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV INTERNAL_API_URL=$INTERNAL_API_URL
 
 # Build the application
 RUN npm run build

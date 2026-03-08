@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session, joinedload, load_only
 from sqlalchemy import or_
 from typing import List, Dict, Any
@@ -7,6 +7,7 @@ from ix.db.models import CustomChart as Chart
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from ix.api.dependencies import get_optional_user
+from ix.api.rate_limit import limiter as _limiter
 from ix.misc.theme import chart_theme
 
 router = APIRouter()
@@ -72,7 +73,9 @@ def _can_view_chart(chart: Chart, current_user: User | None) -> bool:
 
 
 @router.get("/dashboard/summary", response_model=DashboardSummary)
+@_limiter.limit("60/minute")
 def get_dashboard_summary(
+    request: Request,
     response: Response,
     db: Session = Depends(get_session),
     current_user: User | None = Depends(get_optional_user),
@@ -170,7 +173,9 @@ def get_dashboard_summary(
 
 
 @router.get("/dashboard/charts/{chart_id}/figure")
+@_limiter.limit("60/minute")
 def get_chart_figure(
+    request: Request,
     chart_id: str,
     response: Response,
     db: Session = Depends(get_session),
@@ -212,7 +217,9 @@ def get_chart_figure(
 
 
 @router.get("/dashboard/charts/figures", response_model=DashboardFigureBatchResponse)
+@_limiter.limit("60/minute")
 def get_chart_figures(
+    request: Request,
     response: Response,
     ids: List[str] = Query(default=[]),
     db: Session = Depends(get_session),

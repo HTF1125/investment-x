@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Node, Extension, mergeAttributes } from '@tiptap/core';
 import { Editor } from '@tiptap/core';
 import {
@@ -102,20 +103,22 @@ const MIN_IMAGE_PERCENT = 20;
 const MAX_IMAGE_PERCENT = 100;
 
 const SLASH_COMMANDS = [
-  { id: 'paragraph',      label: 'Text',          description: 'Just start writing with plain text.', icon: Type,    keywords: ['text', 'paragraph', 'p'] },
-  { id: 'heading1',       label: 'Heading 1',     description: 'Big section heading.',    icon: Heading1,    keywords: ['h1', 'heading'] },
-  { id: 'heading2',       label: 'Heading 2',     description: 'Medium section heading.', icon: Heading2,    keywords: ['h2', 'heading'] },
-  { id: 'heading3',       label: 'Heading 3',     description: 'Small section heading.',  icon: Heading3,    keywords: ['h3', 'heading'] },
-  { id: 'table',          label: 'Table',         description: 'Add simple tabular content.', icon: TableIcon,   keywords: ['table', 'grid', 'data'] },
-  { id: 'bulletList',     label: 'Bulleted list', description: 'Create a simple bulleted list.', icon: List,        keywords: ['ul', 'bullet', 'list'] },
-  { id: 'orderedList',    label: 'Numbered list', description: 'Create a list with numbering.',  icon: ListOrdered, keywords: ['ol', 'numbered', 'ordered'] },
-  { id: 'blockquote',     label: 'Quote',         description: 'Capture a quote.',        icon: Square,      keywords: ['quote', 'blockquote'] },
-  { id: 'horizontalRule', label: 'Divider',       description: 'Visually divide blocks.', icon: Minus,       keywords: ['divider', 'hr', 'rule', 'line'] },
-  { id: 'codeBlock',      label: 'Code',          description: 'Capture a code snippet.', icon: Code2,       keywords: ['code', 'pre', 'mono'] },
-  { id: 'image',          label: 'Image',         description: 'Upload or embed with a link.', icon: ImageIcon,   keywords: ['image', 'photo', 'img'] },
-  { id: 'chart',          label: 'Chart',         description: 'Embed an interactive chart snapshot.', icon: BarChart2,   keywords: ['chart', 'graph', 'plot', 'visualization'] },
-  { id: 'callout',        label: 'Callout',       description: 'Make writing stand out.', icon: Square,     keywords: ['callout', 'highlight', 'note', 'info', 'alert', 'box', 'tip'] },
-  { id: 'twoColumn',      label: '2 Columns',     description: 'Split into two columns.',  icon: Columns2,   keywords: ['2col', '2column', 'columns', 'split', 'layout', 'two', 'column', 'side'] },
+  // Turn into — convert the current block type
+  { id: 'paragraph',      label: 'Text',          description: 'Plain text block.',                   icon: Type,        keywords: ['text', 'paragraph', 'p'],                                        category: 'turn-into' },
+  { id: 'heading1',       label: 'Heading 1',     description: 'Big section heading.',                icon: Heading1,    keywords: ['h1', 'heading'],                                                 category: 'turn-into' },
+  { id: 'heading2',       label: 'Heading 2',     description: 'Medium section heading.',             icon: Heading2,    keywords: ['h2', 'heading'],                                                 category: 'turn-into' },
+  { id: 'heading3',       label: 'Heading 3',     description: 'Small section heading.',              icon: Heading3,    keywords: ['h3', 'heading'],                                                 category: 'turn-into' },
+  { id: 'bulletList',     label: 'Bulleted List', description: 'Create a simple bulleted list.',      icon: List,        keywords: ['ul', 'bullet', 'list'],                                          category: 'turn-into' },
+  { id: 'orderedList',    label: 'Numbered List', description: 'Create a list with numbering.',       icon: ListOrdered, keywords: ['ol', 'numbered', 'ordered'],                                     category: 'turn-into' },
+  { id: 'blockquote',     label: 'Quote',         description: 'Capture a quote.',                    icon: Square,      keywords: ['quote', 'blockquote'],                                           category: 'turn-into' },
+  { id: 'codeBlock',      label: 'Code',          description: 'Capture a code snippet.',             icon: Code2,       keywords: ['code', 'pre', 'mono'],                                           category: 'turn-into' },
+  // Insert — add a new block
+  { id: 'table',          label: 'Table',         description: 'Add simple tabular content.',         icon: TableIcon,   keywords: ['table', 'grid', 'data'],                                         category: 'insert' },
+  { id: 'horizontalRule', label: 'Divider',       description: 'Visually divide blocks.',             icon: Minus,       keywords: ['divider', 'hr', 'rule', 'line'],                                 category: 'insert' },
+  { id: 'image',          label: 'Image',         description: 'Upload or embed with a link.',        icon: ImageIcon,   keywords: ['image', 'photo', 'img'],                                         category: 'insert' },
+  { id: 'chart',          label: 'Chart',         description: 'Embed an interactive chart snapshot.',icon: BarChart2,   keywords: ['chart', 'graph', 'plot', 'visualization'],                       category: 'insert' },
+  { id: 'callout',        label: 'Callout',       description: 'Make writing stand out.',             icon: Square,      keywords: ['callout', 'highlight', 'note', 'info', 'alert', 'box', 'tip'],   category: 'insert' },
+  { id: 'twoColumn',      label: '2 Columns',     description: 'Split into two columns.',             icon: Columns2,    keywords: ['2col', '2column', 'columns', 'split', 'layout', 'two', 'column', 'side'], category: 'insert' },
 ] as const;
 
 type SlashCommandId = (typeof SLASH_COMMANDS)[number]['id'];
@@ -697,6 +700,10 @@ function SlashCommandMenu({ query, top, left, onSelect, onClose }: { query: stri
     return cmd.label.toLowerCase().includes(q) || cmd.keywords.some((k) => k.includes(q));
   }), [query]);
 
+  const turnInto = useMemo(() => filtered.filter(c => c.category === 'turn-into'), [filtered]);
+  const insert = useMemo(() => filtered.filter(c => c.category === 'insert'), [filtered]);
+  const allItems = useMemo(() => [...turnInto, ...insert], [turnInto, insert]);
+
   useEffect(() => { setIndex(0); }, [query]);
   useEffect(() => { activeItemRef.current?.scrollIntoView({ block: 'nearest' }); }, [index]);
 
@@ -710,31 +717,57 @@ function SlashCommandMenu({ query, top, left, onSelect, onClose }: { query: stri
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); setIndex((i) => (i + 1) % Math.max(1, filtered.length)); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); setIndex((i) => (i - 1 + Math.max(1, filtered.length)) % Math.max(1, filtered.length)); }
-      else if (e.key === 'Enter' && filtered.length > 0) { e.preventDefault(); e.stopPropagation(); const cmd = filtered[index]; if (cmd) onSelect(cmd.id as SlashCommandId); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); setIndex((i) => (i + 1) % Math.max(1, allItems.length)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); setIndex((i) => (i - 1 + Math.max(1, allItems.length)) % Math.max(1, allItems.length)); }
+      else if (e.key === 'Enter' && allItems.length > 0) { e.preventDefault(); e.stopPropagation(); const cmd = allItems[index]; if (cmd) onSelect(cmd.id as SlashCommandId); }
       else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
     };
     window.addEventListener('keydown', handler, { capture: true });
     return () => window.removeEventListener('keydown', handler, { capture: true });
-  }, [filtered, index, onSelect, onClose]);
+  }, [allItems, index, onSelect, onClose]);
 
-  if (!filtered.length) return null;
+  const renderItem = (cmd: typeof SLASH_COMMANDS[number], flatIdx: number) => {
+    const Icon = cmd.icon;
+    return (
+      <button
+        key={cmd.id}
+        ref={flatIdx === index ? activeItemRef : undefined}
+        type="button"
+        onMouseEnter={() => setIndex(flatIdx)}
+        onMouseDown={(e) => { e.preventDefault(); onSelect(cmd.id as SlashCommandId); }}
+        className={`w-full px-2 py-1.5 flex items-center gap-3 text-left transition-colors rounded-lg ${flatIdx === index ? 'bg-primary/[0.08] text-foreground' : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'}`}
+      >
+        <div className={`w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 ${flatIdx === index ? 'border-primary/25 bg-primary/[0.06] shadow-sm' : 'border-border/40 bg-background shadow-sm'}`}>
+          <Icon className="w-[18px] h-[18px] text-foreground/70" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-medium leading-tight text-foreground/90">{cmd.label}</div>
+          <div className="text-[11px] text-muted-foreground/50 leading-tight mt-0.5">{cmd.description}</div>
+        </div>
+      </button>
+    );
+  };
 
   return (
-    <div ref={menuRef} style={posStyle} className="w-64 rounded-xl border border-border/40 bg-background/95 backdrop-blur-xl shadow-2xl overflow-hidden py-1">
-      <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground/60">Basic blocks</div>
-      <div className="max-h-64 overflow-y-auto px-1 custom-scrollbar">
-        {filtered.map((cmd, i) => {
-          const Icon = cmd.icon;
-          return (
-            <button key={cmd.id} ref={i === index ? activeItemRef : undefined} type="button" onMouseEnter={() => setIndex(i)} onMouseDown={(e) => { e.preventDefault(); onSelect(cmd.id as SlashCommandId); }} className={`w-full px-2 py-1.5 flex items-center gap-3 text-left transition-colors rounded-lg ${i === index ? 'bg-foreground/5 text-foreground' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'}`}>
-              <div className="w-10 h-10 rounded border border-border/40 bg-background flex items-center justify-center shrink-0 shadow-sm"><Icon className="w-5 h-5 text-foreground/70" /></div>
-              <div className="min-w-0 flex-1"><div className="text-[13px] font-medium leading-tight text-foreground/90">{cmd.label}</div><div className="text-[11px] text-muted-foreground/60 leading-tight mt-0.5">{cmd.description}</div></div>
-            </button>
-          );
-        })}
-      </div>
+    <div ref={menuRef} style={posStyle} className="w-72 rounded-xl border border-border/40 bg-background/95 backdrop-blur-xl shadow-2xl overflow-hidden">
+      {allItems.length === 0 ? (
+        <div className="px-4 py-5 text-center text-[12px] text-muted-foreground/50">No results</div>
+      ) : (
+        <div className="max-h-[380px] overflow-y-auto py-1 custom-scrollbar">
+          {turnInto.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/50">Turn into</div>
+              <div className="px-1">{turnInto.map((cmd, i) => renderItem(cmd, i))}</div>
+            </>
+          )}
+          {insert.length > 0 && (
+            <>
+              <div className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/50${turnInto.length > 0 ? ' mt-1 border-t border-border/25 pt-2' : ''}`}>Insert</div>
+              <div className="px-1">{insert.map((cmd, i) => renderItem(cmd, turnInto.length + i))}</div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -821,6 +854,8 @@ function NotesRichEditor({
   const slashStartPosRef = useRef<number | null>(null);
   const bubbleMenuRef = useRef<HTMLDivElement | null>(null);
   const draggedBlockPosRef = useRef<number | null>(null);
+
+  const isLocalUpdateRef = useRef(false);
 
   const [slashMenu, setSlashMenu] = useState<{ query: string; top: number; left: number } | null>(null);
   const [chartPicker, setChartPicker] = useState<{ top: number; left: number } | null>(null);
@@ -966,19 +1001,21 @@ function NotesRichEditor({
     }
   }, []);
 
+  const extensions = useMemo(() => [
+    StarterKit,
+    Table.configure({ resizable: true }), TableRow, TableHeader, TableCell,
+    FontFamily.configure({ types: ['textStyle'] }),
+    TextStyle,
+    FontSize,
+    Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
+    RichImage.configure({ allowBase64: false }),
+    LinkPreviewBlock, ChartBlock, ColumnNode, TwoColumnBlock, TrailingNode,
+    Placeholder.configure({ placeholder: "Type '/' for commands" }),
+  ], []);
+
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [
-      StarterKit,
-      Table.configure({ resizable: true }), TableRow, TableHeader, TableCell,
-      FontFamily.configure({ types: ['textStyle'] }),
-      TextStyle,
-      FontSize,
-      Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
-      RichImage.configure({ allowBase64: false }),
-      LinkPreviewBlock, ChartBlock, ColumnNode, TwoColumnBlock, TrailingNode,
-      Placeholder.configure({ placeholder: "Type '/' for commands" }),
-    ],
+    extensions,
     content: value || '',
     editable: !disabled,
     onCreate: ({ editor }) => { editorRef.current = editor; },
@@ -1000,16 +1037,19 @@ function NotesRichEditor({
       } catch { setBubbleMenu(null); }
     },
     onUpdate: ({ editor }) => {
+      isLocalUpdateRef.current = true;
       onChange(editor.getHTML());
       if (disabled) return;
       const { selection } = editor.state;
       const { $from } = selection;
-      if ($from.parent.type.name !== 'paragraph') { setSlashMenu(null); slashStartPosRef.current = null; return; }
+      if (!$from.parent.isTextblock) { setSlashMenu(null); slashStartPosRef.current = null; return; }
       const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
-      if (textBefore.startsWith('/') && !textBefore.includes(' ')) {
-        const query = textBefore.slice(1).toLowerCase();
+      // Detect "/" at start of text or after whitespace, followed by non-space filter chars
+      const slashIdx = textBefore.lastIndexOf('/');
+      if (slashIdx >= 0 && (slashIdx === 0 || /\s/.test(textBefore[slashIdx - 1])) && !textBefore.slice(slashIdx + 1).includes(' ')) {
+        const query = textBefore.slice(slashIdx + 1).toLowerCase();
         const coords = editor.view.coordsAtPos(selection.from);
-        if (slashStartPosRef.current === null) slashStartPosRef.current = selection.from - textBefore.length;
+        if (slashStartPosRef.current === null) slashStartPosRef.current = selection.from - query.length - 1;
         setSlashMenu({ query, top: coords.bottom, left: coords.left });
       } else { setSlashMenu(null); slashStartPosRef.current = null; }
     },
@@ -1102,6 +1142,7 @@ function NotesRichEditor({
 
   useEffect(() => {
     if (!editor) return;
+    if (isLocalUpdateRef.current) { isLocalUpdateRef.current = false; return; }
     const current = editor.getHTML();
     if ((value || '') !== current) editor.commands.setContent(value || '', { emitUpdate: false });
   }, [editor, value]);
@@ -1360,8 +1401,14 @@ function NotesRichEditor({
         </div>
       )}
 
-      {slashMenu && !disabled && <SlashCommandMenu query={slashMenu.query} top={slashMenu.top} left={slashMenu.left} onSelect={executeSlashCommand} onClose={() => { setSlashMenu(null); slashStartPosRef.current = null; }} />}
-      {chartPicker && !disabled && <ChartPickerMenu chartLibrary={chartLibrary} top={chartPicker.top} left={chartPicker.left} onSelect={insertChartBlock} onClose={() => { setChartPicker(null); slashStartPosRef.current = null; editorRef.current?.commands.focus(); }} />}
+      {slashMenu && !disabled && createPortal(
+        <SlashCommandMenu query={slashMenu.query} top={slashMenu.top} left={slashMenu.left} onSelect={executeSlashCommand} onClose={() => { setSlashMenu(null); slashStartPosRef.current = null; }} />,
+        document.body
+      )}
+      {chartPicker && !disabled && createPortal(
+        <ChartPickerMenu chartLibrary={chartLibrary} top={chartPicker.top} left={chartPicker.left} onSelect={insertChartBlock} onClose={() => { setChartPicker(null); slashStartPosRef.current = null; editorRef.current?.commands.focus(); }} />,
+        document.body
+      )}
     </div>
   );
 }

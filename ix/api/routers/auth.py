@@ -100,7 +100,7 @@ def login_json(request: Request, response: Response, credentials: UserLogin):
 
 
 @router.post("/auth/logout")
-async def logout(response: Response):
+def logout(response: Response):
     """
     Logout endpoint - clears the HttpOnly cookie.
     """

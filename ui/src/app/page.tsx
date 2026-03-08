@@ -1,7 +1,9 @@
 import DashboardContainer from '@/components/DashboardContainer';
 import { cookies } from 'next/headers';
 import { Suspense } from 'react';
+import type { Metadata } from 'next';
 
+export const metadata: Metadata = { title: 'Dashboard | Investment-X' };
 export const dynamic = process.env.NEXT_BUILD_MODE === 'export' ? 'auto' : 'force-dynamic';
 
 export default async function Home() {

@@ -4,7 +4,11 @@ import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } f
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  BookOpen,
+  Check,
+  Clock,
   FileText,
+  ImageIcon,
   Loader2,
   Pin,
   PinOff,
@@ -12,7 +16,9 @@ import {
   Save,
   Search,
   Trash2,
+  BarChart2,
   Presentation as PresentationIcon,
+  AlignLeft,
 } from 'lucide-react';
 
 import dynamic from 'next/dynamic';
@@ -21,11 +27,16 @@ import NavigatorShell from '@/components/NavigatorShell';
 
 const NotesRichEditor = dynamic(() => import('@/components/NotesRichEditor'), {
   ssr: false,
-  loading: () => <div className="flex-1 flex items-center justify-center text-muted-foreground/40 min-h-[200px]"><Loader2 className="w-5 h-5 animate-spin" /></div>,
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center text-muted-foreground/40 min-h-[200px]">
+      <Loader2 className="w-5 h-5 animate-spin" />
+    </div>
+  ),
 });
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
+import { useTheme } from '@/context/ThemeContext';
 
 interface NoteSummary {
   id: string;
@@ -137,219 +148,24 @@ function countWords(html: string): number {
   }
 }
 
-function NoteEditorPane({
-  notes,
-  chartLibrary,
-  onFetchChartSnapshot,
-}: {
-  notes: NoteSummary[];
-  chartLibrary: CustomChartListItem[];
-  onFetchChartSnapshot: (chartId: string) => Promise<{ figure: any }>;
-}) {
-  const queryClient = useQueryClient();
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(
-    () => notes[1]?.id ?? notes[0]?.id ?? null
-  );
-  const [title, setTitle] = useState('');
-  const [editorValue, setEditorValue] = useState('');
-  const [isDirty, setIsDirty] = useState(false);
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
-
-  const titleRef = useRef('');
-  const contentRef = useRef('');
-  const originalRef = useRef<{ title: string; content: string } | null>(null);
-  const hydratedRef = useRef<string | null>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    hydratedRef.current = null;
-    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-  }, [selectedNoteId]);
-  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
-
-  const noteQuery = useQuery({
-    queryKey: ['investment-note', selectedNoteId],
-    enabled: !!selectedNoteId,
-    queryFn: () => apiFetchJson<NoteDetail>(`/api/notes/${selectedNoteId}`),
-    staleTime: 15_000,
-  });
-
-  useEffect(() => {
-    const note = noteQuery.data;
-    if (!note || hydratedRef.current === note.id) return;
-    hydratedRef.current = note.id;
-    
-    const textBlock = note.body?.find(b => b.type === 'text');
-    const content = textBlock?.value || '';
-    
-    titleRef.current = note.title || '';
-    contentRef.current = content;
-    setTitle(note.title || '');
-    setEditorValue(content);
-    setIsDirty(false);
-    setLastSavedAt(note.updated_at || null);
-    setSaveState('idle');
-    originalRef.current = { title: note.title || '', content: content };
-  }, [noteQuery.data]);
-
-  const uploadMutation = useMutation({
-    mutationFn: async ({ id, file }: { id: string; file: File }) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await apiFetch(`/api/notes/${id}/images`, { method: 'POST', body: formData });
-      if (!res.ok) throw new Error('Upload failed');
-      return res.json() as Promise<{ id: string; url: string }>;
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (payload: { id: string; title: string; content: string }) => {
-      const currentNote = queryClient.getQueryData<NoteDetail>(['investment-note', payload.id]);
-      const existingBlocks = currentNote?.body?.filter(b => b.type !== 'text') || [];
-      const updatedBody = [
-        { id: crypto.randomUUID(), type: 'text', value: payload.content },
-        ...existingBlocks
-      ];
-
-      return apiFetchJson<NoteDetail>(`/api/notes/${payload.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: payload.title, body: updatedBody, pinned: false }),
-      });
-    },
-    onSuccess: (note) => {
-      setSaveState('saved');
-      setLastSavedAt(note.updated_at || null);
-      queryClient.setQueryData(['investment-note', note.id], note);
-      const textBlock = note.body?.find(b => b.type === 'text');
-      const content = textBlock?.value || '';
-      originalRef.current = { title: note.title || '', content: content };
-      setIsDirty(false);
-    },
-    onError: () => setSaveState('error'),
-  });
-
-  const recomputeDirty = useCallback(() => {
-    const original = originalRef.current;
-    const dirty = Boolean(
-      original && selectedNoteId &&
-      (titleRef.current !== original.title || contentRef.current !== original.content)
-    );
-    setIsDirty((prev) => (prev === dirty ? prev : dirty));
-    return dirty;
-  }, [selectedNoteId]);
-
-  const saveNow = useCallback(() => {
-    if (!selectedNoteId || updateMutation.isPending || !recomputeDirty()) return;
-    setSaveState('saving');
-    updateMutation.mutate({ id: selectedNoteId, title: titleRef.current || 'Untitled', content: contentRef.current });
-  }, [selectedNoteId, updateMutation, recomputeDirty]);
-
-  const queueAutoSave = useCallback(() => {
-    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-    if (!selectedNoteId || updateMutation.isPending || !recomputeDirty()) return;
-    saveTimerRef.current = setTimeout(saveNow, 1700);
-  }, [selectedNoteId, updateMutation.isPending, recomputeDirty, saveNow]);
-
-  const handleTitleChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    titleRef.current = e.target.value;
-    setTitle(e.target.value);
-    queueAutoSave();
-  }, [queueAutoSave]);
-
-  const handleEditorChange = useCallback((html: string) => {
-    contentRef.current = html;
-    setEditorValue(html);
-    queueAutoSave();
-  }, [queueAutoSave]);
-
-  const handleImageUpload = useCallback(async (file: File): Promise<NoteImageMeta> => {
-    if (!selectedNoteId) throw new Error('Select a note first');
-    return uploadMutation.mutateAsync({ id: selectedNoteId, file });
-  }, [selectedNoteId, uploadMutation]);
-
-  const saveHint = saveState === 'saving' ? 'Saving...'
-    : saveState === 'error' ? 'Error'
-    : isDirty ? 'Unsaved'
-    : lastSavedAt ? `Saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-    : '';
-
-  const noteLoading = !!selectedNoteId && noteQuery.isLoading;
-  const formStyle = { backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' };
-
-  return (
-    <div className="report-canvas flex-1 min-w-0 min-h-0 h-full flex flex-col">
-      <div className="h-10 px-4 border-b border-border/30 flex items-center gap-2 shrink-0 bg-background/65 backdrop-blur-xl">
-        <select
-          value={selectedNoteId || ''}
-          onChange={(e) => setSelectedNoteId(e.target.value || null)}
-          className="h-8 flex-1 min-w-0 rounded-lg border border-border/45 bg-background/80 px-3 text-[11px] outline-none text-foreground font-medium cursor-pointer"
-          style={formStyle}
-        >
-          {notes.length === 0 && <option value="">No notes</option>}
-          {notes.map((n) => (
-            <option key={n.id} value={n.id}>{n.title || 'Untitled'}</option>
-          ))}
-        </select>
-        {saveHint && (
-          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium ${saveState === 'error' ? 'border-rose-500/30 bg-rose-500/10 text-rose-300' : isDirty ? 'border-amber-500/25 bg-amber-500/10 text-amber-200' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'}`}>
-            {saveHint}
-          </span>
-        )}
-        <button
-          onClick={saveNow}
-          disabled={!isDirty || updateMutation.isPending}
-          className="h-8 px-3 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-30 transition-colors shrink-0"
-        >
-          Save
-        </button>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-        {!selectedNoteId ? (
-          <div className="h-full flex flex-col items-center justify-center text-muted-foreground/50 text-sm">
-            <FileText className="w-8 h-8 opacity-20 mb-3" />
-            <p>Select a note to edit.</p>
-          </div>
-        ) : noteLoading ? (
-          <div className="h-32 flex items-center justify-center text-muted-foreground/50 text-sm gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading…
-          </div>
-        ) : (
-          <div className="mx-auto max-w-4xl px-6 py-10 md:px-10 md:py-12">
-            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-border/40 bg-background/90 shadow-lg shadow-black/10">
-              <FileText className="w-6 h-6 text-sky-400/80" />
-            </div>
-            <input
-              value={title}
-              onChange={handleTitleChange}
-              placeholder="Untitled"
-              className="report-title-input w-full bg-transparent text-4xl md:text-5xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/20 mb-5"
-            />
-            <div className="report-editor-shell">
-              <NotesRichEditor
-                value={editorValue}
-                onChange={handleEditorChange}
-                onImageUpload={handleImageUpload}
-                disabled={!selectedNoteId}
-                chartLibrary={chartLibrary}
-                minHeightClassName="min-h-[56vh] text-lg"
-                onFetchChartSnapshot={onFetchChartSnapshot}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+function formatRelativeDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 export default function NotesPage() {
+  useEffect(() => { document.title = 'Research Notes | Investment-X'; }, []);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isAuthenticated, loading: authLoading } = useAuth();
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
 
   const { sidebarOpen, toggleSidebar } = useResponsiveSidebar();
 
@@ -363,6 +179,7 @@ export default function NotesPage() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [toastError, setToastError] = useState<string | null>(null);
 
   const originalRef = useRef<{ title: string; content: string; pinned: boolean } | null>(null);
   const hydratedNoteIdRef = useRef<string | null>(null);
@@ -371,6 +188,13 @@ export default function NotesPage() {
   const contentRef = useRef('');
   const pinnedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Native form element style — must use inline styles for CSS var references
+  const inputStyle = {
+    colorScheme: isLight ? 'light' : 'dark',
+    backgroundColor: 'rgb(var(--background))',
+    color: 'rgb(var(--foreground))',
+  } as React.CSSProperties;
 
   const handleExport = async (format: 'pdf' | 'pptx') => {
     if (!selectedNoteId) return;
@@ -390,7 +214,7 @@ export default function NotesPage() {
       document.body.removeChild(a);
     } catch (err) {
       console.error('Export error:', err);
-      alert('Failed to generate ' + format.toUpperCase());
+      setToastError('Failed to generate ' + format.toUpperCase());
     } finally {
       setExportingFormat(null);
     }
@@ -547,19 +371,23 @@ export default function NotesPage() {
     return { figure: null };
   }, []);
 
+  const selectedNoteIdRef = useRef(selectedNoteId);
+  selectedNoteIdRef.current = selectedNoteId;
+
+  const uploadMutateRef = useRef(uploadMutation.mutateAsync);
+  uploadMutateRef.current = uploadMutation.mutateAsync;
+
   const handleImageUpload = useCallback(async (file: File): Promise<{ id: string; url: string }> => {
-    if (!selectedNoteId) throw new Error('Create or select a report first.');
+    const noteId = selectedNoteIdRef.current;
+    if (!noteId) throw new Error('Create or select a report first.');
     const MAX_SIZE = 10 * 1024 * 1024; // 10MB
     if (file.size > MAX_SIZE) throw new Error('Image must be under 10MB.');
     if (!file.type.startsWith('image/')) throw new Error('Only image files are allowed.');
-    setStatus('Uploading image...'); const image = await uploadMutation.mutateAsync({ id: selectedNoteId, file }); const nowIso = new Date().toISOString();
-    queryClient.setQueryData<NoteDetail | undefined>(['investment-note', selectedNoteId], (prev) => prev ? { ...prev, body: [...(prev.body || []), { id: image.id, type: 'image', data: '', filename: file.name, content_type: file.type }], updated_at: nowIso } : prev);
-    queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => prev ? sortNoteSummaries(prev.map((item) => item.id === selectedNoteId ? { ...item, image_count: (item.image_count || 0) + 1, updated_at: nowIso } : item)) : prev);
+    setStatus('Uploading image...'); const image = await uploadMutateRef.current({ id: noteId, file }); const nowIso = new Date().toISOString();
+    queryClient.setQueryData<NoteDetail | undefined>(['investment-note', noteId], (prev) => prev ? { ...prev, body: [...(prev.body || []), { id: image.id, type: 'image', data: '', filename: file.name, content_type: file.type }], updated_at: nowIso } : prev);
+    queryClient.setQueryData<NoteSummary[] | undefined>(['investment-notes'], (prev) => prev ? sortNoteSummaries(prev.map((item) => item.id === noteId ? { ...item, image_count: (item.image_count || 0) + 1, updated_at: nowIso } : item)) : prev);
     setStatus('Image uploaded.'); return image;
-  }, [selectedNoteId, uploadMutation, queryClient]);
-
-  const selectedNoteIdRef = useRef(selectedNoteId);
-  selectedNoteIdRef.current = selectedNoteId;
+  }, [queryClient]);
 
   const saveNow = useCallback(() => {
     const noteId = selectedNoteIdRef.current;
@@ -593,56 +421,113 @@ export default function NotesPage() {
   const handleCreateNote = () => { setStatus(null); createMutation.mutate({ title: 'New Report Draft', body: [{ id: crypto.randomUUID(), type: 'text', value: '' }], pinned: false }); };
   const handleDeleteNote = () => { if (!selectedNoteId || !confirm('Delete this report?')) return; if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; } deleteMutation.mutate(selectedNoteId); };
 
-  const saveHint = useMemo(() => { if (saveState === 'saving') return 'Saving...'; if (saveState === 'error') return status || 'Save failed'; if (isDirty) return 'Unsaved changes'; if (lastSavedAt) return `Saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`; return 'Saved'; }, [saveState, status, isDirty, lastSavedAt]);
+  // ── Save state derived values ──────────────────────────────────────────────
+  const saveHint = useMemo(() => {
+    if (saveState === 'saving') return 'Saving...';
+    if (saveState === 'error') return status || 'Save failed';
+    if (isDirty) return 'Unsaved';
+    if (saveState === 'saved' && lastSavedAt) return 'Saved';
+    if (lastSavedAt) return 'Saved';
+    return 'Saved';
+  }, [saveState, status, isDirty, lastSavedAt]);
+
+  const saveTimeHint = useMemo(() => {
+    if (!lastSavedAt || saveState === 'saving' || isDirty) return null;
+    return new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, [lastSavedAt, saveState, isDirty]);
+
   const statusToneClass = saveState === 'error'
-    ? 'border-rose-500/35 bg-rose-500/12 text-rose-300'
-    : isDirty
-      ? 'border-amber-500/30 bg-amber-500/12 text-amber-200'
-      : 'border-emerald-500/25 bg-emerald-500/12 text-emerald-200';
+    ? 'border-rose-500/35 bg-rose-500/[0.07] text-rose-400 dark:text-rose-300'
+    : isDirty || saveState === 'saving'
+      ? 'border-amber-500/30 bg-amber-500/[0.07] text-amber-500 dark:text-amber-300'
+      : 'border-emerald-500/25 bg-emerald-500/[0.07] text-emerald-600 dark:text-emerald-400';
+
   const publishToneClass = pinned
-    ? 'border-sky-500/30 bg-sky-500/12 text-sky-200 hover:bg-sky-500/18'
-    : 'border-border/45 bg-background/75 text-muted-foreground hover:bg-background hover:text-foreground';
-  const toolbarIconButtonClass = 'h-7 w-8 rounded-lg border border-border/45 bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground inline-flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+    ? 'border-sky-500/30 bg-sky-500/[0.08] text-sky-500 dark:text-sky-400 hover:bg-sky-500/[0.14]'
+    : 'border-border/50 bg-background/80 text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground';
 
-  if (authLoading || (!isAuthenticated && !authLoading)) return (<AppShell hideFooter><div className="h-[calc(100vh-3rem)] flex items-center justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading reports...</div></AppShell>);
+  if (authLoading || (!isAuthenticated && !authLoading)) return (
+    <AppShell hideFooter>
+      <div className="h-[calc(100vh-3rem)] flex items-center justify-center text-muted-foreground">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading reports...
+      </div>
+    </AppShell>
+  );
 
+  // ── Sidebar ────────────────────────────────────────────────────────────────
   const sidebarContent = (
     <>
-      <div className="px-3 py-2 shrink-0">
+      {/* Search */}
+      <div className="px-3 pt-2.5 pb-2 shrink-0">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/55" />
+          <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/45 pointer-events-none" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search reports"
-            className="w-full h-9 pl-9 pr-3 rounded-xl border border-border/45 bg-background/70 text-[12px] outline-none focus:ring-1 focus:ring-sky-500/20"
+            placeholder="Search reports..."
+            style={inputStyle}
+            className="w-full h-8 pl-8 pr-3 rounded-lg border border-border/40 text-[11.5px] outline-none transition-colors focus:border-border/70 placeholder:text-muted-foreground/35"
           />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 custom-scrollbar">
-        <div className="px-2 pb-2 text-[10px] uppercase tracking-[0.22em] text-muted-foreground/40 text-left">
-          Documents
+
+      {/* List */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 no-scrollbar">
+        <div className="px-2 pb-1.5 pt-0.5 text-[9.5px] font-mono uppercase tracking-[0.2em] text-muted-foreground/35 select-none">
+          {filteredNotes.length > 0 ? `${filteredNotes.length} document${filteredNotes.length !== 1 ? 's' : ''}` : 'Documents'}
         </div>
-        {notesQuery.isLoading && <div className="text-[11px] text-muted-foreground px-3 py-2">Loading...</div>}
-        {!notesQuery.isLoading && filteredNotes.length === 0 && <div className="text-[11px] text-muted-foreground px-3 py-2">No reports yet.</div>}
-        <div className="space-y-1">
+
+        {notesQuery.isLoading && (
+          <div className="flex items-center gap-2 px-3 py-3 text-[11px] text-muted-foreground/50">
+            <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+          </div>
+        )}
+
+        {!notesQuery.isLoading && filteredNotes.length === 0 && (
+          <div className="px-3 py-8 text-center">
+            <FileText className="w-5 h-5 text-muted-foreground/25 mx-auto mb-2" />
+            <p className="text-[11px] text-muted-foreground/40">
+              {searchQuery ? 'No results' : 'No reports yet'}
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-0.5">
           {filteredNotes.map((note) => {
             const active = note.id === selectedNoteId;
+            const dateStr = formatRelativeDate(note.updated_at);
             return (
               <button
                 key={note.id}
                 onClick={() => setSelectedNoteId(note.id)}
                 data-active={active ? 'true' : 'false'}
-                className="report-sidebar-item group"
+                className="report-sidebar-item group w-full text-left"
               >
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl border transition-colors ${active ? 'border-sky-500/25 bg-sky-500/12 text-sky-200' : 'border-border/40 bg-background/70 text-muted-foreground/70 group-hover:text-foreground'}`}>
-                    {note.pinned ? <Pin className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                {/* Active indicator strip */}
+                {active && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-sky-400/70" />
+                )}
+                <div className="flex items-start gap-2.5 min-w-0">
+                  {/* Icon */}
+                  <div className={`mt-0.5 shrink-0 flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
+                    active
+                      ? 'border-sky-500/30 bg-sky-500/[0.1] text-sky-400'
+                      : 'border-border/35 bg-foreground/[0.03] text-muted-foreground/50 group-hover:text-muted-foreground group-hover:border-border/55'
+                  }`}>
+                    {note.pinned
+                      ? <Pin className="w-3 h-3" />
+                      : <FileText className="w-3 h-3" />}
                   </div>
+
+                  {/* Text */}
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="truncate text-[12px] font-medium leading-tight text-foreground/90 text-left">{note.title || 'Untitled'}</div>
-                      <span className="shrink-0 text-[10px] text-muted-foreground/65">{new Date(note.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                    <div className={`truncate text-[12px] font-medium leading-snug transition-colors ${
+                      active ? 'text-foreground' : 'text-foreground/75 group-hover:text-foreground/90'
+                    }`}>
+                      {note.title || 'Untitled'}
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-muted-foreground/40 tabular-nums">
+                      {dateStr}
                     </div>
                   </div>
                 </div>
@@ -654,89 +539,266 @@ export default function NotesPage() {
     </>
   );
 
-  return (
-    <AppShell hideFooter>
-      <NavigatorShell
-        sidebarOpen={sidebarOpen}
-        onSidebarToggle={toggleSidebar}
-        shellClassName="report-shell"
-        sidebarClassName="report-sidebar"
-        sidebarOpenWidthClassName="w-[260px] xl:w-[280px]"
-        sidebarHeaderClassName="bg-background/55 backdrop-blur-xl"
-        topBarClassName="report-topbar"
-        mainSectionClassName="report-shell"
-        mainClassName="report-main-scroll"
-        sidebarIcon={<FileText className="w-3.5 h-3.5 text-sky-400/80" />}
-        sidebarLabel="Private"
-        sidebarHeaderActions={<button onClick={handleCreateNote} disabled={createMutation.isPending} className="w-6 h-6 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-colors disabled:opacity-50" title="New report">{createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}</button>}
-        sidebarContent={sidebarContent}
-        topBarLeft={<div className="min-w-0 flex items-center gap-2 text-[11px] text-muted-foreground/70"><span className="font-semibold text-foreground/85">Reports</span>{selectedNoteId && <><span className="text-muted-foreground/35">/</span><span className="truncate max-w-[220px]">{title.trim() || selectedNote?.title || 'Untitled'}</span></>}{selectedNoteId && noteQuery.isFetching && <Loader2 className="w-3 h-3 animate-spin text-sky-400" />}</div>}
-        topBarRight={
-          <>
-            {selectedNoteId && <div className={`hidden md:inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${statusToneClass}`}>{saveHint}</div>}
-            <div className="flex items-center gap-1 mr-1">
-              <button onClick={() => handleExport('pdf')} disabled={!selectedNoteId || !!exportingFormat} className={toolbarIconButtonClass} title="Export to PDF">{exportingFormat === 'pdf' ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}</button>
-              <button onClick={() => handleExport('pptx')} disabled={!selectedNoteId || !!exportingFormat} className={toolbarIconButtonClass} title="Export to PowerPoint">{exportingFormat === 'pptx' ? <Loader2 className="w-3 h-3 animate-spin" /> : <PresentationIcon className="w-3.5 h-3.5" />}</button>
-            </div>
-            <button onClick={saveNow} disabled={!selectedNoteId || !isDirty || updateMutation.isPending || uploadMutation.isPending} className="h-7 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-2.5 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/18 inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors">{updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}Save</button>
-            <button onClick={handleDeleteNote} disabled={!selectedNoteId || deleteMutation.isPending} className="h-7 rounded-lg border border-rose-500/35 bg-rose-500/10 px-2.5 text-[11px] font-medium text-rose-200 hover:bg-rose-500/18 inline-flex items-center gap-1.5 disabled:opacity-40 transition-colors">{deleteMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}Delete</button>
-          </>
-        }
+  // ── Top bar left ───────────────────────────────────────────────────────────
+  const topBarLeft = (
+    <div className="min-w-0 flex items-center gap-1.5 text-[11px]">
+      <span className="font-semibold text-foreground/80 tracking-tight">Reports</span>
+      {selectedNoteId && (
+        <>
+          <span className="text-muted-foreground/30">/</span>
+          <span className="truncate max-w-[180px] text-muted-foreground/60">
+            {title.trim() || selectedNote?.title || 'Untitled'}
+          </span>
+          {noteQuery.isFetching && (
+            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/40 shrink-0" />
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  // ── Top bar right ──────────────────────────────────────────────────────────
+  const topBarRight = (
+    <>
+      {/* Save status badge */}
+      {selectedNoteId && (
+        <div className={`hidden sm:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors ${statusToneClass}`}>
+          {saveState === 'saving'
+            ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+            : saveState === 'error'
+              ? null
+              : isDirty
+                ? null
+                : <Check className="w-2.5 h-2.5" />}
+          {saveHint}
+          {saveTimeHint && <span className="opacity-60 font-mono normal-case tracking-normal">{saveTimeHint}</span>}
+        </div>
+      )}
+
+      {/* Export buttons */}
+      <div className="flex items-center gap-0.5 mx-0.5">
+        <button
+          onClick={() => handleExport('pdf')}
+          disabled={!selectedNoteId || !!exportingFormat}
+          className="btn-icon"
+          title="Export to PDF"
+        >
+          {exportingFormat === 'pdf'
+            ? <Loader2 className="w-3 h-3 animate-spin" />
+            : <FileText className="w-3.5 h-3.5" />}
+        </button>
+        <button
+          onClick={() => handleExport('pptx')}
+          disabled={!selectedNoteId || !!exportingFormat}
+          className="btn-icon"
+          title="Export to PowerPoint"
+        >
+          {exportingFormat === 'pptx'
+            ? <Loader2 className="w-3 h-3 animate-spin" />
+            : <PresentationIcon className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+
+      {/* Save */}
+      <button
+        onClick={saveNow}
+        disabled={!selectedNoteId || !isDirty || updateMutation.isPending || uploadMutation.isPending}
+        className="h-6 rounded-md border border-emerald-500/30 bg-emerald-500/[0.07] px-2 text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/[0.13] inline-flex items-center gap-1.5 disabled:opacity-35 transition-colors"
       >
-        <div className="h-full min-h-0 px-3 py-3 md:px-4 md:py-4 overflow-hidden max-w-[1600px] mx-auto w-full">
-          <div className="h-full min-h-0 rounded-[28px] border border-border/40 bg-background/55 overflow-hidden shadow-[0_28px_90px_rgba(0,0,0,0.22)]">
-            <div className="h-full min-h-0">
+        {updateMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Save className="w-2.5 h-2.5" />}
+        Save
+      </button>
+
+      {/* Delete */}
+      <button
+        onClick={handleDeleteNote}
+        disabled={!selectedNoteId || deleteMutation.isPending}
+        className="h-6 rounded-md border border-rose-500/30 bg-rose-500/[0.07] px-2 text-[10.5px] font-semibold text-rose-500 dark:text-rose-400 hover:bg-rose-500/[0.13] inline-flex items-center gap-1.5 disabled:opacity-35 transition-colors"
+      >
+        {deleteMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Trash2 className="w-2.5 h-2.5" />}
+        Delete
+      </button>
+    </>
+  );
+
+  return (
+    <>
+      <AppShell hideFooter>
+        <NavigatorShell
+          sidebarOpen={sidebarOpen}
+          onSidebarToggle={toggleSidebar}
+          shellClassName="report-shell"
+          sidebarClassName="report-sidebar"
+          sidebarOpenWidthClassName="w-[260px] xl:w-[280px]"
+          sidebarHeaderClassName="report-sidebar-header"
+          topBarClassName="report-topbar"
+          mainSectionClassName="report-shell"
+          mainClassName="report-main-scroll"
+          sidebarIcon={<BookOpen className="w-3 h-3 text-sky-400/70" />}
+          sidebarLabel="Reports"
+          sidebarHeaderActions={
+            <button
+              onClick={handleCreateNote}
+              disabled={createMutation.isPending}
+              className="w-5 h-5 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-50"
+              title="New report"
+            >
+              {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+            </button>
+          }
+          sidebarContent={sidebarContent}
+          topBarLeft={topBarLeft}
+          topBarRight={topBarRight}
+        >
+          {/* ── Canvas ──────────────────────────────────────────────────────── */}
+          <div className="h-full min-h-0 overflow-hidden max-w-[1600px] mx-auto w-full">
+            <div className="h-full min-h-0 bg-background overflow-hidden">
               <section className="report-canvas min-h-0 h-full overflow-y-auto custom-scrollbar">
+
+                {/* Empty state */}
                 {!selectedNoteId && (
-                  <div className="report-empty-state h-full flex flex-col items-center justify-center px-6 text-center">
-                    <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[1.4rem] border border-border/40 bg-background/90 shadow-xl shadow-black/10">
-                      <FileText className="w-7 h-7 text-sky-400/80" />
+                  <div className="h-full flex flex-col items-center justify-center px-6 text-center select-none">
+                    <div className="mb-6 relative">
+                      {/* Glow ring */}
+                      <div className="absolute inset-0 rounded-2xl bg-sky-400/10 blur-xl scale-150" />
+                      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border/40 bg-card/60 backdrop-blur-sm shadow-sm">
+                        <BookOpen className="w-7 h-7 text-muted-foreground/40" />
+                      </div>
                     </div>
-                    <h2 className="text-2xl font-semibold tracking-tight text-foreground">Create your next report</h2>
-                    <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground/70">This workspace keeps the document front and center with the same block editor, export flow, and autosave behavior you already had.</p>
-                    <button onClick={handleCreateNote} disabled={createMutation.isPending} className="mt-6 h-10 px-4 rounded-xl border border-border/45 bg-background/85 hover:bg-background text-[12px] font-medium transition-colors disabled:opacity-40 inline-flex items-center shadow-sm"><Plus className="w-4 h-4 mr-2" />New Report</button>
+                    <h2 className="text-[15px] font-semibold tracking-tight text-foreground/80">
+                      No document open
+                    </h2>
+                    <p className="mt-2 max-w-[260px] text-[12px] leading-relaxed text-muted-foreground/50">
+                      Select a report from the sidebar, or start a new one.
+                    </p>
+                    <div className="mt-6 flex items-center gap-2">
+                      <button
+                        onClick={handleCreateNote}
+                        disabled={createMutation.isPending}
+                        className="h-8 px-4 rounded-lg border border-sky-500/30 bg-sky-500/[0.07] text-[12px] font-medium text-sky-500 dark:text-sky-400 hover:bg-sky-500/[0.13] transition-colors disabled:opacity-40 inline-flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        New report
+                      </button>
+                    </div>
                   </div>
                 )}
+
+                {/* Editor view */}
                 {selectedNoteId && (
                   <div className="min-h-full">
-                    <div className="report-cover h-28 md:h-36" />
-                    <div className="relative mx-auto max-w-4xl px-6 pb-16 -mt-10 md:px-12 md:-mt-12">
-                      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[1.4rem] border border-border/40 bg-background/90 shadow-xl shadow-black/10">
-                        <FileText className="w-7 h-7 text-sky-400/80" />
+                    <div className="relative mx-auto max-w-[720px] px-6 pt-10 pb-24 md:px-10 md:pt-14">
+
+                      {/* Document meta row */}
+                      <div className="mb-5 flex items-center gap-2 flex-wrap">
+                        {/* Published / Draft pill */}
+                        <button
+                          onClick={handlePinnedToggle}
+                          disabled={!selectedNoteId}
+                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10.5px] font-semibold tracking-wide transition-colors disabled:opacity-50 ${publishToneClass}`}
+                        >
+                          {pinned
+                            ? <><PinOff className="w-2.5 h-2.5" />Published</>
+                            : <><AlignLeft className="w-2.5 h-2.5" />Draft</>}
+                        </button>
+
+                        {/* Date */}
+                        {(updatedLabel || createdLabel) && (
+                          <span className="text-[10.5px] text-muted-foreground/35 tabular-nums">
+                            {updatedLabel ? `Edited ${updatedLabel}` : `Created ${createdLabel}`}
+                          </span>
+                        )}
                       </div>
-                      <div className="mb-4 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70">
-                        <button onClick={handlePinnedToggle} disabled={!selectedNoteId} className={`rounded-full border px-3 py-1 font-medium transition-colors disabled:opacity-50 ${publishToneClass}`}>{pinned ? <PinOff className="w-3.5 h-3.5 inline mr-1.5 align-[-2px]" /> : <Pin className="w-3.5 h-3.5 inline mr-1.5 align-[-2px]" />}{pinned ? 'Published' : 'Draft'}</button>
-                        <span className={`rounded-full border px-3 py-1 font-medium ${statusToneClass}`}>{saveHint}</span>
+
+                      {/* Title */}
+                      <input
+                        value={title}
+                        onChange={handleTitleChange}
+                        placeholder="Untitled"
+                        disabled={noteLoading}
+                        style={{ background: 'transparent', color: 'rgb(var(--foreground))' }}
+                        className="report-title-input w-full text-[38px] md:text-[42px] font-bold tracking-[-0.035em] leading-[1.12] outline-none placeholder:text-muted-foreground/15 disabled:opacity-50"
+                      />
+
+                      {/* Stats row */}
+                      <div className="mt-3 mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <StatChip icon={<AlignLeft className="w-2.5 h-2.5" />} label={`${wordCount.toLocaleString()} words`} />
+                        <StatChip icon={<Clock className="w-2.5 h-2.5" />} label={`${readingMinutes} min read`} />
+                        {chartCount > 0 && <StatChip icon={<BarChart2 className="w-2.5 h-2.5" />} label={`${chartCount} charts`} />}
+                        {imageCount > 0 && <StatChip icon={<ImageIcon className="w-2.5 h-2.5" />} label={`${imageCount} images`} />}
                       </div>
-                      <div className="flex items-start justify-between gap-4">
-                        <input value={title} onChange={handleTitleChange} placeholder="Untitled" disabled={noteLoading} className="report-title-input min-w-0 flex-1 bg-transparent text-3xl md:text-4xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/20 disabled:opacity-50" />
-                        <div className="shrink-0 pt-1 text-right text-[12px] text-muted-foreground/60">
-                          {updatedLabel || createdLabel || ''}
-                        </div>
-                      </div>
-                      <div className="mt-4 mb-8 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground/70">
-                        <span>{wordCount.toLocaleString()} words</span>
-                        <span>{readingMinutes} min read</span>
-                        {chartCount > 0 && <span>{chartCount} charts</span>}
-                        {imageCount > 0 && <span>{imageCount} images</span>}
-                      </div>
+
+                      {/* Divider */}
+                      <div className="mt-7 mb-6 h-px bg-border/20" />
+
+                      {/* Editor */}
                       {noteQuery.isError ? (
                         <div className="mt-12 flex flex-col items-center justify-center text-sm text-muted-foreground gap-3">
-                          <p className="text-rose-400">Failed to load note.</p>
-                          <button onClick={() => noteQuery.refetch()} className="h-8 px-4 rounded-lg border border-border/45 bg-background/80 text-[11px] font-medium hover:bg-background transition-colors">Retry</button>
+                          <p className="text-rose-400 text-[13px]">Failed to load note.</p>
+                          <button
+                            onClick={() => noteQuery.refetch()}
+                            className="h-7 px-3 rounded-lg border border-border/40 bg-foreground/[0.03] text-[11px] font-medium hover:bg-foreground/[0.06] transition-colors"
+                          >
+                            Retry
+                          </button>
                         </div>
-                      ) : noteLoading
-                        ? <div className="mt-12 flex items-center justify-center text-sm text-muted-foreground gap-2"><Loader2 className="w-4 h-4 animate-spin" />Loading blocks...</div>
-                        : <div className="report-editor-shell"><NotesRichEditor value={editorValue} onChange={handleEditorChange} onImageUpload={handleImageUpload} disabled={!selectedNoteId} chartLibrary={chartLibrary} minHeightClassName="min-h-[56vh] text-lg" onFetchChartSnapshot={handleFetchChartSnapshot} /></div>}
-                      {status && <div className={`mt-8 text-[12px] font-medium transition-opacity ${saveState === 'error' ? 'text-rose-400' : 'text-muted-foreground/50'}`}>{status}</div>}
+                      ) : noteLoading ? (
+                        <div className="mt-12 flex items-center justify-center text-sm text-muted-foreground gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+                        </div>
+                      ) : (
+                        <div className="report-editor-shell">
+                          <NotesRichEditor
+                            value={editorValue}
+                            onChange={handleEditorChange}
+                            onImageUpload={handleImageUpload}
+                            disabled={!selectedNoteId}
+                            chartLibrary={chartLibrary}
+                            minHeightClassName="min-h-[56vh] text-[16px] leading-[1.72]"
+                            onFetchChartSnapshot={handleFetchChartSnapshot}
+                          />
+                        </div>
+                      )}
+
+                      {/* Status message */}
+                      {status && (
+                        <div className={`mt-6 text-[11px] font-medium transition-opacity ${
+                          saveState === 'error' ? 'text-rose-400' : 'text-muted-foreground/35'
+                        }`}>
+                          {status}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
               </section>
             </div>
           </div>
-        </div>
-      </NavigatorShell>
-    </AppShell>
+        </NavigatorShell>
+      </AppShell>
+
+      {toastError && <Toast message={toastError} onDismiss={() => setToastError(null)} />}
+    </>
+  );
+}
+
+// ── Small helpers ──────────────────────────────────────────────────────────────
+
+function StatChip({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10.5px] text-muted-foreground/40 tabular-nums">
+      {icon}
+      {label}
+    </span>
+  );
+}
+
+function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  useEffect(() => { const t = setTimeout(onDismiss, 4000); return () => clearTimeout(t); }, [onDismiss]);
+  return (
+    <div className="fixed bottom-5 right-5 z-[200] flex items-center gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/[0.12] backdrop-blur-md px-4 py-2.5 text-[12px] font-medium text-rose-400 shadow-lg animate-in slide-in-from-bottom-2 fade-in duration-200">
+      {message}
+      <button onClick={onDismiss} className="opacity-60 hover:opacity-100 transition-opacity leading-none text-base">&times;</button>
+    </div>
   );
 }

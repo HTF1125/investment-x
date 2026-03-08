@@ -5,3 +5,4 @@ from . import misc
 from .core import bt
 from .db.query import *
 from .db.client import *
+from .db.custom import *
