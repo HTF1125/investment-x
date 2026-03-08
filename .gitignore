@@ -193,6 +193,9 @@ ix/db/models/PxLast.csv
 ix/db/models/EconomicCalendar.csv
 ix/data/
 
+# Reports
+reports/
+
 # Temporary files
 /hovered.png
 /implementation/
