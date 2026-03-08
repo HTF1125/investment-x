@@ -204,7 +204,6 @@ export default function Navbar() {
           <NavLink href="/">Dashboard</NavLink>
           <NavLink href="/wartime">Wartime</NavLink>
           <NavLink href="/intel">Intel</NavLink>
-          <NavLink href="/insights">Insights</NavLink>
           <NavLink href="/technical">Technical</NavLink>
           <NavLink href="/macro">Macro</NavLink>
           <NavLink href="/notes">Reports</NavLink>
@@ -274,7 +273,6 @@ export default function Navbar() {
             <MobileNavLink href="/">Dashboard</MobileNavLink>
             <MobileNavLink href="/wartime">Wartime</MobileNavLink>
             <MobileNavLink href="/intel">Intel</MobileNavLink>
-            <MobileNavLink href="/insights">Insights</MobileNavLink>
             <MobileNavLink href="/technical">Technical</MobileNavLink>
             <MobileNavLink href="/macro">Macro</MobileNavLink>
             <MobileNavLink href="/notes">Reports</MobileNavLink>
