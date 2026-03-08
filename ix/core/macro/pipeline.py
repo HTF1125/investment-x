@@ -44,6 +44,10 @@ from ix.core.macro.engine import (
     liquidity_phase_forward_stats,
     tactical_bucket_forward_stats,
     dominant_regime,
+    compute_trend_signal,
+    compute_sma,
+    compute_binary_allocation,
+    compute_empirical_regime_returns,
 )
 from ix.core.macro.backtest import run_backtest
 
@@ -172,12 +176,22 @@ def compute_full_pipeline(
     # Transition matrix
     trans_matrix = compute_transition_matrix(regime_probs)
 
+    # Trend signal (price vs 40-week SMA)
+    trend_signal = compute_trend_signal(target_px, sma_weeks=40)
+    sma_40w = compute_sma(target_px, sma_weeks=40)
+
+    # Empirical regime returns for this specific target
+    empirical_returns = compute_empirical_regime_returns(
+        regime_probs, target_px, fwd_weeks
+    )
+
     # Forward return stats
     regime_stats = regime_forward_return_stats(regime_probs, target_px, fwd_weeks)
 
-    # Combined allocation (uses continuous liquidity composite, not categorical phase)
+    # Combined allocation (uses empirical per-target returns)
     alloc = compute_allocation(
-        regime_probs, liquidity_composite, tac_score, regime_w, liquidity_w, tactical_w
+        regime_probs, liquidity_composite, tac_score, regime_w, liquidity_w, tactical_w,
+        regime_returns=empirical_returns,
     )
 
     # Component allocations (single-signal backtests)
@@ -194,6 +208,9 @@ def compute_full_pipeline(
         regime_weight=0.0, liquidity_weight=0.0, tactical_weight=1.0,
     )
 
+    # Binary allocation (research strategy: trend + macro → 90/50/10)
+    binary_alloc = compute_binary_allocation(trend_signal, growth_composite)
+
     # Backtest: combined
     equity_df, weights_series, stats_df = run_backtest(
         alloc, target_px, target_name, tc_bps
@@ -207,6 +224,10 @@ def compute_full_pipeline(
     )
     eq_tac, w_tac, st_tac = run_backtest(
         alloc_tactical, target_px, target_name, tc_bps
+    )
+    # Binary strategy backtest
+    eq_binary, w_binary, st_binary = run_backtest(
+        binary_alloc, target_px, target_name, tc_bps
     )
 
     # Phase and tactical forward stats
@@ -244,6 +265,14 @@ def compute_full_pipeline(
         "eq_tac": eq_tac,
         "st_tac": st_tac,
         "w_tac": w_tac,
+        # Trend + binary strategy
+        "trend_signal": trend_signal,
+        "sma_40w": sma_40w,
+        "binary_alloc": binary_alloc,
+        "eq_binary": eq_binary,
+        "st_binary": st_binary,
+        "w_binary": w_binary,
+        "empirical_returns": empirical_returns,
     }
 
 
@@ -295,6 +324,17 @@ def serialize_snapshot(results: dict, target_name: str) -> dict:
     current_phase = (
         str(liq_phase.iloc[-1]) if not liq_phase.empty else "Unknown"
     )
+
+    # Trend signal
+    trend_signal = results.get("trend_signal", pd.Series(dtype=float))
+    sma_40w_series = results.get("sma_40w", pd.Series(dtype=float))
+    binary_alloc_series = results.get("binary_alloc", pd.Series(dtype=float))
+    empirical_returns = results.get("empirical_returns", {})
+    current_trend = bool(trend_signal.iloc[-1] > 0.5) if not trend_signal.empty else None
+    current_sma = _safe_float(sma_40w_series.iloc[-1]) if not sma_40w_series.empty else None
+    current_binary_alloc = _safe_float(
+        binary_alloc_series.iloc[-1]
+    ) if not binary_alloc_series.empty else 0.50
 
     # Forward projections
     current_prob_vec = np.array(
@@ -404,6 +444,9 @@ def serialize_snapshot(results: dict, target_name: str) -> dict:
             "allocation": current_alloc,
             "liq_phase": current_phase,
             "regime_probs": current_probs,
+            "trend_bullish": current_trend,
+            "sma_40w": current_sma,
+            "binary_allocation": current_binary_alloc,
         },
         "projections": projections,
         "indicator_counts": {
@@ -417,6 +460,9 @@ def serialize_snapshot(results: dict, target_name: str) -> dict:
         "regime_stats": regime_stats_list,
         "liq_phase_stats": liq_stats_list,
         "tactical_stats": tac_stats_list,
+        "empirical_regime_returns": {
+            r: _safe_float(v) for r, v in empirical_returns.items()
+        } if empirical_returns else {},
     }
 
 
@@ -434,6 +480,9 @@ def serialize_timeseries(results: dict) -> dict:
     alloc = results["alloc"]
     liq_phase = results["liq_phase"]
     target_px = results["target_px"]
+    trend_signal = results.get("trend_signal", pd.Series(dtype=float))
+    sma_40w = results.get("sma_40w", pd.Series(dtype=float))
+    binary_alloc = results.get("binary_alloc", pd.Series(dtype=float))
 
     if regime_probs.empty:
         return {"dates": [], "target_px": []}
@@ -459,6 +508,9 @@ def serialize_timeseries(results: dict) -> dict:
             for r in REGIME_NAMES
             if r in regime_probs.columns
         },
+        "trend": _series_to_list(trend_signal.reindex(dates).ffill()) if not trend_signal.empty else [],
+        "sma_40w": _series_to_list(sma_40w.reindex(dates).ffill()) if not sma_40w.empty else [],
+        "binary_allocation": _series_to_list(binary_alloc.reindex(dates).ffill()) if not binary_alloc.empty else [],
     }
 
 
@@ -533,6 +585,7 @@ def serialize_backtest(results: dict, target_name: str, tc_bps: float) -> dict:
         "regime_only": _serialize_component_bt(results, "regime", equity_df),
         "liquidity_only": _serialize_component_bt(results, "liq", equity_df),
         "tactical_only": _serialize_component_bt(results, "tac", equity_df),
+        "binary_strategy": _serialize_component_bt(results, "binary", equity_df),
     }
 
 

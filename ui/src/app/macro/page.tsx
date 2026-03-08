@@ -44,6 +44,8 @@ interface Snapshot {
     regime: string; confidence: number; growth: number; inflation: number;
     liquidity: number; tactical: number; allocation: number; liq_phase: string;
     regime_probs: Record<string, number>;
+    trend_bullish?: boolean | null; sma_40w?: number | null;
+    binary_allocation?: number | null;
   };
   projections: Record<string, Record<string, number>>;
   indicator_counts: Record<string, number>;
@@ -52,12 +54,14 @@ interface Snapshot {
   regime_stats: RegimeStat[];
   liq_phase_stats?: LiqPhaseStat[];
   tactical_stats?: TacticalStat[];
+  empirical_regime_returns?: Record<string, number>;
 }
 
 interface TimeseriesData {
   dates: string[]; target_px: number[]; growth: number[]; inflation: number[];
   liquidity: number[]; tactical: number[]; allocation: number[];
   liq_phase: string[]; regime_probs: Record<string, number[]>;
+  trend?: number[]; sma_40w?: number[]; binary_allocation?: number[];
 }
 
 interface BacktestStat {
@@ -74,6 +78,7 @@ interface BacktestData {
   dates: string[]; strategy_equity: number[]; benchmark_equity: number[];
   full_equity: number[]; strategy_weight: number[]; stats: BacktestStat[];
   regime_only?: ComponentBT; liquidity_only?: ComponentBT; tactical_only?: ComponentBT;
+  binary_strategy?: ComponentBT;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -313,6 +318,35 @@ function OverviewTab({ snapshot, timeseries, tsLoading, backtest, btLoading, tar
   const { theme } = useTheme();
   const { current, projections, indicator_counts, regime_stats } = snapshot;
 
+  const trendChart = useMemo(() => {
+    if (!timeseries?.sma_40w?.length) return null;
+    const shapes: any[] = [];
+    const trend = timeseries.trend ?? [];
+    if (trend.length) {
+      let start = 0;
+      for (let i = 1; i <= trend.length; i++) {
+        if (i === trend.length || trend[i] !== trend[start]) {
+          shapes.push({
+            type: 'rect', xref: 'x', yref: 'paper',
+            x0: timeseries.dates[start], x1: timeseries.dates[i - 1],
+            y0: 0, y1: 1,
+            fillcolor: trend[start] > 0.5 ? '#3fb95010' : '#f8514910',
+            line: { width: 0 }, layer: 'below',
+          });
+          start = i;
+        }
+      }
+    }
+    const fig: PlotlyFigure = {
+      data: [
+        { type: 'scatter', x: timeseries.dates, y: timeseries.target_px, name: 'Price', mode: 'lines', line: { color: '#38bdf8', width: 1.5 } },
+        { type: 'scatter', x: timeseries.dates, y: timeseries.sma_40w, name: '40W SMA', mode: 'lines', line: { color: '#d29922', width: 1.5, dash: 'dash' } },
+      ],
+      layout: { yaxis: { ...YAXIS_BASE, title: 'Price', titlefont: { size: 10 } }, xaxis: XAXIS_DATE, shapes, hovermode: 'x unified', legend: { orientation: 'h', y: 1.08, font: { size: 9 } }, margin: CHART_M },
+    };
+    return themed(fig, theme);
+  }, [timeseries, theme]);
+
   const compositeChart = useMemo(() => {
     if (!timeseries) return null;
     const fig: PlotlyFigure = {
@@ -329,12 +363,15 @@ function OverviewTab({ snapshot, timeseries, tsLoading, backtest, btLoading, tar
 
   const equityCurveChart = useMemo(() => {
     if (!backtest) return null;
+    const traces: any[] = [
+      { type: 'scatter', x: backtest.dates, y: backtest.strategy_equity, name: 'Combined', mode: 'lines', line: { color: '#3fb950', width: 2 } },
+      { type: 'scatter', x: backtest.dates, y: backtest.benchmark_equity, name: '50/50 Bench', mode: 'lines', line: { color: '#a1a1aa', width: 1.5, dash: 'dot' } },
+    ];
+    if (backtest.binary_strategy?.equity?.length) {
+      traces.push({ type: 'scatter', x: backtest.dates, y: backtest.binary_strategy.equity, name: 'Binary (90/50/10)', mode: 'lines', line: { color: '#d29922', width: 2 } });
+    }
     const fig: PlotlyFigure = {
-      data: [
-        { type: 'scatter', x: backtest.dates, y: backtest.strategy_equity, name: 'Combined', mode: 'lines', line: { color: '#3fb950', width: 2 } },
-        { type: 'scatter', x: backtest.dates, y: backtest.benchmark_equity, name: '50/50 Bench', mode: 'lines', line: { color: '#a1a1aa', width: 1.5, dash: 'dot' } },
-        { type: 'scatter', x: backtest.dates, y: backtest.full_equity, name: `100% ${target}`, mode: 'lines', line: { color: '#38bdf8', width: 1.5, dash: 'dash' } },
-      ],
+      data: traces,
       layout: { yaxis: { ...YAXIS_BASE, title: 'Cum. Return (%)', ticksuffix: '%', titlefont: { size: 10 } }, xaxis: XAXIS_DATE, hovermode: 'x unified', legend: { orientation: 'h', y: 1.08, font: { size: 9 } }, margin: CHART_M },
     };
     return themed(fig, theme);
@@ -352,12 +389,14 @@ function OverviewTab({ snapshot, timeseries, tsLoading, backtest, btLoading, tar
       </div>
 
       {/* Key metrics */}
-      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+      <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
         {[
           { l: 'Regime', v: current.regime, t: 'Dominant Growth x Inflation quadrant based on highest probability.' },
           { l: 'Confidence', v: fmtPct(current.confidence), t: 'Probability assigned to the dominant regime. Higher = stronger conviction.' },
           { l: 'Phase', v: current.liq_phase, t: 'Liquidity cycle phase: Spring (recovering), Summer (peak), Fall (tightening), Winter (trough).' },
+          { l: 'Trend', v: current.trend_bullish == null ? '-' : (current.trend_bullish ? 'Above' : 'Below'), c: current.trend_bullish ? 'text-emerald-500' : 'text-rose-500', t: 'Price vs 40-week SMA. Above = uptrend (bullish), Below = downtrend (bearish).' },
           { l: 'Allocation', v: fmtPct(current.allocation), t: 'Recommended equity allocation weight from the three-horizon blended model.' },
+          { l: 'Binary', v: current.binary_allocation != null ? fmtPct(current.binary_allocation) : '-', c: (current.binary_allocation ?? 0.5) > 0.5 ? 'text-emerald-500' : (current.binary_allocation ?? 0.5) < 0.5 ? 'text-rose-500' : 'text-foreground', t: 'Binary regime allocation (90/50/10). Trend + macro → risk-on/neutral/risk-off.' },
           { l: 'Growth', v: fmt(current.growth), c: current.growth >= 0 ? 'text-emerald-500' : 'text-rose-500', t: 'Growth composite z-score. Positive = expansion, negative = contraction.' },
           { l: 'Inflation', v: fmt(current.inflation), c: current.inflation <= 0 ? 'text-emerald-500' : 'text-rose-500', t: 'Inflation composite z-score. Negative (green) = disinflation, positive (red) = rising prices.' },
           { l: 'Liquidity', v: fmt(current.liquidity), c: current.liquidity >= 0 ? 'text-emerald-500' : 'text-rose-500', t: 'Global liquidity composite z-score. Positive = accommodative, negative = restrictive.' },
@@ -372,6 +411,14 @@ function OverviewTab({ snapshot, timeseries, tsLoading, backtest, btLoading, tar
           </div>
         ))}
       </div>
+
+      {/* Price + SMA trend */}
+      {!tsLoading && trendChart && (
+        <div className="panel-card p-2">
+          <SectionTitle info="Target index price vs 40-week SMA. Green background = uptrend (price above SMA), red = downtrend. The trend signal is a key input to the binary regime allocation.">Price & 40W SMA Trend</SectionTitle>
+          <ChartBox chart={trendChart} height={200} />
+        </div>
+      )}
 
       {/* Composites chart + tables */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
@@ -398,19 +445,25 @@ function OverviewTab({ snapshot, timeseries, tsLoading, backtest, btLoading, tar
             </table>
           </div>
           <div className="panel-card px-3 py-2">
-            <SectionTitle info="Historical forward returns observed when each regime was dominant. Based on 13-week forward log returns.">Regime Fwd Returns</SectionTitle>
+            <SectionTitle info="Historical forward returns observed when each regime was dominant. Ann. = empirical annualized return for this specific index (used by continuous model).">Regime Fwd Returns</SectionTitle>
             <table className="w-full text-[11px]">
               <thead><tr className="border-b border-border/40">
                 <th className="text-left py-1 pr-2 text-[9px] font-mono uppercase text-muted-foreground/50">Regime</th>
                 <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Mean</th>
                 <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Sharpe</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">%Pos</th>
+                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Ann.</th>
               </tr></thead>
               <tbody>
-                {regime_stats.map(s => (
-                  <StatsRow key={s.regime} label={s.regime} color={REGIME_COLORS[s.regime]}
-                    values={[`${fmt(s.mean_fwd_ret, 1)}%`, fmt(s.sharpe), `${fmt(s.pct_positive, 0)}%`]} />
-                ))}
+                {regime_stats.map(s => {
+                  const empRet = snapshot.empirical_regime_returns?.[s.regime];
+                  return (
+                    <StatsRow key={s.regime} label={s.regime} color={REGIME_COLORS[s.regime]}
+                      values={[
+                        `${fmt(s.mean_fwd_ret, 1)}%`, fmt(s.sharpe),
+                        empRet != null ? `${fmt(empRet * 100, 1)}%` : '-',
+                      ]} />
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -431,7 +484,7 @@ function OverviewTab({ snapshot, timeseries, tsLoading, backtest, btLoading, tar
       {/* Combined backtest */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
         <div className="lg:col-span-3 panel-card p-2">
-          <SectionTitle info="Cumulative log return of the three-horizon blended strategy vs constant 50/50 benchmark and 100% buy-and-hold. Includes 10bps transaction costs.">Combined Strategy Backtest</SectionTitle>
+          <SectionTitle info="Cumulative log return of the three-horizon blended strategy vs constant 50/50 benchmark. Includes 10bps transaction costs.">Combined Strategy Backtest</SectionTitle>
           {btLoading ? <LoadingSpinner /> : <ChartBox chart={equityCurveChart} height={220} />}
         </div>
         {backtest && (
@@ -453,6 +506,14 @@ function OverviewTab({ snapshot, timeseries, tsLoading, backtest, btLoading, tar
                     fmt(s.info_ratio),
                   ]} />
                 ))}
+                {backtest.binary_strategy?.stats?.ann_return !== undefined && (
+                  <StatsRow label="Binary (90/50/10)" color="#d29922" values={[
+                    `${fmt(backtest.binary_strategy.stats.ann_return ?? 0, 1)}%`,
+                    fmt(backtest.binary_strategy.stats.sharpe ?? 0),
+                    <span key="dd" className="text-rose-500">{fmt(backtest.binary_strategy.stats.max_dd ?? 0, 1)}%</span>,
+                    fmt(backtest.binary_strategy.stats.info_ratio ?? 0),
+                  ]} />
+                )}
               </tbody>
             </table>
           </div>
@@ -776,7 +837,8 @@ export default function MacroPage() {
 
   useEffect(() => {
     if (targetsQuery.data?.targets?.length && !selectedTarget) {
-      setSelectedTarget(targetsQuery.data.targets[0].name);
+      const acwi = targetsQuery.data.targets.find(t => t.name === 'MSCI ACWI');
+      setSelectedTarget(acwi ? acwi.name : targetsQuery.data.targets[0].name);
     }
   }, [targetsQuery.data, selectedTarget]);
 
@@ -836,15 +898,27 @@ export default function MacroPage() {
             </select>
 
             {snapshot && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border"
-                style={{
-                  backgroundColor: (REGIME_COLORS[snapshot.current.regime] ?? '#888') + '18',
-                  borderColor: (REGIME_COLORS[snapshot.current.regime] ?? '#888') + '40',
-                  color: REGIME_COLORS[snapshot.current.regime] ?? '#888',
-                }}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: REGIME_COLORS[snapshot.current.regime] }} />
-                {snapshot.current.regime}
-              </span>
+              <>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border"
+                  style={{
+                    backgroundColor: (REGIME_COLORS[snapshot.current.regime] ?? '#888') + '18',
+                    borderColor: (REGIME_COLORS[snapshot.current.regime] ?? '#888') + '40',
+                    color: REGIME_COLORS[snapshot.current.regime] ?? '#888',
+                  }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: REGIME_COLORS[snapshot.current.regime] }} />
+                  {snapshot.current.regime}
+                </span>
+                {snapshot.current.trend_bullish != null && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                    snapshot.current.trend_bullish
+                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500'
+                      : 'bg-rose-500/10 border-rose-500/40 text-rose-500'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${snapshot.current.trend_bullish ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                    {snapshot.current.trend_bullish ? 'Uptrend' : 'Downtrend'}
+                  </span>
+                )}
+              </>
             )}
 
             {outlookQuery.data?.computed_at && (

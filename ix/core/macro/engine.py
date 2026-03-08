@@ -17,6 +17,108 @@ from ix.core.macro.config import (
 
 
 # ==============================================================================
+# TREND SIGNAL
+# ==============================================================================
+
+
+def compute_trend_signal(target_px: pd.Series, sma_weeks: int = 40) -> pd.Series:
+    """Binary trend signal: 1.0 if price > SMA, 0.0 otherwise.
+
+    The 40-week (~200-day) SMA is the most widely used trend filter.
+    Above SMA = uptrend = risk-on.  Below SMA = downtrend = risk-off.
+    """
+    px = _coerce_series(target_px, "target_px")
+    if px.empty or sma_weeks < 1:
+        return pd.Series(dtype=float, name="trend")
+    sma = px.rolling(sma_weeks, min_periods=sma_weeks).mean()
+    trend = (px > sma).astype(float)
+    trend.name = "trend"
+    return trend.dropna()
+
+
+def compute_sma(target_px: pd.Series, sma_weeks: int = 40) -> pd.Series:
+    """Simple moving average of target price for visualisation."""
+    px = _coerce_series(target_px, "target_px")
+    if px.empty or sma_weeks < 1:
+        return pd.Series(dtype=float, name="sma_40w")
+    sma = px.rolling(sma_weeks, min_periods=sma_weeks).mean()
+    sma.name = "sma_40w"
+    return sma.dropna()
+
+
+# ==============================================================================
+# BINARY REGIME ALLOCATION
+# ==============================================================================
+
+
+def compute_binary_allocation(
+    trend_signal: pd.Series,
+    macro_composite: pd.Series,
+    risk_on: float = 0.90,
+    neutral: float = 0.50,
+    risk_off: float = 0.10,
+) -> pd.Series:
+    """Binary regime switching allocation.
+
+    Research shows real alpha comes from drawdown avoidance via binary
+    regime switching, not continuous tilts (~<1% alpha).
+
+    Rules:
+      - Both trend AND macro bullish  -> risk_on  (90%)
+      - Mixed signals                 -> neutral  (50%)
+      - Both bearish                  -> risk_off (10%)
+    """
+    trend = _coerce_series(trend_signal, "trend")
+    macro = _coerce_series(macro_composite, "macro")
+    if trend.empty or macro.empty:
+        return pd.Series(dtype=float, name="binary_allocation")
+
+    df = pd.DataFrame({"trend": trend, "macro": macro}).dropna()
+    if df.empty:
+        return pd.Series(dtype=float, name="binary_allocation")
+
+    trend_bull = df["trend"] > 0.5
+    macro_bull = df["macro"] > 0
+
+    alloc = pd.Series(neutral, index=df.index, name="binary_allocation")
+    alloc[trend_bull & macro_bull] = risk_on
+    alloc[~trend_bull & ~macro_bull] = risk_off
+    return alloc
+
+
+# ==============================================================================
+# EMPIRICAL REGIME RETURNS
+# ==============================================================================
+
+
+def compute_empirical_regime_returns(
+    probs: pd.DataFrame,
+    target_px: pd.Series,
+    fwd_weeks: int = 13,
+) -> dict:
+    """Compute empirical annualized returns per dominant regime for a target index.
+
+    Falls back to REGIME_RETURN_ASSUMPTIONS when insufficient data (<26 weeks).
+    """
+    regimes = dominant_regime(probs)
+    px = _coerce_series(target_px, "target_px")
+    if regimes.empty or px.empty:
+        return dict(REGIME_RETURN_ASSUMPTIONS)
+
+    wr = np.log(px).diff().dropna()
+    df = pd.DataFrame({"regime": regimes, "ret": wr}).dropna()
+
+    result = {}
+    for r in REGIME_NAMES:
+        sub = df[df["regime"] == r]["ret"]
+        if len(sub) >= 26:
+            result[r] = float(sub.mean() * 52)
+        else:
+            result[r] = REGIME_RETURN_ASSUMPTIONS.get(r, 0.0)
+    return result
+
+
+# ==============================================================================
 # NORMALIZATION
 # ==============================================================================
 
@@ -379,6 +481,7 @@ def compute_allocation(
     liquidity_weight: float = 0.30,
     tactical_weight: float = 0.30,
     base_weight: float = 0.50,
+    regime_returns: dict | None = None,
 ) -> pd.Series:
     """Three-horizon blended allocation.
 
@@ -402,6 +505,8 @@ def compute_allocation(
         liquidity_weight: Weight for the liquidity cycle (default 0.30).
         tactical_weight: Weight for the tactical tilt (default 0.30).
         base_weight: Baseline equity allocation (default 50%).
+        regime_returns: Optional dict of per-regime annualized returns.
+            Uses empirical target-specific returns instead of generic assumptions.
 
     Returns:
         Allocation weight series in [0.10, 0.90].
@@ -431,10 +536,11 @@ def compute_allocation(
         tac = _coerce_series(tactical_score, "tactical_score").reindex(idx).ffill().fillna(0)
 
     # 1. Regime signal: expected return from probability-weighted historical returns
+    ret_assumptions = regime_returns if regime_returns else REGIME_RETURN_ASSUMPTIONS
     expected_ret = pd.Series(0.0, index=idx)
     if regime_probs is not None and not regime_probs.empty:
         aligned_probs = regime_probs.reindex(idx).ffill().fillna(0.0)
-        for regime, ret in REGIME_RETURN_ASSUMPTIONS.items():
+        for regime, ret in ret_assumptions.items():
             if regime in aligned_probs.columns:
                 expected_ret += aligned_probs[regime] * ret
     # Scale expected return to allocation tilt: +/-20% max

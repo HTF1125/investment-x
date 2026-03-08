@@ -164,7 +164,11 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
       // Plotly crashes if `resize()` is called on an unmounted or hidden container
       if (!gd || !gd.isConnected || gd.clientHeight === 0 || gd.clientWidth === 0) return;
       import('plotly.js-dist-min')
-        .then(({ default: Plotly }) => { (Plotly as any).Plots.resize(gd); })
+        .then(({ default: Plotly }) => {
+          if (gd && gd.isConnected && gd.clientHeight > 0 && gd.clientWidth > 0) {
+            (Plotly as any).Plots.resize(gd);
+          }
+        })
         .catch(() => {});
     });
     observer.observe(el);

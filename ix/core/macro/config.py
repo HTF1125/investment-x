@@ -39,6 +39,12 @@ class TargetIndex:
 
 
 TARGET_INDICES = {
+    "MSCI ACWI": TargetIndex(
+        "MSCI ACWI",
+        "ACWI US EQUITY:PX_LAST",
+        "global",
+        currency="DXY INDEX:PX_LAST",
+    ),
     "KOSPI": TargetIndex(
         "KOSPI",
         "KOSPI INDEX:PX_LAST",

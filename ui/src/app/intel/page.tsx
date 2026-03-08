@@ -3,23 +3,23 @@
 import AppShell from '@/components/AppShell';
 import NavigatorShell from '@/components/NavigatorShell';
 import NewsFeed from '@/components/NewsFeed';
-import YouTubeIntelFeed from '@/components/YouTubeIntelFeed';
 import TelegramFeed from '@/components/TelegramFeed';
+import MacroBriefFeed from '@/components/MacroBriefFeed';
 import { useAuth } from '@/context/AuthContext';
-import { apiFetch, apiFetchJson } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Radio, RefreshCw, Check, AlertTriangle, Youtube, MessageSquare, Newspaper } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Radio, RefreshCw, Check, AlertTriangle, MessageSquare, Newspaper, BookOpen } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import { useTasks, ProcessInfo } from '@/components/TaskProvider';
+import { useTasks } from '@/components/TaskProvider';
 
-type IntelTab = 'news' | 'youtube' | 'telegram';
+type IntelTab = 'research' | 'news' | 'telegram';
 
 const TABS: { id: IntelTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'research', label: 'Research', icon: <BookOpen className="w-3.5 h-3.5" /> },
   { id: 'news', label: 'News', icon: <Newspaper className="w-3.5 h-3.5" /> },
-  { id: 'youtube', label: 'YouTube', icon: <Youtube className="w-3.5 h-3.5" /> },
   { id: 'telegram', label: 'Telegram', icon: <MessageSquare className="w-3.5 h-3.5" /> },
 ];
 
@@ -27,16 +27,14 @@ export default function IntelPage() {
   const { user } = useAuth();
   const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const { sidebarOpen, toggleSidebar } = useResponsiveSidebar();
-  const [intelTab, setIntelTab] = useState<IntelTab>('news');
+  const [intelTab, setIntelTab] = useState<IntelTab>('research');
 
   const queryClient = useQueryClient();
   const [syncingNews, setSyncingNews] = useState(false);
-  const [syncingYoutube, setSyncingYoutube] = useState(false);
   const [syncingTelegram, setSyncingTelegram] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error'; sticky?: boolean } | null>(null);
 
   const lastNewsIdRef = useRef<string | null>(null);
-  const lastYoutubeIdRef = useRef<string | null>(null);
   const lastTelegramIdRef = useRef<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -51,7 +49,6 @@ export default function IntelPage() {
   const { processes: allProcesses } = useTasks();
 
   const latestNews = allProcesses.find((p) => p.name.startsWith('News Scraping'));
-  const latestYoutube = allProcesses.find((p) => p.name.startsWith('YouTube Sync'));
   const latestTelegram = allProcesses.find((p) => p.name.startsWith('Telegram Sync'));
 
   useEffect(() => {
@@ -67,20 +64,6 @@ export default function IntelPage() {
     }
     lastNewsIdRef.current = latestNews.id;
   }, [latestNews, flash, queryClient]);
-
-  useEffect(() => {
-    if (!latestYoutube) return;
-    setSyncingYoutube(latestYoutube.status === 'running');
-    if (latestYoutube.id !== lastYoutubeIdRef.current && latestYoutube.status !== 'running') {
-      if (latestYoutube.status === 'completed') {
-        flash('YouTube sync completed!', 'success', { sticky: true });
-        queryClient.invalidateQueries({ queryKey: ['youtube-intel'] });
-      } else if (latestYoutube.status === 'failed') {
-        flash(latestYoutube.message || 'YouTube sync failed', 'error', { sticky: true });
-      }
-    }
-    lastYoutubeIdRef.current = latestYoutube.id;
-  }, [latestYoutube, flash, queryClient]);
 
   useEffect(() => {
     if (!latestTelegram) return;
@@ -111,12 +94,12 @@ export default function IntelPage() {
 
   const handleActiveSync = () => {
     if (intelTab === 'news') triggerSync('/api/task/news', setSyncingNews, 'News crawl');
-    else if (intelTab === 'youtube') triggerSync('/api/task/youtube', setSyncingYoutube, 'YouTube sync');
-    else triggerSync('/api/task/telegram', setSyncingTelegram, 'Telegram sync');
+    else if (intelTab === 'telegram') triggerSync('/api/task/telegram', setSyncingTelegram, 'Telegram sync');
   };
 
-  const activeIsSyncing = intelTab === 'news' ? syncingNews : intelTab === 'youtube' ? syncingYoutube : syncingTelegram;
-  const anySyncing = syncingNews || syncingYoutube || syncingTelegram;
+  const activeIsSyncing = intelTab === 'news' ? syncingNews : intelTab === 'telegram' ? syncingTelegram : false;
+  const showSyncButton = intelTab !== 'research';
+  const anySyncing = syncingNews || syncingTelegram;
 
   return (
     <AppShell hideFooter>
@@ -165,7 +148,7 @@ export default function IntelPage() {
         topBarRight={
           <div className="flex items-center gap-1.5">
             <span className={`w-1.5 h-1.5 rounded-full ${anySyncing ? 'bg-sky-400 animate-pulse' : 'bg-emerald-500'}`} />
-            {isAdmin && (
+            {isAdmin && showSyncButton && (
               <button
                 onClick={handleActiveSync}
                 disabled={activeIsSyncing}
@@ -182,8 +165,8 @@ export default function IntelPage() {
         <div className="h-full p-3 md:p-4 overflow-hidden max-w-screen-xl mx-auto w-full">
           <div className="h-full min-h-0 border border-border/60 rounded-xl bg-background overflow-hidden">
             <div className="min-h-0 h-full overflow-hidden">
+              {intelTab === 'research' && <MacroBriefFeed embedded />}
               {intelTab === 'news' && <NewsFeed embedded />}
-              {intelTab === 'youtube' && <YouTubeIntelFeed embedded />}
               {intelTab === 'telegram' && <TelegramFeed embedded />}
             </div>
           </div>

@@ -22,7 +22,6 @@ from ix.misc import get_logger
 from .user import User
 from .telegram import TelegramMessage
 from .custom_chart import CustomChart
-from .youtube_intel import YouTubeIntel
 from .task_process import TaskProcess
 from .investment_note import InvestmentNote
 from .system_setting import SystemSetting
@@ -31,6 +30,7 @@ from .audit_log import AuditLog
 from .runtime_log import RuntimeLog
 from .user_preference import UserPreference
 from .macro_outlook import MacroOutlook
+from .research_report import ResearchReport
 import pandas as pd
 import threading
 
@@ -82,7 +82,6 @@ __all__ = [
     "TelegramMessage",
     "Insights",
     "CustomChart",
-    "YouTubeIntel",
     "TaskProcess",
     "InvestmentNote",
     "SystemSetting",
@@ -91,6 +90,7 @@ __all__ = [
     "RuntimeLog",
     "UserPreference",
     "MacroOutlook",
+    "ResearchReport",
 ]
 
 
@@ -103,7 +103,6 @@ def all():
         TacticalView,
         Insights,
         CustomChart,
-        YouTubeIntel,
         TaskProcess,
         InvestmentNote,
         NewsItem,
@@ -111,6 +110,7 @@ def all():
         RuntimeLog,
         UserPreference,
         MacroOutlook,
+        ResearchReport,
     ]
 
 

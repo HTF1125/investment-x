@@ -5,27 +5,23 @@ Main FastAPI application.
 import os
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-import pytz
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import text
 from slowapi.errors import RateLimitExceeded
 
 from ix.db.conn import ensure_connection, conn
 from ix.utils.logger import setup_logging
-from ix.misc.task import run_daily_tasks
 
 # Initialize application logging
 logger = setup_logging(service_name="backend")
 # logger = get_logger(__name__)
 
 # Timezone config
-KST = pytz.timezone("Asia/Seoul")
 
 scheduler = AsyncIOScheduler()
 StartupCheck = tuple[str, Callable[[], None]]
@@ -323,6 +319,19 @@ def _ensure_macro_outlook_schema() -> None:
         logger.warning(f"Macro outlook schema check failed: {exc}")
 
 
+def _ensure_research_report_schema() -> None:
+    """Idempotent migration for research_report table."""
+    if not ensure_connection():
+        logger.warning("Skipping research_report schema check — DB unavailable.")
+        return
+    try:
+        from ix.db.models.research_report import ResearchReport
+        ResearchReport.__table__.create(bind=conn.engine, checkfirst=True)
+        logger.info("Research report schema check completed.")
+    except Exception as exc:
+        logger.warning(f"Research report schema check failed: {exc}")
+
+
 _STARTUP_CHECKS: tuple[StartupCheck, ...] = (
     ("user role schema", _ensure_user_role_schema),
     ("charts rename", _ensure_charts_rename),
@@ -334,6 +343,7 @@ _STARTUP_CHECKS: tuple[StartupCheck, ...] = (
     ("runtime logs schema", _ensure_runtime_logs_schema),
     ("legacy financial_news cleanup", _drop_financial_news_table),
     ("macro outlook schema", _ensure_macro_outlook_schema),
+    ("research report schema", _ensure_research_report_schema),
 )
 
 
@@ -355,46 +365,8 @@ async def lifespan(app: FastAPI):
     Also handles database connection initialization if needed.
     """
     logger.info("Initializing FastAPI application...")
-    logger.info("Starting scheduler...")
-
-    # Schedule run_daily_tasks() at 07:00 KST
-    scheduler.add_job(
-        run_daily_tasks,
-        CronTrigger(hour=7, minute=0, timezone=KST),
-        id="daily_routine",
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
-    logger.info("Scheduled 'run_daily_tasks' for 07:00 KST")
-
-    # Schedule macro outlook refresh every 4 hours
-    from ix.core.macro.pipeline import compute_all_targets as _macro_refresh
-
-    scheduler.add_job(
-        _macro_refresh,
-        CronTrigger(hour="*/4", minute=30, timezone=KST),
-        id="macro_refresh",
-        replace_existing=True,
-        misfire_grace_time=7200,
-    )
-    logger.info("Scheduled 'macro_refresh' every 4 hours at :30")
-
-    # Schedule YouTube channel scan every 6 hours
-    from ix.misc.task.youtube import scan_youtube_channels
-
-    scheduler.add_job(
-        scan_youtube_channels,
-        CronTrigger(hour="*/6", minute=0, timezone=KST),
-        id="youtube_scan",
-        replace_existing=True,
-        misfire_grace_time=7200,
-    )
-    logger.info("Scheduled 'youtube_scan' every 6 hours")
 
     _run_startup_checks()
-
-    if not scheduler.running:
-        scheduler.start()
 
     logger.info("FastAPI application started")
     yield

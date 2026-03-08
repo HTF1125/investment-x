@@ -2,7 +2,7 @@
 
 Endpoints read from the macro_outlook DB table (populated by the scheduler).
 The POST /macro/refresh endpoint triggers a background recompute for admins.
-"""
+"""  # noqa: E501
 
 import threading
 
