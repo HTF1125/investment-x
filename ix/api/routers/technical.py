@@ -1582,3 +1582,356 @@ def export_technical_report(
             e,
         )
         raise HTTPException(status_code=500, detail="Export failed")
+
+
+# ── Research Chart Helpers ─────────────────────────────────────────────────
+
+
+def _fmt_price(val: float) -> str:
+    """Format price for labels: comma-separated for >=1000, 1dp for >=100, 2dp otherwise."""
+    if val >= 1000:
+        return f"{val:,.0f}"
+    elif val >= 100:
+        return f"{val:.1f}"
+    else:
+        return f"{val:.2f}"
+
+
+def _find_support_resistance(
+    highs: pd.Series,
+    lows: pd.Series,
+    window: int = 20,
+    n_levels: int = 5,
+    cluster_pct: float = 0.015,
+) -> List[float]:
+    """Detect key support/resistance levels from swing highs/lows."""
+    levels: List[float] = []
+    for i in range(window, len(highs) - window):
+        if highs.iloc[i] == highs.iloc[i - window : i + window + 1].max():
+            levels.append(float(highs.iloc[i]))
+    for i in range(window, len(lows) - window):
+        if lows.iloc[i] == lows.iloc[i - window : i + window + 1].min():
+            levels.append(float(lows.iloc[i]))
+    if not levels:
+        return []
+    levels.sort()
+    clustered: List[float] = []
+    current_cluster: List[float] = [levels[0]]
+    for i in range(1, len(levels)):
+        if (levels[i] - current_cluster[0]) / current_cluster[0] <= cluster_pct:
+            current_cluster.append(levels[i])
+        else:
+            clustered.append(float(np.mean(current_cluster)))
+            current_cluster = [levels[i]]
+    clustered.append(float(np.mean(current_cluster)))
+    current_price = float(highs.iloc[-1])
+    clustered.sort(key=lambda x: abs(x - current_price))
+    return clustered[:n_levels]
+
+
+def _find_swing_points(series: pd.Series, window: int = 15) -> List[int]:
+    """Return indices of swing points (local extrema)."""
+    points = []
+    for i in range(window, len(series) - window):
+        seg = series.iloc[i - window : i + window + 1]
+        if series.iloc[i] == seg.max() or series.iloc[i] == seg.min():
+            points.append(i)
+    return points
+
+
+def _fit_trendline(
+    dates: list, values: pd.Series, indices: List[int], is_high: bool
+) -> Optional[Dict[str, Any]]:
+    """Fit a trendline through the 2 most recent swing highs or lows.
+    Returns dict with x0, y0, x1, y1 for plotting, or None."""
+    if len(indices) < 2:
+        return None
+    # Take the last two points
+    i1, i2 = indices[-2], indices[-1]
+    y1, y2 = float(values.iloc[i1]), float(values.iloc[i2])
+    # Extend line to the right edge
+    slope = (y2 - y1) / (i2 - i1) if i2 != i1 else 0
+    y_end = y2 + slope * (len(values) - 1 - i2)
+    return {
+        "x0": dates[i1],
+        "y0": y1,
+        "x1": dates[-1],
+        "y1": y_end,
+        "color": "rgba(239,68,68,0.45)" if is_high else "rgba(34,197,94,0.45)",
+    }
+
+
+# ── Research Chart Endpoint ───────────────────────────────────────────────
+
+
+@router.get("/technical/research-chart")
+def get_research_chart(
+    ticker: str = Query("SPY"),
+    interval: str = Query("1d"),
+    period: str = Query("1y"),
+):
+    """Research-style chart: MACD + Stoch on top, candlestick + MAs in center, volume at bottom.
+
+    Always fetches max available history so indicators (especially 200MA)
+    are calculated on the full dataset.  The ``period`` parameter only
+    controls the **initial visible x-axis range** — the user can pan left
+    to see older data.
+    """
+    try:
+        tk = ticker.strip().upper()
+
+        # Fetch extra history so the longest MA (200) is warmed up
+        # before the visible window, and users can pan left a bit.
+        # We fetch 3× the requested period to give buffer, capped at 10y.
+        period_years = {"1y": 1, "3y": 3, "5y": 5, "10y": 10}
+        view_years = period_years.get(period, 1)
+        fetch_years = min(view_years * 3, 10)
+        fetch_period = f"{fetch_years}y"
+
+        df = yf.download(tk, period=fetch_period, interval=interval, progress=False)
+        if df.empty:
+            raise HTTPException(status_code=404, detail=f"No data for {tk}")
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        df = df.reset_index()
+        date_col = "Date" if "Date" in df.columns else "Datetime"
+        dates = df[date_col].tolist()
+        close = df["Close"].astype(float)
+        high = df["High"].astype(float)
+        low = df["Low"].astype(float)
+        opn = df["Open"].astype(float)
+
+        # Initial visible x-range = the requested period
+        last_date = pd.Timestamp(dates[-1])
+        view_start = last_date - pd.DateOffset(years=view_years)
+        if view_start < pd.Timestamp(dates[0]):
+            view_start = pd.Timestamp(dates[0])
+        x_range_initial = [str(view_start.date()), str(last_date.date())]
+
+        # ── Indicators ──────────────────────────────────────────────────
+
+        ma_config = [(20, "#3b82f6"), (60, "#f59e0b"), (120, "#22c55e"), (200, "#a855f7")]
+        ma_series = {}
+        for p, _ in ma_config:
+            if len(df) >= p:
+                ma_series[p] = close.rolling(window=p).mean()
+
+        ema12 = close.ewm(span=12, adjust=False).mean()
+        ema26 = close.ewm(span=26, adjust=False).mean()
+        macd_line = ema12 - ema26
+        macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+        macd_hist = macd_line - macd_signal
+
+        stoch_n = 14
+        lowest_low = low.rolling(window=stoch_n).min()
+        highest_high = high.rolling(window=stoch_n).max()
+        fast_k = ((close - lowest_low) / (highest_high - lowest_low)) * 100
+        slow_k = fast_k.rolling(window=3).mean()
+        slow_d = slow_k.rolling(window=3).mean()
+
+        # ── Layout: Row1=MACD, Row2=Stoch, Row3=Candlestick, Row4=Volume ─
+
+        fig = make_subplots(
+            rows=4, cols=1, shared_xaxes=True,
+            row_heights=[0.13, 0.13, 0.62, 0.12],
+            vertical_spacing=0.008,
+        )
+
+        # ── Row 1: MACD ─────────────────────────────────────────────────
+
+        # Histogram with momentum-aware gradient colors
+        hist_vals = macd_hist.tolist()
+        hist_colors = []
+        for i, v in enumerate(hist_vals):
+            prev = hist_vals[i - 1] if i > 0 else 0
+            if v >= 0:
+                hist_colors.append("#34d399" if v >= prev else "#6ee7b7")  # bright/dim green
+            else:
+                hist_colors.append("#f87171" if v <= prev else "#fca5a5")  # bright/dim red
+
+        fig.add_trace(go.Bar(
+            x=dates, y=macd_hist, marker_color=hist_colors,
+            marker_line_width=0, name="Hist", showlegend=False,
+            hovertemplate="Hist: %{y:.4f}<extra></extra>",
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=macd_line, mode="lines",
+            line=dict(color="#38bdf8", width=1.3),
+            name="MACD", showlegend=False,
+            hovertemplate="MACD: %{y:.4f}<extra></extra>",
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=macd_signal, mode="lines",
+            line=dict(color="#fb923c", width=1, dash="dot"),
+            name="Signal", showlegend=False,
+            hovertemplate="Signal: %{y:.4f}<extra></extra>",
+        ), row=1, col=1)
+        fig.add_hline(y=0, line_color="rgba(148,163,184,0.15)", line_width=0.5, row=1, col=1)
+
+        # ── Row 2: Stochastic ───────────────────────────────────────────
+
+        # Fill between K and D for visual
+        fig.add_trace(go.Scatter(
+            x=dates, y=slow_k, mode="lines",
+            line=dict(color="#3b82f6", width=1.3),
+            name="Slow %K", showlegend=False,
+            hovertemplate="Slow %%K: %{y:.1f}<extra></extra>",
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=slow_d, mode="lines",
+            line=dict(color="#f43f5e", width=1, dash="dot"),
+            fill="tonexty", fillcolor="rgba(59,130,246,0.05)",
+            name="Slow %D", showlegend=False,
+            hovertemplate="Slow %%D: %{y:.1f}<extra></extra>",
+        ), row=2, col=1)
+        for ref_y in [20, 80]:
+            fig.add_hline(
+                y=ref_y, line_dash="dot",
+                line_color="rgba(148,163,184,0.2)", line_width=0.5,
+                row=2, col=1,
+            )
+        fig.update_yaxes(range=[0, 100], row=2, col=1)
+
+        # ── Row 3: Candlestick + MAs ────────────────────────────────────
+
+        fig.add_trace(go.Candlestick(
+            x=dates, open=opn, high=high, low=low, close=close,
+            increasing_line_color="#26a69a", increasing_fillcolor="#26a69a",
+            decreasing_line_color="#ef5350", decreasing_fillcolor="#ef5350",
+            name="OHLC", showlegend=False,
+        ), row=3, col=1)
+
+        annotations = []
+        for ma_period, color in ma_config:
+            if ma_period not in ma_series:
+                continue
+            mv = ma_series[ma_period]
+            fig.add_trace(go.Scatter(
+                x=dates, y=mv, mode="lines",
+                line=dict(color=color, width=1.2),
+                name=f"{ma_period}MA", showlegend=False,
+                hovertemplate=f"{ma_period}MA: %{{y:.2f}}<extra></extra>",
+            ), row=3, col=1)
+            last_val = mv.dropna().iloc[-1] if not mv.dropna().empty else None
+            if last_val is not None:
+                annotations.append(dict(
+                    x=1.0, y=float(last_val), xref="paper", yref="y3",
+                    text=f"  {ma_period} {_fmt_price(float(last_val))}",
+                    showarrow=False, xanchor="left",
+                    font=dict(color=color, size=9, family="'Inter', sans-serif"),
+                    bgcolor="rgba(0,0,0,0)",
+                ))
+
+        # Trendlines (on row 3 candlestick)
+        swing_window = max(10, len(df) // 25)
+        swing_hi_idx, swing_lo_idx = [], []
+        start_i = max(swing_window, len(df) // 3)
+        for i in range(start_i, len(df) - swing_window):
+            seg_h = high.iloc[i - swing_window : i + swing_window + 1]
+            if high.iloc[i] == seg_h.max():
+                swing_hi_idx.append(i)
+            seg_l = low.iloc[i - swing_window : i + swing_window + 1]
+            if low.iloc[i] == seg_l.min():
+                swing_lo_idx.append(i)
+
+        for is_high, idxs, vals in [(True, swing_hi_idx, high), (False, swing_lo_idx, low)]:
+            tl = _fit_trendline(dates, vals, idxs, is_high)
+            if tl:
+                fig.add_shape(
+                    type="line",
+                    x0=tl["x0"], y0=tl["y0"], x1=tl["x1"], y1=tl["y1"],
+                    line=dict(color=tl["color"], width=1.5, dash="dash"),
+                    row=3, col=1,
+                )
+
+        # Support/Resistance
+        key_levels = _find_support_resistance(high, low, window=20, n_levels=5)
+        for level in key_levels:
+            fig.add_hline(
+                y=level, line_dash="dot", line_color="rgba(148,163,184,0.25)",
+                line_width=0.8, row=3, col=1,
+            )
+            annotations.append(dict(
+                x=0.0, y=level, xref="paper", yref="y3",
+                text=_fmt_price(level), showarrow=False, xanchor="right",
+                font=dict(color="rgba(148,163,184,0.45)", size=9, family="Inter, sans-serif"),
+                bgcolor="rgba(0,0,0,0)",
+            ))
+
+        # ── Row 4: Volume ───────────────────────────────────────────────
+
+        if "Volume" in df.columns:
+            vol_colors = ["rgba(38,166,154,0.5)" if c >= o else "rgba(239,83,80,0.5)" for c, o in zip(close, opn)]
+            fig.add_trace(go.Bar(
+                x=dates, y=df["Volume"], marker_color=vol_colors,
+                marker_line_width=0,
+                name="Volume", showlegend=False,
+                hovertemplate="Vol: %{y:,.0f}<extra></extra>",
+            ), row=4, col=1)
+
+        # ── Row labels ──────────────────────────────────────────────────
+
+        for label, yref in [("MACD (12,26,9)", "y"), ("Stoch (14,3,3)", "y2")]:
+            annotations.append(dict(
+                x=0.005, y=1.0, xref="paper", yref=f"{yref} domain",
+                text=f"<b>{label}</b>", showarrow=False,
+                xanchor="left", yanchor="top",
+                font=dict(color="rgba(148,163,184,0.4)", size=9, family="Inter, sans-serif"),
+            ))
+        annotations.append(dict(
+            x=0.005, y=0.0, xref="paper", yref="y4 domain",
+            text="<b>Vol</b>", showarrow=False,
+            xanchor="left", yanchor="bottom",
+            font=dict(color="rgba(148,163,184,0.4)", size=9, family="Inter, sans-serif"),
+        ))
+
+        # ── Layout ──────────────────────────────────────────────────────
+
+        fig.update_layout(
+            annotations=annotations,
+            xaxis_rangeslider_visible=False,
+            hovermode="x unified",
+            hoverdistance=30,
+            spikedistance=-1,
+            dragmode="pan",
+            margin=dict(l=48, r=72, t=4, b=18),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="'Inter', -apple-system, sans-serif", size=11),
+            legend=dict(visible=False),
+        )
+
+        # Kill rangeslider on every x-axis (candlestick adds one by default)
+        fig.update_xaxes(
+            showgrid=True, gridcolor="rgba(148,163,184,0.035)",
+            zeroline=False, showspikes=False,
+            range=x_range_initial,
+            rangeslider=dict(visible=False),
+        )
+        fig.update_yaxes(
+            showgrid=True, gridcolor="rgba(148,163,184,0.035)",
+            zeroline=False, showspikes=False,
+            tickfont=dict(size=9),
+            side="right",
+        )
+        # Only show x-tick labels on the bottom row
+        for r in [1, 2, 3]:
+            fig.update_xaxes(showticklabels=False, row=r, col=1)
+        fig.update_xaxes(tickfont=dict(size=9), row=4, col=1)
+
+        # Subtle separator lines between panels
+        for yref in ["y", "y2", "y4"]:
+            fig.add_shape(
+                type="line", x0=0, x1=1, y0=0, y1=0,
+                xref="paper", yref=f"{yref} domain",
+                line=dict(color="rgba(148,163,184,0.1)", width=0.5),
+            )
+
+        return json.loads(pio.to_json(fig, engine="json"))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Research chart failed for ticker=%s: %s", ticker, e)
+        raise HTTPException(status_code=500, detail=f"Research chart error: {e}")

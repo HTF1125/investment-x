@@ -1,0 +1,51 @@
+"""Performance metrics: returns, risk ratios, drawdown analysis."""
+
+from .metrics import (  # noqa: F401
+    get_period_performances,
+    to_pri_return,
+    to_log_return,
+    to_cum_return,
+    to_ann_return,
+    to_ann_volatility,
+    to_ann_sharpe,
+    to_drawdown,
+    to_max_drawdown,
+    to_calmar_ratio,
+    to_sortino_ratio,
+    rebase,
+    # Returns-based analytics (from DWS PerformanceAnalytics)
+    drawdown,
+    max_drawdown,
+    rolling_sharpe,
+    calmar_ratio,
+    sortino_ratio,
+    cumulative_contribution,
+    information_ratio,
+    return_portfolio,
+    # Extended analytics (from ffn / empyrical)
+    omega_ratio,
+    stability_of_timeseries,
+    tail_ratio,
+    ulcer_index,
+    ulcer_performance_index,
+    capture,
+    up_capture,
+    down_capture,
+    up_down_capture,
+    alpha,
+    roll_max_drawdown,
+    roll_cagr,
+    roll_sortino,
+    roll_alpha,
+    drawdown_details,
+    aggregate_returns,
+    prob_momentum,
+)
+from .utils import *  # noqa: F401,F403
+from .attribution import (  # noqa: F401
+    brinson_fachler,
+    brinson_fachler_summary,
+    multi_period_attribution,
+    factor_return_decomposition,
+    factor_decomposition_report,
+)

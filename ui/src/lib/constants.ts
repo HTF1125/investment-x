@@ -29,11 +29,6 @@ export const queryKeys = {
   timeseries: {
     list: (params: Record<string, unknown>) => ['timeseries', params] as const,
   },
-  technical: {
-    elliott: (...args: unknown[]) => ['technical-elliott', ...args] as const,
-    overlays: (...args: unknown[]) => ['technical-overlays', ...args] as const,
-    summary: (...args: unknown[]) => ['technical-summary', ...args] as const,
-  },
   admin: {
     users: (search: string) => ['admin-users', search] as const,
     logs: (...args: unknown[]) => ['admin-logs', ...args] as const,

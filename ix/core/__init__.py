@@ -1,54 +1,23 @@
 """ """
 
-from .tech import *
-from .perf import *
-from .stat import *
+from .technical import *  # noqa: F401,F403
+from .performance import *  # noqa: F401,F403
+from .quantitative.statistics import *  # noqa: F401,F403
+from .quantitative.preprocessing import *  # noqa: F401,F403
 
-from .bt import *
+from .backtesting import *  # noqa: F401,F403
 
+# Re-export for backward compat
+from .performance.utils import to_quantiles, sum_to_one, demeaned, performance_by_state  # noqa: F401
+from .performance.metrics import rebase  # noqa: F401
 
-def to_quantiles(
-    x: pd.Series,
-    quantiles: int = 5,
-    zero_aware: int = 0,
-) -> pd.Series:
-    if len(x.dropna()) < quantiles:
-        return pd.Series(data=None)
-    try:
-        if zero_aware:
-            objs = [
-                to_quantiles(x[x >= 0], quantiles=quantiles // 2) + quantiles // 2,
-                to_quantiles(x[x < 0], quantiles=quantiles // 2),
-            ]
-            return pd.concat(objs=objs).sort_index()
-        return pd.qcut(x=x, q=quantiles, labels=False) + 1
-    except ValueError:
-        return pd.Series(data=None)
+from ix.misc import ContributionToGrowth  # noqa: F401
 
-
-def sum_to_one(x: pd.Series) -> pd.Series:
-    return x / x.sum()
-
-
-def demeaned(x: pd.Series) -> pd.Series:
-    return x - x.mean()
-
-
-def rebase(x: pd.Series) -> pd.Series:
-    return x / x.dropna().iloc[0]
-
-
-def performance_by_state(
-    states: pd.Series,
-    pxs: pd.DataFrame,
-    demeaned: bool = False,
-) -> pd.DataFrame:
-    log_return = pxs.apply(to_log_return, axis=0, periods=1, forward=True)
-    if demeaned:
-        log_return = log_return - log_return.mean(axis=0)
-    com = pd.concat([states, log_return], axis=1)
-    com["States"] = com["States"].ffill().dropna()
-    return com.groupby(by=["States"]).mean() * 252
-
-
-from ix.misc import ContributionToGrowth
+# Attribution
+from .performance.attribution import (  # noqa: F401
+    brinson_fachler,
+    brinson_fachler_summary,
+    multi_period_attribution,
+    factor_return_decomposition,
+    factor_decomposition_report,
+)

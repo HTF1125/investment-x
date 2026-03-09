@@ -17,9 +17,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground font-mono text-sm">
+      <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground font-mono text-sm" role="status" aria-live="polite">
         <div className="flex gap-2 items-center animate-pulse">
-            <div className="w-2 h-2 bg-sky-500 rounded-full" />
+            <div className="w-2 h-2 bg-sky-500 rounded-full" aria-hidden="true" />
             INITIALIZING SECURITY PROTOCOLS...
         </div>
       </div>

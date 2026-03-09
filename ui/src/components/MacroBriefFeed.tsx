@@ -89,6 +89,12 @@ function scoreColor(score: number): string {
   return 'text-emerald-400';
 }
 
+function scoreLabel(score: number): string {
+  if (score >= 8) return 'High Risk';
+  if (score >= 6) return 'Elevated';
+  return 'Low Risk';
+}
+
 function scoreBgClass(score: number): string {
   if (score >= 8) return 'bg-rose-500/10';
   if (score >= 6) return 'bg-amber-500/10';
@@ -245,8 +251,8 @@ function SectionHeading({
 
 function ScoreBar({ score }: { score: number }) {
   return (
-    <div className="flex items-center gap-2 w-full">
-      <div className="flex-1 h-1.5 rounded-full bg-foreground/[0.06] overflow-hidden">
+    <div className="flex items-center gap-2 w-full" role="meter" aria-valuenow={score} aria-valuemin={0} aria-valuemax={10} aria-label={`Risk score: ${score} out of 10, ${scoreLabel(score)}`}>
+      <div className="flex-1 h-1.5 rounded-full bg-foreground/[0.06] overflow-hidden" aria-hidden="true">
         <div
           className={`h-full rounded-full transition-all duration-500 ${scoreBarColor(score)}`}
           style={{ width: `${score * 10}%` }}
@@ -257,6 +263,7 @@ function ScoreBar({ score }: { score: number }) {
       >
         {score}/10
       </span>
+      <span className="sr-only">{scoreLabel(score)}</span>
     </div>
   );
 }
@@ -330,7 +337,7 @@ export default function MacroBriefFeed({ embedded }: { embedded?: boolean }) {
 
   if (datesLoading) {
     return (
-      <div className="h-32 animate-pulse flex items-center justify-center text-muted-foreground text-sm">
+      <div role="status" aria-live="polite" className="h-32 animate-pulse flex items-center justify-center text-muted-foreground text-sm">
         Loading research reports...
       </div>
     );
@@ -338,8 +345,8 @@ export default function MacroBriefFeed({ embedded }: { embedded?: boolean }) {
 
   if (datesError) {
     return (
-      <div className="border border-rose-500/20 rounded-xl bg-rose-500/[0.04] p-8 flex flex-col items-center gap-3 text-center">
-        <WifiOff className="w-6 h-6 text-rose-400/50" />
+      <div role="alert" className="border border-rose-500/20 rounded-xl bg-rose-500/[0.04] p-8 flex flex-col items-center gap-3 text-center">
+        <WifiOff className="w-6 h-6 text-rose-400/50" aria-hidden="true" />
         <p className="text-sm text-muted-foreground">Unable to load research reports</p>
       </div>
     );

@@ -64,7 +64,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                 `}
             >
                 {/* Status Icon */}
-                <div className="shrink-0 mt-0.5">
+                <div className="shrink-0 mt-0.5" aria-hidden="true">
                 {process.status === "running" && (
                     <div className="relative">
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
@@ -78,6 +78,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                     <XCircle className="w-3.5 h-3.5 text-rose-400" />
                 )}
                 </div>
+                <span className="sr-only">Status: {process.status}</span>
 
                 {/* Content */}
                 <div className="flex-grow min-w-0">
@@ -90,6 +91,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                             e.stopPropagation();
                             handleDismiss(process.id);
                         }}
+                        aria-label={`Dismiss ${process.name}`}
                         className="text-muted-foreground hover:text-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100 p-0.5 hover:bg-accent/10 rounded"
                     >
                         <X className="w-2.5 h-2.5" />

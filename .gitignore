@@ -195,6 +195,7 @@ ix/data/
 
 # Reports
 reports/
+DWS/
 
 # Temporary files
 /hovered.png

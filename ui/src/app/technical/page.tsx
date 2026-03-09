@@ -14,7 +14,9 @@ import { apiFetchJson, apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
+import { useNativeInputStyle } from '@/lib/hooks/useNativeInputStyle';
 import ReactMarkdown from 'react-markdown';
+import { ChartErrorBoundary } from '@/components/ChartErrorBoundary';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -31,7 +33,7 @@ const Plot = dynamic(() => import('react-plotly.js'), {
       </div>
     </div>
   ),
-}) as any;
+}) as React.ComponentType<Record<string, unknown>>;
 
 // ─── Utilities & Constants ───────────────────────────────────────────────────
 
@@ -76,7 +78,7 @@ interface ParamRowProps {
 }
 
 function ParamRow({ label, value, onChange, min, max, step }: ParamRowProps) {
-  const { theme } = useTheme();
+  const nativeInputStyle = useNativeInputStyle();
   return (
     <div className="flex items-center justify-between gap-4 group">
       <span className="text-[12px] text-muted-foreground/80 font-medium group-hover:text-foreground/90 transition-colors">{label}</span>
@@ -84,32 +86,51 @@ function ParamRow({ label, value, onChange, min, max, step }: ParamRowProps) {
         type="number" value={value as number} min={min} max={max} step={step ?? 1}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-20 text-right text-[12px] bg-foreground/[0.02] border border-border/40 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 text-foreground transition-all"
-        style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
+        style={nativeInputStyle}
       />
     </div>
   );
 }
 
-function ParamSelect({ label, value, onChange, options }: any) {
-  const { theme } = useTheme();
+function ParamSelect({ label, value, onChange, options }: {
+  label: string; value: string | number; onChange: (v: string) => void;
+  options: { value: string | number; label: string }[];
+}) {
+  const nativeInputStyle = useNativeInputStyle();
   return (
     <div className="flex items-center justify-between gap-4 group">
       <span className="text-[12px] text-muted-foreground/80 font-medium group-hover:text-foreground/90 transition-colors">{label}</span>
       <select
-        value={value as any} onChange={(e) => onChange(e.target.value)}
+        value={value} onChange={(e) => onChange(e.target.value)}
         className="text-[12px] bg-foreground/[0.02] border border-border/40 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 text-foreground cursor-pointer transition-all appearance-none pr-8 relative"
-        style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))', backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2371717A%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.7rem top 50%', backgroundSize: '0.65rem auto' }}
+        style={{ ...nativeInputStyle, backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2371717A%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.7rem top 50%', backgroundSize: '0.65rem auto' }}
       >
-        {options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
   );
 }
 
-function IndicatorRow({ 
+interface IndicatorRowProps {
+  color: string;
+  label: string;
+  sublabel?: string;
+  checked: boolean;
+  onCheck: (v: boolean) => void;
+  onSettingsOpen?: () => void;
+  settingsOpen?: boolean;
+  settingsContent?: React.ReactNode;
+  extra?: React.ReactNode;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  isFirst?: boolean;
+  isLast?: boolean;
+}
+
+function IndicatorRow({
   color, label, sublabel, checked, onCheck, onSettingsOpen, settingsOpen, settingsContent, extra,
-  onMoveUp, onMoveDown, isFirst, isLast 
-}: any) {
+  onMoveUp, onMoveDown, isFirst, isLast
+}: IndicatorRowProps) {
   return (
     <div className="relative">
       <div
@@ -172,7 +193,7 @@ function IndicatorRow({
 
         {/* Settings Gear - Prominent on Hover */}
         <button
-          onClick={(e) => { e.stopPropagation(); onSettingsOpen(); }}
+          onClick={(e) => { e.stopPropagation(); onSettingsOpen?.(); }}
           className="shrink-0 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-md bg-foreground/5 hover:bg-foreground/10 text-muted-foreground/60 hover:text-foreground shadow-sm"
           title="Settings"
         >
@@ -180,7 +201,7 @@ function IndicatorRow({
         </button>
       </div>
 
-      <Modal open={settingsOpen} title={`${label} Settings`} onClose={onSettingsOpen} maxWidth="max-w-[320px]">{settingsContent}</Modal>
+      {onSettingsOpen && <Modal open={!!settingsOpen} title={`${label} Settings`} onClose={onSettingsOpen} maxWidth="max-w-[320px]">{settingsContent}</Modal>}
     </div>
   );
 }
@@ -789,7 +810,7 @@ export default function TechnicalPage() {
                 <IndicatorRow color="#22c55e" label="Elliott Wave" sublabel="Auto" checked={state.showElliott} onCheck={(v: boolean) => setState(s => ({ ...s, showElliott: v }))} onSettingsOpen={() => toggleSettings('elliott')} settingsOpen={openSettings === 'elliott'} settingsContent={<div className="text-[12px] text-muted-foreground/60 py-2 leading-relaxed">Automatic detection of motive (1–5) and corrective (A–B–C) wave patterns. Calculation is based on fractal swing highs/lows.</div>} />
               )}
               {match('TD Sequential') && (
-                <IndicatorRow color="#f59e0b" label="TD Sequential" checked={state.showTD} onCheck={(v: boolean) => setState(s => ({ ...s, showTD: v }))} onSettingsOpen={() => toggleSettings('td')} settingsOpen={openSettings === 'td'} settingsContent={<div className="space-y-4"><ParamSelect label="Setup from" value={state.setupFrom} onChange={(v: number) => setState(s => ({ ...s, setupFrom: v }))} options={[1, 5, 7, 9].map((v) => ({ value: v, label: `${v}+` }))} /><ParamSelect label="Countdown from" value={state.countdownFrom} onChange={(v: number) => setState(s => ({ ...s, countdownFrom: v }))} options={[9, 10, 11, 12, 13].map((v) => ({ value: v, label: `${v}+` }))} /><ParamSelect label="Cooldown bars" value={state.cooldown} onChange={(v: number) => setState(s => ({ ...s, cooldown: v }))} options={[0, 5, 10, 15, 20].map((v) => ({ value: v, label: `${v}` }))} /></div>} />
+                <IndicatorRow color="#f59e0b" label="TD Sequential" checked={state.showTD} onCheck={(v: boolean) => setState(s => ({ ...s, showTD: v }))} onSettingsOpen={() => toggleSettings('td')} settingsOpen={openSettings === 'td'} settingsContent={<div className="space-y-4"><ParamSelect label="Setup from" value={state.setupFrom} onChange={(v) => setState(s => ({ ...s, setupFrom: Number(v) }))} options={[1, 5, 7, 9].map((v) => ({ value: v, label: `${v}+` }))} /><ParamSelect label="Countdown from" value={state.countdownFrom} onChange={(v) => setState(s => ({ ...s, countdownFrom: Number(v) }))} options={[9, 10, 11, 12, 13].map((v) => ({ value: v, label: `${v}+` }))} /><ParamSelect label="Cooldown bars" value={state.cooldown} onChange={(v) => setState(s => ({ ...s, cooldown: Number(v) }))} options={[0, 5, 10, 15, 20].map((v) => ({ value: v, label: `${v}` }))} /></div>} />
               )}
               {match('Bollinger') && (
                 <IndicatorRow color="#2196f3" label="Bollinger Bands" sublabel={state.showBB ? `${state.bbLen} ${state.bbMult}σ` : undefined} checked={state.showBB} onCheck={(v: boolean) => setState(s => ({ ...s, showBB: v }))} onSettingsOpen={() => toggleSettings('bb')} settingsOpen={openSettings === 'bb'} settingsContent={<div className="space-y-4"><ParamRow label="Length" value={state.bbLen} min={5} max={100} onChange={(v: number) => setState(s => ({ ...s, bbLen: v }))} /><ParamRow label="Multiplier" value={state.bbMult} min={0.5} max={5} step={0.1} onChange={(v: number) => setState(s => ({ ...s, bbMult: v }))} /></div>} />
@@ -1113,19 +1134,21 @@ export default function TechnicalPage() {
             {/* Plotly Chart */}
             <div ref={plotContainerRef} className="w-full h-full">
               {cleanedFigure && (
-                <Plot
-                  data={cleanedFigure.data}
-                  layout={{ ...cleanedFigure.layout, autosize: true }}
-                  config={{
-                    responsive: true, displaylogo: false, displayModeBar: 'hover',
-                    scrollZoom: true,
-                    modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d', 'toggleSpikelines'],
-                  }}
-                  style={{ width: '100%', height: '100%' }}
-                  useResizeHandler
-                  onInitialized={(_f: any, gd: any) => { plotGraphDivRef.current = gd; }}
-                  onRelayout={handleRelayout}
-                />
+                <ChartErrorBoundary>
+                  <Plot
+                    data={cleanedFigure.data}
+                    layout={{ ...cleanedFigure.layout, autosize: true }}
+                    config={{
+                      responsive: true, displaylogo: false, displayModeBar: 'hover',
+                      scrollZoom: true,
+                      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d', 'toggleSpikelines'],
+                    }}
+                    style={{ width: '100%', height: '100%' }}
+                    useResizeHandler
+                    onInitialized={(_f: any, gd: any) => { plotGraphDivRef.current = gd; }}
+                    onRelayout={handleRelayout}
+                  />
+                </ChartErrorBoundary>
               )}
             </div>
           </div>

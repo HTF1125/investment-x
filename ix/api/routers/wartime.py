@@ -36,10 +36,11 @@ CONFLICTS: dict[str, tuple[str, str | None]] = {
 
 CURRENT_NAME = "Iran Attack — Current (2026-02-28)"
 
-SPX_TICKER  = "SPX INDEX:PX_LAST"
-GOLD_TICKER = "GC1 COMDTY:PX_LAST"
-OIL_TICKER  = "WTI COMDTY:PX_LAST"
-KRW_TICKER  = "USDKRW Curncy:PX_LAST"
+SPX_TICKER   = "SPX INDEX:PX_LAST"
+GOLD_TICKER  = "GC1 COMDTY:PX_LAST"
+OIL_TICKER   = "WTI COMDTY:PX_LAST"
+KRW_TICKER   = "USDKRW Curncy:PX_LAST"
+KOSPI_TICKER = "KOSPI INDEX:PX_LAST"
 WINDOW      = 200
 HORIZONS    = (5, 20, 60, 120, 199)
 MIN_ANALOG_DAYS = 10
@@ -51,15 +52,16 @@ _lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # Data loading (TTL-cached)
 # ---------------------------------------------------------------------------
-def _load_prices() -> tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
+def _load_prices() -> tuple[pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
     with _lock:
         if "data" in _cache:
             return _cache["data"]
-        spx  = Series(SPX_TICKER)
-        gold = Series(GOLD_TICKER)
-        oil  = Series(OIL_TICKER)
-        krw  = Series(KRW_TICKER)
-        result = (spx, gold, oil, krw)
+        spx   = Series(SPX_TICKER)
+        gold  = Series(GOLD_TICKER)
+        oil   = Series(OIL_TICKER)
+        krw   = Series(KRW_TICKER)
+        kospi = Series(KOSPI_TICKER)
+        result = (spx, gold, oil, krw, kospi)
         _cache["data"] = result
         return result
 
@@ -341,17 +343,19 @@ def _series_to_xy(rebased: dict[str, pd.Series]) -> dict[str, dict]:
 # ---------------------------------------------------------------------------
 @router.get("/wartime/data")
 def get_wartime_data() -> dict[str, Any]:
-    spx_raw, gold_raw, oil_raw, krw_raw = _load_prices()
+    spx_raw, gold_raw, oil_raw, krw_raw, kospi_raw = _load_prices()
 
-    spx_rebased  = build_rebased(spx_raw)
-    gold_rebased = build_rebased(gold_raw)
-    oil_rebased  = build_rebased(oil_raw)
-    krw_rebased  = build_rebased(krw_raw)
+    spx_rebased   = build_rebased(spx_raw)
+    gold_rebased  = build_rebased(gold_raw)
+    oil_rebased   = build_rebased(oil_raw)
+    krw_rebased   = build_rebased(krw_raw)
+    kospi_rebased = build_rebased(kospi_raw)
 
-    spx_stats  = compute_spx_stats(spx_rebased)
-    gold_stats = compute_commodity_stats(gold_rebased)
-    oil_stats  = compute_commodity_stats(oil_rebased)
-    krw_stats  = compute_commodity_stats(krw_rebased)
+    spx_stats   = compute_spx_stats(spx_rebased)
+    gold_stats  = compute_commodity_stats(gold_rebased)
+    oil_stats   = compute_commodity_stats(oil_rebased)
+    krw_stats   = compute_commodity_stats(krw_rebased)
+    kospi_stats = compute_spx_stats(kospi_rebased)
     spx_horizon_stats = compute_horizon_stats(spx_rebased)
     spx_distribution = compute_distribution_bands(spx_rebased)
 
@@ -381,18 +385,20 @@ def get_wartime_data() -> dict[str, Any]:
     }
 
     # Current conflict live metrics
-    cs = spx_rebased.get(CURRENT_NAME)
-    gc = gold_rebased.get(CURRENT_NAME)
-    oc = oil_rebased.get(CURRENT_NAME)
-    kc = krw_rebased.get(CURRENT_NAME)
+    cs  = spx_rebased.get(CURRENT_NAME)
+    gc  = gold_rebased.get(CURRENT_NAME)
+    oc  = oil_rebased.get(CURRENT_NAME)
+    kc  = krw_rebased.get(CURRENT_NAME)
+    koc = kospi_rebased.get(CURRENT_NAME)
     current = {
         "name":             CURRENT_NAME,
         "spx_days_elapsed": max(len(cs) - 1, 0) if cs is not None else 0,
-        "spx_return":       round(float(cs.iloc[-1]) - 1.0, 4)  if cs is not None else None,
-        "spx_low":          round(float(cs.min())    - 1.0, 4)  if cs is not None else None,
-        "gold_return":      round(float(gc.iloc[-1]) - 1.0, 4)  if gc is not None else None,
-        "oil_return":       round(float(oc.iloc[-1]) - 1.0, 4)  if oc is not None else None,
-        "krw_return":       round(float(kc.iloc[-1]) - 1.0, 4)  if kc is not None else None,
+        "spx_return":       round(float(cs.iloc[-1]) - 1.0, 4)   if cs  is not None else None,
+        "spx_low":          round(float(cs.min())    - 1.0, 4)   if cs  is not None else None,
+        "gold_return":      round(float(gc.iloc[-1]) - 1.0, 4)   if gc  is not None else None,
+        "oil_return":       round(float(oc.iloc[-1]) - 1.0, 4)   if oc  is not None else None,
+        "krw_return":       round(float(kc.iloc[-1]) - 1.0, 4)   if kc  is not None else None,
+        "kospi_return":     round(float(koc.iloc[-1]) - 1.0, 4)  if koc is not None else None,
     }
 
     current_compare = {
@@ -400,6 +406,7 @@ def get_wartime_data() -> dict[str, Any]:
         "gold": compute_current_vs_history(gc, gold_rebased),
         "oil": compute_current_vs_history(oc, oil_rebased),
         "krw": compute_current_vs_history(kc, krw_rebased),
+        "kospi": compute_current_vs_history(koc, kospi_rebased),
     }
     spx_analogues = compute_path_analogues(spx_rebased)
 
@@ -415,9 +422,10 @@ def get_wartime_data() -> dict[str, Any]:
             "distribution": spx_distribution,
             "analogues": spx_analogues,
         },
-        "gold": {"rebased": _series_to_xy(gold_rebased), "stats": gold_stats},
-        "oil":  {"rebased": _series_to_xy(oil_rebased),  "stats": oil_stats},
-        "krw":  {"rebased": _series_to_xy(krw_rebased),  "stats": krw_stats},
+        "gold":  {"rebased": _series_to_xy(gold_rebased),  "stats": gold_stats},
+        "oil":   {"rebased": _series_to_xy(oil_rebased),   "stats": oil_stats},
+        "krw":   {"rebased": _series_to_xy(krw_rebased),   "stats": krw_stats},
+        "kospi": {"rebased": _series_to_xy(kospi_rebased), "stats": kospi_stats},
         "current": current,
         "current_compare": current_compare,
         "summary": summary,

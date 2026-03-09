@@ -104,22 +104,22 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
   if (isError) {
     return (
       <AppShell>
-        <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-6 px-4">
-          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-            <WifiOff className="w-7 h-7 text-rose-400" />
+        <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-5 px-4">
+          <div className="w-14 h-14 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
+            <WifiOff className="w-6 h-6 text-rose-400" />
           </div>
-          <div className="text-center space-y-2">
-            <p className="text-lg font-semibold text-foreground">Connection Failed</p>
-            <p className="text-sm text-muted-foreground font-mono max-w-md">
+          <div className="text-center space-y-1">
+            <p className="text-sm font-medium text-foreground">Connection failed</p>
+            <p className="text-xs text-muted-foreground max-w-sm">
               {error instanceof Error ? error.message : 'Unable to reach the data pipeline.'}
             </p>
           </div>
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 rounded-xl text-sm font-medium transition-all"
+            className="flex items-center gap-2 px-5 py-2 border border-rose-500/30 text-rose-400 rounded-lg text-xs font-medium hover:bg-rose-500/10 transition-all"
           >
-            <RefreshCw className="w-4 h-4" />
-            Retry Connection
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry
           </button>
         </div>
       </AppShell>
@@ -136,32 +136,18 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
   if (showLoading) {
     return (
       <AppShell>
-        <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-8 animate-in fade-in duration-500">
-            <div className="relative">
-              {/* Outer glowing rings */}
-              <div className="absolute inset-0 -m-4 border border-sky-500/20 rounded-full animate-[spin_4s_linear_infinite]" />
-              <div className="absolute inset-0 -m-2 border border-indigo-500/20 rounded-full animate-[spin_3s_linear_infinite_reverse]" />
-              
-              {/* Core spinner */}
-              <div className="w-16 h-16 border-4 border-sky-500/10 border-t-sky-400 rounded-full animate-spin shadow-[0_0_15px_rgba(56,189,248,0.2)]" />
-              
-              {/* Center dot */}
-              <div className="absolute inset-0 m-auto w-2 h-2 bg-sky-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(56,189,248,0.6)]" />
+        <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-6 animate-in fade-in duration-500">
+            <div className="w-10 h-10 border-2 border-border/40 border-t-foreground/60 rounded-full animate-spin" />
+            <div className="text-center space-y-1.5">
+              <p className="text-sm font-medium text-foreground">Loading dashboard</p>
+              <p className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-wider">
+                Syncing data pipelines...
+              </p>
             </div>
-            
-            <div className="text-center space-y-3">
-              <div className="text-foreground font-bold text-sm tracking-[0.25em] uppercase bg-clip-text text-transparent bg-gradient-to-r from-sky-400 to-indigo-400">
-                Initializing Intelligence
-              </div>
-              <div className="text-muted-foreground/60 font-mono text-[10px] animate-pulse tracking-wider">
-                SYNCING DATA PIPELINES...
-              </div>
-            </div>
-            
             {!token && (
-              <a 
+              <a
                 href="/login"
-                className="mt-4 px-6 py-2 bg-secondary/30 hover:bg-secondary/50 border border-border/50 rounded-full text-[11px] font-medium text-muted-foreground hover:text-foreground transition-all duration-300"
+                className="mt-2 px-5 py-2 border border-border/50 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
               >
                 Return to Login
               </a>
@@ -175,15 +161,18 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     return (
         <AppShell>
           <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-5 animate-in fade-in">
-              <div className="w-16 h-16 rounded-2xl bg-secondary/30 border border-border flex items-center justify-center mb-2">
-                <Activity className="w-8 h-8 text-muted-foreground/40" />
+              <div className="w-14 h-14 rounded-xl bg-muted/30 border border-border/60 flex items-center justify-center">
+                <Activity className="w-6 h-6 text-muted-foreground/40" />
               </div>
-              <p className="text-sm text-muted-foreground font-medium tracking-wide">Kernel handshake timed out.</p>
-              <button 
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-foreground">Connection timed out</p>
+                <p className="text-xs text-muted-foreground">Unable to reach the data pipeline</p>
+              </div>
+              <button
                 onClick={() => refetch()}
-                className="px-6 py-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-xs font-semibold rounded-xl transition-all"
+                className="px-5 py-2 border border-border/50 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
               >
-                RE-INITIALIZE
+                Retry
               </button>
           </div>
         </AppShell>

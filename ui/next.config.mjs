@@ -10,10 +10,11 @@ const nextConfig = {
     );
     return config;
   },
-  // TODO: re-enable once eslint-plugin-react is compatible with eslint 8
-  // (eslint-plugin-react@7.37.5 crashes with "Cannot read properties of undefined (reading 'deprecated')")
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
+  },
+  typescript: {
+    ignoreBuildErrors: false,
   },
   output: process.env.NEXT_BUILD_MODE === 'export' ? 'export' : undefined,
   images: {

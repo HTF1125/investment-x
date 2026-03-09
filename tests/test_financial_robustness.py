@@ -10,10 +10,10 @@ from ix.core.macro.engine import (
     compute_transition_matrix,
     project_probabilities,
 )
-from ix.core.quant.correlation import correlation_matrix
-from ix.core.quant.pca import pca_decomposition
-from ix.core.quant.regression import ols_regression, rolling_beta
-from ix.core.quant.var import expected_shortfall, historical_var, parametric_var
+from ix.core.quantitative.correlation import correlation_matrix
+from ix.core.quantitative.pca import pca_decomposition
+from ix.core.quantitative.regression import ols_regression, rolling_beta
+from ix.core.quantitative.var import expected_shortfall, historical_var, parametric_var
 from ix.core.transforms import Drawdown
 
 

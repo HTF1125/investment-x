@@ -4,7 +4,6 @@ type UiTheme = 'light' | 'dark';
 export type ChartStyle = 'default' | 'minimal' | 'terminal' | 'presentation';
 
 /** Loose Plotly figure shape — full Plotly types are too strict for server-generated figures. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface PlotlyFigure {
   data?: any[];
   layout?: any;

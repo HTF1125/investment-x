@@ -118,7 +118,24 @@
 
   /* Standard panel card — used across admin, technical, dashboard sections */
   .panel-card {
-    @apply rounded-xl border border-border/60 bg-card shadow-sm hover:shadow-md transition-shadow duration-300;
+    @apply rounded-xl border border-border/60 bg-card;
+  }
+
+  /* Page title — used on all top-level pages (14px semibold, tight tracking) */
+  .page-title {
+    @apply text-[14px] font-semibold text-foreground tracking-tight;
+  }
+
+  /* Tab link — bottom-border tab pattern, consistent across Macro/Intel/etc. */
+  .tab-link {
+    @apply whitespace-nowrap px-2.5 py-1.5 text-[11px] font-medium border-b-2 transition-all;
+  }
+  .tab-link[aria-selected='true'],
+  .tab-link.active {
+    @apply text-foreground border-sky-500;
+  }
+  .tab-link:not([aria-selected='true']):not(.active) {
+    @apply text-muted-foreground border-transparent hover:text-foreground hover:border-foreground/20;
   }
 
   /* Compact toolbar button — the small h-6 action buttons in notes/dashboard */

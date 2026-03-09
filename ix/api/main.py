@@ -3,9 +3,11 @@ Main FastAPI application.
 """
 
 import os
+import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from fastapi import Depends, FastAPI, Request
+from pathlib import Path
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
@@ -25,6 +27,49 @@ logger = setup_logging(service_name="backend")
 
 scheduler = AsyncIOScheduler()
 StartupCheck = tuple[str, Callable[[], None]]
+
+
+def _ensure_schema_versions_table() -> None:
+    """Create the schema_versions tracking table if it doesn't exist."""
+    if not ensure_connection():
+        return
+    try:
+        with conn.engine.begin() as db_conn:
+            db_conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS schema_versions (
+                        migration_name VARCHAR(255) PRIMARY KEY,
+                        applied_at TIMESTAMP DEFAULT NOW(),
+                        success BOOLEAN NOT NULL DEFAULT TRUE,
+                        error_message TEXT
+                    )
+                    """
+                )
+            )
+    except Exception as exc:
+        logger.warning(f"Could not create schema_versions table: {exc}")
+
+
+def _record_migration(migration_name: str, success: bool, error_message: str | None = None) -> None:
+    """Record a migration result in the schema_versions table."""
+    if not ensure_connection():
+        return
+    try:
+        with conn.engine.begin() as db_conn:
+            db_conn.execute(
+                text(
+                    """
+                    INSERT INTO schema_versions (migration_name, applied_at, success, error_message)
+                    VALUES (:name, NOW(), :success, :error)
+                    ON CONFLICT (migration_name)
+                    DO UPDATE SET applied_at = NOW(), success = :success, error_message = :error
+                    """
+                ),
+                {"name": migration_name, "success": success, "error": error_message},
+            )
+    except Exception as exc:
+        logger.warning(f"Could not record migration '{migration_name}': {exc}")
 
 
 def _ensure_user_role_schema() -> None:
@@ -327,6 +372,11 @@ def _ensure_research_report_schema() -> None:
     try:
         from ix.db.models.research_report import ResearchReport
         ResearchReport.__table__.create(bind=conn.engine, checkfirst=True)
+        # Add slide_deck column if missing (added after initial table creation)
+        with conn.engine.begin() as db_conn:
+            db_conn.execute(text(
+                "ALTER TABLE research_report ADD COLUMN IF NOT EXISTS slide_deck BYTEA"
+            ))
         logger.info("Research report schema check completed.")
     except Exception as exc:
         logger.warning(f"Research report schema check failed: {exc}")
@@ -348,13 +398,24 @@ _STARTUP_CHECKS: tuple[StartupCheck, ...] = (
 
 
 def _run_startup_checks() -> None:
-    """Run startup schema checks and log each step consistently."""
+    """Run startup schema checks with version tracking and structured logging."""
+    _ensure_schema_versions_table()
+
     for check_name, check_fn in _STARTUP_CHECKS:
         logger.info(f"Running startup check: {check_name}")
+        start = time.time()
         try:
             check_fn()
+            duration = time.time() - start
+            logger.info(f"Migration '{check_name}' completed in {duration:.2f}s")
+            _record_migration(check_name, success=True)
         except Exception as exc:
-            logger.exception(f"Startup check '{check_name}' failed unexpectedly: {exc}")
+            duration = time.time() - start
+            error_msg = str(exc)
+            logger.exception(
+                f"Startup check '{check_name}' failed after {duration:.2f}s: {error_msg}"
+            )
+            _record_migration(check_name, success=False, error_message=error_msg)
 
 
 @asynccontextmanager
@@ -416,6 +477,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    """Log method, path, status code, and duration for each request."""
+    start = time.time()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    except RuntimeError as e:
+        if str(e) == "No response returned.":
+            response = Response(status_code=499)
+            return response
+        raise
+    finally:
+        duration_ms = (time.time() - start) * 1000
+        status = response.status_code if response else 500
+        path = request.url.path
+        method = request.method
+        # Skip noisy health check logs
+        if path != "/api/health":
+            logger.info(
+                f"{method} {path} {status} {duration_ms:.0f}ms"
+            )
 
 
 @app.middleware("http")
@@ -529,7 +615,6 @@ try:
         news,
         custom,
         insights,
-        technical,
         notes,
         user,
     )
@@ -546,7 +631,6 @@ try:
     app.include_router(news.router, prefix="/api", tags=["News"])
     app.include_router(custom.router, prefix="/api", tags=["Custom"])
     app.include_router(insights.router, prefix="/api", tags=["Insights"])
-    app.include_router(technical.router, prefix="/api", tags=["Technical"])
     app.include_router(notes.router, prefix="/api", tags=["Notes"])
     from ix.api.routers import quant
     app.include_router(quant.router, prefix="/api", tags=["Quant"])
@@ -621,23 +705,29 @@ if static_dir:
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
+        static_root = Path(static_dir).resolve()
+
+        # Prevent path traversal
+        resolved = (static_root / full_path).resolve()
+        if not str(resolved).startswith(str(static_root)):
+            raise HTTPException(status_code=404)
+
         # 1. Check if the file exists as is
-        file_path = os.path.join(static_dir, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
+        if resolved.is_file():
+            return FileResponse(str(resolved))
 
         # 2. Check if appending .html works (for Next.js static export)
-        html_path = f"{file_path}.html"
-        if os.path.isfile(html_path):
-            return FileResponse(html_path)
+        html_path = resolved.with_suffix(".html")
+        if html_path.is_file() and str(html_path).startswith(str(static_root)):
+            return FileResponse(str(html_path))
 
         # 3. Check if it's a directory with index.html (trailingSlash: true)
-        dir_index_path = os.path.join(file_path, "index.html")
-        if os.path.isfile(dir_index_path):
-            return FileResponse(dir_index_path)
+        dir_index_path = resolved / "index.html"
+        if dir_index_path.is_file() and str(dir_index_path.resolve()).startswith(str(static_root)):
+            return FileResponse(str(dir_index_path))
 
         # Fallback to root index.html
-        return FileResponse(os.path.join(static_dir, "index.html"))
+        return FileResponse(str(static_root / "index.html"))
 
 else:
     logger.info("Static directory not found, running API only mode")

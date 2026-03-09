@@ -17,6 +17,13 @@ from ix.core.macro.pipeline import (
     compute_all_targets,
     compute_full_pipeline,
 )
+from ix.core.macro.regime import (
+    HPFilterRegime,
+    GMMRegime,
+    InflationRegime,
+    regime_forward_returns,
+    regime_transition_matrix,
+)
 
 __all__ = [
     "TargetIndex",
@@ -26,4 +33,9 @@ __all__ = [
     "compute_and_save",
     "compute_all_targets",
     "compute_full_pipeline",
+    "HPFilterRegime",
+    "GMMRegime",
+    "InflationRegime",
+    "regime_forward_returns",
+    "regime_transition_matrix",
 ]

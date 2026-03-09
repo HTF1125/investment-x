@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import pandas as pd
@@ -7,6 +8,8 @@ from sqlalchemy.orm import Session as SessionType
 
 from ix.db.models import Timeseries
 from ix.misc.date import today
+
+logger = logging.getLogger(__name__)
 
 # Re-export transforms so legacy custom chart code using
 # `from ix.db.query import ...` continues to work.
@@ -25,6 +28,7 @@ from ix.core.transforms import (  # noqa: F401
     Resample,
     StandardScalar,
 )
+from ix.core.quantitative.statistics import Cycle  # noqa: F401
 
 
 def MultiSeries(**series: pd.Series) -> pd.DataFrame:
@@ -98,6 +102,7 @@ def Series(
             try:
                 ts_scale = int(ts_obj.scale or 1)
             except Exception:
+                logger.warning("Invalid scale value %r for %s, defaulting to 1", ts_obj.scale, code)
                 ts_scale = 1
             return ts_obj.data.copy()
 
@@ -145,9 +150,9 @@ def Series(
                 idx = pd.date_range(start_dt, end_dt, freq=freq)
                 # Resample to target frequency using last observation in each bin
                 s = s.reindex(idx)
-            except Exception:
+            except Exception as exc:
                 # If target_freq is invalid, fall back to unsampled series
-                pass
+                logger.warning("Resample to freq=%r failed for %s: %s", freq, code, exc)
 
         # Slice to [start, today] regardless of resampling for consistency
         s = s.loc[start_dt:end_dt]
@@ -200,6 +205,7 @@ def Series(
             try:
                 target_scale = int(scale) if scale else None
             except Exception:
+                logger.warning("Invalid target scale %r for %s, skipping scale conversion", scale, code)
                 target_scale = None
             if target_scale and target_scale != 0:
                 s = s.mul(ts_scale).div(target_scale)
@@ -210,10 +216,7 @@ def Series(
 
         return s.copy()
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.exception(f"Error loading series {code}: {e}")
+        logger.exception("Error loading series %s: %s", code, e)
         if strict or session is not None:
             raise
         return pd.Series(name=code, dtype=float)

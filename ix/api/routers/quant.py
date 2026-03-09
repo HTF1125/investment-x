@@ -17,7 +17,7 @@ from plotly.subplots import make_subplots
 from scipy.cluster.hierarchy import dendrogram
 
 from ix.db.query import Series
-from ix.core.quant import (
+from ix.core.quantitative import (
     correlation_matrix,
     rolling_correlation,
     hierarchical_cluster,

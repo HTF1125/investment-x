@@ -3,9 +3,9 @@ services:
     image: postgres:15-alpine
     container_name: investment-x-db
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=investmentx
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-investmentx}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -28,8 +28,15 @@ services:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - ~/.gemini/antigravity/logs:/root/.gemini/antigravity/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   frontend:
@@ -45,11 +52,9 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - INTERNAL_API_URL=http://backend:8000
-    volumes:
-      - ~/.gemini/antigravity/logs:/root/.gemini/antigravity/logs
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

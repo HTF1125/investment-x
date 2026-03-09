@@ -48,8 +48,17 @@ CHANNELS = [
 
 
 def run_cmd(cmd, timeout=120):
-    """Run a shell command and return stdout."""
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, shell=True)
+    """Run a command and return stdout.
+
+    ``cmd`` can be a list (preferred) or a string.  When a string is given it
+    is split with ``shlex.split`` and executed *without* ``shell=True`` to
+    avoid shell-injection risks from dynamic arguments.
+    """
+    import shlex
+
+    if isinstance(cmd, str):
+        cmd = shlex.split(cmd)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     return result.stdout.strip(), result.stderr.strip(), result.returncode
 
 
@@ -119,19 +128,17 @@ def fetch_news_and_telegram(days=3):
 
 def fetch_channel_videos(channel_url, max_per_channel=15, date_after=None, date_before=None):
     """Fetch recent videos from a channel using yt-dlp, optionally filtered by date range."""
-    date_flags = ""
-    if date_after:
-        date_flags += f' --dateafter {date_after}'
-    if date_before:
-        date_flags += f' --datebefore {date_before}'
+    target_url = f"{channel_url}/videos"
 
-    if date_flags:
-        cmd = (
-            f'yt-dlp -j --playlist-end {max_per_channel * 5}'
-            f'{date_flags} "{channel_url}/videos"'
-        )
+    if date_after or date_before:
+        cmd = ["yt-dlp", "-j", "--playlist-end", str(max_per_channel * 5)]
+        if date_after:
+            cmd += ["--dateafter", str(date_after)]
+        if date_before:
+            cmd += ["--datebefore", str(date_before)]
+        cmd.append(target_url)
     else:
-        cmd = f'yt-dlp --flat-playlist -j --playlist-end {max_per_channel} "{channel_url}/videos"'
+        cmd = ["yt-dlp", "--flat-playlist", "-j", "--playlist-end", str(max_per_channel), target_url]
 
     stdout, stderr, rc = run_cmd(cmd, timeout=120)
     if rc != 0:
@@ -208,7 +215,7 @@ def ensure_notebooklm_auth():
     """Ensure NotebookLM is authenticated. Runs interactive login if expired."""
     print("  Checking NotebookLM auth...", end=" ", flush=True)
 
-    stdout, stderr, rc = run_cmd("notebooklm list", timeout=30)
+    stdout, stderr, rc = run_cmd(["notebooklm", "list"], timeout=30)
     if rc == 0 and "Error" not in stdout and "Authentication" not in stdout:
         print("OK")
         return True
@@ -216,12 +223,12 @@ def ensure_notebooklm_auth():
     print("expired.")
     print("  Launching NotebookLM login (browser will open)...")
     print("  >> Log in to Google, then press ENTER in this terminal. <<\n")
-    rc = subprocess.call("notebooklm login", shell=True, timeout=180)
+    rc = subprocess.call(["notebooklm", "login"], timeout=180)
     if rc != 0:
         print("  [ERROR] Login failed or was cancelled.")
         return False
 
-    stdout, stderr, rc = run_cmd("notebooklm list", timeout=30)
+    stdout, stderr, rc = run_cmd(["notebooklm", "list"], timeout=30)
     if rc == 0 and "Error" not in stdout and "Authentication" not in stdout:
         print("  Auth OK.")
         return True
@@ -231,8 +238,14 @@ def ensure_notebooklm_auth():
 
 
 def notebooklm_cmd(args, timeout=120):
-    """Run a notebooklm CLI command."""
-    cmd = f"notebooklm {args}"
+    """Run a notebooklm CLI command.
+
+    ``args`` is a string that will be split via ``shlex.split`` and prepended
+    with ``notebooklm``.
+    """
+    import shlex
+
+    cmd = ["notebooklm"] + shlex.split(args)
     stdout, stderr, rc = run_cmd(cmd, timeout=timeout)
     if rc != 0:
         print(f"  [ERROR] notebooklm {args}: {stderr}")

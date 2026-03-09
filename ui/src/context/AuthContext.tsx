@@ -25,6 +25,9 @@ interface AuthContextType {
   token: string | null;
   viewAsUser: boolean;
   toggleViewAsUser: () => void;
+  isSessionExpired: boolean;
+  dismissSessionExpired: () => void;
+  reauth: (email: string, password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -35,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Store token in state to avoid direct localStorage reads during render (SSR hydration safety)
   const [token, setToken] = useState<string | null>(null);
   const [viewAsUser, setViewAsUser] = useState(false);
+  const [isSessionExpired, setIsSessionExpired] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -106,6 +110,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     initAuth();
+  }, [normalizeUser, updateToken]);
+
+  // Listen for 401 session-expired events dispatched by apiFetch
+  useEffect(() => {
+    const handler = () => setIsSessionExpired(true);
+    window.addEventListener('ix:session-expired', handler);
+    return () => window.removeEventListener('ix:session-expired', handler);
+  }, []);
+
+  const dismissSessionExpired = useCallback(() => setIsSessionExpired(false), []);
+
+  // Re-authenticate without losing page state
+  const reauth = useCallback(async (email: string, password: string) => {
+    const res = await fetch('/api/auth/login/json', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || 'Login failed');
+    }
+    const data = await res.json();
+    updateToken(data.access_token);
+    const meRes = await fetch('/api/auth/me', {
+      credentials: 'include',
+      headers: { 'Authorization': `Bearer ${data.access_token}` },
+    });
+    if (meRes.ok) {
+      const userData = await meRes.json();
+      setUser(normalizeUser(userData));
+    }
+    setIsSessionExpired(false);
   }, [normalizeUser, updateToken]);
 
   const login = useCallback(async (email: string, password: string, rememberMe: boolean = false) => {
@@ -208,6 +246,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       viewAsUser,
       toggleViewAsUser,
+      isSessionExpired,
+      dismissSessionExpired,
+      reauth,
     }}>
       {children}
     </AuthContext.Provider>

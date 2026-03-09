@@ -48,9 +48,14 @@ export default function Header() {
         body: formData,
       });
 
-      if (!res.ok) throw new Error('PDF failed');
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`PDF failed: ${res.status} ${errText}`);
+      }
 
       const blob = await res.blob();
+      if (!blob.size) throw new Error('Empty PDF response');
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -58,11 +63,13 @@ export default function Header() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(url);
-      
+      // Delay revocation so the browser has time to start the download
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+
       setExportStatus('success');
       pdfTimerRef.current = setTimeout(() => setExportStatus('idle'), 3000);
-    } catch {
+    } catch (err) {
+      console.error('PDF export error:', err);
       setExportStatus('error');
       pdfTimerRef.current = setTimeout(() => setExportStatus('idle'), 3000);
     } finally {
@@ -86,9 +93,14 @@ export default function Header() {
         body: formData,
       });
 
-      if (!res.ok) throw new Error('HTML failed');
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`HTML failed: ${res.status} ${errText}`);
+      }
 
       const blob = await res.blob();
+      if (!blob.size) throw new Error('Empty HTML response');
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -96,11 +108,12 @@ export default function Header() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(url);
-      
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+
       setExportHtmlStatus('success');
       htmlTimerRef.current = setTimeout(() => setExportHtmlStatus('idle'), 3000);
-    } catch {
+    } catch (err) {
+      console.error('HTML export error:', err);
       setExportHtmlStatus('error');
       htmlTimerRef.current = setTimeout(() => setExportHtmlStatus('idle'), 3000);
     } finally {
@@ -109,79 +122,64 @@ export default function Header() {
   };
 
   return (
-    <header className="max-w-[1600px] mx-auto mb-8 flex flex-col md:flex-row items-start md:items-center justify-between text-muted-foreground font-mono text-xs gap-4">
-        <div className="flex flex-wrap items-center gap-3">
+    <header className="max-w-[1600px] mx-auto mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
             <button
                 onClick={handleExportPDF}
                 disabled={exporting || exportingHtml}
-                className={`
-                    flex items-center gap-2 px-4 py-2 rounded-xl border font-bold transition-all
-                    ${exportStatus === 'success'
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
+                className={`btn-toolbar ${
+                    exportStatus === 'success'
+                        ? '!text-emerald-500 !border-emerald-500/25'
                         : exportStatus === 'error'
-                        ? 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                        : 'bg-foreground/[0.04] border-border text-foreground hover:bg-foreground/[0.08] hover:border-border/80'
-                    }
-                    disabled:opacity-30
-                `}
+                        ? '!text-rose-400 !border-rose-500/25'
+                        : ''
+                }`}
             >
                 {exporting ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 className="w-3 h-3 animate-spin" />
                 ) : exportStatus === 'success' ? (
-                    <Check className="w-3.5 h-3.5" />
+                    <Check className="w-3 h-3" />
                 ) : (
-                    <FileDown className="w-3.5 h-3.5 text-indigo-400" />
+                    <FileDown className="w-3 h-3" />
                 )}
-                {exporting ? 'GENERATING...' : exportStatus === 'success' ? 'DOWNLOADED' : 'GLOBAL REPORT (PDF)'}
+                {exporting ? 'Generating...' : exportStatus === 'success' ? 'Downloaded' : 'PDF Report'}
             </button>
 
             <button
                 onClick={handleExportHTML}
                 disabled={exporting || exportingHtml}
-                className={`
-                    flex items-center gap-2 px-4 py-2 rounded-xl border font-bold transition-all
-                    ${exportHtmlStatus === 'success'
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
+                className={`btn-toolbar ${
+                    exportHtmlStatus === 'success'
+                        ? '!text-emerald-500 !border-emerald-500/25'
                         : exportHtmlStatus === 'error'
-                        ? 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                        : 'bg-indigo-500/[0.04] border-indigo-500/20 text-foreground hover:bg-indigo-500/[0.08] hover:border-indigo-500/40'
-                    }
-                    disabled:opacity-30
-                `}
+                        ? '!text-rose-400 !border-rose-500/25'
+                        : ''
+                }`}
             >
                 {exportingHtml ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 className="w-3 h-3 animate-spin" />
                 ) : exportHtmlStatus === 'success' ? (
-                    <Check className="w-3.5 h-3.5" />
+                    <Check className="w-3 h-3" />
                 ) : (
-                    <Monitor className="w-3.5 h-3.5 text-sky-400" />
+                    <Monitor className="w-3 h-3" />
                 )}
-                {exportingHtml ? 'BUNDLING...' : exportHtmlStatus === 'success' ? 'DOWNLOADED' : 'INTERACTIVE (HTML)'}
+                {exportingHtml ? 'Bundling...' : exportHtmlStatus === 'success' ? 'Downloaded' : 'Interactive HTML'}
             </button>
         </div>
 
-        <div className="flex items-center gap-6">
-            <div className="flex flex-col items-end">
-                <span className="text-[10px] text-muted-foreground/50 mb-1">DATA STATUS</span>
-                <span className="text-emerald-500 flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                    LIVE PIPELINE
-                </span>
+        <div className="flex items-center gap-4 text-[10px] font-mono text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-emerald-500 uppercase tracking-wider">Live</span>
             </div>
-            <div className="w-px h-8 bg-border/60" />
-            <div className="flex flex-col items-end">
-                <span className="text-[10px] text-muted-foreground/50 mb-1">REGION</span>
-                <span className="text-foreground font-semibold uppercase">Seoul / KST</span>
-            </div>
+            <div className="w-px h-3.5 bg-border/50" />
+            <span className="uppercase tracking-wider text-muted-foreground/60">Seoul / KST</span>
             {mounted && (
               <>
-                <div className="w-px h-8 bg-border/60" />
-                <div className="flex flex-col items-end">
-                    <span className="text-[10px] text-muted-foreground/50 mb-1">LOCAL TIME</span>
-                    <span className="text-foreground font-semibold tabular-nums">
-                        {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
-                    </span>
-                </div>
+                <div className="w-px h-3.5 bg-border/50" />
+                <span className="text-foreground tabular-nums">
+                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                </span>
               </>
             )}
         </div>

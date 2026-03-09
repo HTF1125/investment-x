@@ -65,7 +65,7 @@ TARGET_INDICES = {
     ),
     "Nasdaq 100": TargetIndex(
         "Nasdaq 100",
-        "NDX INDEX:PX_LAST",
+        "CCMP INDEX:PX_LAST",
         "us",
         currency="DXY INDEX:PX_LAST",
         bond_10y="TRYUS10Y:PX_YTM",
@@ -84,7 +84,7 @@ TARGET_INDICES = {
         "SX5E INDEX:PX_LAST",
         "europe",
         currency="EURUSD CURNCY:PX_LAST",
-        bond_10y="TRYEU10Y:PX_YTM",
+        bond_10y="TRYDE10Y:PX_YTM",
     ),
     "MSCI EM": TargetIndex(
         "MSCI EM",
@@ -97,7 +97,6 @@ TARGET_INDICES = {
         "SHCOMP INDEX:PX_LAST",
         "china",
         currency="USDCNY CURNCY:PX_LAST",
-        bond_10y="TRYCN10Y:PX_YTM",
     ),
     "DAX": TargetIndex(
         "DAX",
@@ -111,7 +110,7 @@ TARGET_INDICES = {
         "UKX INDEX:PX_LAST",
         "europe",
         currency="GBPUSD CURNCY:PX_LAST",
-        bond_10y="TRYUK10Y:PX_YTM",
+        bond_10y="TRYGB10Y:PX_YTM",
     ),
     "Hang Seng": TargetIndex(
         "Hang Seng",
@@ -119,16 +118,9 @@ TARGET_INDICES = {
         "china",
         currency="USDHKD CURNCY:PX_LAST",
     ),
-    "ASX 200": TargetIndex(
-        "ASX 200",
-        "AS51 INDEX:PX_LAST",
-        "em",
-        currency="AUDUSD CURNCY:PX_LAST",
-        bond_10y="TRYAU10Y:PX_YTM",
-    ),
     "KOSDAQ": TargetIndex(
         "KOSDAQ",
-        "KOSDAQ INDEX:PX_LAST",
+        "KOSDAQ:PX_LAST",
         "korea",
         currency="USDKRW CURNCY:PX_LAST",
         bond_10y="TRYKR10Y:PX_YTM",

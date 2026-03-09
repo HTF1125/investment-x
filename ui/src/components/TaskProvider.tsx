@@ -87,24 +87,37 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      let receivedReady = false;
+      let receivedMessage = false;
       eventSource = new EventSource("/api/task/stream");
 
+      // Connection timeout: if no message received within 30s, close and reconnect
+      const connectionTimeout = setTimeout(() => {
+        if (!receivedMessage && !disposed && eventSource) {
+          console.warn("Task stream connection timeout. Reconnecting...");
+          eventSource.close();
+          eventSource = null;
+          scheduleReconnect();
+        }
+      }, 30_000);
+
       eventSource.addEventListener("ready", () => {
-        receivedReady = true;
+        receivedMessage = true;
+        clearTimeout(connectionTimeout);
         reconnectDelayRef.current = INITIAL_RECONNECT_DELAY_MS;
         void refreshProcesses();
       });
 
       eventSource.addEventListener("task", () => {
+        receivedMessage = true;
         void refreshProcesses();
       });
 
       eventSource.onerror = () => {
+        clearTimeout(connectionTimeout);
         if (disposed) {
           return;
         }
-        if (receivedReady) {
+        if (receivedMessage) {
           console.warn("Task stream disconnected. Reconnecting...");
         }
         eventSource?.close();

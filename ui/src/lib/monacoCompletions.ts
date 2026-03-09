@@ -76,7 +76,6 @@ export function registerIxCompletions(monaco: Monaco): void {
 
   monaco.languages.registerCompletionItemProvider('python', {
     triggerCharacters: ['.', '(', '"', "'"],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     provideCompletionItems(model: any, position: any) {
       const word = model.getWordUntilPosition(position);
       const lineContent = model.getLineContent(position.lineNumber);

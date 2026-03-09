@@ -10,6 +10,7 @@ import { apiFetchJson } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
+import { ChartErrorBoundary } from '@/components/ChartErrorBoundary';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -279,7 +280,7 @@ export default function QuantPage() {
       if (!gd || !gd.isConnected) return;
       import('plotly.js-dist-min').then(({ default: Plotly }) => {
         (Plotly as any).Plots.resize(gd);
-      }).catch(() => {});
+      }).catch((err) => console.warn('[Chart] resize failed:', err));
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -465,15 +466,17 @@ export default function QuantPage() {
               </div>
             </div>
           ) : themedFig ? (
-            <Plot
-              data={themedFig.data}
-              layout={{ ...themedFig.layout, autosize: true }}
-              config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'] }}
-              useResizeHandler
-              style={{ width: '100%', height: '100%' }}
-              onInitialized={(_: any, gd: HTMLElement) => { plotGraphDivRef.current = gd; }}
-              onUpdate={(_: any, gd: HTMLElement) => { plotGraphDivRef.current = gd; }}
-            />
+            <ChartErrorBoundary>
+              <Plot
+                data={themedFig.data}
+                layout={{ ...themedFig.layout, autosize: true }}
+                config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'] }}
+                useResizeHandler
+                style={{ width: '100%', height: '100%' }}
+                onInitialized={(_: any, gd: HTMLElement) => { plotGraphDivRef.current = gd; }}
+                onUpdate={(_: any, gd: HTMLElement) => { plotGraphDivRef.current = gd; }}
+              />
+            </ChartErrorBoundary>
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center space-y-2">

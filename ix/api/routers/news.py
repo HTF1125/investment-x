@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional, Any
+import re as _re
 from ix.db.conn import get_session
 from ix.db.models import TelegramMessage
 from ix.db.models.news_item import NewsItem
@@ -11,6 +13,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_
 from ix.api.dependencies import get_current_user
 from ix.db.models.user import User
+
+_SLIDE_DECKS_DIR = Path(__file__).resolve().parents[3] / "reports" / "slide-decks"
 
 router = APIRouter()
 
@@ -89,7 +93,10 @@ def get_unified_news_items(
     if source:
         query = query.filter(NewsItem.source == source)
     if q:
-        search_text = q.strip()
+        search_text = _re.sub(r'[*:()!&|<>\\]', ' ', q.strip())
+        search_text = ' '.join(search_text.split())
+        if not search_text:
+            search_text = q.strip()[:200]
         ts_query = func.websearch_to_tsquery("english", search_text)
         fts_filter = NewsItem.__table__.c.title.op("@@")(ts_query) | \
                      NewsItem.__table__.c.summary.op("@@")(ts_query)
@@ -134,6 +141,7 @@ def list_research_reports(
             ResearchReport.risk_scorecard.isnot(None).label("has_risk_scorecard"),
             ResearchReport.takeaways.isnot(None).label("has_takeaways"),
             ResearchReport.infographic.isnot(None).label("has_infographic"),
+            ResearchReport.slide_deck.isnot(None).label("has_slide_deck"),
         )
         .order_by(ResearchReport.date.desc())
         .all()
@@ -145,6 +153,7 @@ def list_research_reports(
             "has_risk_scorecard": r.has_risk_scorecard,
             "has_takeaways": r.has_takeaways,
             "has_infographic": r.has_infographic,
+            "has_slide_deck": r.has_slide_deck or (_SLIDE_DECKS_DIR / f"{r.date.isoformat()}.pdf").is_file(),
         }
         for r in rows
     ]
@@ -171,6 +180,7 @@ def get_research_report(
         "risk_scorecard": row.risk_scorecard,
         "takeaways": row.takeaways,
         "has_infographic": row.infographic is not None,
+        "has_slide_deck": row.slide_deck is not None or (_SLIDE_DECKS_DIR / f"{date}.pdf").is_file(),
         "sources": row.sources or {},
     }
 
@@ -199,3 +209,40 @@ def get_research_infographic(
         media_type="image/png",
         headers={"Content-Disposition": f'inline; filename="macro-infographic-{date}.png"'},
     )
+
+
+@router.get("/news/reports/{date}/slide-deck")
+def get_research_slide_deck(
+    date: str,
+    db: Session = Depends(get_session),
+    _current_user: User = Depends(get_current_user),
+):
+    """Serve the slide deck PDF from the database or filesystem."""
+    if not _is_valid_date(date):
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    # Try database first
+    report_date = datetime.strptime(date, "%Y-%m-%d").date()
+    row = (
+        db.query(ResearchReport.slide_deck)
+        .filter(ResearchReport.date == report_date)
+        .first()
+    )
+    if row and row[0]:
+        return Response(
+            content=row[0],
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="macro-slides-{date}.pdf"'},
+        )
+
+    # Fall back to filesystem
+    fs_path = _SLIDE_DECKS_DIR / f"{date}.pdf"
+    if fs_path.is_file():
+        return FileResponse(
+            path=str(fs_path),
+            media_type="application/pdf",
+            filename=f"macro-slides-{date}.pdf",
+            content_disposition_type="inline",
+        )
+
+    raise HTTPException(status_code=404, detail=f"No slide deck found for {date}")

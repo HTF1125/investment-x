@@ -75,8 +75,8 @@ def NumOfOecdCliMoMPositiveEM() -> pd.Series:
 
 def oecd_cli_regime() -> pd.DataFrame:
     """OECD CLI regime percentages."""
-    from ix.core.tech.regime import Regime1
-    from ix.core.tech.ma import MACD
+    from ix.core.technical.regime import Regime1
+    from ix.core.technical.moving_average import MACD
 
     data = (
         pd.DataFrame(

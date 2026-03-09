@@ -21,5 +21,19 @@ services:
         value: 8000
       - key: PYTHONUNBUFFERED
         value: 1
-      # Frontend build env vars are handled inside Dockerfile.combined, 
-      # but we can override here if needed.
+      - key: SECRET_KEY
+        sync: false  # Set in Render dashboard — JWT signing secret
+      - key: CORS_ORIGINS
+        value: https://your-app.onrender.com  # Comma-separated allowed origins
+      - key: GEMINI_API_KEY
+        sync: false  # Set in Render dashboard
+      - key: MINIMAX_API_KEY
+        sync: false  # Set in Render dashboard
+      - key: R2_ACCOUNT_ID
+        sync: false  # Set in Render dashboard
+      - key: R2_ACCESS_KEY_ID
+        sync: false  # Set in Render dashboard
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false  # Set in Render dashboard
+      - key: R2_BUCKET_NAME
+        sync: false  # Set in Render dashboard

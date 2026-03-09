@@ -116,14 +116,11 @@ export async function apiFetch(
 
   // Global handler for 401 Unauthorized (Session Expired)
   if (res.status === 401 && !skipAuthRedirect && typeof window !== "undefined") {
-    // Only redirect if we thought we were logged in
+    // Only dispatch if we thought we were logged in
     if (localStorage.getItem("token")) {
-      console.warn("Session expired, redirecting to login...");
+      console.warn("Session expired — dispatching session-expired event");
       localStorage.removeItem("token");
-      // Use window.location for a hard redirect to clear state
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login?expired=true";
-      }
+      window.dispatchEvent(new CustomEvent("ix:session-expired"));
     }
   }
 

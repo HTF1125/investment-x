@@ -60,7 +60,7 @@ def commodities_crb(freq: str = "W") -> pd.Series:
 
 def baltic_dry_index(freq: str = "W") -> pd.Series:
     """Baltic Dry Index — leads global trade by 2-3 months."""
-    s = Series("BDIY:IND", freq=freq)
+    s = Series("BDI-BAX:PX_LAST", freq=freq)
     s.name = "Baltic Dry Index"
     return s.dropna()
 

@@ -43,9 +43,9 @@ function LiveBadge() {
   }, []);
 
   return (
-    <div className="hidden xl:flex items-center gap-2.5 text-[12px] text-muted-foreground">
+    <div className="hidden xl:flex items-center gap-2.5 text-[12px] text-muted-foreground" role="status" aria-label="Live data active">
       <div className="flex items-center gap-1.5">
-        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
         <span className="text-emerald-600 dark:text-emerald-400 font-medium">Live</span>
       </div>
       <span className="text-border/80">·</span>
@@ -180,7 +180,7 @@ export default function Navbar() {
   }, [menuOpen]);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[100] h-[40px] bg-background/70 backdrop-blur-md border-b border-border/60">
+    <nav aria-label="Main navigation" className="fixed top-0 left-0 right-0 z-[100] h-[40px] bg-background/70 backdrop-blur-md border-b border-border/60">
       <div className="max-w-[1920px] mx-auto px-3 sm:px-4 h-full flex items-center gap-1.5 sm:gap-3">
 
         {/* Logo */}
@@ -202,9 +202,7 @@ export default function Navbar() {
         {/* Desktop nav links */}
         <div className="hidden md:flex items-center gap-2 flex-1 min-w-0 max-w-max">
           <NavLink href="/">Dashboard</NavLink>
-          <NavLink href="/wartime">Wartime</NavLink>
           <NavLink href="/intel">Intel</NavLink>
-          <NavLink href="/technical">Technical</NavLink>
           <NavLink href="/macro">Macro</NavLink>
           <NavLink href="/notes">Reports</NavLink>
           {isRealAdmin && !viewAsUser && (
@@ -229,6 +227,8 @@ export default function Navbar() {
                   : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
               }`}
               title={viewAsUser ? 'Exit user view' : 'View as user'}
+              aria-label={viewAsUser ? 'Exit user view' : 'View as user'}
+              aria-pressed={viewAsUser}
             >
               <Users className="w-3.5 h-3.5" />
             </button>
@@ -268,12 +268,12 @@ export default function Navbar() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.15 }}
+            role="navigation"
+            aria-label="Mobile navigation"
             className="md:hidden absolute top-[40px] left-0 right-0 bg-background border-b border-border px-3 py-3 flex flex-col gap-0.5 shadow-lg z-[90]"
           >
             <MobileNavLink href="/">Dashboard</MobileNavLink>
-            <MobileNavLink href="/wartime">Wartime</MobileNavLink>
             <MobileNavLink href="/intel">Intel</MobileNavLink>
-            <MobileNavLink href="/technical">Technical</MobileNavLink>
             <MobileNavLink href="/macro">Macro</MobileNavLink>
             <MobileNavLink href="/notes">Reports</MobileNavLink>
             {isRealAdmin && !viewAsUser && (

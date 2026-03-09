@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import type Plotly from 'plotly.js';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import AppShell from '@/components/AppShell';
+import PageSkeleton from '@/components/PageSkeleton';
 import { apiFetchJson } from '@/lib/api';
 import { applyChartTheme } from '@/lib/chartTheme';
 import { useTheme } from '@/context/ThemeContext';
@@ -77,8 +79,8 @@ interface AnaloguePayload {
 }
 
 interface WartimeFigure {
-  data: any[];
-  layout: any;
+  data: Plotly.Data[];
+  layout: Partial<Plotly.Layout>;
 }
 
 interface WartimeData {
@@ -1023,6 +1025,14 @@ function AnaloguesTable({ rows, t, lang }: { rows: AnalogueRow[]; t: TShape; lan
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function WartimePage() {
+  return (
+    <Suspense fallback={<AppShell><PageSkeleton label="Loading wartime analysis" /></AppShell>}>
+      <WartimePageContent />
+    </Suspense>
+  );
+}
+
+function WartimePageContent() {
   const { theme } = useTheme();
   const [lang, setLang] = useState<Lang>('en');
   const t = T[lang];

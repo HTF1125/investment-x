@@ -58,12 +58,8 @@ except ImportError:
     pisa = None
 
 
-_LEGACY_STYLE_IMPORT_RE = re.compile(
-    r"^\s*from\s+ix\.cht\.style\s+import\s+[^\n]+\n?",
-    flags=re.MULTILINE,
-)
-_LEGACY_IX_STAR_IMPORT_RE = re.compile(
-    r"^\s*from\s+ix\s+import\s+\*\s*\n?",
+_SCOPE_IMPORT_RE = re.compile(
+    r"^(?P<indent>\s*)(?:from\s+(?:ix|ix\.\w+(?:\.\w+)*|plotly|plotly\.\w+|datetime|typing)\s+import\s+[^\n]+|import\s+(?:numpy|pandas|plotly|datetime|time)(?:\.\w+)*(?:\s+as\s+\w+)?)\s*$",
     flags=re.MULTILINE,
 )
 
@@ -147,14 +143,15 @@ def _legacy_get_value_label(series, name: str, fmt: str = ".2f") -> str:
     return f"{name} ({val:{fmt}})"
 
 
+def _import_to_pass(m: re.Match) -> str:
+    indent = m.group("indent")
+    return f"{indent}pass" if indent else ""
+
+
 def _normalize_legacy_chart_code(code: str) -> str:
-    normalized = _LEGACY_STYLE_IMPORT_RE.sub("", code)
+    normalized = _SCOPE_IMPORT_RE.sub(_import_to_pass, code)
     if normalized != code:
-        logger.info("Rewrote legacy ix.cht.style import in custom chart code.")
-    normalized_without_ix_star = _LEGACY_IX_STAR_IMPORT_RE.sub("", normalized)
-    if normalized_without_ix_star != normalized:
-        logger.info("Rewrote legacy `from ix import *` in custom chart code.")
-    normalized = normalized_without_ix_star
+        logger.info("Stripped redundant imports (already injected into exec scope).")
     return normalized
 
 
@@ -229,8 +226,8 @@ def _is_chart_owner(chart: CustomChart, user: User) -> bool:
 def _can_edit_chart(chart: CustomChart, user: User) -> bool:
     if _is_owner(user):
         return True
-    if _user_role(user) == User.ROLE_ADMIN:
-        return False
+    if _is_admin(user):
+        return True
     return _is_chart_owner(chart, user)
 
 
@@ -437,7 +434,7 @@ def _custom_chart_apply_theme(
 
 def _build_custom_chart_global_scope(db_session: Optional[Session]) -> Dict[str, Any]:
     from ix.db.query import Series as OriginalSeries, MultiSeries
-    from ix.core.stat import Cycle
+    from ix.core.quantitative.statistics import Cycle
     from ix.core.transforms import (
         MonthEndOffset,
         Offset,
@@ -450,7 +447,7 @@ def _build_custom_chart_global_scope(db_session: Optional[Session]) -> Dict[str,
         Resample,
         StandardScalar,
     )
-    from ix.core.quant_dsl import (
+    from ix.core.quantitative.dsl import (
         Correlation as _Correlation,
         RollingCorrelation as _RollingCorrelation,
         Regression as _Regression,
@@ -512,6 +509,13 @@ def _build_custom_chart_global_scope(db_session: Optional[Session]) -> Dict[str,
         "PCA": _PCA,
         "VaR": _VaR,
         "ExpectedShortfall": _ExpectedShortfall,
+        "datetime": __import__("datetime").datetime,
+        "date": __import__("datetime").date,
+        "timedelta": __import__("datetime").timedelta,
+        "Dict": dict,
+        "List": list,
+        "Tuple": tuple,
+        "Optional": __import__("typing").Optional,
         "__builtins__": SAFE_CUSTOM_CHART_BUILTINS,
         "__name__": "__main__",
     }
@@ -627,14 +631,41 @@ def execute_custom_code(code: str, *, validated: bool = False):
             ) from exc
         if isinstance(exc, HTTPException):
             raise
+        if isinstance(exc, TimeoutError):
+            logger.error("Custom chart code timed out")
+            raise HTTPException(
+                status_code=408,
+                detail={
+                    "error": "Timeout Error",
+                    "message": "Chart execution timed out",
+                },
+            ) from exc
+        if isinstance(exc, SyntaxError):
+            logger.error("Syntax error in custom chart code: %s", exc)
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Syntax Error",
+                    "message": f"Syntax error in chart code: {exc}",
+                },
+            ) from exc
+        if isinstance(exc, (NameError, ImportError)):
+            logger.error("Name/Import error in custom chart code: %s", exc)
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": type(exc).__name__,
+                    "message": str(exc),
+                },
+            ) from exc
 
         logger.error("Error executing custom chart code: %s", exc)
         logger.error(traceback.format_exc())
         raise HTTPException(
-            status_code=400,
+            status_code=500,
             detail={
-                "error": "Execution Error",
-                "message": str(exc),
+                "error": "Internal Error",
+                "message": "Internal error during chart execution",
             },
         ) from exc
 
@@ -801,11 +832,10 @@ def render_chart_image(
                 ),
             )
         )
-        if fig.layout.title:
-            title_size = 50
-            if fig.layout.title.font and fig.layout.title.font.size:
-                title_size = max(50, int(fig.layout.title.font.size * 2.5))
-            fig.update_layout(title=dict(font=dict(size=title_size)))
+        # Remove Plotly's own title — the PDF HTML template provides h2 titles
+        fig.update_layout(title=None)
+        # Reclaim the top margin since there's no title
+        fig.update_layout(margin=dict(t=80))
 
         if fig.layout.legend:
             legend_size = 32
@@ -813,9 +843,18 @@ def render_chart_image(
                 legend_size = max(32, int(fig.layout.legend.font.size * 2.5))
             fig.update_layout(legend=dict(font=dict(size=legend_size)))
 
-        # Heatmaps often look tiny in PDF exports. Force visible cell labels when present.
+        # Scale up annotations (data labels, callouts, etc.)
+        if fig.layout.annotations:
+            for ann in fig.layout.annotations:
+                ann_size = 12
+                if ann.font and ann.font.size:
+                    ann_size = ann.font.size
+                ann.update(font=dict(size=max(28, int(ann_size * 2.5))))
+
+        # Scale up ALL trace text (data labels, bar text, scatter text, etc.)
         for trace in fig.data:
-            if getattr(trace, "type", None) == "heatmap":
+            trace_type = getattr(trace, "type", None)
+            if trace_type == "heatmap":
                 textfont = getattr(trace, "textfont", None) or {}
                 z_data = getattr(trace, "z", None)
                 if not getattr(trace, "text", None) and z_data is not None:
@@ -832,6 +871,34 @@ def render_chart_image(
                         size=max(35, int((getattr(textfont, "size", 12) or 12) * 2.5))
                     )
                 )
+            else:
+                # Bar, scatter, pie, waterfall, funnel, treemap, etc.
+                textfont = getattr(trace, "textfont", None)
+                current_size = 12
+                if textfont and getattr(textfont, "size", None):
+                    current_size = textfont.size
+                try:
+                    trace.update(
+                        textfont=dict(size=max(28, int(current_size * 2.5)))
+                    )
+                except Exception:
+                    pass
+
+            # Scale colorbar tick labels if present
+            colorbar = getattr(trace, "colorbar", None)
+            if colorbar:
+                cb_size = 12
+                if colorbar.tickfont and getattr(colorbar.tickfont, "size", None):
+                    cb_size = colorbar.tickfont.size
+                try:
+                    trace.update(
+                        colorbar=dict(
+                            tickfont=dict(size=max(28, int(cb_size * 2.5)))
+                        )
+                    )
+                except Exception:
+                    pass
+
         return fig
 
     try:
@@ -907,11 +974,20 @@ def generate_pdf_buffer(
 
     # 3. Construct PDF using xhtml2pdf
     is_dark = theme.lower() == "dark"
-    body_bg = "#0f172a" if is_dark else "#f8f8f8"
+    body_bg = "#0f172a" if is_dark else "#ffffff"
     text_color = "#f1f5f9" if is_dark else "#1e293b"
     h1_color = "#f8fafc" if is_dark else "#0f172a"
     meta_color = "#94a3b8" if is_dark else "#64748b"
     desc_color = "#cbd5e1" if is_dark else "#475569"
+
+    # Navigation bar colors
+    nav_accent = "#818cf8" if is_dark else "#4f46e5"
+    nav_bg = "#1e293b" if is_dark else "#f1f5f9"
+    nav_border = "#334155" if is_dark else "#e2e8f0"
+    arrow_color = "#e2e8f0" if is_dark else "#334155"
+    arrow_disabled = "#475569" if is_dark else "#cbd5e1"
+
+    total = len(valid_charts)
 
     html_parts = []
     html_parts.append(
@@ -921,34 +997,69 @@ def generate_pdf_buffer(
     <head>
         <meta charset="utf-8" />
         <style>
-            @page {{ size: landscape; margin: 1.5cm; }}
-            body {{ font-family: 'Courier New', Courier, monospace; background-color: {body_bg}; color: {text_color}; line-height: 1.6; font-size: 11pt; }}
-            h1 {{ color: {h1_color}; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 5px; font-size: 24pt; }}
-            h2 {{ color: {h1_color}; font-size: 18pt; margin-top: 30px; margin-bottom: 5px; }}
-            .meta {{ color: {meta_color}; font-size: 10pt; margin-bottom: 10px; }}
-            .desc {{ color: {desc_color}; font-size: 11pt; margin-bottom: 20px; font-style: italic; }}
-            img {{ max-width: 100%; max-height: 500px; display: block; margin: 20px auto; }}
-            .chart-block {{ page-break-inside: avoid; margin-bottom: 40px; }}
-            .report-title {{ text-align: center; margin-bottom: 40px; font-size: 32pt; font-weight: bold; color: {h1_color}; }}
-            .report-meta {{ text-align: center; color: {meta_color}; margin-bottom: 60px; font-size: 12pt; }}
+            @page {{ size: landscape; margin: 1cm 1.5cm 1cm 1.5cm; }}
+            body {{ font-family: 'Courier New', Courier, monospace; background-color: {body_bg}; color: {text_color}; line-height: 1.4; font-size: 10pt; }}
+            h2 {{ color: {h1_color}; font-size: 14pt; margin-top: 6px; margin-bottom: 3px; -pdf-outline: true; -pdf-outline-level: 0; }}
+            .meta {{ color: {meta_color}; font-size: 8pt; margin-bottom: 3px; }}
+            .desc {{ color: {desc_color}; font-size: 9pt; margin-bottom: 6px; font-style: italic; }}
+            img {{ max-width: 100%; display: block; margin: 4px auto; }}
+            .chart-page {{ page-break-before: always; }}
+            .cover {{ text-align: center; padding-top: 160px; }}
+            .cover-title {{ font-size: 36pt; font-weight: bold; color: {h1_color}; margin-bottom: 20px; }}
         </style>
     </head>
     <body>
-        <div class="report-title">Investment-X Dashboard Report</div>
-        <div class="report-meta">Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
+        <div class="cover">
+            <div class="cover-title">Investment-X Dashboard Report</div>
+            <br/>
+            <span style="color: {meta_color}; font-size: 14pt;">Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}</span>
+            <br/><br/>
+            <span style="color: {meta_color}; font-size: 12pt;">{total} charts</span>
+        </div>
     """
     )
 
     for i, chart in enumerate(valid_charts):
         title = html.escape(chart.name or "Untitled Analysis")
-        meta = html.escape(
-            f"Category: {chart.category} | Updated: {chart.updated_at.strftime('%Y-%m-%d')}"
-        )
+        category = html.escape(chart.category or "Uncategorized")
+        updated = chart.updated_at.strftime("%Y-%m-%d")
         desc = html.escape(chart.description or "").replace("\n", "<br/>")
 
-        html_parts.append(f'<div class="chart-block">')
+        # Build top nav bar: [< Prev]  Category  |  3 / 25  |  Updated  [Next >]
+        prev_link = (
+            f'<a href="#chart-{i - 1}" style="color:{arrow_color};text-decoration:none;'
+            f'font-size:11pt;font-weight:bold;">&larr; Prev</a>'
+            if i > 0
+            else f'<span style="color:{arrow_disabled};font-size:11pt;">&larr; Prev</span>'
+        )
+        next_link = (
+            f'<a href="#chart-{i + 1}" style="color:{arrow_color};text-decoration:none;'
+            f'font-size:11pt;font-weight:bold;">Next &rarr;</a>'
+            if i < total - 1
+            else f'<span style="color:{arrow_disabled};font-size:11pt;">Next &rarr;</span>'
+        )
+
+        nav_bar = (
+            f'<table width="100%" cellpadding="0" cellspacing="0" '
+            f'style="background-color:{nav_bg};border-bottom:1px solid {nav_border};'
+            f'padding:6px 10px;margin-bottom:6px;">'
+            f"<tr>"
+            f'<td width="80" style="padding:4px 8px;">{prev_link}</td>'
+            f'<td style="text-align:center;padding:4px 8px;">'
+            f'<span style="font-size:10pt;font-weight:bold;color:{nav_accent};'
+            f'letter-spacing:1px;">{category}</span>'
+            f'<span style="color:{meta_color};font-size:9pt;">'
+            f"&nbsp;&nbsp;|&nbsp;&nbsp;{i + 1} / {total}"
+            f"&nbsp;&nbsp;|&nbsp;&nbsp;{updated}</span>"
+            f"</td>"
+            f'<td width="80" style="text-align:right;padding:4px 8px;">{next_link}</td>'
+            f"</tr></table>"
+        )
+
+        html_parts.append(f'<div class="chart-page">')
+        html_parts.append(f'<a name="chart-{i}"></a>')
+        html_parts.append(nav_bar)
         html_parts.append(f"<h2>{title}</h2>")
-        html_parts.append(f'<div class="meta">{meta}</div>')
         if desc:
             html_parts.append(f'<div class="desc">{desc}</div>')
 
@@ -961,7 +1072,7 @@ def generate_pdf_buffer(
                 f'<div class="meta" style="color: red;">[Chart rendering failed]</div>'
             )
 
-        html_parts.append(f"</div>")
+        html_parts.append("</div>")
 
         if progress_cb:
             progress_cb(
@@ -1001,11 +1112,14 @@ def preview_custom_chart(
     logger.info(f"Previewing custom chart. Code length: {len(body.code)}")
     try:
         fig = execute_custom_code(body.code)
+        exec_duration = time.time() - start_time
+        logger.info(f"Chart execution completed in {exec_duration:.2f}s")
     except Exception as e:
+        exec_duration = time.time() - start_time
+        logger.error(f"Execution failed after {exec_duration:.2f}s: {e}")
         if isinstance(e, HTTPException):
             raise e
 
-        logger.error(f"Execution failed in preview: {e}")
         logger.error(traceback.format_exc())
 
         raise HTTPException(
@@ -1017,15 +1131,17 @@ def preview_custom_chart(
         )
 
     try:
-        logger.info("Serializing figure to JSON string (Plotly native)...")
+        serial_start = time.time()
         if isinstance(fig, dict):
             json_str = _json_dumps_fast(fig)
         else:
             json_str = pio.to_json(fig)
 
-        duration = time.time() - start_time
+        serial_duration = time.time() - serial_start
+        total_duration = time.time() - start_time
         logger.info(
-            f"Serialization complete. Duration: {duration:.2f}s. Response size: {len(json_str)} bytes"
+            f"Chart preview complete. exec={exec_duration:.2f}s serial={serial_duration:.2f}s "
+            f"total={total_duration:.2f}s size={len(json_str)} bytes"
         )
 
         # Return directly as JSON response to avoid double serialization

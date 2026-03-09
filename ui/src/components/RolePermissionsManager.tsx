@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Loader2, Save, ShieldCheck, LayoutDashboard, Newspaper, CandlestickChart, FileText } from 'lucide-react';
+import { Check, Loader2, Save, ShieldCheck, LayoutDashboard, Newspaper, FileText } from 'lucide-react';
 import { apiFetchJson } from '@/lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,7 +21,6 @@ interface Feature {
 const FEATURES: Feature[] = [
   { id: 'dashboard',  label: 'Dashboard',           description: 'Main dashboard, charts, and market overview',    icon: LayoutDashboard },
   { id: 'intel',      label: 'Intel',               description: 'News, research, and market intelligence feeds',  icon: Newspaper },
-  { id: 'technical',  label: 'Technical Analysis',  description: 'Elliott wave and technical indicator tools',     icon: CandlestickChart },
   { id: 'notes',      label: 'Reports',             description: 'Investment notes and research reports editor',   icon: FileText },
 ];
 

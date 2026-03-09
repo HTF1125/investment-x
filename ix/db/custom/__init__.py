@@ -33,6 +33,8 @@ from ix.db.custom.fci import (
 from ix.db.custom.liquidity import (
     FedNetLiquidity,
     fed_net_liquidity,
+    tga_drawdown,
+    treasury_net_issuance,
     M2,
     m2_us,
     m2_eu,
@@ -184,6 +186,142 @@ from ix.db.custom.sector_rotation import (
     kr_tech_vs_us_tech,
     kr_financials_vs_us_financials,
     kr_export_vs_domestic,
+)
+from ix.db.custom.volatility import (
+    vix_term_structure,
+    vix_term_spread,
+    skew_index,
+    skew_zscore,
+    vol_risk_premium,
+    vol_risk_premium_zscore,
+    vol_of_vol,
+    vvix_vix_ratio,
+    gamma_exposure_proxy,
+    realized_vol_regime,
+)
+from ix.db.custom.fund_flows import (
+    margin_debt,
+    margin_debt_yoy,
+    margin_debt_vs_spx,
+    risk_rotation_index,
+    equity_bond_flow_ratio,
+    em_flow_proxy,
+    commodity_flow_proxy,
+    bank_credit_impulse,
+    consumer_credit_growth,
+)
+from ix.db.custom.credit_deep import (
+    credit_stress_index,
+    hy_distress_proxy,
+    hy_spread_momentum,
+    hy_spread_velocity,
+    leveraged_loan_spread,
+    leveraged_loan_spread_zscore,
+    cdx_hy_proxy,
+    cdx_ig_proxy,
+    credit_cycle_phase,
+    ig_hy_compression,
+    financial_conditions_credit,
+)
+from ix.db.custom.nowcasting import (
+    gdpnow,
+    weekly_economic_index,
+    wei_momentum,
+    ads_business_conditions,
+    initial_claims,
+    initial_claims_4wma,
+    continued_claims,
+    claims_ratio,
+    industrial_production_yoy,
+    capacity_utilization,
+    nowcast_composite,
+)
+from ix.db.custom.china_em import (
+    china_credit_impulse,
+    china_m2_yoy,
+    china_m2_momentum,
+    china_pmi_composite,
+    china_pmi_momentum,
+    pboc_easing_proxy,
+    em_sovereign_spread,
+    em_sovereign_spread_zscore,
+    em_sovereign_spread_momentum,
+    usdcny,
+    usdcny_momentum,
+    em_dm_relative_momentum,
+    em_composite_indicator,
+)
+from ix.db.custom.central_bank import (
+    fed_total_assets,
+    fed_assets_yoy,
+    fed_assets_momentum,
+    ecb_total_assets,
+    boj_total_assets,
+    g4_balance_sheet,
+    g4_balance_sheet_total,
+    g4_balance_sheet_yoy,
+    fed_funds_implied,
+    rate_cut_probability_proxy,
+    global_rate_divergence,
+    central_bank_liquidity_composite,
+)
+from ix.db.custom.alt_data import (
+    sox_index,
+    sox_spx_ratio,
+    sox_momentum,
+    semi_book_to_bill,
+    housing_starts,
+    housing_starts_yoy,
+    building_permits,
+    housing_affordability_proxy,
+    mortgage_rate,
+    wti_crude,
+    brent_crude,
+    crack_spread,
+    oil_inventory_proxy,
+    natural_gas,
+    gold,
+    gold_silver_ratio,
+    gold_real_rate_relationship,
+    baltic_dry_momentum,
+    container_freight_proxy,
+    alt_data_composite,
+)
+from ix.db.custom.factors import (
+    cross_asset_momentum,
+    momentum_breadth,
+    momentum_composite,
+    equity_carry,
+    bond_carry,
+    fx_carry,
+    commodity_carry,
+    carry_composite,
+    equity_value,
+    bond_value,
+    fx_value,
+    value_composite,
+    macro_factor_score,
+)
+from ix.db.custom.correlation_regime import (
+    equity_bond_corr_regime,
+    equity_bond_corr_zscore,
+    cross_asset_correlation_fast,
+    diversification_index,
+    correlation_surprise,
+    safe_haven_demand,
+    tail_risk_index,
+)
+from ix.db.custom.earnings_deep import (
+    eps_estimate_dispersion,
+    eps_dispersion_zscore,
+    earnings_surprise_persistence,
+    earnings_momentum_score,
+    guidance_proxy,
+    guidance_momentum,
+    earnings_yield_gap,
+    regional_earnings_divergence,
+    us_vs_world_earnings,
+    earnings_composite,
 )
 
 from typing import Union
@@ -367,6 +505,151 @@ class KRSectorRotation:
     tech_vs_us_tech = staticmethod(kr_tech_vs_us_tech)
     financials_vs_us = staticmethod(kr_financials_vs_us_financials)
     export_vs_domestic = staticmethod(kr_export_vs_domestic)
+
+
+class VolatilitySurface:
+    term_structure = staticmethod(vix_term_structure)
+    term_spread = staticmethod(vix_term_spread)
+    skew = staticmethod(skew_index)
+    skew_zscore = staticmethod(skew_zscore)
+    risk_premium = staticmethod(vol_risk_premium)
+    risk_premium_zscore = staticmethod(vol_risk_premium_zscore)
+    vvix = staticmethod(vol_of_vol)
+    vvix_vix_ratio = staticmethod(vvix_vix_ratio)
+    gamma_proxy = staticmethod(gamma_exposure_proxy)
+    realized_regime = staticmethod(realized_vol_regime)
+
+
+class FundFlows:
+    margin_debt = staticmethod(margin_debt)
+    margin_debt_yoy = staticmethod(margin_debt_yoy)
+    margin_vs_spx = staticmethod(margin_debt_vs_spx)
+    risk_rotation = staticmethod(risk_rotation_index)
+    equity_bond_flow = staticmethod(equity_bond_flow_ratio)
+    em_flow = staticmethod(em_flow_proxy)
+    commodity_flow = staticmethod(commodity_flow_proxy)
+    bank_credit_impulse = staticmethod(bank_credit_impulse)
+    consumer_credit = staticmethod(consumer_credit_growth)
+
+
+class CreditDeep:
+    stress_index = staticmethod(credit_stress_index)
+    distress_proxy = staticmethod(hy_distress_proxy)
+    spread_momentum = staticmethod(hy_spread_momentum)
+    spread_velocity = staticmethod(hy_spread_velocity)
+    leveraged_loan = staticmethod(leveraged_loan_spread)
+    leveraged_loan_zscore = staticmethod(leveraged_loan_spread_zscore)
+    cdx_hy = staticmethod(cdx_hy_proxy)
+    cdx_ig = staticmethod(cdx_ig_proxy)
+    cycle_phase = staticmethod(credit_cycle_phase)
+    ig_hy_compression = staticmethod(ig_hy_compression)
+    conditions = staticmethod(financial_conditions_credit)
+
+
+class Nowcasting:
+    gdpnow = staticmethod(gdpnow)
+    wei = staticmethod(weekly_economic_index)
+    wei_momentum = staticmethod(wei_momentum)
+    ads = staticmethod(ads_business_conditions)
+    initial_claims = staticmethod(initial_claims)
+    claims_4wma = staticmethod(initial_claims_4wma)
+    continued_claims = staticmethod(continued_claims)
+    claims_ratio = staticmethod(claims_ratio)
+    ip_yoy = staticmethod(industrial_production_yoy)
+    capacity_util = staticmethod(capacity_utilization)
+    composite = staticmethod(nowcast_composite)
+
+
+class ChinaEM:
+    credit_impulse = staticmethod(china_credit_impulse)
+    m2_yoy = staticmethod(china_m2_yoy)
+    m2_momentum = staticmethod(china_m2_momentum)
+    pmi_composite = staticmethod(china_pmi_composite)
+    pmi_momentum = staticmethod(china_pmi_momentum)
+    pboc_easing = staticmethod(pboc_easing_proxy)
+    em_spread = staticmethod(em_sovereign_spread)
+    em_spread_zscore = staticmethod(em_sovereign_spread_zscore)
+    em_spread_momentum = staticmethod(em_sovereign_spread_momentum)
+    usdcny = staticmethod(usdcny)
+    usdcny_momentum = staticmethod(usdcny_momentum)
+    em_dm_momentum = staticmethod(em_dm_relative_momentum)
+    em_composite = staticmethod(em_composite_indicator)
+
+
+class CentralBankWatch:
+    fed_assets = staticmethod(fed_total_assets)
+    fed_yoy = staticmethod(fed_assets_yoy)
+    fed_momentum = staticmethod(fed_assets_momentum)
+    ecb_assets = staticmethod(ecb_total_assets)
+    boj_assets = staticmethod(boj_total_assets)
+    g4_total = staticmethod(g4_balance_sheet_total)
+    g4_yoy = staticmethod(g4_balance_sheet_yoy)
+    fed_funds = staticmethod(fed_funds_implied)
+    rate_cut_proxy = staticmethod(rate_cut_probability_proxy)
+    rate_divergence = staticmethod(global_rate_divergence)
+    liquidity_composite = staticmethod(central_bank_liquidity_composite)
+
+
+class AltData:
+    sox = staticmethod(sox_index)
+    sox_spx = staticmethod(sox_spx_ratio)
+    sox_momentum = staticmethod(sox_momentum)
+    semi_btb = staticmethod(semi_book_to_bill)
+    housing_starts = staticmethod(housing_starts)
+    housing_yoy = staticmethod(housing_starts_yoy)
+    permits = staticmethod(building_permits)
+    affordability = staticmethod(housing_affordability_proxy)
+    mortgage = staticmethod(mortgage_rate)
+    wti = staticmethod(wti_crude)
+    brent = staticmethod(brent_crude)
+    crack = staticmethod(crack_spread)
+    oil_inventory = staticmethod(oil_inventory_proxy)
+    natgas = staticmethod(natural_gas)
+    gold = staticmethod(gold)
+    gold_silver = staticmethod(gold_silver_ratio)
+    gold_real_rate = staticmethod(gold_real_rate_relationship)
+    bdi_momentum = staticmethod(baltic_dry_momentum)
+    container_freight = staticmethod(container_freight_proxy)
+    composite = staticmethod(alt_data_composite)
+
+
+class CrossAssetFactors:
+    momentum = staticmethod(cross_asset_momentum)
+    momentum_breadth = staticmethod(momentum_breadth)
+    momentum_composite = staticmethod(momentum_composite)
+    equity_carry = staticmethod(equity_carry)
+    bond_carry = staticmethod(bond_carry)
+    fx_carry = staticmethod(fx_carry)
+    commodity_carry = staticmethod(commodity_carry)
+    carry_composite = staticmethod(carry_composite)
+    equity_value = staticmethod(equity_value)
+    bond_value = staticmethod(bond_value)
+    fx_value = staticmethod(fx_value)
+    value_composite = staticmethod(value_composite)
+    factor_score = staticmethod(macro_factor_score)
+
+
+class CorrelationRegime:
+    eq_bond_regime = staticmethod(equity_bond_corr_regime)
+    eq_bond_zscore = staticmethod(equity_bond_corr_zscore)
+    cross_asset_corr = staticmethod(cross_asset_correlation_fast)
+    diversification = staticmethod(diversification_index)
+    corr_surprise = staticmethod(correlation_surprise)
+    safe_haven = staticmethod(safe_haven_demand)
+    tail_risk = staticmethod(tail_risk_index)
+
+
+class EarningsDeep:
+    dispersion = staticmethod(eps_estimate_dispersion)
+    dispersion_zscore = staticmethod(eps_dispersion_zscore)
+    surprise_persistence = staticmethod(earnings_surprise_persistence)
+    momentum_score = staticmethod(earnings_momentum_score)
+    guidance = staticmethod(guidance_proxy)
+    guidance_momentum = staticmethod(guidance_momentum)
+    yield_gap = staticmethod(earnings_yield_gap)
+    regional_divergence = staticmethod(regional_earnings_divergence)
+    us_vs_world = staticmethod(us_vs_world_earnings)
+    composite = staticmethod(earnings_composite)
 
 
 # ── CustomSeries dispatcher ─────────────────────────────────────────────────

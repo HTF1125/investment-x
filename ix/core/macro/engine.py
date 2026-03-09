@@ -14,6 +14,8 @@ from ix.core.macro.config import (
     REGIME_RETURN_ASSUMPTIONS,
     LIQUIDITY_PHASES,
 )
+from ix.core.macro.rolling_ic import compute_adaptive_weights
+from ix.core.macro.vol_scaling import apply_vol_scaling
 
 
 # ==============================================================================
@@ -278,6 +280,104 @@ def build_axis_composite(
 
     composite = composite.ewm(halflife=ema_halflife, min_periods=ema_halflife).mean()
     return normalized, composite
+
+
+# ==============================================================================
+# ADAPTIVE IC-WEIGHTED COMPOSITE
+# ==============================================================================
+
+
+def build_adaptive_composite(
+    raw_data: dict,
+    loaders,
+    target_px: pd.Series,
+    z_window: int = 78,
+    ema_halflife: int = 4,
+    fwd_weeks: int = 13,
+    ic_rolling_window: int = 104,
+    min_ic_threshold: float = 0.03,
+) -> tuple:
+    """Build a composite using rolling IC-adaptive weights.
+
+    Like build_axis_composite, but weights are dynamically computed from
+    each indicator's recent Spearman IC with forward returns, instead of
+    fixed weights. Falls back to equal-weight if no indicator passes
+    the IC threshold.
+
+    Args:
+        raw_data: Dict of {name: raw_series}.
+        loaders: Loader definitions for normalization metadata.
+        target_px: Target index price (for IC computation).
+        z_window: Base z-score window.
+        ema_halflife: EMA halflife for composite smoothing.
+        fwd_weeks: Forward return horizon for IC.
+        ic_rolling_window: Rolling window for IC computation.
+        min_ic_threshold: Minimum |IC| to include indicator.
+
+    Returns:
+        Tuple of (normalized_dict, composite_series, adaptive_weights, ic_history).
+    """
+    from ix.core.macro.engine import normalize_indicator, _ffill_limit
+
+    # Step 1: Normalize all indicators (same as build_axis_composite)
+    normalized = {}
+    for name, raw in raw_data.items():
+        try:
+            z = normalize_indicator(raw, name, loaders, z_window)
+            if len(z.dropna()) > 52:
+                normalized[name] = z
+        except Exception:
+            pass
+
+    if not normalized:
+        return {}, pd.Series(dtype=float), {}, pd.DataFrame()
+
+    # Step 2: Compute adaptive weights from rolling IC
+    weights, ic_history = compute_adaptive_weights(
+        normalized, target_px, fwd_weeks, ic_rolling_window,
+        min_obs=52, ic_ema_halflife=13, min_ic_threshold=min_ic_threshold,
+    )
+
+    # Step 3: Build composite (fall back to equal-weight if no IC weights)
+    df = pd.concat([z.rename(n) for n, z in normalized.items()], axis=1).sort_index()
+    for col in df.columns:
+        df[col] = df[col].ffill(limit=_ffill_limit(col, loaders))
+
+    if weights:
+        active = [c for c in df.columns if c in weights]
+        if active:
+            w = pd.Series({c: weights[c] for c in active})
+            min_active = min(2, len(active))
+            valid_mask = df[active].notna().sum(axis=1) >= min_active
+            composite = (df[active] * w).sum(axis=1).div(w.abs().sum())
+            composite = composite.where(valid_mask).dropna()
+        else:
+            valid_mask = df.notna().sum(axis=1) >= min(3, len(normalized))
+            composite = df.mean(axis=1).where(valid_mask).dropna()
+    else:
+        valid_mask = df.notna().sum(axis=1) >= min(3, len(normalized))
+        composite = df.mean(axis=1).where(valid_mask).dropna()
+
+    composite = composite.ewm(halflife=ema_halflife, min_periods=ema_halflife).mean()
+    return normalized, composite, weights, ic_history
+
+
+def compute_vol_scaled_allocation(
+    allocation: pd.Series,
+    target_px: pd.Series,
+    base_weight: float = 0.50,
+    vol_window: int = 26,
+) -> tuple:
+    """Apply volatility scaling to allocation signal.
+
+    Wrapper around vol_scaling.apply_vol_scaling for pipeline integration.
+
+    Returns:
+        Tuple of (scaled_allocation, realized_vol, vol_scalar).
+    """
+    return apply_vol_scaling(
+        allocation, target_px, base_weight, vol_window,
+    )
 
 
 # ==============================================================================

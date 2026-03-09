@@ -50,7 +50,7 @@ def set_auth_cookie(
 
 
 @router.post("/auth/login", response_model=Token)
-@_limiter.limit("20/minute")
+@_limiter.limit("5/minute")
 def login(
     request: Request, response: Response, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ):
@@ -75,7 +75,7 @@ def login(
 
 
 @router.post("/auth/login/json", response_model=Token)
-@_limiter.limit("20/minute")
+@_limiter.limit("5/minute")
 def login_json(request: Request, response: Response, credentials: UserLogin):
     """
     Login endpoint - JSON body format.

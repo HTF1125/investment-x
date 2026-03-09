@@ -1,7 +1,6 @@
 'use client';
 
-import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
@@ -34,6 +33,8 @@ const NotesRichEditor = dynamic(() => import('@/components/NotesRichEditor'), {
   ),
 });
 import { useAuth } from '@/context/AuthContext';
+import AuthGuard from '@/components/AuthGuard';
+import PageSkeleton from '@/components/PageSkeleton';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
 import { useTheme } from '@/context/ThemeContext';
@@ -160,8 +161,17 @@ function formatRelativeDate(dateStr: string): string {
 }
 
 export default function NotesPage() {
+  return (
+    <AuthGuard>
+      <Suspense fallback={<AppShell hideFooter><PageSkeleton label="Loading notes" /></AppShell>}>
+        <NotesPageContent />
+      </Suspense>
+    </AuthGuard>
+  );
+}
+
+function NotesPageContent() {
   useEffect(() => { document.title = 'Research Notes | Investment-X'; }, []);
-  const router = useRouter();
   const queryClient = useQueryClient();
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { theme } = useTheme();
@@ -219,12 +229,6 @@ export default function NotesPage() {
       setExportingFormat(null);
     }
   };
-
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push('/login');
-    }
-  }, [authLoading, isAuthenticated, router]);
 
   const notesQuery = useQuery({
     queryKey: ['investment-notes'],
@@ -445,14 +449,6 @@ export default function NotesPage() {
   const publishToneClass = pinned
     ? 'border-sky-500/30 bg-sky-500/[0.08] text-sky-500 dark:text-sky-400 hover:bg-sky-500/[0.14]'
     : 'border-border/50 bg-background/80 text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground';
-
-  if (authLoading || (!isAuthenticated && !authLoading)) return (
-    <AppShell hideFooter>
-      <div className="h-[calc(100vh-3rem)] flex items-center justify-center text-muted-foreground">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading reports...
-      </div>
-    </AppShell>
-  );
 
   // ── Sidebar ────────────────────────────────────────────────────────────────
   const sidebarContent = (
@@ -794,7 +790,12 @@ function StatChip({ icon, label }: { icon: React.ReactNode; label: string }) {
 }
 
 function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
-  useEffect(() => { const t = setTimeout(onDismiss, 4000); return () => clearTimeout(t); }, [onDismiss]);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+  useEffect(() => {
+    const t = setTimeout(() => onDismissRef.current(), 4000);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <div className="fixed bottom-5 right-5 z-[200] flex items-center gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/[0.12] backdrop-blur-md px-4 py-2.5 text-[12px] font-medium text-rose-400 shadow-lg animate-in slide-in-from-bottom-2 fade-in duration-200">
       {message}

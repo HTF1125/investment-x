@@ -39,6 +39,11 @@ logger = get_logger(__name__)
 # ── In-memory cache for parsed timeseries data ──
 # Key: timeseries_id (str)
 # Value: (updated_timestamp: datetime, parsed_series: pd.Series)
+#
+# threading.Lock is appropriate here: all access comes from sync ``def``
+# route handlers (run in FastAPI's default threadpool) or from
+# ``asyncio.to_thread()`` calls.  No coroutine ever touches the cache
+# directly, so the lock never blocks the event loop.
 _ts_cache: Dict[str, tuple] = {}
 _ts_cache_lock = threading.Lock()
 _TS_CACHE_MAX = 512  # max entries before eviction
@@ -46,7 +51,8 @@ _TS_CACHE_MAX = 512  # max entries before eviction
 
 def _cache_get(ts_id: str, updated: Optional[datetime]) -> Optional[pd.Series]:
     """Return cached Series if still valid, else None."""
-    entry = _ts_cache.get(str(ts_id))
+    with _ts_cache_lock:
+        entry = _ts_cache.get(str(ts_id))
     if entry is None:
         return None
     cached_updated, cached_series = entry
@@ -68,7 +74,8 @@ def _cache_put(ts_id: str, updated: Optional[datetime], series: pd.Series) -> No
 
 def _cache_invalidate(ts_id: str) -> None:
     """Remove a specific entry from cache."""
-    _ts_cache.pop(str(ts_id), None)
+    with _ts_cache_lock:
+        _ts_cache.pop(str(ts_id), None)
 
 # Re-export Base for convenience
 __all__ = [
@@ -562,85 +569,11 @@ class Timeseries(Base):
                 ts.parent_id = new_parent_id
 
     def _feed_to_parent(self, new_data):
-        """Feed data to parent timeseries."""
+        """Feed data to parent timeseries (opens a new session)."""
         from ix.db.conn import Session
 
-        parent = self._get_parent()
-        if parent is None:
-            return
-
-        import pandas as pd
-
         with Session() as session:
-            parent_ts = (
-                session.query(Timeseries).filter(Timeseries.id == parent.id).first()
-            )
-            if parent_ts is None:
-                return
-
-            data_record = parent_ts._get_or_create_data_record(session)
-            parent_data = (
-                data_record.data.copy() if data_record and data_record.data else {}
-            )
-
-            # Convert new_data to dict format with date strings
-            new_data_dict = {}
-            for k, v in new_data.to_dict().items():
-                if hasattr(k, "date"):
-                    date_str = str(k.date())
-                elif isinstance(k, str):
-                    date_str = k
-                else:
-                    date_str = str(pd.to_datetime(k).date())
-                new_data_dict[date_str] = float(v)
-
-            parent_data.update(new_data_dict)
-
-            # Clean invalid dates
-            parent_data_clean = {}
-            for k, v in parent_data.items():
-                try:
-                    pd.to_datetime(k)
-                    parent_data_clean[k] = v
-                except Exception:
-                    continue
-
-            data_record.data = parent_data_clean
-            data_record.updated = datetime.now()
-            if len(parent_data_clean) > 0:
-                dates = pd.to_datetime(list(parent_data_clean.keys()), errors="coerce")
-                valid_dates = dates[~pd.isna(dates)]
-                if len(valid_dates) > 0:
-                    parent_ts.start = valid_dates.min().date()
-                    parent_ts.end = valid_dates.max().date()
-                    parent_ts.num_data = len(parent_data_clean)
-
-                    # Compute latest date and value
-                    # Sort items by date to find the latest
-                    sorted_items = sorted(
-                        parent_data_clean.items(),
-                        key=lambda item: pd.to_datetime(item[0], errors="coerce"),
-                    )
-                    # Filter valid dates just in case
-                    sorted_items = [
-                        item
-                        for item in sorted_items
-                        if pd.notna(pd.to_datetime(item[0], errors="coerce"))
-                    ]
-
-                    if sorted_items:
-                        latest_item = sorted_items[-1]
-                        parent_ts.latest_value = float(latest_item[1])
-                    else:
-                        parent_ts.latest_value = None
-
-            else:
-                parent_ts.start = None
-                parent_ts.end = None
-                parent_ts.num_data = 0
-                parent_ts.latest_value = None
-            parent_ts.updated = datetime.now()
-            _cache_invalidate(str(parent_ts.id))
+            self._feed_to_parent_with_session(new_data, session)
 
     def reset(self) -> bool:
         """Reset timeseries data."""

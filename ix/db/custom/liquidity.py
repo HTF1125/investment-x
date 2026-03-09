@@ -115,6 +115,56 @@ def credit_impulse(freq: str = "ME") -> pd.Series:
     return impulse.dropna()
 
 
+def tga_drawdown() -> pd.Series:
+    """Treasury General Account drawdown rate (13-week change in TGA balance).
+
+    When TGA is being drawn down (negative change), it injects liquidity
+    into the financial system — bullish for risk assets. When TGA is being
+    refilled (positive change via T-bill issuance), it drains liquidity.
+
+    Returns negative values when TGA is being drawn down (liquidity injection)
+    and positive when being refilled (liquidity drain). Inverted in the
+    indicator definition so that drawdown = bullish signal.
+    """
+    tga = Series("WTREGEN").div(1_000_000)  # Convert to trillions USD
+    weekly = tga.resample("W-WED").last().ffill()
+    # 13-week change (quarterly pace of drawdown/refill)
+    drawdown = weekly.diff(13)
+    drawdown.name = "TGA Drawdown"
+    daily = drawdown.resample("B").ffill()
+    return daily.dropna()
+
+
+def treasury_net_issuance() -> pd.Series:
+    """Net Treasury issuance pressure: TGA change + debt change.
+
+    Combines TGA refilling (supply pressure) with public debt growth
+    to capture net fiscal flow impact on liquidity. Rising = more
+    supply pressure = bearish for liquidity.
+    """
+    tga = Series("WTREGEN").div(1_000_000)
+    debt = Series("GFDEBTN")  # Federal debt, quarterly
+    weekly_tga = tga.resample("W-WED").last().ffill()
+    tga_chg = weekly_tga.diff(13)
+
+    if debt.empty:
+        result = tga_chg
+    else:
+        debt_q = debt.resample("W-WED").last().ffill()
+        debt_chg = debt_q.pct_change(13).mul(100)
+        df = pd.concat({"tga": tga_chg, "debt": debt_chg}, axis=1).dropna()
+        # Standardize and combine (equal weight)
+        for col in df.columns:
+            m = df[col].rolling(52, min_periods=26).median()
+            mad = (df[col] - m).abs().rolling(52, min_periods=26).median() * 1.4826
+            df[col] = (df[col] - m) / mad.replace(0, float("nan"))
+        result = df.mean(axis=1)
+
+    result.name = "Treasury Net Issuance"
+    daily = result.resample("B").ffill()
+    return daily.dropna()
+
+
 def global_liquidity_yoy(freq: str = "ME") -> pd.Series:
     """Global central bank liquidity proxy: Fed + ECB + BOJ balance sheets YoY.
 

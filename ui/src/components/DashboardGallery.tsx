@@ -20,6 +20,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, apiFetchJson, getDirectApiBase } from '@/lib/api';
 import { registerIxCompletions } from '@/lib/monacoCompletions';
 import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import Chart from './Chart';
 import NavigatorShell from './NavigatorShell';
 import dynamic from 'next/dynamic';
@@ -163,6 +164,7 @@ const ChartCard = React.memo(function ChartCard({
         onBlur={handleRankSubmit}
         onKeyDown={(e) => e.key === 'Enter' && handleRankSubmit()}
         onClick={(e) => e.stopPropagation()}
+        aria-label={`Rank for ${chart.name || 'chart'}`}
         className={`w-5 bg-transparent focus:outline-none text-center text-[11px] font-mono tabular-nums shrink-0 appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-colors ${
           isModified ? 'text-amber-400' : 'text-muted-foreground/40 hover:text-muted-foreground/70'
         }`}
@@ -185,7 +187,7 @@ const ChartCard = React.memo(function ChartCard({
       </span>
     );
 
-  const cardClassName = `bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col group transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/25 hover:border-border/80 relative ${expanded ? 'h-full' : 'h-full min-h-[380px]'}`;
+  const cardClassName = `bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col group transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/25 hover:border-border/80 relative focus-within:ring-2 focus-within:ring-sky-500/30 ${expanded ? 'h-full' : 'h-full min-h-[380px]'}`;
 
   const [infoOpen, setInfoOpen] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
@@ -201,7 +203,7 @@ const ChartCard = React.memo(function ChartCard({
 
   // Grid View Content
   return (
-    <div className={cardClassName}>
+    <article className={cardClassName} aria-label={`Chart: ${chart.name || 'Untitled'}`}>
       {/* Card Header */}
       <div className="px-4 py-2.5 flex items-center justify-between gap-2 border-b border-border/40">
         {/* LEFT: rank + name */}
@@ -280,6 +282,8 @@ const ChartCard = React.memo(function ChartCard({
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); setInfoOpen(v => !v); }}
                 className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
                 title={chart.description || `by ${creatorLabel}`}
+                aria-label="Chart info"
+                aria-expanded={infoOpen}
               >
                 <Info className="w-3 h-3" />
               </button>
@@ -311,7 +315,15 @@ const ChartCard = React.memo(function ChartCard({
         </div>
       </div>
 
-      <div ref={cardRef} className={`flex flex-col flex-1 min-h-0${onClick ? ' cursor-pointer' : ''}`} onClick={onClick}>
+      <div
+        ref={cardRef}
+        className={`flex flex-col flex-1 min-h-0${onClick ? ' cursor-pointer' : ''}`}
+        onClick={onClick}
+        tabIndex={onClick ? 0 : undefined}
+        role={onClick ? 'button' : undefined}
+        aria-label={onClick ? `View ${chart.name || 'chart'}` : undefined}
+        onKeyDown={onClick ? (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      >
         {/* Chart Area — only render Plotly when in viewport */}
         <div className={`bg-background relative w-full p-3 ${expanded ? 'flex-1 min-h-0' : 'h-[290px] min-h-[290px]'}`}>
           {isInView ? (
@@ -352,10 +364,51 @@ const ChartCard = React.memo(function ChartCard({
           )}
         </div>
       </div>
-    </div>
+    </article>
   );
 });
 
+
+function DeleteConfirmInner({
+  deleteTarget,
+  onCancel,
+  onConfirm,
+}: {
+  deleteTarget: { id: string; name: string };
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const focusTrapRef = useFocusTrap(true, onCancel);
+  return (
+    <motion.div
+      ref={focusTrapRef}
+      className="w-full max-w-sm rounded-2xl border border-border/60 bg-popover shadow-2xl p-5"
+      initial={{ y: 16, scale: 0.97, opacity: 0 }}
+      animate={{ y: 0, scale: 1, opacity: 1 }}
+      exit={{ y: 10, scale: 0.98, opacity: 0 }}
+      onClick={(e: React.MouseEvent) => e.stopPropagation()}
+    >
+      <div id="delete-modal-title" className="text-sm font-semibold text-foreground mb-1">Delete Chart</div>
+      <div className="text-xs text-muted-foreground mb-4">
+        Delete <span className="text-rose-400 font-mono font-medium">{deleteTarget.name}</span>? This action cannot be undone.
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        <button
+          onClick={onCancel}
+          className="px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          className="px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/30 hover:bg-rose-500/25 text-rose-400 text-xs font-semibold transition-colors"
+        >
+          Delete
+        </button>
+      </div>
+    </motion.div>
+  );
+}
 
 interface DashboardGalleryProps {
   chartsByCategory: Record<string, ChartMeta[]>;
@@ -1287,11 +1340,13 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
+              aria-label="Search charts"
               className="w-full h-6 pl-6 pr-2 rounded border border-border/50 bg-background/50 text-[11px] outline-none focus:ring-1 focus:ring-sky-500/25 placeholder:text-muted-foreground/60"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-accent/30 text-muted-foreground/60"
               >
                 <X className="w-2 h-2" />
@@ -1353,7 +1408,10 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                           </span>
                         </div>
                         {chart.public && (
-                          <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-emerald-500/40'}`} />
+                          <>
+                            <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-emerald-500/40'}`} aria-hidden="true" />
+                            <span className="sr-only">Public</span>
+                          </>
                         )}
                       </button>
                     );
@@ -1384,6 +1442,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             onClick={() => handleOpenInStudio(null)}
             className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-colors"
             title="New chart"
+            aria-label="New chart"
           >
             <Plus className="w-3 h-3" />
           </button>
@@ -1408,6 +1467,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                   : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
               }`}
               title={`${label} mode`}
+              aria-label={`${label} mode`}
+              aria-pressed={layoutMode === mode}
             >
               {icon}
             </button>
@@ -1450,6 +1511,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                 : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
             }`}
             title={syncXAxis ? 'X-axis synced — click to disable' : 'Sync X-axis across charts'}
+            aria-label={syncXAxis ? 'Disable X-axis sync' : 'Sync X-axis across charts'}
+            aria-pressed={syncXAxis}
           >
             {syncXAxis ? <Link2 className="w-3 h-3" /> : <Link2Off className="w-3 h-3" />}
           </button>
@@ -1463,6 +1526,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
               disabled={isRefreshing}
               className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-colors"
               title="Refresh all charts"
+              aria-label="Refresh all charts"
             >
               <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
@@ -1474,6 +1538,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                 disabled={exporting}
                 className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-colors"
                 title="Export PDF"
+                aria-label="Export PDF"
               >
                 <FileText className={`w-3 h-3 ${exporting ? 'animate-pulse' : ''}`} />
               </button>
@@ -1482,6 +1547,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                 disabled={exportingHtml}
                 className="w-5 h-5 rounded flex items-center justify-center text-rose-400 hover:text-rose-300 hover:bg-rose-500/[0.08] disabled:opacity-40 transition-colors"
                 title="Export HTML"
+                aria-label="Export HTML"
               >
                 <FileCode className={`w-3 h-3 ${exportingHtml ? 'animate-pulse' : ''}`} />
               </button>
@@ -1504,11 +1570,12 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                 setQuickJumpId(filteredCharts[prev]?.id ?? '');
               }}
               disabled={filteredCharts.length <= 1}
+              aria-label="Previous chart"
               className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
-            <span className="text-xs font-medium text-foreground/80 flex-1 truncate text-center">
+            <span className="text-xs font-medium text-foreground/80 flex-1 truncate text-center" aria-live="polite">
               {filteredCharts[singleChartIdx]?.name ?? ''}
             </span>
             <button
@@ -1518,6 +1585,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                 setQuickJumpId(filteredCharts[next]?.id ?? '');
               }}
               disabled={filteredCharts.length <= 1}
+              aria-label="Next chart"
               className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
             >
               <ChevronRight className="w-3.5 h-3.5" />
@@ -1538,6 +1606,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                         onChange={e => setEditName(e.target.value)}
                         className="text-xs font-medium bg-transparent border-none outline-none text-foreground flex-1 min-w-0"
                         placeholder="Chart name"
+                        aria-label="Chart name"
                       />
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -1571,7 +1640,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
                   {/* Status bar */}
                   {(editError || editSuccess) && (
-                    <div className={`px-3 py-1 text-[11px] font-mono shrink-0 ${editError ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                    <div role="status" aria-live="polite" className={`px-3 py-1 text-[11px] font-mono shrink-0 ${editError ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
                       {editError || editSuccess}
                     </div>
                   )}
@@ -1621,11 +1690,13 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                           onChange={e => setEditTsSearch(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') setEditTsQuery(editTsSearch.trim()); }}
                           placeholder="Search timeseries… (Enter)"
+                          aria-label="Search timeseries"
                           className="w-full pl-7 pr-2 py-1 text-[11px] font-mono bg-transparent border border-border/50 rounded-md text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-border transition-colors"
                         />
                         {editTsSearch && (
                           <button
                             onClick={() => { setEditTsSearch(''); setEditTsQuery(''); }}
+                            aria-label="Clear timeseries search"
                             className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-foreground/[0.06] text-muted-foreground/40"
                           >
                             <X className="w-2.5 h-2.5" />
@@ -1807,9 +1878,11 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.2 }}
+            role="status"
+            aria-live="polite"
             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-4 py-2.5 bg-popover/95 backdrop-blur-md border border-amber-500/30 rounded-2xl shadow-2xl shadow-black/20"
           >
-            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
             <span className="text-[11px] font-mono text-amber-400 uppercase tracking-widest">Unsaved order</span>
             <div className="flex items-center gap-2 ml-1">
               <button
@@ -1831,7 +1904,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         )}
       </AnimatePresence>
 
-      {/* 🗑️ Delete Confirm Modal */}
+      {/* Delete Confirm Modal */}
       <AnimatePresence>
         {deleteTarget && (
           <motion.div
@@ -1840,33 +1913,15 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setDeleteTarget(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-modal-title"
           >
-            <motion.div
-              className="w-full max-w-sm rounded-2xl border border-border/60 bg-popover shadow-2xl p-5"
-              initial={{ y: 16, scale: 0.97, opacity: 0 }}
-              animate={{ y: 0, scale: 1, opacity: 1 }}
-              exit={{ y: 10, scale: 0.98, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="text-sm font-semibold text-foreground mb-1">Delete Chart</div>
-              <div className="text-xs text-muted-foreground mb-4">
-                Delete <span className="text-rose-400 font-mono font-medium">{deleteTarget.name}</span>? This action cannot be undone.
-              </div>
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setDeleteTarget(null)}
-                  className="px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDeleteChart}
-                  className="px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/30 hover:bg-rose-500/25 text-rose-400 text-xs font-semibold transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            </motion.div>
+            <DeleteConfirmInner
+              deleteTarget={deleteTarget}
+              onCancel={() => setDeleteTarget(null)}
+              onConfirm={confirmDeleteChart}
+            />
           </motion.div>
         )}
       </AnimatePresence>

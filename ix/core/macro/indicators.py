@@ -48,6 +48,8 @@ from ix.db.custom import (
     commodities_crb,
     # Liquidity cycle (long-term)
     fed_net_liquidity,
+    tga_drawdown,
+    treasury_net_issuance,
     m2_world_total_yoy,
     credit_impulse,
     global_liquidity_yoy,
@@ -154,6 +156,11 @@ LIQUIDITY_LOADERS = [
     ("FCI US", fci_us, False, False, False, 0, False),
     ("Fed Net Liquidity", fed_net_liquidity, False, True, False, 0, False),
     ("US 10Y Real", us_10y_real, False, True, True, 0, False),
+    # --- TGA / Fiscal flow indicators ---
+    # TGA Drawdown: inverted because positive change = TGA refilling = drains liquidity
+    ("TGA Drawdown", tga_drawdown, False, True, True, 0, False),
+    # Treasury Net Issuance: inverted because rising issuance = supply pressure = bearish
+    ("Treasury Issuance", treasury_net_issuance, False, True, True, 0, False),
     # --- Moderate signal indicators ---
     ("US 3M10Y", us_3m10y, False, True, False, 0, False),
     ("Policy Rate", policy_rate_level, False, False, True, 0, False),
@@ -231,6 +238,8 @@ INDICATOR_DESCRIPTIONS = {
     "CRB Index": "Broad commodity index level",
     "ISM Prices Paid": "Manufacturing input prices",
     "Fed Net Liquidity": "Fed balance sheet net of TGA+RRP",
+    "TGA Drawdown": "Treasury General Account 13-week change (inverted: drawdown = bullish)",
+    "Treasury Issuance": "Net Treasury supply pressure (inverted: low issuance = bullish)",
     "Global M2 YoY": "Global M2 money supply YoY growth",
     "FCI US": "US Financial Conditions (contrarian: tight conditions = bullish forward returns)",
     "US 3M10Y": "3M-10Y yield curve spread",

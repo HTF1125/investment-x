@@ -311,14 +311,26 @@ def get_link_preview(
         if youtube_preview:
             return youtube_preview
         return _fetch_generic_link_preview(value)
-    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+    except (TimeoutError, urllib.error.URLError) as exc:
+        if isinstance(exc, TimeoutError) or (isinstance(exc, urllib.error.URLError) and isinstance(getattr(exc, 'reason', None), TimeoutError)):
+            raise HTTPException(
+                status_code=400, detail="Link preview timed out"
+            ) from exc
         raise HTTPException(
-            status_code=400, detail=f"Unable to load link preview: {exc}"
+            status_code=400, detail="Could not reach URL"
+        ) from exc
+    except ConnectionError as exc:
+        raise HTTPException(
+            status_code=400, detail="Could not reach URL"
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail="Invalid URL format"
         ) from exc
     except Exception as exc:
         logger.warning("Unexpected error fetching link preview for %s: %s", value, exc)
         raise HTTPException(
-            status_code=400, detail="Unable to load link preview."
+            status_code=400, detail="Could not generate link preview"
         ) from exc
 
 
@@ -430,21 +442,23 @@ def get_note_image(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    note = (
+    notes = (
         db.query(InvestmentNote)
-        .filter(
-            InvestmentNote.user_id == str(current_user.id),
-            InvestmentNote.body.cast(String).contains(image_id),
-        )
-        .first()
+        .filter(InvestmentNote.user_id == str(current_user.id))
+        .all()
     )
 
-    if not note:
-        raise HTTPException(status_code=404, detail="Image not found.")
+    image_block = None
+    for note in notes:
+        image_block = next(
+            (b for b in (note.body or []) if b.get("type") == "image" and b.get("id") == image_id),
+            None,
+        )
+        if image_block:
+            break
 
-    image_block = next((b for b in note.body if b.get("id") == image_id), None)
     if not image_block or not image_block.get("data"):
-        raise HTTPException(status_code=404, detail="Image data not found.")
+        raise HTTPException(status_code=404, detail="Image not found.")
 
     image_bytes = base64.b64decode(image_block["data"])
     safe_name = (image_block.get("filename") or "note-image").replace('"', "")
@@ -465,14 +479,17 @@ def delete_note_image(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    note = (
+    notes = (
         db.query(InvestmentNote)
-        .filter(
-            InvestmentNote.user_id == str(current_user.id),
-            InvestmentNote.body.cast(String).contains(image_id),
-        )
-        .first()
+        .filter(InvestmentNote.user_id == str(current_user.id))
+        .all()
     )
+
+    note = None
+    for n in notes:
+        if any(b.get("type") == "image" and b.get("id") == image_id for b in (n.body or [])):
+            note = n
+            break
 
     if not note:
         raise HTTPException(status_code=404, detail="Image not found.")

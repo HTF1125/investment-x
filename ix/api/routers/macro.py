@@ -110,6 +110,30 @@ def get_backtest(target: str = "S&P 500", _user=Depends(get_current_user)):
         }
 
 
+@router.get("/macro/stress-test")
+def get_stress_test(target: str = "KOSPI", _user=Depends(get_current_user)):
+    """Compute stress test analysis for a target index.
+
+    Auto-detects historical crash events, computes forward returns at
+    standard horizons, and builds recovery curves.
+    """
+    if target not in TARGET_INDICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown target '{target}'. Available: {list(TARGET_INDICES.keys())}",
+        )
+    try:
+        from ix.core.stress_test import compute_stress_test
+
+        result = compute_stress_test(target)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception:
+        logger.exception(f"Stress test failed for {target}")
+        raise HTTPException(status_code=500, detail="Stress test computation failed")
+
+
 def _refresh_target(target_name: str) -> None:
     """Background worker to recompute macro outlook for a single target."""
     try:

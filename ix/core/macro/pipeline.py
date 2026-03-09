@@ -34,12 +34,14 @@ from ix.core.macro.indicators import (
 )
 from ix.core.macro.engine import (
     build_axis_composite,
+    build_adaptive_composite,
     compute_regime_probabilities,
     compute_transition_matrix,
     project_probabilities,
     compute_liquidity_cycle,
     compute_tactical_score,
     compute_allocation,
+    compute_vol_scaled_allocation,
     regime_forward_return_stats,
     liquidity_phase_forward_stats,
     tactical_bucket_forward_stats,
@@ -139,10 +141,23 @@ def compute_full_pipeline(
     inflation_norm, inflation_composite = build_axis_composite(
         inflation_raw, INFLATION_LOADERS, z_window
     )
-    liquidity_norm, liquidity_composite = build_axis_composite(
-        liquidity_raw, LIQUIDITY_LOADERS, z_window,
-        weights=LIQUIDITY_WEIGHTS, ema_halflife=3,
+
+    # Liquidity: use adaptive IC-weighted composite
+    # Falls back to fixed LIQUIDITY_WEIGHTS if rolling IC has insufficient data
+    liquidity_norm, liquidity_composite, adaptive_liq_weights, liq_ic_history = (
+        build_adaptive_composite(
+            liquidity_raw, LIQUIDITY_LOADERS, target_px, z_window,
+            ema_halflife=3, fwd_weeks=fwd_weeks,
+        )
     )
+    # If adaptive weights are empty (cold start), fall back to fixed weights
+    if not adaptive_liq_weights:
+        liquidity_norm, liquidity_composite = build_axis_composite(
+            liquidity_raw, LIQUIDITY_LOADERS, z_window,
+            weights=LIQUIDITY_WEIGHTS, ema_halflife=3,
+        )
+        adaptive_liq_weights = dict(LIQUIDITY_WEIGHTS)
+
     tactical_norm, tactical_composite = build_axis_composite(
         tactical_raw, TACTICAL_LOADERS, z_window
     )
@@ -194,6 +209,11 @@ def compute_full_pipeline(
         regime_returns=empirical_returns,
     )
 
+    # Vol-scaled allocation: scales tilts inversely to realized volatility
+    alloc_vol_scaled, realized_vol, vol_scalar = compute_vol_scaled_allocation(
+        alloc, target_px, base_weight=0.50, vol_window=26,
+    )
+
     # Component allocations (single-signal backtests)
     alloc_regime = compute_allocation(
         regime_probs, liquidity_composite, tac_score,
@@ -228,6 +248,10 @@ def compute_full_pipeline(
     # Binary strategy backtest
     eq_binary, w_binary, st_binary = run_backtest(
         binary_alloc, target_px, target_name, tc_bps
+    )
+    # Vol-scaled strategy backtest
+    eq_volscaled, w_volscaled, st_volscaled = run_backtest(
+        alloc_vol_scaled, target_px, target_name, tc_bps
     )
 
     # Phase and tactical forward stats
@@ -273,6 +297,15 @@ def compute_full_pipeline(
         "st_binary": st_binary,
         "w_binary": w_binary,
         "empirical_returns": empirical_returns,
+        # Adaptive IC weights & vol scaling
+        "adaptive_liq_weights": adaptive_liq_weights,
+        "liq_ic_history": liq_ic_history,
+        "alloc_vol_scaled": alloc_vol_scaled,
+        "realized_vol": realized_vol,
+        "vol_scalar": vol_scalar,
+        "eq_volscaled": eq_volscaled,
+        "st_volscaled": st_volscaled,
+        "w_volscaled": w_volscaled,
     }
 
 
@@ -463,6 +496,21 @@ def serialize_snapshot(results: dict, target_name: str) -> dict:
         "empirical_regime_returns": {
             r: _safe_float(v) for r, v in empirical_returns.items()
         } if empirical_returns else {},
+        "adaptive_liq_weights": {
+            k: _safe_float(v)
+            for k, v in results.get("adaptive_liq_weights", {}).items()
+        },
+        "vol_scaling": {
+            "realized_vol": _safe_float(
+                results["realized_vol"].iloc[-1]
+            ) if not results.get("realized_vol", pd.Series(dtype=float)).empty else None,
+            "vol_scalar": _safe_float(
+                results["vol_scalar"].iloc[-1]
+            ) if not results.get("vol_scalar", pd.Series(dtype=float)).empty else None,
+            "vol_scaled_allocation": _safe_float(
+                results["alloc_vol_scaled"].iloc[-1]
+            ) if not results.get("alloc_vol_scaled", pd.Series(dtype=float)).empty else None,
+        },
     }
 
 
@@ -483,6 +531,9 @@ def serialize_timeseries(results: dict) -> dict:
     trend_signal = results.get("trend_signal", pd.Series(dtype=float))
     sma_40w = results.get("sma_40w", pd.Series(dtype=float))
     binary_alloc = results.get("binary_alloc", pd.Series(dtype=float))
+    alloc_vol_scaled = results.get("alloc_vol_scaled", pd.Series(dtype=float))
+    realized_vol = results.get("realized_vol", pd.Series(dtype=float))
+    vol_scalar = results.get("vol_scalar", pd.Series(dtype=float))
 
     if regime_probs.empty:
         return {"dates": [], "target_px": []}
@@ -511,6 +562,9 @@ def serialize_timeseries(results: dict) -> dict:
         "trend": _series_to_list(trend_signal.reindex(dates).ffill()) if not trend_signal.empty else [],
         "sma_40w": _series_to_list(sma_40w.reindex(dates).ffill()) if not sma_40w.empty else [],
         "binary_allocation": _series_to_list(binary_alloc.reindex(dates).ffill()) if not binary_alloc.empty else [],
+        "allocation_vol_scaled": _series_to_list(alloc_vol_scaled.reindex(dates).ffill()) if not alloc_vol_scaled.empty else [],
+        "realized_vol": _series_to_list(realized_vol.reindex(dates).ffill()) if not realized_vol.empty else [],
+        "vol_scalar": _series_to_list(vol_scalar.reindex(dates).ffill()) if not vol_scalar.empty else [],
     }
 
 
@@ -586,6 +640,7 @@ def serialize_backtest(results: dict, target_name: str, tc_bps: float) -> dict:
         "liquidity_only": _serialize_component_bt(results, "liq", equity_df),
         "tactical_only": _serialize_component_bt(results, "tac", equity_df),
         "binary_strategy": _serialize_component_bt(results, "binary", equity_df),
+        "vol_scaled": _serialize_component_bt(results, "volscaled", equity_df),
     }
 
 
@@ -658,7 +713,7 @@ def compute_all_targets() -> None:
     from ix.misc import get_logger
 
     logger = get_logger(__name__)
-    DEFAULT_TARGETS = ["S&P 500", "KOSPI", "Nasdaq 100", "KOSDAQ"]
+    DEFAULT_TARGETS = list(TARGET_INDICES.keys())
     for name in DEFAULT_TARGETS:
         try:
             logger.info(f"Computing macro outlook for {name}...")

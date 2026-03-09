@@ -66,10 +66,10 @@ class Connection:
                     )
 
                 # Ensure we're using psycopg2 driver
-                if db_url.startswith("postgresql://"):
-                    db_url = db_url.replace(
-                        "postgresql://", "postgresql+psycopg2://", 1
-                    )
+                parsed_url = urlparse(db_url)
+                if parsed_url.scheme == "postgresql":
+                    parsed_url = parsed_url._replace(scheme="postgresql+psycopg2")
+                    db_url = urlunparse(parsed_url)
 
                 # Create SQLAlchemy engine with connection pooling and timeout
                 # connect_args with connect_timeout prevents hanging on connection attempts

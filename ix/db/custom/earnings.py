@@ -33,6 +33,16 @@ EPS_SECTOR_CODES = {
 
 def regional_eps_momentum(periods: int = 1) -> pd.DataFrame:
     """MoM (or period-over-period) % change in forward EPS by region."""
+    EPS_REGION_CODES = {
+        "World": "FR0000R1:EPS_NTMA",
+        "North America": "FR0000R4:EPS_NTMA",
+        "Europe": "FR0000R3:EPS_NTMA",
+        "Asia Pacific": "FR0000R2:EPS_NTMA",
+        "Emerging": "FR0000R5:EPS_NTMA",
+        "Developed": "FR0000R6:EPS_NTMA",
+        "Developed x US": "FR0000R7:EPS_NTMA",
+    }
+        
     df = pd.DataFrame(
         {name: Series(code) for name, code in EPS_REGION_CODES.items()}
     ).dropna(how="all")

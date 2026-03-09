@@ -2,11 +2,12 @@
 
 import React from 'react';
 import dynamic from 'next/dynamic';
+import type Plotly from 'plotly.js';
 import { Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
-import { applyChartTheme } from '@/lib/chartTheme';
+import { applyChartTheme, type PlotlyFigure } from '@/lib/chartTheme';
 
 const ChartSkeleton = () => (
   <div role="status" aria-busy="true" aria-label="Loading chart" className="w-full h-full p-6 flex flex-col gap-4 bg-background/80 rounded-xl animate-pulse overflow-hidden relative min-h-[290px]">
@@ -45,28 +46,30 @@ const Plot = dynamic(() => import('react-plotly.js'), {
 import { motion, AnimatePresence } from 'framer-motion';
 
 export interface HoverPoint {
-  x: any;
-  y: any;
-  z?: any;
-  value?: any;
-  text?: any;
+  x: string | number | Date | null | undefined;
+  y: string | number | Date | null | undefined;
+  z?: unknown;
+  value?: unknown;
+  text?: string | string[];
   name: string;
 }
 
 interface ChartProps {
   id: string;
-  initialFigure?: any;
+  initialFigure?: PlotlyFigure;
   copySignal?: number;
   onHoverData?: (points: HoverPoint[] | null) => void;
-  syncXRange?: [any, any] | null;
-  onXRangeChange?: (range: [any, any] | null) => void;
+  syncXRange?: [string | number, string | number] | null;
+  onXRangeChange?: (range: [string | number, string | number] | null) => void;
   /** Enable mouse-wheel zoom. Default false to prevent jitter on scrollable pages. */
   scrollZoom?: boolean;
   /** When false, disables zoom/pan/modebar — view-only mode for grid cards. Default true. */
   interactive?: boolean;
+  /** Accessible label describing the chart content for screen readers. */
+  ariaLabel?: string;
 }
 
-export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, syncXRange, onXRangeChange, scrollZoom = false, interactive = true }: ChartProps) {
+export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, syncXRange, onXRangeChange, scrollZoom = false, interactive = true, ariaLabel }: ChartProps) {
   const { theme } = useTheme();
 
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
@@ -78,7 +81,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
   const graphDivRef = React.useRef<HTMLElement | null>(null);
 
   const safelyThemeFigure = React.useCallback(
-    (figure: any) => {
+    (figure: PlotlyFigure) => {
       try {
         return applyChartTheme(figure, theme, { transparentBackground: true });
       } catch {
@@ -166,10 +169,10 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
       import('plotly.js-dist-min')
         .then(({ default: Plotly }) => {
           if (gd && gd.isConnected && gd.clientHeight > 0 && gd.clientWidth > 0) {
-            (Plotly as any).Plots.resize(gd);
+            (Plotly as unknown as { Plots: { resize: (gd: HTMLElement) => void } }).Plots.resize(gd);
           }
         })
-        .catch(() => {});
+        .catch((err) => console.warn('[Chart] resize failed:', err));
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -180,7 +183,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
     setCopyState('copying');
     try {
         const Plotly = (await import('plotly.js-dist-min')).default;
-        const url = await Plotly.toImage(graphDiv as any, { format: 'png', width: 1200, height: 800, scale: 2 });
+        const url = await Plotly.toImage(graphDiv as unknown as Plotly.Root, { format: 'png', width: 1200, height: 800, scale: 2 });
 
         const res = await fetch(url);
         const blob = await res.blob();
@@ -216,23 +219,23 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
     displayModeBar: interactive ? ('hover' as const) : (false as const),
     displaylogo: false,
     scrollZoom: interactive ? scrollZoom : false,
-    modeBarButtonsToRemove: ['select2d', 'lasso2d', 'sendDataToCloud'] as any[],
+    modeBarButtonsToRemove: ['select2d', 'lasso2d', 'sendDataToCloud'] as Plotly.ModeBarDefaultButtons[],
   }), [scrollZoom, interactive]);
 
   const plotStyle = React.useMemo(() => ({ width: '100%', height: '100%' }), []);
 
   const handleInitialized = React.useCallback(
-    (_figure: any, gd: HTMLElement) => setGraphDiv(gd),
+    (_figure: Record<string, unknown>, gd: HTMLElement) => setGraphDiv(gd),
     []
   );
 
   const handleError = React.useCallback(
-    (err: any) => setPlotRenderError(err?.message || 'Chart render failed.'),
+    (err: Error | { message?: string }) => setPlotRenderError(('message' in err ? err.message : undefined) || 'Chart render failed.'),
     []
   );
 
   const handleHover = React.useCallback(
-    (data: any) => onHoverData?.(data.points?.map((p: any) => ({ x: p.x, y: p.y, z: p.z, value: p.value, text: p.text, name: p.data?.name || '' })) ?? null),
+    (data: Plotly.PlotHoverEvent) => onHoverData?.(data.points?.map((p) => ({ x: p.x, y: p.y, z: (p as unknown as Record<string, unknown>).z, value: (p as unknown as Record<string, unknown>).value, text: p.text, name: (p as unknown as { data?: { name?: string } }).data?.name || '' })) ?? null),
     [onHoverData]
   );
 
@@ -242,10 +245,10 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
   );
 
   const handleRelayout = React.useCallback(
-    (update: any) => {
+    (update: Partial<Plotly.Layout> & Record<string, unknown>) => {
       if (!onXRangeChange) return;
       if (update['xaxis.range[0]'] !== undefined) {
-        onXRangeChange([update['xaxis.range[0]'], update['xaxis.range[1]']]);
+        onXRangeChange([update['xaxis.range[0]'] as string | number, update['xaxis.range[1]'] as string | number]);
       } else if (update['xaxis.autorange'] === true) {
         onXRangeChange(null);
       }
@@ -253,16 +256,20 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
     [onXRangeChange]
   );
 
+  // Derive accessible label from figure title or explicit prop
+  const chartTitle = figure?.layout?.title?.text || figure?.layout?.title;
+  const effectiveAriaLabel = ariaLabel || (typeof chartTitle === 'string' ? `Chart: ${chartTitle}` : `Chart ${id}`);
+
   if (!isVisible) {
     return (
-      <div ref={containerRef} className="h-[290px] w-full">
+      <div ref={containerRef} className="h-[290px] w-full" role="img" aria-label={effectiveAriaLabel}>
         <ChartSkeleton />
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full min-h-[290px] relative group flex flex-col">
+    <div ref={containerRef} className="w-full h-full min-h-[290px] relative group flex flex-col" role="img" aria-label={effectiveAriaLabel}>
       <AnimatePresence mode="wait">
         {isLoading || !figure ? (
           <motion.div
@@ -290,14 +297,14 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
                 layout={plotLayout}
                 config={plotConfig}
                 style={plotStyle}
-                onInitialized={handleInitialized as any}
+                onInitialized={handleInitialized as (figure: Record<string, unknown>, gd: HTMLElement) => void}
                 onError={handleError}
                 onHover={handleHover}
                 onUnhover={handleUnhover}
                 onRelayout={handleRelayout}
               />
             ) : (
-              <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-4 text-center">
+              <div role="alert" className="h-full w-full flex flex-col items-center justify-center gap-2 p-4 text-center">
                 <div className="text-xs text-rose-400 font-semibold">Chart Render Error</div>
                 <div className="text-[11px] text-muted-foreground">{plotRenderError}</div>
                 <button
@@ -317,7 +324,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
       </AnimatePresence>
 
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-rose-500/5 rounded-xl border border-rose-500/10 text-rose-500 text-xs font-mono">
+        <div role="alert" className="absolute inset-0 flex items-center justify-center bg-rose-500/5 rounded-xl border border-rose-500/10 text-rose-500 text-xs font-mono">
           EXECUTION_ERROR: {id}
         </div>
       )}

@@ -1,10 +1,13 @@
 'use client';
 
+import { Suspense } from 'react';
 import AppShell from '@/components/AppShell';
 import NavigatorShell from '@/components/NavigatorShell';
 import NewsFeed from '@/components/NewsFeed';
 import TelegramFeed from '@/components/TelegramFeed';
 import MacroBriefFeed from '@/components/MacroBriefFeed';
+import AuthGuard from '@/components/AuthGuard';
+import PageSkeleton from '@/components/PageSkeleton';
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch } from '@/lib/api';
 import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
@@ -24,6 +27,16 @@ const TABS: { id: IntelTab; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function IntelPage() {
+  return (
+    <AuthGuard>
+      <Suspense fallback={<AppShell hideFooter><PageSkeleton label="Loading intel" /></AppShell>}>
+        <IntelPageContent />
+      </Suspense>
+    </AuthGuard>
+  );
+}
+
+function IntelPageContent() {
   const { user } = useAuth();
   const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const { sidebarOpen, toggleSidebar } = useResponsiveSidebar();
@@ -83,8 +96,10 @@ export default function IntelPage() {
     setSyncing(true);
     try {
       const res = await apiFetch(endpoint, { method: 'POST' });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.detail || `${label} failed`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `${label} failed`);
+      }
       queryClient.invalidateQueries({ queryKey: ['task-processes'] });
     } catch (err: any) {
       flash(err.message || `${label} failed`, 'error');
