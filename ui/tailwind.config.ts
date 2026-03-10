@@ -9,6 +9,11 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['var(--font-body)', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+        display: ['var(--font-body)', 'system-ui', '-apple-system', 'sans-serif'],
+      },
       colors: {
         background: 'rgb(var(--background))',
         foreground: 'rgb(var(--foreground))',
@@ -43,6 +48,7 @@ const config: Config = {
         border: 'rgb(var(--border))',
         input: 'rgb(var(--input))',
         ring: 'rgb(var(--ring))',
+        surface: 'rgb(var(--surface))',
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -59,5 +65,3 @@ const config: Config = {
   plugins: [],
 };
 export default config;
-
- 

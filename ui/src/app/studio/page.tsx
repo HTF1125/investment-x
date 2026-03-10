@@ -22,7 +22,7 @@ function StudioContent() {
 export default function StudioPage() {
   return (
     <AppShell hideFooter>
-      <div className="h-[calc(100vh-40px)] min-h-0 overflow-hidden">
+      <div className="h-[calc(100vh-48px)] min-h-0 overflow-hidden">
         <Suspense
           fallback={
             <div className="flex items-center justify-center h-full">

@@ -62,7 +62,7 @@ export default function NavigatorShell({
     if (sidebarOpenWidthClassName.includes('[250px]')) return 250;
     return 200;
   });
-  
+
   const isDraggingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -90,20 +90,20 @@ export default function NavigatorShell({
   }, [sidebarWidth]);
 
   return (
-    <div className={`h-[calc(100vh-40px)] flex overflow-hidden ${shellClassName}`}>
+    <div className={`h-[calc(100vh-48px)] flex overflow-hidden ${shellClassName}`}>
       {/* ── Sidebar ── */}
       <aside
-        className={`relative shrink-0 overflow-visible border-r border-border/50 bg-card/20 flex flex-col ${sidebarClassName}`}
-        style={{ 
-          width: sidebarOpen ? sidebarWidth : 0, 
+        className={`relative shrink-0 overflow-visible border-r border-border/40 bg-card/20 flex flex-col ${sidebarClassName}`}
+        style={{
+          width: sidebarOpen ? sidebarWidth : 0,
           transition: isDragging ? 'none' : 'width 0.2s',
-          opacity: sidebarOpen ? 1 : 0 
+          opacity: sidebarOpen ? 1 : 0
         }}
       >
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col w-full h-full">
         {/* Header */}
-        <div className={`h-8 px-2.5 border-b border-border/50 flex items-center justify-between shrink-0 ${sidebarHeaderClassName}`}>
-          <div className="text-[11px] font-semibold tracking-wide flex items-center gap-1.5 text-muted-foreground">
+        <div className={`h-9 px-2.5 border-b border-border/40 flex items-center justify-between shrink-0 ${sidebarHeaderClassName}`}>
+          <div className="text-[11px] font-medium tracking-wide flex items-center gap-1.5 text-muted-foreground">
             {sidebarIcon}
             {sidebarLabel}
           </div>
@@ -118,7 +118,7 @@ export default function NavigatorShell({
         {/* Resize Handle */}
         {sidebarOpen && (
           <div
-            className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-[50] group flex items-center justify-center hover:bg-sky-500/10 active:bg-sky-500/20"
+            className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-[50] group flex items-center justify-center hover:bg-primary/10 active:bg-primary/20"
             onMouseDown={(e) => {
               e.preventDefault();
               isDraggingRef.current = true;
@@ -126,7 +126,7 @@ export default function NavigatorShell({
               document.body.style.cursor = 'col-resize';
             }}
           >
-            <div className={`w-[2px] h-8 rounded-full transition-colors ${isDragging ? 'bg-sky-500' : 'bg-transparent group-hover:bg-border/80'}`} />
+            <div className={`w-[2px] h-8 rounded-full transition-colors ${isDragging ? 'bg-primary' : 'bg-transparent group-hover:bg-border/60'}`} />
           </div>
         )}
       </aside>
@@ -134,11 +134,11 @@ export default function NavigatorShell({
       {/* ── Main area ── */}
       <section className={`min-h-0 flex-1 flex flex-col bg-background overflow-hidden ${mainSectionClassName}`}>
         {/* Top bar */}
-        <div className={`h-8 px-2.5 border-b border-border/50 flex items-center justify-between gap-2 shrink-0 ${topBarClassName}`}>
+        <div className={`h-9 px-2.5 border-b border-border/40 flex items-center justify-between gap-2 shrink-0 ${topBarClassName}`}>
           <div className="shrink-0 flex items-center gap-1.5">
             <button
               onClick={onSidebarToggle}
-              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-colors"
+              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
               title={sidebarOpen ? 'Collapse sidebar' : 'Open sidebar'}
             >
               {sidebarOpen

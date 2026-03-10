@@ -42,10 +42,11 @@ function loadPdfJs(): Promise<any> {
 }
 
 interface Props {
-  src: string;
+  pdfUrl: string;
+  date?: string;
 }
 
-export default function SlideDeckViewer({ src }: Props) {
+export default function SlideDeckViewer({ pdfUrl, date }: Props) {
   const [pageImages, setPageImages] = useState<string[]>([]);
   const [page, setPage] = useState(0);
   const [direction, setDirection] = useState(0);
@@ -72,7 +73,7 @@ export default function SlideDeckViewer({ src }: Props) {
         if (cancelled) return;
 
         setProgress('Fetching slides...');
-        const res = await apiFetch(src, { timeoutMs: 60000 });
+        const res = await apiFetch(pdfUrl, { timeoutMs: 60000 });
         if (!res.ok) throw new Error(`Failed to load slides (${res.status})`);
         const data = await res.arrayBuffer();
         if (cancelled) return;
@@ -108,7 +109,7 @@ export default function SlideDeckViewer({ src }: Props) {
     })();
 
     return () => { cancelled = true; };
-  }, [src]);
+  }, [pdfUrl]);
 
   const goTo = useCallback(
     (p: number) => {
@@ -168,7 +169,7 @@ export default function SlideDeckViewer({ src }: Props) {
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      <div className="overflow-hidden bg-foreground/[0.02]">
+      <div className="overflow-hidden bg-primary/[0.03]">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.img
             key={page}
@@ -217,8 +218,8 @@ export default function SlideDeckViewer({ src }: Props) {
                   onClick={() => goTo(i)}
                   className={`rounded-full transition-all ${
                     page === i
-                      ? 'w-5 h-1.5 bg-foreground/70'
-                      : 'w-1.5 h-1.5 bg-foreground/15 hover:bg-foreground/30'
+                      ? 'w-5 h-1.5 bg-primary/70'
+                      : 'w-1.5 h-1.5 bg-primary/15 hover:bg-primary/30'
                   }`}
                   aria-label={`Go to slide ${i + 1}`}
                 />

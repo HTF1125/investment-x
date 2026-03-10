@@ -1,25 +1,21 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
-import DashboardGallery from '@/components/DashboardGallery';
+import DashboardWorkspace from '@/components/dashboard/DashboardWorkspace';
 import AppShell from '@/components/AppShell';
 import { RefreshCw, WifiOff, Activity } from 'lucide-react';
 
-const INITIAL_DASHBOARD_FIGURE_BATCH_SIZE = 8;
+const INITIAL_DASHBOARD_FIGURE_BATCH_SIZE = 9;
 
 interface DashboardFigureBatchResponse {
   charts: Record<string, { figure?: any; chart_style?: string | null }>;
 }
 
 export default function DashboardContainer({ initialData }: { initialData?: any }) {
-  const router = useRouter();
-  const { token, user } = useAuth();
-  const role = String(user?.role || '').toLowerCase();
-  const canUseStudio = !!user && (role === 'owner' || (role !== 'admin' && !user.is_admin && role === 'general'));
+  const { token } = useAuth();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard-summary'],
@@ -84,28 +80,12 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     );
   }, [data, initialFigureQuery.data]);
 
-  // Prefetch the dedicated studio route during idle time for fast first navigation.
-  const preloadedStudioRoute = useRef(false);
-  useEffect(() => {
-    if (!canUseStudio || preloadedStudioRoute.current) return;
-    preloadedStudioRoute.current = true;
-
-    const preloadStudioRoute = () => {
-      router.prefetch('/studio');
-    };
-
-    if (typeof requestIdleCallback !== 'undefined') {
-      requestIdleCallback(preloadStudioRoute, { timeout: 3000 });
-    } else {
-      setTimeout(preloadStudioRoute, 1000);
-    }
-  }, [canUseStudio, router]);
 
   if (isError) {
     return (
       <AppShell>
         <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-5 px-4">
-          <div className="w-14 h-14 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
+          <div className="w-14 h-14 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
             <WifiOff className="w-6 h-6 text-rose-400" />
           </div>
           <div className="text-center space-y-1">
@@ -147,7 +127,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
             {!token && (
               <a
                 href="/login"
-                className="mt-2 px-5 py-2 border border-border/50 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                className="mt-2 px-5 py-2 border border-border/50 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] transition-all"
               >
                 Return to Login
               </a>
@@ -161,7 +141,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     return (
         <AppShell>
           <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-5 animate-in fade-in">
-              <div className="w-14 h-14 rounded-xl bg-muted/30 border border-border/60 flex items-center justify-center">
+              <div className="w-14 h-14 rounded-lg bg-muted/30 border border-border/50 flex items-center justify-center">
                 <Activity className="w-6 h-6 text-muted-foreground/40" />
               </div>
               <div className="text-center space-y-1">
@@ -170,7 +150,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
               </div>
               <button
                 onClick={() => refetch()}
-                className="px-5 py-2 border border-border/50 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                className="px-5 py-2 border border-border/50 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] transition-all"
               >
                 Retry
               </button>
@@ -182,7 +162,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
   return (
       <AppShell hideFooter>
       {hydratedChartsByCategory ? (
-        <DashboardGallery
+        <DashboardWorkspace
           chartsByCategory={hydratedChartsByCategory}
         />
       ) : (

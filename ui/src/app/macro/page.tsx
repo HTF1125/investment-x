@@ -71,16 +71,16 @@ export default function MacroPage() {
 
   return (
     <AppShell>
-      <div className="max-w-[1600px] mx-auto px-3 sm:px-4 lg:px-6 py-3">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-5 lg:px-6 py-4">
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-3">
-          <h1 className="text-[16px] font-semibold text-foreground tracking-tight">Macro Outlook</h1>
-          <div className="flex items-center gap-2 flex-wrap">
+        {/* Combined tab bar: selector | tabs | status pills */}
+        <div className="border-b border-border/25 mb-3">
+          <div className="flex items-center gap-3 -mb-px">
+            {/* Target selector */}
             <select
               value={selectedTarget}
               onChange={(e) => setSelectedTarget(e.target.value)}
-              className="border border-border/50 rounded-lg px-2.5 py-1 text-[11px] focus:outline-none focus:border-sky-500/40 text-foreground cursor-pointer"
+              className="border border-border/40 rounded-md px-2.5 py-1.5 text-[11px] font-medium focus:outline-none focus:border-primary/40 text-foreground cursor-pointer shrink-0"
               style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
             >
               {(targetsQuery.data?.targets ?? []).map(t => (
@@ -88,51 +88,47 @@ export default function MacroPage() {
               ))}
             </select>
 
-            {snapshot && (
-              <>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border"
-                  style={{
-                    backgroundColor: (REGIME_COLORS[snapshot.current.regime] ?? '#888') + '18',
-                    borderColor: (REGIME_COLORS[snapshot.current.regime] ?? '#888') + '40',
-                    color: REGIME_COLORS[snapshot.current.regime] ?? '#888',
-                  }}>
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: REGIME_COLORS[snapshot.current.regime] }} />
-                  {snapshot.current.regime}
-                </span>
-                {snapshot.current.trend_bullish != null && (
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
-                    snapshot.current.trend_bullish
-                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500'
-                      : 'bg-rose-500/10 border-rose-500/40 text-rose-500'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${snapshot.current.trend_bullish ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                    {snapshot.current.trend_bullish ? 'Uptrend' : 'Downtrend'}
+            {/* Tabs */}
+            <div className="flex gap-0.5 overflow-x-auto no-scrollbar flex-1">
+              {TABS.map(tab => (
+                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                  className={`tab-link ${activeTab === tab.key ? 'active' : ''}`}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Status pills */}
+            <div className="flex items-center gap-2 shrink-0 pb-2">
+              {snapshot && (
+                <>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold border"
+                    style={{
+                      backgroundColor: (REGIME_COLORS[snapshot.current.regime] ?? '#888') + '14',
+                      borderColor: (REGIME_COLORS[snapshot.current.regime] ?? '#888') + '30',
+                      color: REGIME_COLORS[snapshot.current.regime] ?? '#888',
+                    }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: REGIME_COLORS[snapshot.current.regime] }} />
+                    {snapshot.current.regime}
                   </span>
-                )}
-              </>
-            )}
-
-            {outlookQuery.data?.computed_at && (
-              <span className="text-[9px] font-mono text-muted-foreground/50">
-                {new Date(outlookQuery.data.computed_at).toLocaleString()}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Tab navigation */}
-        <div className="border-b border-border/40 mb-3">
-          <div className="flex gap-0.5 overflow-x-auto no-scrollbar -mb-px">
-            {TABS.map(tab => (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                className={`whitespace-nowrap px-2.5 py-1.5 text-[11px] font-medium border-b-2 transition-all ${
-                  activeTab === tab.key
-                    ? 'text-foreground border-sky-500'
-                    : 'text-muted-foreground border-transparent hover:text-foreground hover:border-foreground/20'
-                }`}>
-                {tab.label}
-              </button>
-            ))}
+                  {snapshot.current.trend_bullish != null && (
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                      snapshot.current.trend_bullish
+                        ? 'bg-emerald-500/8 border-emerald-500/30 text-emerald-500'
+                        : 'bg-rose-500/8 border-rose-500/30 text-rose-500'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${snapshot.current.trend_bullish ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      {snapshot.current.trend_bullish ? 'Uptrend' : 'Downtrend'}
+                    </span>
+                  )}
+                </>
+              )}
+              {outlookQuery.data?.computed_at && (
+                <span className="text-[9px] font-mono text-muted-foreground/40">
+                  {new Date(outlookQuery.data.computed_at).toLocaleString()}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

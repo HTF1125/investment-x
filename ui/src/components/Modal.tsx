@@ -20,14 +20,14 @@ export default function Modal({ open, onClose, title, children, maxWidth = 'max-
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined}>
-      <div className="absolute inset-0 bg-foreground/40 dark:bg-black/70 backdrop-blur-md" onClick={onClose} />
-      <div ref={focusTrapRef} className={`relative w-full ${maxWidth} overflow-hidden rounded-xl border border-border/60 bg-background shadow-2xl animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl`}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div ref={focusTrapRef} className={`relative w-full ${maxWidth} overflow-hidden rounded-xl border border-border/50 bg-background shadow-2xl animate-in fade-in zoom-in-95 duration-150`}>
         {title && (
-          <div className="flex items-center justify-between border-b border-border/50 px-4 py-3 bg-foreground/[0.02]">
+          <div className="flex items-center justify-between border-b border-border/40 px-5 py-3.5 bg-card/50">
             <h3 id={titleId} className="text-[13px] font-semibold tracking-tight text-foreground/90">{title}</h3>
             <button
               onClick={onClose}
-              className="rounded-md p-1.5 text-muted-foreground/60 hover:bg-foreground/10 hover:text-foreground transition-colors"
+              className="rounded-[var(--radius)] p-1.5 text-muted-foreground/60 hover:bg-primary/10 hover:text-primary transition-colors"
               aria-label="Close"
             >
               <X className="w-3.5 h-3.5" />

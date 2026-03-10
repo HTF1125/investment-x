@@ -10,7 +10,7 @@ const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
   loading: () => (
     <div className="h-full w-full flex items-center justify-center bg-background/50">
-      <Loader2 className="w-5 h-5 animate-spin text-sky-500/50" />
+      <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
     </div>
   ),
 }) as any;
@@ -19,7 +19,7 @@ export function LoadingSpinner({ label }: { label?: string }) {
   return (
     <div className="flex items-center justify-center py-10">
       <div className="flex flex-col items-center gap-2">
-        <Loader2 className="w-5 h-5 animate-spin text-sky-500/50" />
+        <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
         <span className="text-[10px] text-muted-foreground/50 tracking-widest uppercase">{label ?? 'Loading'}</span>
       </div>
     </div>
@@ -41,7 +41,7 @@ export function InfoTooltip({ text }: { text: string }) {
   return (
     <span className="relative inline-flex group/tip ml-1 cursor-help align-middle">
       <Info className="w-3 h-3 text-muted-foreground/30 group-hover/tip:text-muted-foreground/60 transition-colors" />
-      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 text-[10px] leading-relaxed text-foreground bg-background border border-border/60 rounded-lg shadow-lg opacity-0 group-hover/tip:opacity-100 transition-opacity pointer-events-none w-[240px] z-50">
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 text-[10px] leading-relaxed text-foreground bg-background border border-border/50 rounded-lg shadow-lg opacity-0 group-hover/tip:opacity-100 transition-opacity pointer-events-none w-[240px] z-50">
         {text}
       </span>
     </span>

@@ -3,12 +3,22 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import {
   X, ChevronLeft, ChevronRight, Star, Copy,
-  ExternalLink, RefreshCw, MoreHorizontal,
-  Eye, EyeOff, Trash2,
+  Pencil, RefreshCw,
+  Eye, EyeOff, Trash2, Loader2,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import dynamic from 'next/dynamic';
 import Chart from '../Chart';
 import type { ChartMeta } from '@/types/chart';
+
+const CustomChartEditor = dynamic(() => import('../CustomChartEditor'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center text-muted-foreground/40">
+      <Loader2 className="w-5 h-5 animate-spin" />
+    </div>
+  ),
+});
 
 interface SpotlightProps {
   chart: ChartMeta;
@@ -21,7 +31,6 @@ interface SpotlightProps {
   canRefresh: boolean;
   canDelete: boolean;
   canManageVisibility: boolean;
-  onOpenStudio?: (chartId: string) => void;
   onCopy?: (chartId: string) => void;
   onRefresh?: (chartId: string) => void;
   onDelete?: (chartId: string) => void;
@@ -42,7 +51,6 @@ export default function Spotlight({
   canRefresh,
   canDelete,
   canManageVisibility,
-  onOpenStudio,
   onCopy,
   onRefresh,
   onDelete,
@@ -55,6 +63,7 @@ export default function Spotlight({
   const total = charts.length;
   const [copied, setCopied] = useState(false);
   const [localCopySignal, setLocalCopySignal] = useState(copySignal || 0);
+  const [editing, setEditing] = useState(false);
 
   const goPrev = useCallback(() => {
     onNavigate((currentIndex - 1 + total) % total);
@@ -71,60 +80,80 @@ export default function Spotlight({
     setTimeout(() => setCopied(false), 1500);
   }, [chart.id, onCopy]);
 
+  const handleToggleEdit = useCallback(() => {
+    setEditing(prev => !prev);
+  }, []);
+
+  const handleEditorClose = useCallback(() => {
+    setEditing(false);
+  }, []);
+
+  // Reset editing when navigating to a different chart
+  useEffect(() => {
+    setEditing(false);
+  }, [chart.id]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // Don't capture arrow keys / escape when editing (Monaco needs them)
+      if (editing && e.key !== 'Escape') return;
 
       switch (e.key) {
         case 'Escape':
           e.preventDefault();
-          onClose();
+          if (editing) {
+            setEditing(false);
+          } else {
+            onClose();
+          }
           break;
         case 'ArrowLeft':
-        case 'k':
           e.preventDefault();
           goPrev();
           break;
         case 'ArrowRight':
-        case 'j':
           e.preventDefault();
           goNext();
-          break;
-        case 'e':
-          if (canEdit) {
-            e.preventDefault();
-            onOpenStudio?.(chart.id);
-            onClose();
-          }
-          break;
-        case 'c':
-          e.preventDefault();
-          handleCopy();
           break;
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [onClose, goPrev, goNext, canEdit, chart.id, onOpenStudio, handleCopy]);
+  }, [onClose, goPrev, goNext, editing]);
 
   const creatorLabel = chart.created_by_name || chart.created_by_email || '';
 
   return (
     <motion.div
-      className="fixed inset-0 z-[250] flex flex-col bg-background/95 backdrop-blur-xl"
+      className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
+      onClick={onClose}
     >
+      <motion.div
+        className={`flex flex-col bg-background rounded-lg border border-border/50 shadow-lg overflow-hidden ${
+          editing
+            ? 'w-[98vw] h-[94vh] max-w-[1800px] max-h-[960px]'
+            : 'w-[92vw] h-[85vh] max-w-[960px] max-h-[640px]'
+        }`}
+        initial={{ scale: 0.96, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.96, opacity: 0 }}
+        transition={{ duration: 0.15 }}
+        layout
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      >
       {/* Top bar */}
       <div className="h-11 px-4 flex items-center justify-between border-b border-border/40 shrink-0">
         {/* Left: back + title */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
             onClick={onClose}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-primary/10 transition-colors shrink-0"
             title="Close (Esc)"
           >
             <X className="w-4 h-4" />
@@ -146,7 +175,7 @@ export default function Spotlight({
               onClick={() => onToggleFavorite(chart.id)}
               className={`p-1.5 rounded-md transition-colors ${
                 isFavorite ? 'text-amber-400' : 'text-muted-foreground/40 hover:text-muted-foreground'
-              } hover:bg-foreground/[0.06]`}
+              } hover:bg-primary/10`}
               title={isFavorite ? 'Remove favorite' : 'Add favorite'}
             >
               <Star className={`w-3.5 h-3.5 ${isFavorite ? 'fill-current' : ''}`} />
@@ -154,8 +183,8 @@ export default function Spotlight({
           )}
           <button
             onClick={handleCopy}
-            className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors"
-            title="Copy as PNG (C)"
+            className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10 transition-colors"
+            title="Copy as PNG"
           >
             <Copy className={`w-3.5 h-3.5 ${copied ? 'text-emerald-400' : ''}`} />
           </button>
@@ -163,7 +192,7 @@ export default function Spotlight({
             <button
               onClick={() => onRefresh?.(chart.id)}
               disabled={isRefreshing}
-              className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
+              className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10 transition-colors disabled:opacity-40"
               title="Refresh"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -172,7 +201,7 @@ export default function Spotlight({
           {canManageVisibility && onToggleVisibility && (
             <button
               onClick={() => onToggleVisibility(chart.id, !chart.public)}
-              className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors"
+              className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10 transition-colors"
               title={chart.public ? 'Make private' : 'Make public'}
             >
               {chart.public ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
@@ -180,11 +209,16 @@ export default function Spotlight({
           )}
           {canEdit && (
             <button
-              onClick={() => { onOpenStudio?.(chart.id); onClose(); }}
-              className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors"
-              title="Edit in Studio (E)"
+              onClick={handleToggleEdit}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] font-semibold transition-colors ${
+                editing
+                  ? 'border-primary/40 text-primary bg-primary/10'
+                  : 'border-border/40 text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-primary/10'
+              }`}
+              title={editing ? 'Close editor' : 'Edit chart code'}
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <Pencil className="w-3 h-3" />
+              {editing ? 'Close Editor' : 'Edit'}
             </button>
           )}
           {canDelete && (
@@ -199,17 +233,31 @@ export default function Spotlight({
         </div>
       </div>
 
-      {/* Chart area — full screen */}
-      <div className="flex-1 min-h-0 relative p-3">
-        <div className="w-full h-full rounded-xl overflow-hidden bg-card border border-border/40">
-          <Chart
-            key={chart.id}
-            id={chart.id}
-            initialFigure={chart.figure}
-            copySignal={localCopySignal}
-            interactive={true}
-            scrollZoom={true}
-          />
+      {/* Content area: chart only, or split editor + chart */}
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        {/* Editor panel (left side, only when editing) */}
+        {editing && (
+          <div className="w-[60%] min-w-[400px] max-w-[1000px] shrink-0 border-r border-border/40 flex flex-col overflow-hidden">
+            <CustomChartEditor
+              mode="integrated"
+              initialChartId={chart.id}
+              onClose={handleEditorClose}
+            />
+          </div>
+        )}
+
+        {/* Chart area (right side, or full width) */}
+        <div className="flex-1 min-w-0 relative p-3">
+          <div className="w-full h-full overflow-hidden bg-card">
+            <Chart
+              key={chart.id}
+              id={chart.id}
+              initialFigure={chart.figure}
+              copySignal={localCopySignal}
+              interactive={true}
+              scrollZoom={true}
+            />
+          </div>
         </div>
       </div>
 
@@ -219,7 +267,7 @@ export default function Spotlight({
           <button
             onClick={goPrev}
             disabled={total <= 1}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-30"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-primary/10 transition-colors disabled:opacity-30"
             title="Previous (←)"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -230,7 +278,7 @@ export default function Spotlight({
           <button
             onClick={goNext}
             disabled={total <= 1}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-30"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-primary/10 transition-colors disabled:opacity-30"
             title="Next (→)"
           >
             <ChevronRight className="w-4 h-4" />
@@ -247,14 +295,11 @@ export default function Spotlight({
           <span className="hidden sm:inline">
             <kbd className="px-1 py-0.5 rounded border border-border/30 text-[8px]">←→</kbd> navigate
             <span className="mx-1.5">·</span>
-            <kbd className="px-1 py-0.5 rounded border border-border/30 text-[8px]">E</kbd> edit
-            <span className="mx-1.5">·</span>
-            <kbd className="px-1 py-0.5 rounded border border-border/30 text-[8px]">C</kbd> copy
-            <span className="mx-1.5">·</span>
             <kbd className="px-1 py-0.5 rounded border border-border/30 text-[8px]">Esc</kbd> close
           </span>
         </div>
       </div>
+      </motion.div>
     </motion.div>
   );
 }

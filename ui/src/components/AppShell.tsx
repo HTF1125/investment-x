@@ -1,12 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import GlobalSearchPalette from '@/components/GlobalSearchPalette';
 
 /**
  * Shared application shell providing the fixed Navbar and
  * a content area with correct top-padding to avoid overlap.
+ * Manages global Ctrl+K search palette.
  */
 export default function AppShell({
   children,
@@ -15,19 +17,32 @@ export default function AppShell({
   children: React.ReactNode;
   hideFooter?: boolean;
 }) {
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-background">
-      {/* Ambient background gradient — subtle, works in both themes */}
-      <div className="pointer-events-none fixed inset-0 z-[-1]" aria-hidden="true">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_-10%,rgba(120,119,198,0.07),transparent)] dark:bg-[radial-gradient(ellipse_70%_60%_at_50%_-10%,rgba(120,119,198,0.06),transparent)]" />
-      </div>
-
-      <Navbar />
-      {/* Match fixed navbar height (40px) */}
-      <main id="main-content" className="pt-[40px] flex-grow relative z-0">
+      <Navbar onOpenSearch={openSearch} />
+      {/* Match fixed navbar height (48px) */}
+      <main id="main-content" className="pt-[48px] flex-grow relative z-0 max-w-[1440px] mx-auto w-full">
         {children}
       </main>
       {!hideFooter && <Footer />}
+
+      <GlobalSearchPalette isOpen={searchOpen} onClose={closeSearch} />
     </div>
   );
 }

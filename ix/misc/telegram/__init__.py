@@ -2,6 +2,7 @@ import asyncio
 import os
 from typing import Optional
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 from ix.misc.terminal import get_logger
 from ix.db.conn import Session, conn, Base
 from ix.db.models import TelegramMessage
@@ -16,6 +17,9 @@ except ImportError:
 from pathlib import Path
 
 logger = get_logger(__name__)
+
+# Ensure .env is loaded (no-op if already loaded by settings.py)
+load_dotenv()
 
 # Constants for Telegram API
 API_ID = os.getenv("TELEGRAM_API_ID")
@@ -122,11 +126,12 @@ async def scrape_channel(channel_name: str, limit: int = 100):
     client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
 
     try:
-        await client.start()
+        await client.connect()
+        if not await client.is_user_authorized():
+            logger.error("Telegram session expired. Run telethon login to re-auth.")
+            return
     except Exception as e:
-        logger.error(
-            f"Failed to start Telegram client. Interaction might be needed for login: {e}"
-        )
+        logger.error(f"Failed to connect Telegram client: {e}")
         return
 
     logger.info(f"Scraping {channel_name}...")

@@ -48,7 +48,7 @@ export default function RegimeTab({ snapshot, timeseries, tsLoading, backtest, b
     const fig: PlotlyFigure = {
       data: [{
         type: 'heatmap' as const, z: tm.values, x: tm.labels, y: tm.labels,
-        colorscale: [[0, 'rgba(56,189,248,0.05)'], [0.5, 'rgba(56,189,248,0.4)'], [1, 'rgba(56,189,248,0.9)']],
+        colorscale: [[0, 'rgba(148,163,184,0.05)'], [0.5, 'rgba(148,163,184,0.4)'], [1, 'rgba(148,163,184,0.9)']],
         text: tm.values.map(row => row.map(v => `${(v * 100).toFixed(0)}%`)),
         texttemplate: '%{text}', textfont: { size: 11 },
         hovertemplate: '%{y}→%{x}: %{z:.1%}<extra></extra>', showscale: false,

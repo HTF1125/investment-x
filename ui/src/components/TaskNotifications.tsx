@@ -56,7 +56,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                 relative flex items-start gap-2.5 p-2.5 rounded-lg border backdrop-blur-sm transition-all group
                 ${
                     process.status === "running"
-                    ? "bg-sky-500/5 border-sky-500/20 shadow-[0_0_15px_-5px_rgba(14,165,233,0.15)]"
+                    ? "bg-primary/5 border-primary/20 shadow-[0_0_15px_-5px_rgba(13,148,136,0.15)]"
                     : process.status === "completed"
                     ? "bg-emerald-500/5 border-emerald-500/10"
                     : "bg-rose-500/5 border-rose-500/10"
@@ -67,8 +67,8 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                 <div className="shrink-0 mt-0.5" aria-hidden="true">
                 {process.status === "running" && (
                     <div className="relative">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
-                        <div className="absolute inset-0 blur-sm bg-sky-400/30 rounded-full animate-pulse" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                        <div className="absolute inset-0 blur-sm bg-primary/30 rounded-full animate-pulse" />
                     </div>
                 )}
                 {process.status === "completed" && (
@@ -113,13 +113,13 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                 <div className="mt-1 flex items-center gap-2">
                   <div className="h-1 w-full bg-secondary rounded-full overflow-hidden">
                     <motion.div
-                      className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full"
+                      className="h-full bg-gradient-to-r from-primary to-teal-600 rounded-full"
                       initial={{ width: "0%" }}
                       animate={{ width: getRowPercent(process) }}
                       transition={{ duration: 0.4, ease: "easeOut" }}
                     />
                   </div>
-                  <span className="text-[9px] font-mono text-sky-400 shrink-0">
+                  <span className="text-[9px] font-mono text-primary shrink-0">
                     {getRowPercent(process)}
                   </span>
                 </div>
@@ -162,7 +162,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
         className={`
           flex items-center gap-2.5 px-2.5 py-1 rounded-lg border transition-all h-8 overflow-hidden group
           ${isOpen 
-            ? 'bg-accent/20 border-accent/40 text-foreground shadow-lg shadow-sky-500/10' 
+            ? 'bg-accent/20 border-accent/40 text-foreground shadow-lg shadow-primary/10' 
             : 'bg-secondary/20 border-border/50 text-muted-foreground hover:bg-accent/10 hover:border-border hover:text-foreground shadow-sm'
           }
         `}
@@ -170,15 +170,15 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
       >
         <div className="relative w-4 h-4 flex items-center justify-center">
           {activeCount > 0 && (
-            <span className="absolute inset-0 rounded-full border border-sky-400/40 animate-spin" />
+            <span className="absolute inset-0 rounded-full border border-primary/40 animate-spin" />
           )}
-          <ListChecks className={`w-3.5 h-3.5 ${activeCount > 0 ? 'text-sky-400' : 'text-current'}`} />
+          <ListChecks className={`w-3.5 h-3.5 ${activeCount > 0 ? 'text-primary' : 'text-current'}`} />
         </div>
         
         {processes.length > 0 && (
             <div className="hidden sm:flex items-center gap-2.5 font-mono text-[10px] font-bold border-l border-border pl-2.5">
                 {activeCount > 0 && (
-                    <span className="text-sky-400 flex items-center gap-1">
+                    <span className="text-primary flex items-center gap-1">
                         {activeCount}
                         <Loader2 className="w-2.5 h-2.5 animate-spin" />
                     </span>
@@ -200,7 +200,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-background/95 border border-border rounded-xl shadow-2xl backdrop-blur-2xl z-50 overflow-hidden ring-1 ring-border/50"
+            className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-card border border-border/40 rounded-xl shadow-2xl shadow-black/20 z-50 overflow-hidden"
           >
             {/* Header */}
             <div className="px-3 py-2 border-b border-border flex justify-between items-center bg-accent/5">

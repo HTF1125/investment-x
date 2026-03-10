@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Inter, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
@@ -7,8 +8,23 @@ import QueryProvider from '@/providers/QueryProvider';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import SessionExpiredModal from '@/components/SessionExpiredModal';
 
+const body = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-body",
+  display: "swap",
+});
+
+const mono = Space_Mono({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-mono",
+  display: "swap",
+});
+
+
 export const viewport: Viewport = {
-  themeColor: "#020617",
+  themeColor: "#080a10",
   width: "device-width",
   initialScale: 1,
 };
@@ -32,7 +48,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth">
+    <html lang="en" className={`scroll-smooth ${body.variable} ${mono.variable}`}>
       <body>
         <a
           href="#main-content"

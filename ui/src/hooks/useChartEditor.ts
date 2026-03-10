@@ -107,7 +107,8 @@ export function useChartEditor({ mode, initialChartId }: UseChartEditorOptions) 
 
   // ─── Editor layout state ─────────────────────────────────────────
   const [editorWidth, setEditorWidth] = useState(440);
-  const [showCodePanel, setShowCodePanel] = useState(false);
+  const [showPreview, setShowPreview] = useState(mode !== 'integrated');
+  const [showCode, setShowCode] = useState(true);
   const [showMeta, setShowMeta] = useState(mode !== 'integrated');
   const [editorFontSize, setEditorFontSize] = useState(13);
   const [editorFontFamily, setEditorFontFamily] = useState("'JetBrains Mono', monospace");
@@ -172,17 +173,25 @@ export function useChartEditor({ mode, initialChartId }: UseChartEditorOptions) 
     setIsMounted(true);
     const saved = localStorage.getItem('studio-editor-width');
     if (saved) setEditorWidth(parseInt(saved, 10));
-    const savedPanel = localStorage.getItem('studio-show-code-panel');
-    if (savedPanel !== null) {
-      setShowCodePanel(savedPanel === 'true');
+    if (mode !== 'integrated') {
+      const savedPreview = localStorage.getItem('studio-show-preview');
+      if (savedPreview !== null) setShowPreview(savedPreview !== 'false');
     }
+    const savedCode = localStorage.getItem('studio-show-code');
+    if (savedCode !== null) setShowCode(savedCode !== 'false');
   }, []);
 
-  const toggleCodePanel = useCallback(() => {
-    const newState = !showCodePanel;
-    setShowCodePanel(newState);
-    localStorage.setItem('studio-show-code-panel', String(newState));
-  }, [showCodePanel]);
+  const togglePreview = useCallback(() => {
+    const next = !showPreview;
+    setShowPreview(next);
+    localStorage.setItem('studio-show-preview', String(next));
+  }, [showPreview]);
+
+  const toggleCode = useCallback(() => {
+    const next = !showCode;
+    setShowCode(next);
+    localStorage.setItem('studio-show-code', String(next));
+  }, [showCode]);
 
   // ─── Drag resize ─────────────────────────────────────────────────
   useEffect(() => {
@@ -873,8 +882,10 @@ export function useChartEditor({ mode, initialChartId }: UseChartEditorOptions) 
 
     // Editor layout
     editorWidth,
-    showCodePanel,
-    toggleCodePanel,
+    showPreview,
+    togglePreview,
+    showCode,
+    toggleCode,
     showMeta,
     setShowMeta,
     editorFontSize,

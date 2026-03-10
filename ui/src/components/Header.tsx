@@ -122,7 +122,7 @@ export default function Header() {
   };
 
   return (
-    <header className="max-w-[1600px] mx-auto mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <header className="max-w-[1600px] mx-auto mb-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
             <button
                 onClick={handleExportPDF}

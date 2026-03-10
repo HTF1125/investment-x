@@ -18,7 +18,7 @@ export default function PdfNotification({ pdfStatus, pdfCount }: PdfNotification
           initial={{ opacity: 0, y: 50, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-4 py-3 bg-background border border-border/60 rounded-xl shadow-xl"
+          className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-4 py-3 bg-background border border-border/50 rounded-lg shadow-md"
         >
           <div className="text-muted-foreground">
             {pdfStatus === 'exporting' ? <Loader2 className="w-5 h-5 animate-spin" /> : pdfStatus === 'complete' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}

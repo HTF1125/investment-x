@@ -20,17 +20,17 @@ export default function ActivityBar({
   setLibraryOpen,
 }: ActivityBarProps) {
   return (
-    <aside className="hidden lg:flex w-12 shrink-0 flex-col items-center py-3 gap-1 bg-background border-r border-border/60 z-20">
+    <aside className="hidden lg:flex w-12 shrink-0 flex-col items-center py-3 gap-1 bg-background border-r border-border/50 z-20">
       <button
         onClick={() => { setActiveTab('library'); setLibraryOpen(true); }}
-        className={`p-2 rounded-md transition-all ${activeTab === 'library' && libraryOpen ? 'text-foreground bg-foreground/[0.08]' : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]'}`}
+        className={`p-2 rounded-md transition-all ${activeTab === 'library' && libraryOpen ? 'text-foreground bg-primary/10' : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10'}`}
         title="Library"
       >
         <Layout className="w-4 h-4" />
       </button>
       <button
         onClick={() => { setActiveTab('data'); setLibraryOpen(true); }}
-        className={`p-2 rounded-md transition-all ${activeTab === 'data' && libraryOpen ? 'text-foreground bg-foreground/[0.08]' : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]'}`}
+        className={`p-2 rounded-md transition-all ${activeTab === 'data' && libraryOpen ? 'text-foreground bg-primary/10' : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10'}`}
         title="Variables & Data"
       >
         <Database className="w-4 h-4" />
@@ -38,12 +38,12 @@ export default function ActivityBar({
       <div className="mt-auto flex flex-col gap-1 items-center">
         <button
           onClick={() => { setActiveTab('settings'); setLibraryOpen(true); }}
-          className={`p-2 rounded-md transition-all ${activeTab === 'settings' && libraryOpen ? 'text-foreground bg-foreground/[0.08]' : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]'}`}
+          className={`p-2 rounded-md transition-all ${activeTab === 'settings' && libraryOpen ? 'text-foreground bg-primary/10' : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10'}`}
           title="Studio Settings"
         >
           <Settings className="w-4 h-4" />
         </button>
-        <div className="w-7 h-7 rounded-md bg-foreground text-background flex items-center justify-center text-[10px] font-bold mb-2">
+        <div className="w-7 h-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold mb-2">
           {name.charAt(0)}
         </div>
       </div>

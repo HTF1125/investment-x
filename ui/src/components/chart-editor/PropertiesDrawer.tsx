@@ -46,7 +46,7 @@ export default function PropertiesDrawer({
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
-          className="shrink-0 bg-background border-b border-border/60 overflow-hidden z-10"
+          className="shrink-0 bg-background border-b border-border/50 overflow-hidden z-10"
         >
           <div className="flex flex-col gap-2 px-4 py-2 max-w-7xl mx-auto">
             <div className="grid grid-cols-4 gap-2 items-start">
@@ -106,7 +106,7 @@ export default function PropertiesDrawer({
                 <button
                   onClick={() => currentChartId ? toggleExportPdf(currentChartId, !exportPdf) : setExportPdf(!exportPdf)}
                   disabled={!canToggleExport}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md border transition-all text-[10px] font-medium ${exportPdf ? 'text-foreground border-border/60 bg-foreground/[0.07]' : 'text-muted-foreground border-border/40 hover:border-border/60'}`}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md border transition-all text-[10px] font-medium ${exportPdf ? 'text-foreground border-border/50 bg-primary/[0.08]' : 'text-muted-foreground border-border/40 hover:border-border/50'}`}
                 >
                   <CheckCircle2 className="w-2.5 h-2.5" />
                   {canToggleExport ? (exportPdf ? 'On' : 'Off') : 'Owner only'}

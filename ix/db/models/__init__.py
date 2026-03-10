@@ -77,6 +77,7 @@ def _cache_invalidate(ts_id: str) -> None:
     with _ts_cache_lock:
         _ts_cache.pop(str(ts_id), None)
 
+
 # Re-export Base for convenience
 __all__ = [
     "Base",
@@ -155,9 +156,7 @@ class Timeseries(Base):
 
     # Legacy JSONB column retained for migration/backward compatibility.
     created = Column(DateTime, default=func.now(), nullable=False)
-    updated = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     num_data_queried = Column(Integer, default=0, nullable=False)
 
     data_record = relationship(
@@ -320,7 +319,7 @@ class Timeseries(Base):
 
         if isinstance(data, dict):
             data = pd.Series(data)
-        data.index = pd.to_datetime(data.index, errors="coerce")
+        data.index = pd.to_datetime(data.index, format="%Y-%m-%d", errors="coerce")
         data = pd.to_numeric(data, errors="coerce")
         data = data.dropna()
         data = data[~data.index.isna()]
@@ -367,24 +366,20 @@ class Timeseries(Base):
 
         # Compute latest_value from the complete dataset
         if current_data:
-            # Sort by date to find the latest
-            sorted_items = sorted(
-                current_data.items(),
-                key=lambda item: pd.to_datetime(item[0], errors="coerce"),
+            # Vectorized datetime validation and sorting
+            temp_series = pd.Series(current_data)
+            temp_series.index = pd.to_datetime(
+                temp_series.index, format="%Y-%m-%d", errors="coerce"
             )
-            # Filter valid dates just in case
-            sorted_items = [
-                item
-                for item in sorted_items
-                if pd.notna(pd.to_datetime(item[0], errors="coerce"))
-            ]
+            temp_series = temp_series[temp_series.index.notna()].sort_index()
 
-            if sorted_items:
-                latest_date_str, latest_val = sorted_items[-1]
-                ts.latest_value = float(latest_val)
-                ts.end = pd.to_datetime(latest_date_str).date()
-                ts.start = pd.to_datetime(sorted_items[0][0]).date()
-                ts.num_data = len(sorted_items)
+            if not temp_series.empty:
+                latest_date_str = str(temp_series.index[-1].date())
+                latest_val = float(temp_series.iloc[-1])
+                ts.latest_value = latest_val
+                ts.end = temp_series.index[-1].date()
+                ts.start = temp_series.index[0].date()
+                ts.num_data = len(temp_series)
             else:
                 ts.latest_value = None
                 ts.start = None
@@ -436,42 +431,34 @@ class Timeseries(Base):
 
         parent_data.update(new_data_dict)
 
-        # Clean invalid dates
-        parent_data_clean = {}
-        for k, v in parent_data.items():
-            try:
-                pd.to_datetime(k)
-                parent_data_clean[k] = v
-            except Exception:
-                continue
+        # Clean invalid dates using vectorization
+        if len(parent_data) > 0:
+            temp_series = pd.Series(parent_data)
+            temp_series.index = pd.to_datetime(
+                temp_series.index, format="%Y-%m-%d", errors="coerce"
+            )
+            temp_series = temp_series[temp_series.index.notna()].sort_index()
 
-        data_record.data = parent_data_clean
-        data_record.updated = datetime.now()
-        if len(parent_data_clean) > 0:
-            dates = pd.to_datetime(list(parent_data_clean.keys()), errors="coerce")
-            valid_dates = dates[~pd.isna(dates)]
-            if len(valid_dates) > 0:
-                parent_ts.start = valid_dates.min().date()
-                parent_ts.end = valid_dates.max().date()
+            # Reconstruct the cleaned string dictionary
+            parent_data_clean = {
+                str(k.date()): float(v) for k, v in temp_series.items()
+            }
+            data_record.data = parent_data_clean
+            data_record.updated = datetime.now()
+
+            if not temp_series.empty:
+                parent_ts.start = temp_series.index[0].date()
+                parent_ts.end = temp_series.index[-1].date()
                 parent_ts.num_data = len(parent_data_clean)
-
-                # Compute latest date and value
-                sorted_items = sorted(
-                    parent_data_clean.items(),
-                    key=lambda item: pd.to_datetime(item[0], errors="coerce"),
-                )
-                sorted_items = [
-                    item
-                    for item in sorted_items
-                    if pd.notna(pd.to_datetime(item[0], errors="coerce"))
-                ]
-
-                if sorted_items:
-                    latest_item = sorted_items[-1]
-                    parent_ts.latest_value = float(latest_item[1])
-                else:
-                    parent_ts.latest_value = None
+                parent_ts.latest_value = float(temp_series.iloc[-1])
+            else:
+                parent_ts.start = None
+                parent_ts.end = None
+                parent_ts.num_data = 0
+                parent_ts.latest_value = None
         else:
+            data_record.data = {}
+            data_record.updated = datetime.now()
             parent_ts.start = None
             parent_ts.end = None
             parent_ts.num_data = 0
@@ -608,9 +595,7 @@ class TimeseriesData(Base):
     )
     data = Column(JSONB, default=dict, nullable=False)
     created = Column(DateTime, default=func.now(), nullable=False)
-    updated = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
     timeseries = relationship(
         "Timeseries",
@@ -687,7 +672,7 @@ class Universe(Base):
         from ix.db.query import Series as QuerySeries
 
         series_list = []
-        for asset in (self.assets or []):
+        for asset in self.assets or []:
             alias = asset.get("name", "")
             code = asset.get("code", "")
             s = QuerySeries(f"{code}:{field}", freq=freq)

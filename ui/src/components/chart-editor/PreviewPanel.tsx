@@ -44,7 +44,7 @@ export default function PreviewPanel({
 }: PreviewPanelProps) {
   return (
     <div className="flex-grow relative flex flex-col min-h-0 p-3 items-center justify-center">
-      <div className="relative overflow-hidden rounded-xl border border-border/60 bg-background w-full h-full max-w-[1200px] max-h-[700px]">
+      <div className="relative overflow-hidden rounded-lg border border-border/50 bg-background w-full h-full max-w-[1200px] max-h-[700px]">
         {loadingChartId ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-10">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -76,7 +76,7 @@ export default function PreviewPanel({
                 setPlotRenderError(null);
                 setPlotRetryNonce((n) => n + 1);
               }}
-              className="h-8 px-3 rounded-md border border-border/60 text-xs text-muted-foreground hover:text-foreground"
+              className="h-8 px-3 rounded-md border border-border/50 text-xs text-muted-foreground hover:text-foreground"
             >
               Retry Render
             </button>
@@ -94,7 +94,7 @@ export default function PreviewPanel({
           <div className="absolute top-3 right-3">
             <button
               onClick={handleCopyChart}
-              className="p-1.5 rounded-md bg-background border border-border/60 text-muted-foreground/40 hover:text-muted-foreground hover:border-border transition-all"
+              className="p-1.5 rounded-md bg-background border border-border/50 text-muted-foreground/40 hover:text-muted-foreground hover:border-border transition-all"
               title="Copy Image"
             >
               {copying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}

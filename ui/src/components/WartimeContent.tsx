@@ -638,8 +638,8 @@ function buildDistributionBandChart(
   const median = rows.map((row) => row.median);
   const p75 = rows.map((row) => row.p75);
   const p90 = rows.map((row) => row.p90);
-  const shadeOuter = theme === 'dark' ? 'rgba(56,189,248,0.10)' : 'rgba(14,165,233,0.10)';
-  const shadeInner = theme === 'dark' ? 'rgba(56,189,248,0.20)' : 'rgba(14,165,233,0.18)';
+  const shadeOuter = theme === 'dark' ? 'rgba(148,163,184,0.10)' : 'rgba(71,85,105,0.10)';
+  const shadeInner = theme === 'dark' ? 'rgba(148,163,184,0.20)' : 'rgba(71,85,105,0.18)';
 
   const data: any[] = [
     {
@@ -827,7 +827,7 @@ function WartimePlot({
       {isRendering && !plotError && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/70">
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-sky-500/50" />
+            <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
             <span className="text-[11px] text-muted-foreground/50 tracking-widest uppercase">Loading Chart</span>
           </div>
         </div>
@@ -862,7 +862,7 @@ function SpxStatsTable({ stats, t, lang }: { stats: SpxStat[]; t: TShape; lang: 
     <div className="overflow-x-auto">
       <table className="w-full text-[11px] border-collapse">
         <thead>
-          <tr className="border-b border-border/60">
+          <tr className="border-b border-border/50">
             <th className="text-left py-2 pr-3 text-muted-foreground/70 font-medium whitespace-nowrap">{t.thConflict}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.thStart}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.thMdd}</th>
@@ -876,7 +876,7 @@ function SpxStatsTable({ stats, t, lang }: { stats: SpxStat[]; t: TShape; lang: 
             const isCurrent = r.conflict.includes('Current');
             const isCovid   = r.conflict.includes('2020');
             return (
-              <tr key={i} className={`border-b border-border/30 transition-colors hover:bg-foreground/[0.02] ${isCurrent ? 'bg-red-500/[0.06]' : isCovid ? 'bg-amber-500/[0.04]' : ''}`}>
+              <tr key={i} className={`border-b border-border/25 transition-colors hover:bg-primary/[0.04] ${isCurrent ? 'bg-red-500/[0.06]' : isCovid ? 'bg-amber-500/[0.04]' : ''}`}>
                 <td className={`py-1.5 pr-3 ${isCurrent ? 'text-red-500 font-medium' : isCovid ? 'text-amber-500' : 'text-foreground'}`}>{nameOf(r.conflict)}</td>
                 <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{r.start_date}</td>
                 <td className={`py-1.5 px-2 text-right tabular-nums ${r.mdd < -0.15 ? 'text-red-500' : r.mdd < -0.07 ? 'text-amber-500' : 'text-emerald-500'}`}>{absLow(r.mdd)}</td>
@@ -900,7 +900,7 @@ function CommodityStatsTable({ stats, t, lang }: { stats: CommodityStat[]; t: TS
     <div className="overflow-x-auto">
       <table className="w-full text-[11px] border-collapse">
         <thead>
-          <tr className="border-b border-border/60">
+          <tr className="border-b border-border/50">
             <th className="text-left py-2 pr-3 text-muted-foreground/70 font-medium whitespace-nowrap">{t.thConflict}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.thStart}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.thPeakGain}</th>
@@ -914,7 +914,7 @@ function CommodityStatsTable({ stats, t, lang }: { stats: CommodityStat[]; t: TS
             const isCurrent = r.conflict.includes('Current');
             const isCovid   = r.conflict.includes('2020');
             return (
-              <tr key={i} className={`border-b border-border/30 transition-colors hover:bg-foreground/[0.02] ${isCurrent ? 'bg-red-500/[0.06]' : isCovid ? 'bg-amber-500/[0.04]' : ''}`}>
+              <tr key={i} className={`border-b border-border/25 transition-colors hover:bg-primary/[0.04] ${isCurrent ? 'bg-red-500/[0.06]' : isCovid ? 'bg-amber-500/[0.04]' : ''}`}>
                 <td className={`py-1.5 pr-3 ${isCurrent ? 'text-red-500 font-medium' : isCovid ? 'text-amber-500' : 'text-foreground'}`}>{nameOf(r.conflict)}</td>
                 <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{r.start_date}</td>
                 <td className={`py-1.5 px-2 text-right tabular-nums ${r.peak_gain >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(r.peak_gain)}</td>
@@ -935,7 +935,7 @@ function HorizonStatsTable({ rows, t }: { rows: HorizonStat[]; t: TShape }) {
     <div className="overflow-x-auto">
       <table className="w-full text-[11px] border-collapse">
         <thead>
-          <tr className="border-b border-border/60">
+          <tr className="border-b border-border/50">
             <th className="text-left py-2 pr-3 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThDay}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThMean}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.horizonThMedian}</th>
@@ -947,7 +947,7 @@ function HorizonStatsTable({ rows, t }: { rows: HorizonStat[]; t: TShape }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.day} className="border-b border-border/30 transition-colors hover:bg-foreground/[0.02]">
+            <tr key={row.day} className="border-b border-border/25 transition-colors hover:bg-primary/[0.04]">
               <td className="py-1.5 pr-3 text-foreground tabular-nums">{row.day}d</td>
               <td className={`py-1.5 px-2 text-right tabular-nums ${(row.mean ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.mean)}</td>
               <td className={`py-1.5 px-2 text-right tabular-nums ${(row.median ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.median)}</td>
@@ -976,7 +976,7 @@ function CurrentComparisonTable({
     <div className="overflow-x-auto">
       <table className="w-full text-[11px] border-collapse">
         <thead>
-          <tr className="border-b border-border/60">
+          <tr className="border-b border-border/50">
             <th className="text-left py-2 pr-3 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThAsset}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThCurrent}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.compareThMedian}</th>
@@ -988,7 +988,7 @@ function CurrentComparisonTable({
         </thead>
         <tbody>
           {rows.map(({ asset, stat }) => (
-            <tr key={asset} className="border-b border-border/30 transition-colors hover:bg-foreground/[0.02]">
+            <tr key={asset} className="border-b border-border/25 transition-colors hover:bg-primary/[0.04]">
               <td className="py-1.5 pr-3 text-foreground">{asset}</td>
               <td className={`py-1.5 px-2 text-right tabular-nums ${(stat.current_return ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(stat.current_return)}</td>
               <td className={`py-1.5 px-2 text-right tabular-nums ${(stat.hist_median ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(stat.hist_median)}</td>
@@ -1014,7 +1014,7 @@ function AnaloguesTable({ rows, t, lang }: { rows: AnalogueRow[]; t: TShape; lan
     <div className="overflow-x-auto">
       <table className="w-full text-[11px] border-collapse">
         <thead>
-          <tr className="border-b border-border/60">
+          <tr className="border-b border-border/50">
             <th className="text-left py-2 pr-3 text-muted-foreground/70 font-medium whitespace-nowrap">{t.analogThConflict}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.analogThMatched}</th>
             <th className="text-right py-2 px-2 text-muted-foreground/70 font-medium whitespace-nowrap">{t.analogThFull}</th>
@@ -1025,7 +1025,7 @@ function AnaloguesTable({ rows, t, lang }: { rows: AnalogueRow[]; t: TShape; lan
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.conflict} className="border-b border-border/30 transition-colors hover:bg-foreground/[0.02]">
+            <tr key={row.conflict} className="border-b border-border/25 transition-colors hover:bg-primary/[0.04]">
               <td className="py-1.5 pr-3 text-foreground">{nameOf(row.conflict)}</td>
               <td className={`py-1.5 px-2 text-right tabular-nums ${row.matched_return >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.matched_return)}</td>
               <td className={`py-1.5 px-2 text-right tabular-nums ${row.full_return >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.full_return)}</td>
@@ -1128,7 +1128,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
   const LangToggle = (
     <button
       onClick={() => setLang(l => l === 'en' ? 'ko' : 'en')}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors bg-background"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors bg-background"
     >
       <span className="text-base leading-none">🌐</span>
       {t.langToggle}
@@ -1186,7 +1186,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
         </div>
 
         {/* ── Commentary ─────────────────────────────────────────────────── */}
-        <div className="panel-card p-5 border-l-4 border-sky-500/50">
+        <div className="panel-card p-5 border-l-4 border-primary/50">
           <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">{t.commentaryLabel}</div>
           <p className="text-[13px] text-foreground/90 leading-relaxed">
             {t.commentaryText[0]}
@@ -1204,7 +1204,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
         {/* ══════════════════════════════════════════════════════════════════ */}
         <section className="space-y-5">
           <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
-            <span className="text-sky-400">{t.spxTitle}</span>
+            <span className="text-primary">{t.spxTitle}</span>
             <span className="text-muted-foreground font-normal text-[13px]">{t.spxSubtitle}</span>
           </h2>
 
@@ -1245,7 +1245,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
             <StatCard label={t.sampleSize}   value={`${summary.sample_size}`}                                                                      sub={t.sampleSizeSub} />
           </div>
 
-          <div className="panel-card p-4 border-sky-500/20 bg-sky-500/[0.04]">
+          <div className="panel-card p-4 border-primary/20 bg-primary/[0.04]">
             <div className="stat-label mb-2">{t.methodTitle}</div>
             <p className="text-[12px] text-foreground/85 leading-relaxed">{t.methodText}</p>
             <p className="text-[11px] text-muted-foreground/70 mt-2 leading-relaxed">{t.methodText2}</p>
@@ -1353,7 +1353,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
           <div className="panel-card overflow-x-auto">
             <table className="w-full text-[12px] border-collapse">
               <thead>
-                <tr className="border-b border-border/60">
+                <tr className="border-b border-border/50">
                   <th className="text-left py-2.5 px-4 text-muted-foreground/70 font-medium">{t.emThCountry}</th>
                   <th className="text-left py-2.5 px-4 text-muted-foreground/70 font-medium">{t.emThStance}</th>
                   <th className="text-left py-2.5 px-4 text-muted-foreground/70 font-medium">{t.emThAssessment}</th>
@@ -1361,7 +1361,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
               </thead>
               <tbody>
                 {t.emRows.map((row, i) => (
-                  <tr key={i} className="border-b border-border/30 hover:bg-foreground/[0.02]">
+                  <tr key={i} className="border-b border-border/25 hover:bg-primary/[0.04]">
                     <td className="py-2.5 px-4 font-medium text-foreground">{row.flag} {row.country}</td>
                     <td className="py-2.5 px-4">
                       <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
@@ -1477,7 +1477,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
           <div className="panel-card overflow-x-auto">
             <table className="w-full text-[12px] border-collapse">
               <thead>
-                <tr className="border-b border-border/60">
+                <tr className="border-b border-border/50">
                   <th className="text-left py-2.5 px-4 text-muted-foreground/70 font-medium">{t.monThMetric}</th>
                   <th className="text-left py-2.5 px-4 text-emerald-600 dark:text-emerald-400 font-medium">{t.monThBull}</th>
                   <th className="text-left py-2.5 px-4 text-red-500 font-medium">{t.monThBear}</th>
@@ -1485,7 +1485,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
               </thead>
               <tbody>
                 {t.monRows.map((row, i) => (
-                  <tr key={i} className="border-b border-border/30 hover:bg-foreground/[0.02]">
+                  <tr key={i} className="border-b border-border/25 hover:bg-primary/[0.04]">
                     <td className="py-2.5 px-4 font-medium text-foreground">{row.metric}</td>
                     <td className="py-2.5 px-4 text-emerald-600 dark:text-emerald-400">{row.bull}</td>
                     <td className="py-2.5 px-4 text-red-500">{row.bear}</td>

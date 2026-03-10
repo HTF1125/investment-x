@@ -70,9 +70,9 @@ export default function EditorPanel({
   setUserManuallyCollapsed,
 }: EditorPanelProps) {
   return (
-    <div className="flex-grow flex flex-col min-h-0 gap-2 p-3">
+    <div className="h-full flex flex-col min-h-0 gap-2 p-3">
       {/* Timeseries Search */}
-      <div className="shrink-0 rounded-xl border border-border/60 overflow-hidden bg-background">
+      <div className="shrink-0 rounded-lg border border-border/50 overflow-hidden bg-background">
         <div className="flex items-center gap-2 px-3 py-2">
           <div className="relative flex-1 min-w-0">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
@@ -86,7 +86,7 @@ export default function EditorPanel({
             {timeseriesSearch && (
               <button
                 onClick={() => { setTimeseriesSearch(''); setTimeseriesQuery(''); }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-foreground/[0.06] text-muted-foreground/40"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-primary/10 text-muted-foreground/40"
               >
                 <X className="w-2.5 h-2.5" />
               </button>
@@ -105,11 +105,11 @@ export default function EditorPanel({
             {timeseriesMatches.map((ts) => (
               <div
                 key={ts.id}
-                className="group flex items-center gap-2.5 px-3 py-1.5 border-b border-border/30 last:border-b-0 hover:bg-foreground/[0.03] transition-colors"
+                className="group flex items-center gap-2.5 px-3 py-1.5 border-b border-border/25 last:border-b-0 hover:bg-primary/[0.04] transition-colors"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-mono text-sky-400/80">{ts.code}</span>
+                    <span className="text-[11px] font-mono text-primary/80">{ts.code}</span>
                     {ts.frequency && <span className="text-[9px] text-muted-foreground/40">{ts.frequency}</span>}
                   </div>
                   {ts.name && ts.name !== ts.code && (
@@ -127,7 +127,7 @@ export default function EditorPanel({
                   </button>
                   <button
                     onClick={() => copySeriesSnippet(ts)}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 transition-colors"
                     title="Copy snippet"
                   >
                     <Copy className="w-3 h-3" />
@@ -140,7 +140,7 @@ export default function EditorPanel({
       </div>
 
       {/* Monaco Editor */}
-      <div className="flex-grow relative overflow-hidden rounded-xl border border-border/60 bg-background">
+      <div className="flex-grow relative overflow-hidden rounded-lg border border-border/50 bg-background">
         {isMounted ? (
           <Editor
             height="100%"
@@ -185,10 +185,10 @@ export default function EditorPanel({
 
       {/* Output / Console Panel */}
       {(error || successMsg) && (
-        <div className="shrink-0 rounded-xl border border-border/60 overflow-hidden bg-background">
+        <div className="shrink-0 rounded-lg border border-border/50 overflow-hidden bg-background">
           <button
             onClick={() => { setConsoleExpanded(v => !v); setUserManuallyCollapsed(consoleExpanded); }}
-            className="w-full flex items-center gap-2 px-3 py-2 border-b border-border/60 text-left"
+            className="w-full flex items-center gap-2 px-3 py-2 border-b border-border/50 text-left"
           >
             <Terminal className="w-3 h-3 text-muted-foreground/50 shrink-0" />
             <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider flex-1">Output</span>

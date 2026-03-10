@@ -213,7 +213,7 @@ function StressTable({ events, horizons, averages, returnLabel, onRowClick, sele
     <div className="overflow-x-auto">
       <table className="w-full text-[11px] border-collapse">
         <thead>
-          <tr className="border-b border-border/60">
+          <tr className="border-b border-border/50">
             <th className="text-left px-3 py-2 text-muted-foreground/70 font-medium sticky left-0 bg-background z-10">Date</th>
             <th className="text-left px-3 py-2 text-muted-foreground/70 font-medium">Cause</th>
             <th className="text-right px-3 py-2 text-muted-foreground/70 font-medium whitespace-nowrap">{returnLabel}</th>
@@ -223,12 +223,12 @@ function StressTable({ events, horizons, averages, returnLabel, onRowClick, sele
         <tbody>
           {events.map((ev, idx) => {
             const isSelected = selectedRows?.has(ev.date);
-            const rowBg = ev.isCurrent ? 'bg-red-500/[0.06]' : ev.highlight === 'warn' ? 'bg-amber-500/[0.04]' : isSelected ? 'bg-sky-500/[0.06]' : 'hover:bg-foreground/[0.02]';
-            const dateCls = ev.isCurrent ? 'text-red-500 font-semibold bg-red-500/[0.06]' : ev.highlight === 'warn' ? 'text-amber-500 bg-amber-500/[0.04]' : isSelected ? 'text-sky-400 bg-sky-500/[0.06]' : 'text-foreground bg-background';
+            const rowBg = ev.isCurrent ? 'bg-red-500/[0.06]' : ev.highlight === 'warn' ? 'bg-amber-500/[0.04]' : isSelected ? 'bg-primary/[0.06]' : 'hover:bg-primary/[0.04]';
+            const dateCls = ev.isCurrent ? 'text-red-500 font-semibold bg-red-500/[0.06]' : ev.highlight === 'warn' ? 'text-amber-500 bg-amber-500/[0.04]' : isSelected ? 'text-primary bg-primary/[0.06]' : 'text-foreground bg-background';
             const causeCls = ev.isCurrent ? 'text-red-500' : ev.highlight === 'warn' ? 'text-amber-500' : 'text-muted-foreground';
             return (
               <tr key={`${ev.date}-${idx}`} onClick={() => onRowClick?.(ev.date)}
-                className={`border-b border-border/30 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${rowBg}`}>
+                className={`border-b border-border/25 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${rowBg}`}>
                 <td className={`px-3 py-1.5 font-mono whitespace-nowrap sticky left-0 z-10 ${dateCls}`}>{ev.date}</td>
                 <td className={`px-3 py-1.5 ${causeCls}`}>{ev.cause}</td>
                 <td className={`px-3 py-1.5 text-right font-mono ${cellColor(ev.initialReturn)}`} style={bgBar(ev.initialReturn, 20)}>{fmt(ev.initialReturn)}</td>
@@ -238,8 +238,8 @@ function StressTable({ events, horizons, averages, returnLabel, onRowClick, sele
               </tr>
             );
           })}
-          <tr className="border-t-2 border-border/60 bg-foreground/[0.03]">
-            <td className="px-3 py-1.5 font-mono font-semibold text-foreground sticky left-0 bg-foreground/[0.03] z-10">Avg</td>
+          <tr className="border-t-2 border-border/50 bg-primary/[0.04]">
+            <td className="px-3 py-1.5 font-mono font-semibold text-foreground sticky left-0 bg-primary/[0.04] z-10">Avg</td>
             <td className="px-3 py-1.5 text-muted-foreground font-medium">Excl. current</td>
             <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-500">{fmt(avgInitial)}</td>
             {horizons.map(h => <td key={h} className={`px-3 py-1.5 text-right font-mono font-semibold ${cellColor(averages[h])}`}>{fmt(averages[h])}</td>)}
@@ -304,7 +304,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
           <select
             value={selectedIndex}
             onChange={(e) => { setSelectedIndex(e.target.value); setSelectedCB(new Set()); }}
-            className="border border-border/50 rounded-lg px-2.5 py-1 text-[11px] focus:outline-none focus:border-sky-500/40 text-foreground cursor-pointer"
+            className="border border-border/50 rounded-lg px-2.5 py-1 text-[11px] focus:outline-none focus:border-primary/40 text-foreground cursor-pointer"
             style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
           >
             {(targetsQuery.data?.targets ?? []).map(t => (
@@ -322,7 +322,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
             ]).map(t => (
               <button key={t.id} onClick={() => setView(t.id)}
                 className={`h-7 px-2.5 rounded-md text-[11px] inline-flex items-center gap-1.5 border transition-colors ${
-                  view === t.id ? 'border-border bg-foreground/[0.06] text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
+                  view === t.id ? 'border-border bg-primary/10 text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.06]'
                 }`}>{t.icon}{t.label}</button>
             ))}
           </div>
@@ -332,7 +332,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
       {/* Loading state */}
       {stressQuery.isLoading && (
         <div className="panel-card p-12 flex flex-col items-center justify-center text-center gap-3">
-          <Loader2 className="w-6 h-6 animate-spin text-sky-500/50" />
+          <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
           <p className="text-[11px] text-muted-foreground">Computing stress test for {selectedIndex}...</p>
         </div>
       )}
@@ -410,7 +410,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
                   <div className="panel-card p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-[11px] font-medium text-muted-foreground">Select events to compare:</span>
-                      <button onClick={() => setSelectedCB(new Set())} className="text-[10px] text-sky-400 hover:text-sky-300 transition-colors">Show all</button>
+                      <button onClick={() => setSelectedCB(new Set())} className="text-[10px] text-primary hover:text-primary transition-colors">Show all</button>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {data.cbEvents.filter(ev => data.recoveryCurves[ev.date]).map(ev => {
@@ -418,7 +418,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
                         return (
                           <button key={ev.date} onClick={() => toggleCB(ev.date)}
                             className={`h-6 px-2 rounded text-[10px] font-mono border transition-colors ${
-                              active ? (ev.isCurrent ? 'border-red-500/50 bg-red-500/10 text-red-500' : 'border-sky-500/50 bg-sky-500/10 text-sky-400')
+                              active ? (ev.isCurrent ? 'border-red-500/50 bg-red-500/10 text-red-500' : 'border-primary/50 bg-primary/10 text-primary')
                                 : 'border-border/40 text-muted-foreground/60 hover:text-foreground hover:border-border'
                             }`}>{ev.date.slice(0, 4)} {ev.cause}</button>
                         );
@@ -457,7 +457,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
                       <h4 className="text-[12px] font-semibold text-foreground mb-2">Data Summary</h4>
                       <ul className="space-y-1.5 text-[11px] text-muted-foreground">
                         {data.valuation.map((t, i) => (
-                          <li key={i} className="flex items-start gap-2"><span className="text-sky-400 mt-0.5">&bull;</span><span>{t}</span></li>
+                          <li key={i} className="flex items-start gap-2"><span className="text-primary mt-0.5">&bull;</span><span>{t}</span></li>
                         ))}
                       </ul>
                     </div>

@@ -48,17 +48,17 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
 
   return (
     <aside className={`
-      ${libraryOpen ? 'w-72' : 'w-0'} shrink-0 flex flex-col border-r border-border/60 bg-background transition-all duration-300 overflow-hidden relative z-10
+      ${libraryOpen ? 'w-72' : 'w-0'} shrink-0 flex flex-col border-r border-border/50 bg-background transition-all duration-300 overflow-hidden relative z-10
     `}>
       {/* Sidebar Header */}
-      <div className="h-11 shrink-0 flex items-center justify-between px-3 border-b border-border/60">
+      <div className="h-11 shrink-0 flex items-center justify-between px-3 border-b border-border/50">
         <div className="flex items-center gap-1.5">
           {activeTab === 'library' && (
             <>
               <button
                 onClick={clearEditor}
                 disabled={!canCreateChart}
-                className="p-1.5 rounded-md transition-all text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="p-1.5 rounded-md transition-all text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed"
                 title="New Analysis"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -69,8 +69,8 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
                   disabled={refreshingAll}
                   className={`p-1.5 rounded-md transition-all ${
                     refreshingAll
-                      ? 'text-foreground bg-foreground/[0.08]'
-                      : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]'
+                      ? 'text-foreground bg-primary/10'
+                      : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10'
                   }`}
                   title="Refresh all data"
                 >
@@ -109,7 +109,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="px-3 py-2 overflow-hidden border-b border-border/60"
+                className="px-3 py-2 overflow-hidden border-b border-border/50"
               >
                 <div className="border border-border/50 rounded-lg p-2">
                   <div className="flex justify-between items-center mb-1.5">
@@ -120,9 +120,9 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
                       {Math.round((refreshProgress.current / refreshProgress.total) * 100)}%
                     </span>
                   </div>
-                  <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
+                  <div className="h-1 w-full bg-primary/[0.06] rounded-full overflow-hidden">
                     <motion.div
-                      className="h-full bg-foreground/40"
+                      className="h-full bg-primary/40"
                       initial={{ width: 0 }}
                       animate={{ width: `${(refreshProgress.current / refreshProgress.total) * 100}%` }}
                       transition={{ duration: 0.3 }}
@@ -134,7 +134,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
           </AnimatePresence>
 
           {/* Search */}
-          <div className="px-3 py-2 border-b border-border/60">
+          <div className="px-3 py-2 border-b border-border/50">
             <div className="relative group">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 transition-colors" />
               <input
@@ -175,8 +175,8 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
                   onClick={() => void loadChart(chart)}
                   className={`w-full group relative flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-150 ${
                     currentChartId === chart.id
-                      ? 'bg-foreground/[0.07] text-foreground'
-                      : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
+                      ? 'bg-primary/[0.08] text-foreground'
+                      : 'text-muted-foreground hover:bg-primary/[0.06] hover:text-foreground'
                   }`}
                 >
                   {/* Index Number */}
@@ -219,7 +219,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
                   </div>
 
                   {currentChartId === chart.id && (
-                    <motion.div layoutId="sidebar-active" className="absolute left-0 w-0.5 h-4 bg-foreground/30 rounded-r-full" />
+                    <motion.div layoutId="sidebar-active" className="absolute left-0 w-0.5 h-4 bg-primary/30 rounded-r-full" />
                   )}
                 </Reorder.Item>
               ))}
@@ -232,7 +232,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
             )}
           </div>
 
-          <div className="p-2 border-t border-border/60">
+          <div className="p-2 border-t border-border/50">
             <button
               onClick={handleExportPDF}
               disabled={exporting || pdfCount === 0}
@@ -250,7 +250,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
 
       {activeTab === 'data' && (
         <div className="flex flex-col h-full bg-background">
-          <div className="p-3 border-b border-border/60">
+          <div className="p-3 border-b border-border/50">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
               <input
@@ -263,7 +263,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
           <div className="flex-grow overflow-y-auto px-2 py-2 space-y-px">
             <div className="px-2.5 py-1 text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1">Primary Streams</div>
             {['SPX_INDEX', 'NDX_INDEX', 'EUR_USD', 'GOLD_CMD', 'UST_10Y', 'BTC_USD'].map(symbol => (
-              <div key={symbol} className="group flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-foreground/[0.04] transition-colors cursor-pointer">
+              <div key={symbol} className="group flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-primary/[0.06] transition-colors cursor-pointer">
                 <div className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/70" />
                   <span className="text-[11px] font-mono text-muted-foreground group-hover:text-foreground transition-colors">{symbol}</span>
@@ -296,7 +296,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
                   max="20"
                   value={editorFontSize}
                   onChange={(e) => setEditorFontSize(parseInt(e.target.value))}
-                  className="w-full h-1 rounded-full appearance-none cursor-pointer accent-foreground"
+                  className="w-full h-1 rounded-full appearance-none cursor-pointer accent-primary"
                 />
               </div>
 
@@ -307,7 +307,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
                     <button
                       key={font}
                       onClick={() => setEditorFontFamily(font)}
-                      className={`px-3 py-2 text-left text-[11px] font-mono rounded-lg border transition-all ${editorFontFamily === font ? 'bg-foreground/[0.07] border-border/60 text-foreground' : 'border-border/40 text-muted-foreground hover:text-foreground hover:border-border/60'}`}
+                      className={`px-3 py-2 text-left text-[11px] font-mono rounded-lg border transition-all ${editorFontFamily === font ? 'bg-primary/[0.08] border-border/50 text-foreground' : 'border-border/40 text-muted-foreground hover:text-foreground hover:border-border/50'}`}
                     >
                       {font.split(',')[0].replace(/'/g, '')}
                     </button>
@@ -316,7 +316,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-border/60">
+            <div className="pt-4 border-t border-border/50">
               <button
                 onClick={() => { if(confirm('Clear current analysis?')) clearEditor(); }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-border/50 rounded-lg text-muted-foreground text-[11px] hover:text-rose-500 hover:border-rose-500/30 transition-all"

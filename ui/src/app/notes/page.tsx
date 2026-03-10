@@ -9,7 +9,6 @@ import {
   FileText,
   ImageIcon,
   Loader2,
-  Pin,
   PinOff,
   Plus,
   Save,
@@ -22,7 +21,7 @@ import {
 
 import dynamic from 'next/dynamic';
 import AppShell from '@/components/AppShell';
-import NavigatorShell from '@/components/NavigatorShell';
+// NavigatorShell removed — using top tabs instead
 
 const NotesRichEditor = dynamic(() => import('@/components/NotesRichEditor'), {
   ssr: false,
@@ -36,7 +35,7 @@ import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
 import PageSkeleton from '@/components/PageSkeleton';
 import { apiFetch, apiFetchJson } from '@/lib/api';
-import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
+// useResponsiveSidebar removed — no sidebar
 import { useTheme } from '@/context/ThemeContext';
 
 interface NoteSummary {
@@ -177,7 +176,7 @@ function NotesPageContent() {
   const { theme } = useTheme();
   const isLight = theme === 'light';
 
-  const { sidebarOpen, toggleSidebar } = useResponsiveSidebar();
+  const [activeReportTab, setActiveReportTab] = useState<'all' | 'published' | 'drafts'>('all');
 
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -262,10 +261,13 @@ function NotesPageContent() {
   }, [selectedNoteId]);
 
   const filteredNotes = useMemo(() => {
+    let result = notes;
+    if (activeReportTab === 'published') result = result.filter(n => n.pinned);
+    else if (activeReportTab === 'drafts') result = result.filter(n => !n.pinned);
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return notes;
-    return notes.filter((n) => (n.title || '').toLowerCase().includes(q));
-  }, [notes, searchQuery]);
+    if (q) result = result.filter((n) => (n.title || '').toLowerCase().includes(q));
+    return result;
+  }, [notes, searchQuery, activeReportTab]);
 
   const noteQuery = useQuery({
     queryKey: ['investment-note', selectedNoteId],
@@ -447,207 +449,141 @@ function NotesPageContent() {
       : 'border-emerald-500/25 bg-emerald-500/[0.07] text-emerald-600 dark:text-emerald-400';
 
   const publishToneClass = pinned
-    ? 'border-sky-500/30 bg-sky-500/[0.08] text-sky-500 dark:text-sky-400 hover:bg-sky-500/[0.14]'
-    : 'border-border/50 bg-background/80 text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground';
+    ? 'border-primary/30 bg-primary/[0.08] text-primary hover:bg-primary/[0.14]'
+    : 'border-border/50 bg-background/80 text-muted-foreground hover:bg-primary/[0.06] hover:text-foreground';
 
-  // ── Sidebar ────────────────────────────────────────────────────────────────
-  const sidebarContent = (
-    <>
-      {/* Search */}
-      <div className="px-3 pt-2.5 pb-2 shrink-0">
-        <div className="relative">
-          <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/45 pointer-events-none" />
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search reports..."
-            style={inputStyle}
-            className="w-full h-8 pl-8 pr-3 rounded-lg border border-border/40 text-[11.5px] outline-none transition-colors focus:border-border/70 placeholder:text-muted-foreground/35"
-          />
-        </div>
-      </div>
-
-      {/* List */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 no-scrollbar">
-        <div className="px-2 pb-1.5 pt-0.5 text-[9.5px] font-mono uppercase tracking-[0.2em] text-muted-foreground/35 select-none">
-          {filteredNotes.length > 0 ? `${filteredNotes.length} document${filteredNotes.length !== 1 ? 's' : ''}` : 'Documents'}
-        </div>
-
-        {notesQuery.isLoading && (
-          <div className="flex items-center gap-2 px-3 py-3 text-[11px] text-muted-foreground/50">
-            <Loader2 className="w-3 h-3 animate-spin" /> Loading...
-          </div>
-        )}
-
-        {!notesQuery.isLoading && filteredNotes.length === 0 && (
-          <div className="px-3 py-8 text-center">
-            <FileText className="w-5 h-5 text-muted-foreground/25 mx-auto mb-2" />
-            <p className="text-[11px] text-muted-foreground/40">
-              {searchQuery ? 'No results' : 'No reports yet'}
-            </p>
-          </div>
-        )}
-
-        <div className="space-y-0.5">
-          {filteredNotes.map((note) => {
-            const active = note.id === selectedNoteId;
-            const dateStr = formatRelativeDate(note.updated_at);
-            return (
-              <button
-                key={note.id}
-                onClick={() => setSelectedNoteId(note.id)}
-                data-active={active ? 'true' : 'false'}
-                className="report-sidebar-item group w-full text-left"
-              >
-                {/* Active indicator strip */}
-                {active && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-sky-400/70" />
-                )}
-                <div className="flex items-start gap-2.5 min-w-0">
-                  {/* Icon */}
-                  <div className={`mt-0.5 shrink-0 flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
-                    active
-                      ? 'border-sky-500/30 bg-sky-500/[0.1] text-sky-400'
-                      : 'border-border/35 bg-foreground/[0.03] text-muted-foreground/50 group-hover:text-muted-foreground group-hover:border-border/55'
-                  }`}>
-                    {note.pinned
-                      ? <Pin className="w-3 h-3" />
-                      : <FileText className="w-3 h-3" />}
-                  </div>
-
-                  {/* Text */}
-                  <div className="min-w-0 flex-1">
-                    <div className={`truncate text-[12px] font-medium leading-snug transition-colors ${
-                      active ? 'text-foreground' : 'text-foreground/75 group-hover:text-foreground/90'
-                    }`}>
-                      {note.title || 'Untitled'}
-                    </div>
-                    <div className="mt-0.5 text-[10px] text-muted-foreground/40 tabular-nums">
-                      {dateStr}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </>
-  );
-
-  // ── Top bar left ───────────────────────────────────────────────────────────
-  const topBarLeft = (
-    <div className="min-w-0 flex items-center gap-1.5 text-[11px]">
-      <span className="font-semibold text-foreground/80 tracking-tight">Reports</span>
-      {selectedNoteId && (
-        <>
-          <span className="text-muted-foreground/30">/</span>
-          <span className="truncate max-w-[180px] text-muted-foreground/60">
-            {title.trim() || selectedNote?.title || 'Untitled'}
-          </span>
-          {noteQuery.isFetching && (
-            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/40 shrink-0" />
-          )}
-        </>
-      )}
-    </div>
-  );
-
-  // ── Top bar right ──────────────────────────────────────────────────────────
-  const topBarRight = (
-    <>
-      {/* Save status badge */}
-      {selectedNoteId && (
-        <div className={`hidden sm:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors ${statusToneClass}`}>
-          {saveState === 'saving'
-            ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
-            : saveState === 'error'
-              ? null
-              : isDirty
-                ? null
-                : <Check className="w-2.5 h-2.5" />}
-          {saveHint}
-          {saveTimeHint && <span className="opacity-60 font-mono normal-case tracking-normal">{saveTimeHint}</span>}
-        </div>
-      )}
-
-      {/* Export buttons */}
-      <div className="flex items-center gap-0.5 mx-0.5">
-        <button
-          onClick={() => handleExport('pdf')}
-          disabled={!selectedNoteId || !!exportingFormat}
-          className="btn-icon"
-          title="Export to PDF"
-        >
-          {exportingFormat === 'pdf'
-            ? <Loader2 className="w-3 h-3 animate-spin" />
-            : <FileText className="w-3.5 h-3.5" />}
-        </button>
-        <button
-          onClick={() => handleExport('pptx')}
-          disabled={!selectedNoteId || !!exportingFormat}
-          className="btn-icon"
-          title="Export to PowerPoint"
-        >
-          {exportingFormat === 'pptx'
-            ? <Loader2 className="w-3 h-3 animate-spin" />
-            : <PresentationIcon className="w-3.5 h-3.5" />}
-        </button>
-      </div>
-
-      {/* Save */}
-      <button
-        onClick={saveNow}
-        disabled={!selectedNoteId || !isDirty || updateMutation.isPending || uploadMutation.isPending}
-        className="h-6 rounded-md border border-emerald-500/30 bg-emerald-500/[0.07] px-2 text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/[0.13] inline-flex items-center gap-1.5 disabled:opacity-35 transition-colors"
-      >
-        {updateMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Save className="w-2.5 h-2.5" />}
-        Save
-      </button>
-
-      {/* Delete */}
-      <button
-        onClick={handleDeleteNote}
-        disabled={!selectedNoteId || deleteMutation.isPending}
-        className="h-6 rounded-md border border-rose-500/30 bg-rose-500/[0.07] px-2 text-[10.5px] font-semibold text-rose-500 dark:text-rose-400 hover:bg-rose-500/[0.13] inline-flex items-center gap-1.5 disabled:opacity-35 transition-colors"
-      >
-        {deleteMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Trash2 className="w-2.5 h-2.5" />}
-        Delete
-      </button>
-    </>
-  );
+  const publishedCount = notes.filter(n => n.pinned).length;
+  const draftCount = notes.filter(n => !n.pinned).length;
 
   return (
     <>
       <AppShell hideFooter>
-        <NavigatorShell
-          sidebarOpen={sidebarOpen}
-          onSidebarToggle={toggleSidebar}
-          shellClassName="report-shell"
-          sidebarClassName="report-sidebar"
-          sidebarOpenWidthClassName="w-[260px] xl:w-[280px]"
-          sidebarHeaderClassName="report-sidebar-header"
-          topBarClassName="report-topbar"
-          mainSectionClassName="report-shell"
-          mainClassName="report-main-scroll"
-          sidebarIcon={<BookOpen className="w-3 h-3 text-sky-400/70" />}
-          sidebarLabel="Reports"
-          sidebarHeaderActions={
-            <button
-              onClick={handleCreateNote}
-              disabled={createMutation.isPending}
-              className="w-5 h-5 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-50"
-              title="New report"
-            >
-              {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-            </button>
-          }
-          sidebarContent={sidebarContent}
-          topBarLeft={topBarLeft}
-          topBarRight={topBarRight}
-        >
+        <div className="h-[calc(100vh-48px)] flex flex-col overflow-hidden">
+          {/* Combined tab bar: filter tabs | report selector | search | actions */}
+          <div className="px-4 sm:px-5 lg:px-6 border-b border-border/25 shrink-0">
+            <div className="flex items-center gap-2 -mb-px">
+              {/* Filter tabs */}
+              <div className="flex gap-0.5 overflow-x-auto no-scrollbar">
+                {([
+                  { key: 'all' as const, label: 'All', count: notes.length },
+                  { key: 'published' as const, label: 'Published', count: publishedCount },
+                  { key: 'drafts' as const, label: 'Drafts', count: draftCount },
+                ]).map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveReportTab(tab.key)}
+                    className={`tab-link ${activeReportTab === tab.key ? 'active' : ''}`}
+                  >
+                    {tab.label}
+                    <span className="ml-1 text-[9px] text-muted-foreground/40 font-mono">{tab.count}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="w-px h-3 bg-border/30" />
+
+              {/* Report selector dropdown */}
+              <select
+                value={selectedNoteId || ''}
+                onChange={(e) => setSelectedNoteId(e.target.value || null)}
+                className="border border-border/40 rounded-lg px-2.5 py-1.5 text-[11px] font-medium focus:outline-none focus:border-primary/40 text-foreground cursor-pointer max-w-[220px] truncate shrink-0"
+                style={inputStyle}
+              >
+                <option value="">Select report...</option>
+                {filteredNotes.map(note => (
+                  <option key={note.id} value={note.id}>
+                    {note.pinned ? '★ ' : ''}{note.title || 'Untitled'} — {formatRelativeDate(note.updated_at)}
+                  </option>
+                ))}
+              </select>
+
+              {/* Search */}
+              <div className="relative shrink-0">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40 pointer-events-none" />
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search..."
+                  aria-label="Search reports"
+                  className="w-28 focus:w-44 transition-all pl-7 pr-2 py-1.5 text-[11px] font-medium bg-transparent border border-border/40 rounded-md text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:border-primary/40"
+                />
+              </div>
+
+              <div className="flex-1" />
+
+              {/* Save status badge */}
+              {selectedNoteId && (
+                <div className={`hidden sm:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors shrink-0 ${statusToneClass}`}>
+                  {saveState === 'saving'
+                    ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    : saveState === 'error'
+                      ? null
+                      : isDirty
+                        ? null
+                        : <Check className="w-2.5 h-2.5" />}
+                  {saveHint}
+                  {saveTimeHint && <span className="opacity-60 font-mono normal-case tracking-normal">{saveTimeHint}</span>}
+                </div>
+              )}
+
+              {/* Export buttons */}
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button
+                  onClick={() => handleExport('pdf')}
+                  disabled={!selectedNoteId || !!exportingFormat}
+                  className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-primary/10 disabled:opacity-40 transition-colors"
+                  title="Export to PDF"
+                >
+                  {exportingFormat === 'pdf'
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <FileText className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={() => handleExport('pptx')}
+                  disabled={!selectedNoteId || !!exportingFormat}
+                  className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-primary/10 disabled:opacity-40 transition-colors"
+                  title="Export to PowerPoint"
+                >
+                  {exportingFormat === 'pptx'
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <PresentationIcon className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+
+              {/* Save */}
+              <button
+                onClick={saveNow}
+                disabled={!selectedNoteId || !isDirty || updateMutation.isPending || uploadMutation.isPending}
+                className="h-6 rounded-md border border-emerald-500/30 bg-emerald-500/[0.07] px-2 text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/[0.13] inline-flex items-center gap-1.5 disabled:opacity-35 transition-colors shrink-0"
+              >
+                {updateMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Save className="w-2.5 h-2.5" />}
+                Save
+              </button>
+
+              {/* New report */}
+              <button
+                onClick={handleCreateNote}
+                disabled={createMutation.isPending}
+                className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-primary/10 transition-colors disabled:opacity-50 shrink-0"
+                title="New report"
+              >
+                {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+              </button>
+
+              {/* Delete */}
+              <button
+                onClick={handleDeleteNote}
+                disabled={!selectedNoteId || deleteMutation.isPending}
+                className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-rose-400 hover:bg-rose-500/[0.08] disabled:opacity-35 transition-colors shrink-0"
+                title="Delete report"
+              >
+                {deleteMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+              </button>
+            </div>
+          </div>
+
           {/* ── Canvas ──────────────────────────────────────────────────────── */}
-          <div className="h-full min-h-0 overflow-hidden max-w-[1600px] mx-auto w-full">
+          <div className="flex-1 min-h-0 overflow-hidden max-w-[1600px] mx-auto w-full">
             <div className="h-full min-h-0 bg-background overflow-hidden">
               <section className="report-canvas min-h-0 h-full overflow-y-auto custom-scrollbar">
 
@@ -655,9 +591,7 @@ function NotesPageContent() {
                 {!selectedNoteId && (
                   <div className="h-full flex flex-col items-center justify-center px-6 text-center select-none">
                     <div className="mb-6 relative">
-                      {/* Glow ring */}
-                      <div className="absolute inset-0 rounded-2xl bg-sky-400/10 blur-xl scale-150" />
-                      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border/40 bg-card/60 backdrop-blur-sm shadow-sm">
+                      <div className="relative flex h-16 w-16 items-center justify-center rounded-md border border-border/40 bg-card shadow-sm">
                         <BookOpen className="w-7 h-7 text-muted-foreground/40" />
                       </div>
                     </div>
@@ -665,13 +599,13 @@ function NotesPageContent() {
                       No document open
                     </h2>
                     <p className="mt-2 max-w-[260px] text-[12px] leading-relaxed text-muted-foreground/50">
-                      Select a report from the sidebar, or start a new one.
+                      Select a report from the dropdown, or start a new one.
                     </p>
                     <div className="mt-6 flex items-center gap-2">
                       <button
                         onClick={handleCreateNote}
                         disabled={createMutation.isPending}
-                        className="h-8 px-4 rounded-lg border border-sky-500/30 bg-sky-500/[0.07] text-[12px] font-medium text-sky-500 dark:text-sky-400 hover:bg-sky-500/[0.13] transition-colors disabled:opacity-40 inline-flex items-center gap-1.5"
+                        className="h-8 px-4 rounded-md border border-primary/30 bg-primary/[0.07] text-[12px] font-medium text-primary hover:bg-primary/[0.13] transition-colors disabled:opacity-40 inline-flex items-center gap-1.5"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         New report
@@ -687,7 +621,6 @@ function NotesPageContent() {
 
                       {/* Document meta row */}
                       <div className="mb-5 flex items-center gap-2 flex-wrap">
-                        {/* Published / Draft pill */}
                         <button
                           onClick={handlePinnedToggle}
                           disabled={!selectedNoteId}
@@ -697,8 +630,6 @@ function NotesPageContent() {
                             ? <><PinOff className="w-2.5 h-2.5" />Published</>
                             : <><AlignLeft className="w-2.5 h-2.5" />Draft</>}
                         </button>
-
-                        {/* Date */}
                         {(updatedLabel || createdLabel) && (
                           <span className="text-[10.5px] text-muted-foreground/35 tabular-nums">
                             {updatedLabel ? `Edited ${updatedLabel}` : `Created ${createdLabel}`}
@@ -724,7 +655,6 @@ function NotesPageContent() {
                         {imageCount > 0 && <StatChip icon={<ImageIcon className="w-2.5 h-2.5" />} label={`${imageCount} images`} />}
                       </div>
 
-                      {/* Divider */}
                       <div className="mt-7 mb-6 h-px bg-border/20" />
 
                       {/* Editor */}
@@ -733,7 +663,7 @@ function NotesPageContent() {
                           <p className="text-rose-400 text-[13px]">Failed to load note.</p>
                           <button
                             onClick={() => noteQuery.refetch()}
-                            className="h-7 px-3 rounded-lg border border-border/40 bg-foreground/[0.03] text-[11px] font-medium hover:bg-foreground/[0.06] transition-colors"
+                            className="h-7 px-3 rounded-[var(--radius)] border border-border/40 bg-primary/[0.04] text-[11px] font-medium hover:bg-primary/10 transition-colors"
                           >
                             Retry
                           </button>
@@ -756,7 +686,6 @@ function NotesPageContent() {
                         </div>
                       )}
 
-                      {/* Status message */}
                       {status && (
                         <div className={`mt-6 text-[11px] font-medium transition-opacity ${
                           saveState === 'error' ? 'text-rose-400' : 'text-muted-foreground/35'
@@ -770,7 +699,7 @@ function NotesPageContent() {
               </section>
             </div>
           </div>
-        </NavigatorShell>
+        </div>
       </AppShell>
 
       {toastError && <Toast message={toastError} onDismiss={() => setToastError(null)} />}
@@ -797,7 +726,7 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
     return () => clearTimeout(t);
   }, []);
   return (
-    <div className="fixed bottom-5 right-5 z-[200] flex items-center gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/[0.12] backdrop-blur-md px-4 py-2.5 text-[12px] font-medium text-rose-400 shadow-lg animate-in slide-in-from-bottom-2 fade-in duration-200">
+    <div className="fixed bottom-5 right-5 z-[200] flex items-center gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/[0.12] backdrop-blur-md px-4 py-2.5 text-[12px] font-medium text-rose-400 shadow-lg animate-in slide-in-from-bottom-2 fade-in duration-200">
       {message}
       <button onClick={onDismiss} className="opacity-60 hover:opacity-100 transition-opacity leading-none text-base">&times;</button>
     </div>

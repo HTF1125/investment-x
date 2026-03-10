@@ -1,217 +1,159 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import AppShell from '@/components/AppShell';
-import NavigatorShell from '@/components/NavigatorShell';
-import NewsFeed from '@/components/NewsFeed';
-import TelegramFeed from '@/components/TelegramFeed';
-import MacroBriefFeed from '@/components/MacroBriefFeed';
 import AuthGuard from '@/components/AuthGuard';
 import PageSkeleton from '@/components/PageSkeleton';
-import { useAuth } from '@/context/AuthContext';
-import { apiFetch } from '@/lib/api';
-import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
-import { useQueryClient } from '@tanstack/react-query';
-import { Radio, RefreshCw, Check, AlertTriangle, MessageSquare, Newspaper, BookOpen } from 'lucide-react';
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import MacroBriefFeed from '@/components/MacroBriefFeed';
+import NewsFeed from '@/components/NewsFeed';
+import TelegramFeed from '@/components/TelegramFeed';
+import IntelTabs from '@/components/intel/IntelTabs';
+import IntelHeader from '@/components/intel/IntelHeader';
+import IntelSidePanel from '@/components/intel/IntelSidePanel';
+import ResearchHeroCard from '@/components/intel/ResearchHeroCard';
+import { useIntelState } from '@/hooks/useIntelState';
+import { apiFetchJson } from '@/lib/api';
+import {
+  parseRiskScorecard,
+  parseBriefingSections,
+  parseTakeaways,
+} from '@/components/MacroBriefFeed';
+import type { ReportData } from '@/components/MacroBriefFeed';
+import { Loader2 } from 'lucide-react';
 
-import { useTasks } from '@/components/TaskProvider';
+const WartimeContent = lazy(() =>
+  import('@/components/WartimeContent').then((m) => ({ default: m.WartimeContent })),
+);
+const StressTestContent = lazy(() =>
+  import('@/components/StressTestContent').then((m) => ({ default: m.StressTestContent })),
+);
 
-type IntelTab = 'research' | 'news' | 'telegram';
-
-const TABS: { id: IntelTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'research', label: 'Research', icon: <BookOpen className="w-3.5 h-3.5" /> },
-  { id: 'news', label: 'News', icon: <Newspaper className="w-3.5 h-3.5" /> },
-  { id: 'telegram', label: 'Telegram', icon: <MessageSquare className="w-3.5 h-3.5" /> },
-];
-
-export default function IntelPage() {
+function LazyFallback({ label }: { label: string }) {
   return (
-    <AuthGuard>
-      <Suspense fallback={<AppShell hideFooter><PageSkeleton label="Loading intel" /></AppShell>}>
-        <IntelPageContent />
-      </Suspense>
-    </AuthGuard>
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex flex-col items-center gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground/40" />
+        <span className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-wider">
+          {label}
+        </span>
+      </div>
+    </div>
   );
 }
 
-function IntelPageContent() {
-  const { user } = useAuth();
-  const isAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
-  const { sidebarOpen, toggleSidebar } = useResponsiveSidebar();
-  const [intelTab, setIntelTab] = useState<IntelTab>('research');
+function ResearchTab({ state }: { state: ReturnType<typeof useIntelState> }) {
+  const { selectedDate, dateIdx, setDateIdx } = state;
 
-  const queryClient = useQueryClient();
-  const [syncingNews, setSyncingNews] = useState(false);
-  const [syncingTelegram, setSyncingTelegram] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error'; sticky?: boolean } | null>(null);
+  // Query the report data for the hero card stats
+  const { data: report } = useQuery<ReportData>({
+    queryKey: ['research-report', selectedDate],
+    queryFn: () => apiFetchJson<ReportData>(`/api/news/reports/${selectedDate}`),
+    enabled: !!selectedDate,
+    staleTime: 300_000,
+  });
 
-  const lastNewsIdRef = useRef<string | null>(null);
-  const lastTelegramIdRef = useRef<string | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
-
-  const flash = useCallback((msg: string, type: 'success' | 'error', opts?: { sticky?: boolean }) => {
-    if (toastTimerRef.current) { clearTimeout(toastTimerRef.current); toastTimerRef.current = null; }
-    setToast({ msg, type, sticky: !!opts?.sticky });
-    if (!opts?.sticky) toastTimerRef.current = setTimeout(() => setToast(null), 4000);
-  }, []);
-
-  const { processes: allProcesses } = useTasks();
-
-  const latestNews = allProcesses.find((p) => p.name.startsWith('News Scraping'));
-  const latestTelegram = allProcesses.find((p) => p.name.startsWith('Telegram Sync'));
-
-  useEffect(() => {
-    if (!latestNews) return;
-    setSyncingNews(latestNews.status === 'running');
-    if (latestNews.id !== lastNewsIdRef.current && latestNews.status !== 'running') {
-      if (latestNews.status === 'completed') {
-        flash('News crawl completed!', 'success', { sticky: true });
-        queryClient.invalidateQueries({ queryKey: ['news-feed'] });
-      } else if (latestNews.status === 'failed') {
-        flash(latestNews.message || 'News crawl failed', 'error', { sticky: true });
-      }
-    }
-    lastNewsIdRef.current = latestNews.id;
-  }, [latestNews, flash, queryClient]);
-
-  useEffect(() => {
-    if (!latestTelegram) return;
-    setSyncingTelegram(latestTelegram.status === 'running');
-    if (latestTelegram.id !== lastTelegramIdRef.current && latestTelegram.status !== 'running') {
-      if (latestTelegram.status === 'completed') {
-        flash('Telegram sync completed!', 'success', { sticky: true });
-        queryClient.invalidateQueries({ queryKey: ['news-feed'] });
-      } else if (latestTelegram.status === 'failed') {
-        flash(latestTelegram.message || 'Telegram sync failed', 'error', { sticky: true });
-      }
-    }
-    lastTelegramIdRef.current = latestTelegram.id;
-  }, [latestTelegram, flash, queryClient]);
-
-  const triggerSync = async (endpoint: string, setSyncing: (v: boolean) => void, label: string) => {
-    setSyncing(true);
-    try {
-      const res = await apiFetch(endpoint, { method: 'POST' });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || `${label} failed`);
-      }
-      queryClient.invalidateQueries({ queryKey: ['task-processes'] });
-    } catch (err: any) {
-      flash(err.message || `${label} failed`, 'error');
-      setSyncing(false);
-    }
-  };
-
-  const handleActiveSync = () => {
-    if (intelTab === 'news') triggerSync('/api/task/news', setSyncingNews, 'News crawl');
-    else if (intelTab === 'telegram') triggerSync('/api/task/telegram', setSyncingTelegram, 'Telegram sync');
-  };
-
-  const activeIsSyncing = intelTab === 'news' ? syncingNews : intelTab === 'telegram' ? syncingTelegram : false;
-  const showSyncButton = intelTab !== 'research';
-  const anySyncing = syncingNews || syncingTelegram;
+  const riskItems = useMemo(
+    () => (report?.risk_scorecard ? parseRiskScorecard(report.risk_scorecard) : []),
+    [report?.risk_scorecard],
+  );
+  const briefingSections = useMemo(
+    () => (report?.briefing ? parseBriefingSections(report.briefing) : []),
+    [report?.briefing],
+  );
+  const takeaways = useMemo(
+    () => (report?.takeaways ? parseTakeaways(report.takeaways) : []),
+    [report?.takeaways],
+  );
+  const avgScore =
+    riskItems.length > 0
+      ? riskItems.reduce((sum, r) => sum + r.score, 0) / riskItems.length
+      : null;
 
   return (
-    <AppShell hideFooter>
-      <NavigatorShell
-        sidebarOpen={sidebarOpen}
-        onSidebarToggle={toggleSidebar}
-        sidebarIcon={<Radio className="w-3.5 h-3.5 text-sky-400" />}
-        sidebarLabel="Intel"
-        sidebarContent={
-          <div className="min-h-0 flex-1 overflow-y-auto py-1 custom-scrollbar">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setIntelTab(tab.id)}
-                className={`w-full text-left px-2.5 py-1.5 transition-colors border-l-2 hover:bg-foreground/5 ${
-                  intelTab === tab.id
-                    ? 'border-l-sky-400 text-foreground'
-                    : 'border-l-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <div className="font-medium text-[12px] truncate leading-tight">{tab.label}</div>
-              </button>
-            ))}
-          </div>
+    <>
+      {/* Hero summary card */}
+      <div className="px-5 md:px-8 pt-5 max-w-[1600px] mx-auto">
+        <ResearchHeroCard
+          selectedDate={selectedDate}
+          riskCount={riskItems.length}
+          avgScore={avgScore}
+          sectionCount={briefingSections.length}
+          takeawayCount={takeaways.length}
+        />
+      </div>
+
+      {/* MacroBriefFeed with external date control */}
+      <MacroBriefFeed
+        hideHeader
+        externalDateIdx={dateIdx}
+        onDateIdxChange={setDateIdx}
+      />
+    </>
+  );
+}
+
+export default function IntelPage() {
+  const state = useIntelState();
+
+  return (
+    <AuthGuard>
+      <Suspense
+        fallback={
+          <AppShell hideFooter>
+            <PageSkeleton label="Loading intel" />
+          </AppShell>
         }
-        topBarLeft={
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-foreground">Intel Feed</span>
-            <span className="text-muted-foreground/30">·</span>
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setIntelTab(tab.id)}
-                className={`h-6 px-2 rounded-md text-[11px] inline-flex items-center gap-1.5 border transition-colors ${
-                  intelTab === tab.id
-                    ? 'border-border bg-foreground/[0.06] text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        }
-        topBarRight={
-          <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${anySyncing ? 'bg-sky-400 animate-pulse' : 'bg-emerald-500'}`} />
-            {isAdmin && showSyncButton && (
-              <button
-                onClick={handleActiveSync}
-                disabled={activeIsSyncing}
-                title={`Sync ${TABS.find((t) => t.id === intelTab)?.label}`}
-                className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-40"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${activeIsSyncing ? 'animate-spin' : ''}`} />
-              </button>
-            )}
-          </div>
-        }
-        mainClassName="overflow-hidden"
       >
-        <div className="h-full p-3 md:p-4 overflow-hidden max-w-screen-xl mx-auto w-full">
-          <div className="h-full min-h-0 border border-border/60 rounded-xl bg-background overflow-hidden">
-            <div className="min-h-0 h-full overflow-hidden">
-              {intelTab === 'research' && <MacroBriefFeed embedded />}
-              {intelTab === 'news' && <NewsFeed embedded />}
-              {intelTab === 'telegram' && <TelegramFeed embedded />}
+        <AppShell hideFooter>
+          <div className="h-[calc(100vh-48px)] flex flex-col min-h-0 overflow-hidden">
+            {/* Tab bar */}
+            <IntelTabs activeTab={state.activeTab} setActiveTab={state.setActiveTab} />
+
+            {/* Header with date nav + side panel toggle */}
+            <IntelHeader state={state} />
+
+            {/* Content area: main + optional side panel */}
+            <div className="flex-1 flex min-h-0 overflow-hidden">
+              {/* Main content */}
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                {state.activeTab === 'research' && <ResearchTab state={state} />}
+
+                {state.activeTab === 'news' && (
+                  <div className="h-full">
+                    <NewsFeed embedded />
+                  </div>
+                )}
+
+                {state.activeTab === 'signals' && (
+                  <div className="h-full">
+                    <TelegramFeed embedded />
+                  </div>
+                )}
+
+                {state.activeTab === 'wartime' && (
+                  <Suspense fallback={<LazyFallback label="Loading wartime analysis" />}>
+                    <div className="flex-1 overflow-y-auto">
+                      <WartimeContent embedded />
+                    </div>
+                  </Suspense>
+                )}
+
+                {state.activeTab === 'stress' && (
+                  <Suspense fallback={<LazyFallback label="Loading stress analysis" />}>
+                    <div className="flex-1 overflow-y-auto">
+                      <StressTestContent embedded />
+                    </div>
+                  </Suspense>
+                )}
+              </div>
+
+              {/* Collapsible side panel */}
+              <IntelSidePanel state={state} />
             </div>
           </div>
-        </div>
-      </NavigatorShell>
-
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-4 py-2.5 rounded-xl shadow-xl border border-border/60 bg-background ${
-              toast.type === 'success' ? 'text-emerald-500' : 'text-rose-400'
-            }`}
-          >
-            {toast.type === 'success' ? <Check className="w-3.5 h-3.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
-            <span className="text-[13px] font-medium text-foreground">{toast.msg}</span>
-            {toast.sticky && (
-              <button
-                onClick={() => setToast(null)}
-                className="ml-1 px-2 py-0.5 rounded-md border border-border/60 text-[10px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
-              >
-                OK
-              </button>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </AppShell>
+        </AppShell>
+      </Suspense>
+    </AuthGuard>
   );
 }

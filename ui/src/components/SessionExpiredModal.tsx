@@ -34,17 +34,17 @@ export default function SessionExpiredModal() {
   if (!isSessionExpired) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-foreground/40 dark:bg-black/70 backdrop-blur-md">
-      <div className="w-full max-w-sm mx-4 rounded-xl border border-border/60 bg-background shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-sm mx-4 rounded-xl border border-border/50 bg-background shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <div className="flex items-center gap-2">
-            <LogIn className="w-4 h-4 text-sky-400" />
+            <LogIn className="w-4 h-4 text-primary" />
             <h2 className="text-sm font-semibold text-foreground">Session Expired</h2>
           </div>
           <button
             onClick={handleLogout}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -63,7 +63,7 @@ export default function SessionExpiredModal() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={user?.email || 'email@example.com'}
-              className="w-full border border-border/50 rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/10 text-foreground bg-background transition-all placeholder:text-muted-foreground/40"
+              className="w-full border border-border/50 rounded-[var(--radius)] px-3 py-2 text-[13px] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 text-foreground bg-background transition-all placeholder:text-muted-foreground/40"
               autoFocus
             />
           </div>
@@ -74,7 +74,7 @@ export default function SessionExpiredModal() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
-              className="w-full border border-border/50 rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/10 text-foreground bg-background transition-all placeholder:text-muted-foreground/40"
+              className="w-full border border-border/50 rounded-[var(--radius)] px-3 py-2 text-[13px] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 text-foreground bg-background transition-all placeholder:text-muted-foreground/40"
               required
             />
           </div>
@@ -87,7 +87,7 @@ export default function SessionExpiredModal() {
             <button
               type="submit"
               disabled={submitting || !password}
-              className="flex-1 h-9 rounded-lg bg-sky-500 text-white text-[13px] font-medium hover:bg-sky-600 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+              className="flex-1 h-9 rounded-[var(--radius)] bg-primary text-primary-foreground text-[13px] font-medium hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2"
             >
               {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
               Sign In
@@ -95,7 +95,7 @@ export default function SessionExpiredModal() {
             <button
               type="button"
               onClick={handleLogout}
-              className="h-9 px-4 rounded-lg border border-border/50 text-[13px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+              className="h-9 px-4 rounded-[var(--radius)] border border-border/40 text-[13px] text-muted-foreground hover:text-foreground hover:bg-primary/[0.04] transition-colors"
             >
               Logout
             </button>

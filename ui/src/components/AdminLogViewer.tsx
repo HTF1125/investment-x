@@ -32,7 +32,7 @@ function levelTone(level: string) {
   if (normalized === 'WARNING') {
     return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
   }
-  return 'border-sky-500/30 bg-sky-500/10 text-sky-300';
+  return 'border-primary/30 bg-primary/10 text-primary';
 }
 
 export default function AdminLogViewer() {
@@ -98,12 +98,12 @@ export default function AdminLogViewer() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl border border-border/50 bg-gradient-to-br from-card/80 via-card/60 to-card/40 backdrop-blur-xl p-6 md:p-8 shadow-xl">
+      <div className="rounded-[var(--radius)] border border-border/50 bg-card p-6 md:p-8 shadow-md">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-2xl font-bold text-foreground tracking-tight flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-sky-500/20">
-                <Activity className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
+                <Activity className="w-5 h-5 text-primary" />
               </div>
               Runtime Logs
             </h2>
@@ -114,7 +114,7 @@ export default function AdminLogViewer() {
 
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-semibold ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold ${
                 streamState === 'live'
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
                   : streamState === 'error'
@@ -125,8 +125,8 @@ export default function AdminLogViewer() {
               <Waves className="w-3.5 h-3.5" />
               {streamState === 'live' ? 'Live stream active' : streamState === 'error' ? 'Stream reconnecting' : 'Connecting stream'}
             </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/60 text-[11px] text-muted-foreground">
-              <ShieldAlert className="w-3.5 h-3.5 text-sky-400" />
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[11px] text-muted-foreground">
+              <ShieldAlert className="w-3.5 h-3.5 text-primary" />
               Admin only
             </span>
           </div>
@@ -140,7 +140,7 @@ export default function AdminLogViewer() {
         </div>
       </div>
 
-      <div className="rounded-3xl border border-border/50 bg-gradient-to-br from-card/80 via-card/60 to-card/40 backdrop-blur-xl p-6 md:p-8 shadow-xl">
+      <div className="rounded-[var(--radius)] border border-border/50 bg-card p-6 md:p-8 shadow-md">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <label className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -148,14 +148,14 @@ export default function AdminLogViewer() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search logger, module, service, or message..."
-              className="w-full pl-11 pr-4 py-3 rounded-xl bg-background/60 border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-sky-500/40 focus:ring-2 focus:ring-sky-500/20 transition-all"
+              className="w-full pl-11 pr-4 py-3 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </label>
 
           <select
             value={level}
             onChange={(event) => setLevel(event.target.value as (typeof LEVELS)[number])}
-            className="px-4 py-3 rounded-xl bg-background/60 border border-border text-sm text-foreground outline-none focus:border-sky-500/40 focus:ring-2 focus:ring-sky-500/20 transition-all"
+            className="px-4 py-3 rounded-lg bg-background border border-border text-sm text-foreground outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 transition-all"
           >
             {LEVELS.map((item) => (
               <option key={item} value={item}>
@@ -167,7 +167,7 @@ export default function AdminLogViewer() {
           <select
             value={String(limit)}
             onChange={(event) => setLimit(Number(event.target.value) as (typeof LIMITS)[number])}
-            className="px-4 py-3 rounded-xl bg-background/60 border border-border text-sm text-foreground outline-none focus:border-sky-500/40 focus:ring-2 focus:ring-sky-500/20 transition-all"
+            className="px-4 py-3 rounded-lg bg-background border border-border text-sm text-foreground outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 transition-all"
           >
             {LIMITS.map((item) => (
               <option key={item} value={item}>
@@ -179,12 +179,12 @@ export default function AdminLogViewer() {
 
         {isLoading ? (
           <div className="py-20 text-center">
-            <Loader2 className="w-8 h-8 animate-spin text-sky-400 mx-auto mb-3" />
+            <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">Loading runtime logs...</p>
           </div>
         ) : isError ? (
           <div className="py-20 text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-sm text-rose-300">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-sm text-rose-300">
               <AlertTriangle className="w-4 h-4" />
               {(error as Error)?.message || 'Failed to load runtime logs.'}
             </div>
@@ -196,7 +196,7 @@ export default function AdminLogViewer() {
         ) : (
           <div className="mt-5 space-y-3">
             {logs.map((log) => (
-              <div key={log.id} className="rounded-2xl border border-border/50 bg-background/40 px-4 py-3 backdrop-blur-sm">
+              <div key={log.id} className="rounded-md border border-border/50 bg-background/40 px-4 py-3 backdrop-blur-sm">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold ${levelTone(log.level)}`}>
@@ -232,7 +232,7 @@ export default function AdminLogViewer() {
                 </div>
 
                 {log.exception && (
-                  <pre className="mt-3 overflow-x-auto rounded-xl border border-rose-500/20 bg-rose-500/8 p-3 text-[11px] leading-relaxed text-rose-200 whitespace-pre-wrap">
+                  <pre className="mt-3 overflow-x-auto rounded-lg border border-rose-500/20 bg-rose-500/8 p-3 text-[11px] leading-relaxed text-rose-200 whitespace-pre-wrap">
                     {log.exception}
                   </pre>
                 )}
@@ -267,11 +267,11 @@ function StatCard({
       : tone === 'amber'
         ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
         : tone === 'sky'
-          ? 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+          ? 'border-primary/30 bg-primary/10 text-primary'
           : 'border-border/50 bg-background/40 text-foreground';
 
   return (
-    <div className={`rounded-xl border px-4 py-3 ${toneClass}`}>
+    <div className={`rounded-lg border px-4 py-3 ${toneClass}`}>
       <div className="text-[10px] font-mono uppercase tracking-wider opacity-70 mb-1">{label}</div>
       <div className="text-2xl font-bold">{value}</div>
     </div>

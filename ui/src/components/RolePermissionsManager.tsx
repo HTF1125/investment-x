@@ -26,7 +26,7 @@ const FEATURES: Feature[] = [
 
 const ROLES: { id: Role; label: string; color: string }[] = [
   { id: 'owner',   label: 'Owner',   color: 'text-amber-400  bg-amber-500/10  border-amber-500/30' },
-  { id: 'admin',   label: 'Admin',   color: 'text-sky-400    bg-sky-500/10    border-sky-500/30' },
+  { id: 'admin',   label: 'Admin',   color: 'text-primary    bg-primary/10    border-primary/30' },
   { id: 'general', label: 'General', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
 ];
 
@@ -95,12 +95,12 @@ export default function RolePermissionsManager() {
   }
 
   return (
-    <div className="rounded-xl border border-border/60 bg-background overflow-hidden">
+    <div className="rounded-lg border border-border/50 bg-background overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between gap-3">
+      <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-foreground/[0.06] border border-border/60 flex items-center justify-center">
-            <ShieldCheck className="w-4 h-4 text-foreground" />
+          <div className="w-8 h-8 rounded-lg bg-primary/10 border border-border/50 flex items-center justify-center">
+            <ShieldCheck className="w-4 h-4 text-primary" />
           </div>
           <div>
             <div className="text-sm font-semibold text-foreground">Role Permissions</div>
@@ -143,8 +143,8 @@ export default function RolePermissionsManager() {
             <div key={feature.id} className="px-5 py-4 flex items-center gap-4 flex-wrap sm:flex-nowrap">
               {/* Feature info */}
               <div className="flex items-center gap-3 min-w-[220px] flex-1">
-                <div className="w-7 h-7 rounded-lg bg-foreground/[0.06] border border-border/60 flex items-center justify-center shrink-0">
-                  <Icon className="w-3.5 h-3.5 text-foreground" />
+                <div className="w-7 h-7 rounded-lg bg-primary/10 border border-border/50 flex items-center justify-center shrink-0">
+                  <Icon className="w-3.5 h-3.5 text-primary" />
                 </div>
                 <div>
                   <div className="text-[13px] font-medium text-foreground">{feature.label}</div>

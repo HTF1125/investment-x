@@ -21,7 +21,6 @@ export interface ChartTileProps {
   isRefreshing?: boolean;
   copySignal?: number;
   onOpenSpotlight?: (chartId: string) => void;
-  onOpenStudio?: (chartId: string) => void;
   isFavorite?: boolean;
   onToggleFavorite?: (id: string) => void;
 }
@@ -39,7 +38,6 @@ const ChartTile = React.memo(function ChartTile({
   isRefreshing,
   copySignal,
   onOpenSpotlight,
-  onOpenStudio,
   isFavorite,
   onToggleFavorite,
 }: ChartTileProps) {
@@ -66,7 +64,7 @@ const ChartTile = React.memo(function ChartTile({
   return (
     <div
       ref={cardRef}
-      className="group relative rounded-xl border border-border/40 bg-card overflow-hidden transition-all duration-200 hover:border-border/70 hover:shadow-lg hover:shadow-black/[0.04] dark:hover:shadow-black/20"
+      className="group relative rounded-[var(--radius)] border border-border/30 bg-card overflow-hidden transition-all duration-200 hover:border-primary/25 hover:shadow-lg hover:shadow-black/[0.06] dark:hover:shadow-black/25"
     >
       {/* ── Header ── */}
       <div className="flex items-center gap-2 px-3 py-1.5 min-h-[32px]">
@@ -75,7 +73,7 @@ const ChartTile = React.memo(function ChartTile({
         </span>
 
         {chart.category && (
-          <span className="text-[9px] font-mono text-muted-foreground/40 bg-foreground/[0.03] px-1.5 py-0.5 rounded shrink-0 hidden sm:inline-block">
+          <span className="text-[9px] font-mono text-muted-foreground/40 bg-primary/[0.04] px-1.5 py-0.5 rounded-[calc(var(--radius)-2px)] shrink-0 hidden sm:inline-block">
             {chart.category}
           </span>
         )}
@@ -105,7 +103,7 @@ const ChartTile = React.memo(function ChartTile({
 
       {/* ── Chart area ── */}
       <div
-        className="relative h-[300px] cursor-pointer bg-background border-t border-border/20"
+        className="relative h-[300px] cursor-pointer bg-background border-t border-border/15"
         onClick={handleExpand}
       >
         {isInView ? (
@@ -133,8 +131,8 @@ const ChartTile = React.memo(function ChartTile({
           {canEdit && (
             <TileAction
               icon={<Pencil className="w-3.5 h-3.5" />}
-              title="Edit in Studio"
-              onClick={(e) => { e.stopPropagation(); onOpenStudio?.(chart.id); }}
+              title="Edit"
+              onClick={(e) => { e.stopPropagation(); onOpenSpotlight?.(chart.id); }}
             />
           )}
           {canRefresh && (
@@ -190,10 +188,10 @@ function TileAction({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`w-7 h-7 rounded-lg backdrop-blur-sm flex items-center justify-center transition-colors disabled:opacity-40 ${
+      className={`w-7 h-7 rounded-[var(--radius)] backdrop-blur-sm flex items-center justify-center transition-colors disabled:opacity-40 ${
         variant === 'danger'
           ? 'bg-background/90 border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/40'
-          : 'bg-background/90 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-background hover:border-border/80'
+          : 'bg-background/90 border border-border/40 text-muted-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/25'
       }`}
     >
       {icon}

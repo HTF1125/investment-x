@@ -17,7 +17,7 @@ const Plot = dynamic(() => import('react-plotly.js'), {
   loading: () => (
     <div className="h-full w-full flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-3">
-        <Loader2 className="w-6 h-6 animate-spin text-sky-500/50" />
+        <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
         <span className="text-[11px] text-muted-foreground/50 tracking-widest uppercase">Loading Chart</span>
       </div>
     </div>
@@ -51,7 +51,7 @@ function ControlInput({ label, value, onChange, placeholder, type = 'text', min,
         type={type} value={value} placeholder={placeholder}
         min={min} max={max} step={step}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-border/50 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/10 text-foreground transition-all placeholder:text-muted-foreground/40"
+        className="w-full border border-border/50 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 text-foreground transition-all placeholder:text-muted-foreground/40"
         style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
       />
     </div>
@@ -68,7 +68,7 @@ function ControlSelect({ label, value, onChange, options }: {
       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">{label}</label>
       <select
         value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-border/50 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-500/40 focus:ring-1 focus:ring-sky-500/10 text-foreground cursor-pointer transition-all"
+        className="w-full border border-border/50 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 text-foreground cursor-pointer transition-all"
         style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -300,8 +300,8 @@ export default function QuantPage() {
               onClick={() => setActiveTab(t.key)}
               className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
                 activeTab === t.key
-                  ? 'bg-sky-500/10 text-sky-500 border border-sky-500/30'
-                  : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/5 border border-transparent'
+                  ? 'bg-primary/10 text-primary border border-primary/30'
+                  : 'text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 border border-transparent'
               }`}
             >
               {t.icon}
@@ -321,8 +321,8 @@ export default function QuantPage() {
                   onClick={() => setCorrMode(m)}
                   className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
                     corrMode === m
-                      ? 'bg-sky-500/10 text-sky-500 border border-sky-500/30'
-                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/5 border border-transparent'
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 border border-transparent'
                   }`}
                 >
                   {m === 'matrix' ? 'Matrix' : 'Rolling'}
@@ -366,8 +366,8 @@ export default function QuantPage() {
                   onClick={() => setRegMode(m)}
                   className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
                     regMode === m
-                      ? 'bg-sky-500/10 text-sky-500 border border-sky-500/30'
-                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/5 border border-transparent'
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 border border-transparent'
                   }`}
                 >
                   {m === 'ols' ? 'OLS' : 'Rolling β'}
@@ -410,8 +410,8 @@ export default function QuantPage() {
                   onClick={() => setVarMode(m)}
                   className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
                     varMode === m
-                      ? 'bg-sky-500/10 text-sky-500 border border-sky-500/30'
-                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/5 border border-transparent'
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 border border-transparent'
                   }`}
                 >
                   {m === 'snapshot' ? 'Snapshot' : 'Rolling'}
@@ -453,7 +453,7 @@ export default function QuantPage() {
         topBarLeft={
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-semibold text-foreground/90">{activeLabel}</span>
-            {isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-500/50" />}
+            {isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary/40" />}
           </div>
         }
       >
@@ -461,7 +461,7 @@ export default function QuantPage() {
           {isLoading ? (
             <div className="h-full flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">
-                <Loader2 className="w-6 h-6 animate-spin text-sky-500/50" />
+                <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
                 <span className="text-[11px] text-muted-foreground/50 tracking-widest uppercase">Loading Analysis</span>
               </div>
             </div>

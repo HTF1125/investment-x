@@ -10,11 +10,11 @@ import { useTheme } from '@/context/ThemeContext';
 import { applyChartTheme, type PlotlyFigure } from '@/lib/chartTheme';
 
 const ChartSkeleton = () => (
-  <div role="status" aria-busy="true" aria-label="Loading chart" className="w-full h-full p-6 flex flex-col gap-4 bg-background/80 rounded-xl animate-pulse overflow-hidden relative min-h-[290px]">
+  <div role="status" aria-busy="true" aria-label="Loading chart" className="w-full h-full p-4 flex flex-col gap-3 bg-background/80 rounded-lg animate-pulse overflow-hidden relative min-h-[160px]">
     {/* Grid Lines Pattern */}
     <div className="absolute inset-x-8 inset-y-12 flex flex-col justify-between opacity-10">
       {[...Array(8)].map((_, i) => (
-        <div key={i} className="h-px bg-sky-500/30 w-full" />
+        <div key={i} className="h-px bg-primary/30 w-full" />
       ))}
     </div>
 
@@ -23,7 +23,7 @@ const ChartSkeleton = () => (
       {[40, 70, 45, 90, 65, 30, 85, 50, 60, 40].map((h, i) => (
         <div
           key={i}
-          className="flex-1 rounded-t-md bg-sky-500/5 border border-sky-500/10"
+          className="flex-1 rounded-t-md bg-primary/5 border border-primary/10"
           style={{ height: `${h}%`, animationDelay: `${i * 100}ms` }}
         />
       ))}
@@ -31,8 +31,8 @@ const ChartSkeleton = () => (
 
     {/* Center Glow */}
     <div className="absolute inset-0 flex items-center justify-center z-20">
-      <div className="p-4 bg-background/60 backdrop-blur-xl rounded-2xl border border-border/20 shadow-2xl">
-        <Loader2 className="w-6 h-6 text-sky-500 animate-spin" />
+      <div className="p-4 bg-background rounded-md border border-border/20 shadow-lg">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
       </div>
     </div>
   </div>
@@ -59,8 +59,6 @@ interface ChartProps {
   initialFigure?: PlotlyFigure;
   copySignal?: number;
   onHoverData?: (points: HoverPoint[] | null) => void;
-  syncXRange?: [string | number, string | number] | null;
-  onXRangeChange?: (range: [string | number, string | number] | null) => void;
   /** Enable mouse-wheel zoom. Default false to prevent jitter on scrollable pages. */
   scrollZoom?: boolean;
   /** When false, disables zoom/pan/modebar — view-only mode for grid cards. Default true. */
@@ -69,14 +67,13 @@ interface ChartProps {
   ariaLabel?: string;
 }
 
-export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, syncXRange, onXRangeChange, scrollZoom = false, interactive = true, ariaLabel }: ChartProps) {
+export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, scrollZoom = false, interactive = true, ariaLabel }: ChartProps) {
   const { theme } = useTheme();
 
   const [graphDiv, setGraphDiv] = React.useState<HTMLElement | null>(null);
   const [plotRenderError, setPlotRenderError] = React.useState<string | null>(null);
   const [plotRetryNonce, setPlotRetryNonce] = React.useState(0);
   const [copyState, setCopyState] = React.useState<'idle' | 'copying' | 'done'>('idle');
-  const [isVisible, setIsVisible] = React.useState(true);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const graphDivRef = React.useRef<HTMLElement | null>(null);
 
@@ -107,46 +104,13 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
     initialData: initialFigure ?? undefined,
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
-    enabled: !!id && isVisible,
+    enabled: !!id,
   });
 
-  const figure = React.useMemo(() => {
-    const themed = safelyThemeFigure(rawFigure);
-    if (!themed || !syncXRange) return themed;
-    return {
-      ...themed,
-      layout: {
-        ...themed.layout,
-        xaxis: { ...(themed.layout?.xaxis ?? {}), range: syncXRange, autorange: false },
-      },
-    };
-  }, [rawFigure, safelyThemeFigure, syncXRange]);
+  const figure = React.useMemo(() => safelyThemeFigure(rawFigure), [rawFigure, safelyThemeFigure]);
 
-  React.useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    if (typeof IntersectionObserver === 'undefined') {
-      setIsVisible(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsVisible(entry.isIntersecting);
-      },
-      { rootMargin: '500px 0px 500px 0px', threshold: 0 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [id]);
-
-  React.useEffect(() => {
-    if (!isVisible) {
-      setGraphDiv(null);
-      setPlotRenderError(null);
-    }
-  }, [isVisible]);
+  // Visibility is now gated by the parent ChartCard's IntersectionObserver.
+  // Chart only mounts when the card scrolls into view, so isVisible stays true.
 
   React.useEffect(() => {
     setPlotRenderError(null);
@@ -244,32 +208,12 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
     [onHoverData]
   );
 
-  const handleRelayout = React.useCallback(
-    (update: Partial<Plotly.Layout> & Record<string, unknown>) => {
-      if (!onXRangeChange) return;
-      if (update['xaxis.range[0]'] !== undefined) {
-        onXRangeChange([update['xaxis.range[0]'] as string | number, update['xaxis.range[1]'] as string | number]);
-      } else if (update['xaxis.autorange'] === true) {
-        onXRangeChange(null);
-      }
-    },
-    [onXRangeChange]
-  );
-
   // Derive accessible label from figure title or explicit prop
   const chartTitle = figure?.layout?.title?.text || figure?.layout?.title;
   const effectiveAriaLabel = ariaLabel || (typeof chartTitle === 'string' ? `Chart: ${chartTitle}` : `Chart ${id}`);
 
-  if (!isVisible) {
-    return (
-      <div ref={containerRef} className="h-[290px] w-full" role="img" aria-label={effectiveAriaLabel}>
-        <ChartSkeleton />
-      </div>
-    );
-  }
-
   return (
-    <div ref={containerRef} className="w-full h-full min-h-[290px] relative group flex flex-col" role="img" aria-label={effectiveAriaLabel}>
+    <div ref={containerRef} className="w-full h-full min-h-[160px] relative group flex flex-col" role="img" aria-label={effectiveAriaLabel}>
       <AnimatePresence mode="wait">
         {isLoading || !figure ? (
           <motion.div
@@ -301,7 +245,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
                 onError={handleError}
                 onHover={handleHover}
                 onUnhover={handleUnhover}
-                onRelayout={handleRelayout}
+                onRelayout={undefined}
               />
             ) : (
               <div role="alert" className="h-full w-full flex flex-col items-center justify-center gap-2 p-4 text-center">
@@ -313,7 +257,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
                     setPlotRenderError(null);
                     setPlotRetryNonce((n) => n + 1);
                   }}
-                  className="h-7 px-3 rounded-md border border-border/60 text-xs text-muted-foreground hover:text-foreground"
+                  className="h-7 px-3 rounded-md border border-border/50 text-xs text-muted-foreground hover:text-foreground"
                 >
                   Retry
                 </button>
@@ -324,7 +268,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
       </AnimatePresence>
 
       {error && (
-        <div role="alert" className="absolute inset-0 flex items-center justify-center bg-rose-500/5 rounded-xl border border-rose-500/10 text-rose-500 text-xs font-mono">
+        <div role="alert" className="absolute inset-0 flex items-center justify-center bg-rose-500/5 rounded-lg border border-rose-500/10 text-rose-500 text-xs font-mono">
           EXECUTION_ERROR: {id}
         </div>
       )}

@@ -207,7 +207,10 @@ def get_research_infographic(
     return Response(
         content=row[0],
         media_type="image/png",
-        headers={"Content-Disposition": f'inline; filename="macro-infographic-{date}.png"'},
+        headers={
+            "Content-Disposition": f'inline; filename="macro-infographic-{date}.png"',
+            "Cache-Control": "no-cache",
+        },
     )
 
 
@@ -232,7 +235,10 @@ def get_research_slide_deck(
         return Response(
             content=row[0],
             media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="macro-slides-{date}.pdf"'},
+            headers={
+                "Content-Disposition": f'inline; filename="macro-slides-{date}.pdf"',
+                "Cache-Control": "no-cache",
+            },
         )
 
     # Fall back to filesystem

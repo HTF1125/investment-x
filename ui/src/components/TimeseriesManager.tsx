@@ -18,7 +18,7 @@ const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full w-full">
-      <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+      <Loader2 className="w-8 h-8 text-primary animate-spin" />
     </div>
   ),
 }) as any;
@@ -511,11 +511,11 @@ export default function TimeseriesManager() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="rounded-3xl border border-border/50 bg-gradient-to-br from-card/80 via-card/60 to-card/40 backdrop-blur-xl p-6 md:p-8 shadow-xl">
+      <div className="rounded-[var(--radius)] border border-border/50 bg-card p-6 md:p-8 shadow-md">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
-              <Database className="w-6 h-6 text-white" />
+            <div className="w-12 h-12 rounded-md bg-primary/15 flex items-center justify-center">
+              <Database className="w-6 h-6 text-foreground" />
             </div>
             <div>
               <h2 className="text-2xl font-bold text-foreground tracking-tight">Timeseries Data</h2>
@@ -525,7 +525,7 @@ export default function TimeseriesManager() {
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
             {updating && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-sky-500/10 text-sky-400 rounded-xl border border-sky-500/20 text-xs font-mono animate-pulse">
+                <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-lg border border-primary/20 text-xs font-mono animate-pulse">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     {updateMsg || 'Updating...'}
                 </div>
@@ -540,7 +540,7 @@ export default function TimeseriesManager() {
                   setShowActionsMenu((p) => !p);
                   if (showActionsMenu) setShowDownloadMenu(false);
                 }}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500/10 to-violet-500/10 hover:from-indigo-500/20 hover:to-violet-500/20 text-foreground rounded-xl text-sm font-semibold transition-all border border-border/50 shadow-md"
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary/[0.06] hover:bg-primary/[0.12] text-foreground rounded-lg text-sm font-semibold transition-all border border-border/50 shadow-md"
               >
                 <Database className="w-4 h-4" />
                 Actions
@@ -549,14 +549,14 @@ export default function TimeseriesManager() {
 
               {showActionsMenu && createPortal(
                 <div
-                  className="fixed w-72 bg-[#0d0f14] dark:bg-[#0d0f14] bg-card border border-border/50 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden z-[120] backdrop-blur-xl"
+                  className="fixed w-72 bg-card border border-border/40 rounded-xl shadow-2xl shadow-black/30 overflow-hidden z-[120]"
                   style={{ top: actionsMenuPos.top, left: actionsMenuPos.left }}
                 >
                   <div className="p-2">
                     <button
                       onClick={handleTriggerUpdate}
                       disabled={updating}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-foreground hover:bg-accent/50 transition-all ${updating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-accent/50 transition-all ${updating ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
                       {updating ? 'Running...' : 'Update Data'}
@@ -564,7 +564,7 @@ export default function TimeseriesManager() {
                     <button
                       onClick={handleSendEmail}
                       disabled={emailing}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-foreground hover:bg-accent/50 transition-all ${emailing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-accent/50 transition-all ${emailing ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {emailing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
                       {emailing ? 'Sending...' : 'Email Report'}
@@ -572,7 +572,7 @@ export default function TimeseriesManager() {
                     <button
                       onClick={() => setShowDownloadMenu((p) => !p)}
                       disabled={downloading}
-                      className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium text-foreground hover:bg-accent/50 transition-all ${downloading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-accent/50 transition-all ${downloading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <span className="flex items-center gap-3">
                         {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
@@ -582,14 +582,14 @@ export default function TimeseriesManager() {
                     </button>
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-foreground hover:bg-accent/50 transition-all"
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-accent/50 transition-all"
                     >
                       <Upload className="w-4 h-4" /> Upload Data
                     </button>
                     <div className="my-2 h-px bg-border/50" />
                     <button
                       onClick={() => { setShowActionsMenu(false); setShowCreate(true); setForm({ ...EMPTY_FORM }); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-indigo-300 hover:text-indigo-200 hover:bg-indigo-500/10 transition-all"
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold text-primary hover:text-primary/80 hover:bg-primary/10 transition-all"
                     >
                       <Plus className="w-4 h-4" /> New Timeseries
                     </button>
@@ -606,7 +606,7 @@ export default function TimeseriesManager() {
                                 prev.length === availableSources.length ? [] : [...availableSources]
                               )
                             }
-                            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold uppercase tracking-wider transition-colors"
+                            className="text-[10px] text-primary hover:text-primary font-semibold uppercase tracking-wider transition-colors"
                           >
                             {selectedSources.length === availableSources.length ? 'None' : 'All'}
                           </button>
@@ -627,7 +627,7 @@ export default function TimeseriesManager() {
                               >
                                 <div className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-all ${
                                   selectedSources.includes(src)
-                                    ? 'bg-indigo-500 border-indigo-500'
+                                    ? 'bg-primary border-primary'
                                     : 'border-border bg-background/40'
                                 }`}>
                                   {selectedSources.includes(src) && <Check className="w-3.5 h-3.5 text-white" />}
@@ -640,7 +640,7 @@ export default function TimeseriesManager() {
                             <button
                               onClick={() => handleDownloadTemplate(selectedSources)}
                               disabled={selectedSources.length === 0}
-                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-400 hover:to-violet-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-semibold transition-all shadow-lg shadow-primary/20 disabled:opacity-30 disabled:cursor-not-allowed"
                             >
                               <Download className="w-4 h-4" />
                               Download {selectedSources.length > 0 ? `(${selectedSources.length})` : ''}
@@ -675,7 +675,7 @@ export default function TimeseriesManager() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by code, name, source, category..."
           aria-label="Search timeseries"
-          className="w-full pl-12 pr-4 py-3.5 bg-background/60 border border-border/50 rounded-2xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm backdrop-blur-sm"
+          className="w-full pl-12 pr-4 py-3.5 bg-background border border-border/50 rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 transition-all text-sm backdrop-blur-sm"
         />
         {search && (
           <button onClick={() => setSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
@@ -686,7 +686,7 @@ export default function TimeseriesManager() {
       </div>
 
       {/* ── Table ── */}
-      <div className="overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-card/80 via-card/60 to-card/40 backdrop-blur-xl shadow-xl">
+      <div className="overflow-hidden rounded-[var(--radius)] border border-border/50 bg-card shadow-md">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -702,7 +702,7 @@ export default function TimeseriesManager() {
               {loading && items.length === 0 ? (
                 <tr>
                   <td colSpan={12} className="px-4 py-24 text-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mx-auto mb-3" />
+                    <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
                     <p className="text-sm text-muted-foreground">Loading timeseries data...</p>
                   </td>
                 </tr>
@@ -717,9 +717,9 @@ export default function TimeseriesManager() {
                 items.map((ts) => (
                   <tr
                     key={ts.id}
-                    className="border-b border-border/30 hover:bg-accent/10 transition-colors group"
+                    className="border-b border-border/25 hover:bg-accent/10 transition-colors group"
                   >
-                    <td className="px-4 py-3.5 font-mono text-indigo-400 text-xs whitespace-nowrap">
+                    <td className="px-4 py-3.5 font-mono text-primary text-xs whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         {ts.favorite && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
                         <span className="font-semibold">{ts.code}</span>
@@ -729,7 +729,7 @@ export default function TimeseriesManager() {
                     <td className="px-4 py-3.5 text-muted-foreground text-xs">{ts.provider || '—'}</td>
                     <td className="px-4 py-3.5">
                       {ts.asset_class ? (
-                        <span className="px-2.5 py-1 text-[10px] font-semibold rounded-lg bg-gradient-to-r from-indigo-500/15 to-violet-500/15 text-indigo-300 border border-indigo-500/20">
+                        <span className="px-2.5 py-1 text-[10px] font-semibold rounded-lg bg-gradient-to-r from-primary/10 to-primary/5 text-primary border border-primary/20">
                           {ts.asset_class}
                         </span>
                       ) : '—'}
@@ -752,7 +752,7 @@ export default function TimeseriesManager() {
                         </button>
                         <button
                           onClick={() => openEdit(ts)}
-                          className="p-2 text-muted-foreground hover:text-sky-400 hover:bg-sky-500/10 rounded-lg transition-all"
+                          className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
                           title="Edit"
                         >
                           <Edit3 className="w-4 h-4" />
@@ -799,15 +799,15 @@ export default function TimeseriesManager() {
 
       {/* ═══════════════ Create / Edit Modal ═══════════════ */}
       {(showCreate || editItem) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 dark:bg-black/70 backdrop-blur-md" role="dialog" aria-modal="true" aria-label={editItem ? `Edit ${editItem.code}` : 'Create new timeseries'} onClick={() => { setShowCreate(false); setEditItem(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={editItem ? `Edit ${editItem.code}` : 'Create new timeseries'} onClick={() => { setShowCreate(false); setEditItem(null); }}>
           <div
-            className="bg-gradient-to-br from-card/95 via-card/90 to-card/85 border border-border/50 rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/60 mx-4 backdrop-blur-xl"
+            className="bg-card border border-border/50 rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-lg shadow-black/60 mx-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-gradient-to-r from-card/95 to-card/90 border-b border-border/50 px-6 py-5 flex items-center justify-between z-10 backdrop-blur-xl">
+            <div className="sticky top-0 bg-card border-b border-border/50 px-6 py-5 flex items-center justify-between z-10">
               <div>
                 <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  {editItem ? <Edit3 className="w-5 h-5 text-indigo-400" /> : <Plus className="w-5 h-5 text-indigo-400" />}
+                  {editItem ? <Edit3 className="w-5 h-5 text-primary" /> : <Plus className="w-5 h-5 text-primary" />}
                   {editItem ? `Edit: ${editItem.code}` : 'Create New Timeseries'}
                 </h2>
                 <p className="text-xs text-muted-foreground font-mono mt-1">
@@ -816,7 +816,7 @@ export default function TimeseriesManager() {
               </div>
               <button
                 onClick={() => { setShowCreate(false); setEditItem(null); }}
-                className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-xl transition-all"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-lg transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -851,7 +851,7 @@ export default function TimeseriesManager() {
                     onChange={(e) => setForm({ ...form, favorite: e.target.checked })}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-muted rounded-full peer peer-checked:bg-amber-500 transition-colors" />
+                  <div className="w-11 h-6 bg-muted rounded-full peer peer-checked:bg-primary transition-colors" />
                   <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
                 </div>
                 <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors font-medium flex items-center gap-2">
@@ -862,17 +862,17 @@ export default function TimeseriesManager() {
             </div>
 
             {/* Footer */}
-            <div className="sticky bottom-0 bg-gradient-to-r from-card/95 to-card/90 border-t border-border/50 px-6 py-5 flex items-center justify-end gap-3 backdrop-blur-xl">
+            <div className="sticky bottom-0 bg-card border-t border-border/50 px-6 py-5 flex items-center justify-end gap-3">
               <button
                 onClick={() => { setShowCreate(false); setEditItem(null); }}
-                className="px-6 py-2.5 text-sm font-semibold text-muted-foreground hover:text-foreground bg-background/60 hover:bg-accent/40 rounded-xl transition-all border border-border/50"
+                className="px-6 py-2.5 text-sm font-semibold text-muted-foreground hover:text-foreground bg-background hover:bg-accent/40 rounded-lg transition-all border border-border/50"
               >
                 Cancel
               </button>
               <button
                 onClick={editItem ? handleUpdate : handleCreate}
                 disabled={saving}
-                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-400 hover:to-violet-400 rounded-xl transition-all shadow-lg shadow-indigo-500/30 disabled:opacity-50"
+                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 {editItem ? 'Update' : 'Create'}
@@ -884,13 +884,13 @@ export default function TimeseriesManager() {
 
       {/* ═══════════════ Delete Confirmation ═══════════════ */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 dark:bg-black/70 backdrop-blur-md" role="dialog" aria-modal="true" aria-label="Delete confirmation" onClick={() => setDeleteTarget(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Delete confirmation" onClick={() => setDeleteTarget(null)}>
           <div
-            className="bg-gradient-to-br from-card/95 via-card/90 to-card/85 border border-rose-500/30 rounded-3xl w-full max-w-md shadow-2xl shadow-black/60 p-8 mx-4 backdrop-blur-xl"
+            className="bg-card border border-rose-500/30 rounded-lg w-full max-w-md shadow-lg shadow-black/60 p-8 mx-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-4 mb-6">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500/20 to-red-500/20 flex items-center justify-center border border-rose-500/30">
+              <div className="w-14 h-14 rounded-md bg-gradient-to-br from-rose-500/20 to-red-500/20 flex items-center justify-center border border-rose-500/30">
                 <AlertTriangle className="w-7 h-7 text-rose-400" />
               </div>
               <div>
@@ -905,14 +905,14 @@ export default function TimeseriesManager() {
             <div className="flex items-center justify-end gap-3">
               <button
                 onClick={() => setDeleteTarget(null)}
-                className="px-6 py-2.5 text-sm font-semibold text-muted-foreground hover:text-foreground bg-background/60 hover:bg-accent/40 rounded-xl transition-all border border-border/50"
+                className="px-6 py-2.5 text-sm font-semibold text-muted-foreground hover:text-foreground bg-background hover:bg-accent/40 rounded-lg transition-all border border-border/50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 rounded-xl transition-all shadow-lg shadow-rose-500/30 disabled:opacity-50"
+                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 rounded-lg transition-all shadow-lg shadow-rose-500/30 disabled:opacity-50"
               >
                 {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Delete
@@ -930,7 +930,7 @@ export default function TimeseriesManager() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className={`fixed bottom-6 left-6 right-6 sm:left-auto sm:right-6 sm:max-w-md z-[60] flex items-start sm:items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl backdrop-blur-xl border ${
+            className={`fixed bottom-6 left-6 right-6 sm:left-auto sm:right-6 sm:max-w-md z-[60] flex items-start sm:items-center gap-3 px-5 py-4 rounded-md shadow-lg border ${
               toast.type === 'success'
                 ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
                 : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
@@ -947,7 +947,7 @@ export default function TimeseriesManager() {
               {toast.sticky && (
                 <button
                   onClick={() => setToast(null)}
-                  className="px-3 py-1.5 rounded-lg border border-current/30 text-xs font-semibold hover:bg-foreground/[0.08] transition-colors shrink-0"
+                  className="px-3 py-1.5 rounded-lg border border-current/30 text-xs font-semibold hover:bg-primary/10 transition-colors shrink-0"
                 >
                   OK
                 </button>
@@ -960,19 +960,19 @@ export default function TimeseriesManager() {
       {/* ═══════════════ Chart Modal ═══════════════ */}
       {viewChartItem && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground/40 dark:bg-black/80 backdrop-blur-md p-4"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
           role="dialog"
           onClick={() => setViewChartItem(null)}
         >
           <div
-             className="bg-gradient-to-br from-card/95 via-card/90 to-card/85 border border-border/50 rounded-3xl w-full max-w-6xl h-[85dvh] sm:h-[85vh] flex flex-col shadow-2xl overflow-hidden backdrop-blur-xl"
+             className="bg-card border border-border/50 rounded-lg w-full max-w-6xl h-[85dvh] sm:h-[85vh] flex flex-col shadow-lg overflow-hidden"
              onClick={(e) => e.stopPropagation()}
           >
-            <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-5 border-b border-border/50 bg-gradient-to-r from-card/95 to-card/90 backdrop-blur-xl">
+            <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-5 border-b border-border/50 bg-card">
               <div>
                 <h2 className="text-xl font-bold text-foreground flex items-center gap-3">
-                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                     <LineChart className="w-5 h-5 text-white" />
+                   <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
+                     <LineChart className="w-5 h-5 text-foreground" />
                    </div>
                    {viewChartItem.name || viewChartItem.code}
                 </h2>
@@ -982,17 +982,17 @@ export default function TimeseriesManager() {
               </div>
               <button
                 onClick={() => setViewChartItem(null)}
-                className="p-2.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-xl transition-all"
+                className="p-2.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-lg transition-all"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="flex-grow relative bg-gradient-to-br from-background/60 to-background/40">
+            <div className="flex-grow relative bg-background/50">
                {/* Loading State */}
                {chartLoading && (
                  <div className="absolute inset-0 z-10 flex items-center justify-center flex-col gap-4 bg-background/80 backdrop-blur-sm">
-                   <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
+                   <Loader2 className="w-12 h-12 text-primary animate-spin" />
                    <p className="text-sm text-muted-foreground font-medium">Loading timeseries data...</p>
                  </div>
                )}
@@ -1012,7 +1012,7 @@ export default function TimeseriesManager() {
                {/* Empty State */}
                {!chartLoading && (!chartData || Object.keys(chartData).length <= 1) && (
                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground flex-col gap-3">
-                    <div className="w-16 h-16 rounded-2xl bg-muted/20 flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-md bg-muted/20 flex items-center justify-center">
                       <AlertTriangle className="w-8 h-8 opacity-50" />
                     </div>
                     <p className="text-sm font-medium">No data available for this series.</p>
@@ -1033,7 +1033,7 @@ function FormField({
   label: string; value: string; onChange: (v: string) => void;
   mono?: boolean; disabled?: boolean; multiline?: boolean; placeholder?: string; type?: string;
 }) {
-  const cls = `w-full px-4 py-3 bg-background/60 border border-border/50 rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed backdrop-blur-sm ${mono ? 'font-mono' : ''}`;
+  const cls = `w-full px-4 py-3 bg-background border border-border/50 rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 transition-all disabled:opacity-40 disabled:cursor-not-allowed backdrop-blur-sm ${mono ? 'font-mono' : ''}`;
 
   return (
     <div>

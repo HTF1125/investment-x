@@ -135,7 +135,7 @@ export default function CommandPalette({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 z-[300] flex items-start justify-center pt-[12vh] px-4 bg-foreground/30 dark:bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-[300] flex items-start justify-center pt-[12vh] px-4 bg-black/50 backdrop-blur-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -147,7 +147,7 @@ export default function CommandPalette({
         >
           <motion.div
             ref={focusTrapRef}
-            className="w-full max-w-lg bg-popover border border-border/60 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            className="w-full max-w-lg bg-popover border border-border/40 rounded-xl shadow-2xl shadow-black/30 overflow-hidden flex flex-col"
             initial={{ y: -12, scale: 0.97, opacity: 0 }}
             animate={{ y: 0, scale: 1, opacity: 1 }}
             exit={{ y: -8, scale: 0.97, opacity: 0 }}
@@ -155,25 +155,14 @@ export default function CommandPalette({
             onClick={e => e.stopPropagation()}
           >
             {/* Search input */}
-<<<<<<< Updated upstream
-            <h2 id="command-palette-title" className="sr-only">Search Charts</h2>
-            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/40">
-              <Search className="w-4 h-4 text-muted-foreground/50 shrink-0" aria-hidden="true" />
-=======
             <div className="flex items-center gap-2 px-3.5 py-3 border-b border-border/40">
               <Search className="w-4 h-4 text-muted-foreground/50 shrink-0" />
->>>>>>> Stashed changes
               <input
                 ref={inputRef}
                 value={query}
                 onChange={e => { setQuery(e.target.value); setSelectedIdx(0); }}
                 onKeyDown={handleKeyDown}
-<<<<<<< Updated upstream
-                placeholder="Search charts..."
-                aria-label="Search charts"
-=======
                 placeholder="Search charts, actions..."
->>>>>>> Stashed changes
                 className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground/40"
               />
               {query && (
@@ -187,36 +176,25 @@ export default function CommandPalette({
             </div>
 
             {/* Results */}
-<<<<<<< Updated upstream
-            <div ref={listRef} className="max-h-[300px] overflow-y-auto py-1" role="listbox" aria-label="Chart results">
-              {results.length === 0 ? (
-                <div className="py-8 text-center text-xs text-muted-foreground/40" role="status">No charts found</div>
-=======
             <div ref={listRef} className="max-h-[340px] overflow-y-auto py-1">
               {items.length === 0 ? (
                 <div className="py-10 text-center text-xs text-muted-foreground/40">No results found</div>
->>>>>>> Stashed changes
               ) : (
                 items.map((item, idx) => (
                   <button
-<<<<<<< Updated upstream
-                    key={chart.id}
-                    role="option"
-                    aria-selected={idx === selectedIdx}
-                    onClick={() => { onSelect(chart.id); onClose(); }}
-=======
                     key={item.id}
                     data-idx={idx}
                     onClick={() => executeItem(item)}
->>>>>>> Stashed changes
                     onMouseEnter={() => setSelectedIdx(idx)}
                     className={`w-full text-left px-3.5 py-2 flex items-center gap-3 transition-colors ${
                       idx === selectedIdx
-                        ? 'bg-foreground/[0.07] text-foreground'
-                        : 'text-muted-foreground hover:bg-foreground/[0.03]'
+                        ? 'bg-primary/[0.08] text-foreground'
+                        : 'text-muted-foreground hover:bg-primary/[0.04]'
                     }`}
                   >
-                    <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 text-muted-foreground/40">
+                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
+                      idx === selectedIdx ? 'text-primary' : 'text-muted-foreground/40'
+                    }`}>
                       {item.type === 'chart' ? (
                         <BarChart3 className="w-3.5 h-3.5" />
                       ) : (

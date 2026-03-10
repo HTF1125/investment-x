@@ -2,12 +2,20 @@ import { resolve } from 'path';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack(config) {
+  webpack(config, { isServer }) {
     // Point react-plotly.js (which imports plotly.js/dist/plotly) to the
     // much smaller plotly.js-dist-min bundle to avoid shipping both.
     config.resolve.alias['plotly.js/dist/plotly'] = resolve(
       'node_modules/plotly.js-dist-min/plotly.min.js'
     );
+
+    // pdfjs-dist uses DOMMatrix and other browser APIs that break SSR.
+    // Exclude it from the server bundle (it's only used client-side via dynamic import).
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push('pdfjs-dist');
+    }
+
     return config;
   },
   eslint: {

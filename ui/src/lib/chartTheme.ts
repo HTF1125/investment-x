@@ -34,7 +34,7 @@ const STYLE: ChartStyleConfig = {
   showZeroline: false,
   showLine: false,
   mirror: false,
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
+  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif',
   baseFontSize: 11,
   titleFontSize: 13,
   legend: { x: 0.01, y: 0.99, xanchor: 'left', yanchor: 'top', orientation: 'h' },
@@ -84,32 +84,32 @@ const THEME_TOKENS: Record<UiTheme, {
   spikeColor: string;
 }> = {
   light: {
-    // Matches --foreground: 9 9 11 and --muted-foreground: 113 113 122
-    text: 'rgb(9,9,11)',
-    textSecondary: 'rgba(113,113,122,0.9)',
-    grid: 'rgba(9,9,11,0.06)',
-    // Matches --card: 255 255 255 and --background: 250 250 250
-    paperBg: 'rgb(255,255,255)',
-    plotBg: 'rgb(255,255,255)',
-    chartBorder: 'rgba(9,9,11,0.08)',
+    // Matches --foreground: 18 20 28 and --muted-foreground: 95 92 85
+    text: 'rgb(18,20,28)',
+    textSecondary: 'rgba(95,92,85,0.9)',
+    grid: 'rgba(50,80,210,0.06)',
+    // Matches --card: 255 254 251 and --background: 248 247 244
+    paperBg: 'rgb(255,254,251)',
+    plotBg: 'rgb(255,254,251)',
+    chartBorder: 'rgba(18,20,28,0.08)',
     legendBg: 'rgba(0,0,0,0)',
     legendBorder: 'rgba(0,0,0,0)',
-    hoverBg: 'rgba(255,255,255,0.98)',
-    spikeColor: 'rgba(9,9,11,0.08)',
+    hoverBg: 'rgba(255,254,251,0.98)',
+    spikeColor: 'rgba(18,20,28,0.08)',
   },
   dark: {
-    // Matches --foreground: 248 250 252 and --muted-foreground: 161 161 170
-    text: 'rgb(226,232,240)',
-    textSecondary: 'rgba(161,161,170,0.9)',
-    grid: 'rgba(39,39,42,0.8)',
-    // Matches --card: 15 15 18 and --background: 9 9 11
-    paperBg: 'rgb(15,15,18)',
-    plotBg: 'rgb(15,15,18)',
-    chartBorder: 'rgba(39,39,42,0.9)',
+    // Matches --foreground: 205 215 230 and --muted-foreground: 100 110 135
+    text: 'rgb(205,215,230)',
+    textSecondary: 'rgba(100,110,135,0.9)',
+    grid: 'rgba(99,130,255,0.04)',
+    // Matches --card: 12 14 22 and --background: 8 10 16
+    paperBg: 'rgb(12,14,22)',
+    plotBg: 'rgb(12,14,22)',
+    chartBorder: 'rgba(30,35,55,0.9)',
     legendBg: 'rgba(0,0,0,0)',
     legendBorder: 'rgba(0,0,0,0)',
-    hoverBg: 'rgba(9,9,11,0.96)',
-    spikeColor: 'rgba(161,161,170,0.15)',
+    hoverBg: 'rgba(12,14,22,0.98)',
+    spikeColor: 'rgba(100,110,135,0.15)',
   },
 };
 

@@ -1,55 +1,24 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   Layers,
   Plus, Eye, EyeOff, Loader2, Copy,
   Search,
   Info, RefreshCw, LayoutGrid, Trash2,
-  X, Save, RotateCcw, FileDown,
-  ChevronDown, ChevronLeft, ChevronRight,
-  FoldVertical, UnfoldVertical,
-  Square, Rows2, Link2, Link2Off,
-  FileText, FileCode, Play, Code2,
+  Save, RotateCcw,
+  Rows2,
+  FileText, FileCode,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
-import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, apiFetchJson, getDirectApiBase } from '@/lib/api';
-import { registerIxCompletions } from '@/lib/monacoCompletions';
-import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import Chart from './Chart';
-import NavigatorShell from './NavigatorShell';
-import dynamic from 'next/dynamic';
 
-const CustomChartEditor = dynamic(() => import('./CustomChartEditor'), {
-  ssr: false,
-  loading: () => <div className="flex-1 flex items-center justify-center text-muted-foreground/40"><Loader2 className="w-5 h-5 animate-spin" /></div>,
-});
-
-const DEFAULT_CODE = `# Investment-X Analysis Studio
-# Available: pd, px, go, np, Series, MultiSeries, apply_theme(fig)
-# MUST define a variable 'fig' at the end
-
-import pandas as pd
-import plotly.express as px
-
-data = {
-    'Year': [2020, 2021, 2022, 2023, 2024],
-    'Value': [100, 120, 110, 135, 150]
-}
-df = pd.DataFrame(data)
-
-fig = px.bar(df, x='Year', y='Value', title='New Analysis')
-apply_theme(fig)
-`;
-
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-muted-foreground/40"><Loader2 className="w-5 h-5 animate-spin" /></div> });
-
-type LayoutMode = 'grid' | 'single' | 'stack';
+type LayoutMode = 'grid' | 'stack';
 
 interface ChartMeta {
   id: string;
@@ -82,12 +51,8 @@ interface ChartCardProps {
   isDeletingChart?: boolean;
   onRankChange?: (id: string, newRank: number) => void;
   copySignal?: number;
-  onOpenStudio?: (chartId: string | null) => void;
+  onEditInStudio?: (chartId: string) => void;
   expanded?: boolean;
-  syncXRange?: [any, any] | null;
-  onXRangeChange?: (range: [any, any] | null) => void;
-  unsavedChanges?: boolean;
-  onSaveChart?: (id: string) => void;
   interactive?: boolean;
   onClick?: () => void;
 }
@@ -107,12 +72,8 @@ const ChartCard = React.memo(function ChartCard({
   isDeletingChart,
   onRankChange,
   copySignal,
-  onOpenStudio,
+  onEditInStudio,
   expanded = false,
-  syncXRange,
-  onXRangeChange,
-  unsavedChanges,
-  onSaveChart,
   interactive = true,
   onClick,
 }: ChartCardProps) {
@@ -165,8 +126,8 @@ const ChartCard = React.memo(function ChartCard({
         onKeyDown={(e) => e.key === 'Enter' && handleRankSubmit()}
         onClick={(e) => e.stopPropagation()}
         aria-label={`Rank for ${chart.name || 'chart'}`}
-        className={`w-5 bg-transparent focus:outline-none text-center text-[11px] font-mono tabular-nums shrink-0 appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-colors ${
-          isModified ? 'text-amber-400' : 'text-muted-foreground/40 hover:text-muted-foreground/70'
+        className={`w-4 bg-transparent focus:outline-none text-center text-[9px] font-mono tabular-nums shrink-0 appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-colors ${
+          isModified ? 'text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground/70'
         }`}
       />
     )
@@ -175,19 +136,19 @@ const ChartCard = React.memo(function ChartCard({
   const renderName = () =>
     canEdit ? (
       <button
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenStudio?.(chart.id); }}
-        className="text-xs font-medium text-foreground/90 leading-tight truncate hover:text-foreground transition-colors text-left"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditInStudio?.(chart.id); }}
+        className="text-[10px] font-medium text-foreground/80 leading-none truncate hover:text-foreground transition-colors text-left"
         title="Edit in Studio"
       >
         {chart.name}
       </button>
     ) : (
-      <span className="text-xs font-medium text-foreground/90 leading-tight truncate">
+      <span className="text-[10px] font-medium text-foreground/80 leading-none truncate">
         {chart.name}
       </span>
     );
 
-  const cardClassName = `bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col group transition-all duration-300 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/25 hover:border-border/80 relative focus-within:ring-2 focus-within:ring-sky-500/30 ${expanded ? 'h-full' : 'h-full min-h-[380px]'}`;
+  const cardClassName = `bg-card border border-border/30 rounded-[var(--radius)] overflow-hidden flex flex-col group transition-all duration-200 hover:border-border/50 relative focus-within:ring-1 focus-within:ring-primary/20 ${expanded ? 'h-full' : 'h-full min-h-[260px] max-h-[400px]'}`;
 
   const [infoOpen, setInfoOpen] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
@@ -205,113 +166,93 @@ const ChartCard = React.memo(function ChartCard({
   return (
     <article className={cardClassName} aria-label={`Chart: ${chart.name || 'Untitled'}`}>
       {/* Card Header */}
-      <div className="px-4 py-2.5 flex items-center justify-between gap-2 border-b border-border/40">
+      <div className="px-2.5 py-1 flex items-center justify-between gap-1.5 border-b border-border/25">
         {/* LEFT: rank + name */}
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
           {renderRankInput()}
           {renderName()}
         </div>
 
-        {/* RIGHT: action icons — uniform style */}
-        <div className="flex items-center gap-0.5 shrink-0">
-
-          {/* Visibility */}
-          {canManageVisibility && (
-            <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTogglePdf(chart.id, !chart.public); }}
-              className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
-              title={chart.public ? 'Public' : 'Private'}
-              aria-label={chart.public ? 'Set private' : 'Set public'}
-            >
-              {chart.public ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-            </button>
-          )}
-
-          {/* Refresh */}
-          {canRefresh && (
-            <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRefreshChart?.(chart.id); }}
-              disabled={!!isRefreshingChart}
-              className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-40"
-              title="Refresh"
-              aria-label="Refresh chart"
-            >
-              <RefreshCw className={`w-3 h-3 ${isRefreshingChart ? 'animate-spin' : ''}`} />
-            </button>
-          )}
-
-          {/* Save (unsaved changes indicator) */}
-          {unsavedChanges && (
-            <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSaveChart?.(chart.id); }}
-              className="p-1 rounded transition-colors text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 animate-pulse"
-              title="Save changes"
-              aria-label="Save changes"
-            >
-              <Save className="w-3 h-3" />
-            </button>
-          )}
-
-          {/* Copy */}
-          <button
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); }}
-            className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
-            title="Copy image"
-            aria-label="Copy chart image"
-          >
-            <Copy className="w-3 h-3" />
-          </button>
-
-          {/* Delete */}
-          {canDelete && (
-            <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteChart?.(chart.id); }}
-              disabled={!!isDeletingChart}
-              className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-40"
-              title="Delete"
-              aria-label="Delete chart"
-            >
-              <Trash2 className={`w-3 h-3 ${isDeletingChart ? 'animate-pulse' : ''}`} />
-            </button>
-          )}
-
-          {/* Info — always last */}
-          {(chart.description || chart.created_by_name || chart.created_by_email) && (
-            <div className="relative" ref={infoRef}>
+        {/* RIGHT: always-visible indicators + hover-reveal actions */}
+        <div className="flex items-center shrink-0">
+          <div className="flex items-center gap-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            {canManageVisibility && (
               <button
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setInfoOpen(v => !v); }}
-                className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
-                title={chart.description || `by ${creatorLabel}`}
-                aria-label="Chart info"
-                aria-expanded={infoOpen}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTogglePdf(chart.id, !chart.public); }}
+                className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10"
+                title={chart.public ? 'Public' : 'Private'}
+                aria-label={chart.public ? 'Set private' : 'Set public'}
               >
-                <Info className="w-3 h-3" />
+                {chart.public ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
               </button>
-              <AnimatePresence>
-                {infoOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 4, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 4, scale: 0.96 }}
-                    transition={{ duration: 0.12 }}
-                    className="absolute right-0 top-full mt-1 w-52 bg-popover border border-border rounded-lg shadow-xl z-50 overflow-hidden"
-                  >
-                    {chart.description && (
-                      <div className="px-3 py-2 text-[10px] text-muted-foreground leading-relaxed border-b border-border/50">
-                        {chart.description}
-                      </div>
-                    )}
-                    <div className="px-3 py-1.5 text-[9px] text-muted-foreground/70 font-mono">
-                      <span>by {creatorLabel}</span>
-                      {chart.updated_at && (
-                        <span className="ml-2">{new Date(chart.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            )}
+            {canRefresh && (
+              <button
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRefreshChart?.(chart.id); }}
+                disabled={!!isRefreshingChart}
+                className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10 disabled:opacity-40"
+                title="Refresh"
+                aria-label="Refresh chart"
+              >
+                <RefreshCw className={`w-3 h-3 ${isRefreshingChart ? 'animate-spin' : ''}`} />
+              </button>
+            )}
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCopyChart?.(chart.id); }}
+              className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10"
+              title="Copy image"
+              aria-label="Copy chart image"
+            >
+              <Copy className="w-3 h-3" />
+            </button>
+            {canDelete && (
+              <button
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteChart?.(chart.id); }}
+                disabled={!!isDeletingChart}
+                className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10 disabled:opacity-40"
+                title="Delete"
+                aria-label="Delete chart"
+              >
+                <Trash2 className={`w-3 h-3 ${isDeletingChart ? 'animate-pulse' : ''}`} />
+              </button>
+            )}
+            {(chart.description || chart.created_by_name || chart.created_by_email) && (
+              <div className="relative" ref={infoRef}>
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setInfoOpen(v => !v); }}
+                  className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10"
+                  title={chart.description || `by ${creatorLabel}`}
+                  aria-label="Chart info"
+                  aria-expanded={infoOpen}
+                >
+                  <Info className="w-3 h-3" />
+                </button>
+                <AnimatePresence>
+                  {infoOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 4, scale: 0.96 }}
+                      transition={{ duration: 0.12 }}
+                      className="absolute right-0 top-full mt-1 w-52 bg-popover border border-border rounded-lg shadow-md z-50 overflow-hidden"
+                    >
+                      {chart.description && (
+                        <div className="px-3 py-2 text-[10px] text-muted-foreground leading-relaxed border-b border-border/50">
+                          {chart.description}
+                        </div>
                       )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
+                      <div className="px-3 py-1.5 text-[9px] text-muted-foreground/70 font-mono">
+                        <span>by {creatorLabel}</span>
+                        {chart.updated_at && (
+                          <span className="ml-2">{new Date(chart.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -325,14 +266,12 @@ const ChartCard = React.memo(function ChartCard({
         onKeyDown={onClick ? (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
       >
         {/* Chart Area — only render Plotly when in viewport */}
-        <div className={`bg-background relative w-full p-3 ${expanded ? 'flex-1 min-h-0' : 'h-[290px] min-h-[290px]'}`}>
+        <div className={`bg-background relative w-full p-1.5 ${expanded ? 'flex-1 min-h-0' : 'flex-1 min-h-[160px]'}`}>
           {isInView ? (
             <Chart
               id={chart.id}
               initialFigure={chart.figure}
               copySignal={copySignal}
-              syncXRange={syncXRange}
-              onXRangeChange={onXRangeChange}
               interactive={interactive}
             />
           ) : (
@@ -342,12 +281,12 @@ const ChartCard = React.memo(function ChartCard({
                 animate={{ x: ['0%', '360%'] }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
               />
-              <div className="absolute inset-0 p-6 flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="h-4 w-40 rounded bg-primary/10 animate-pulse" />
-                  <div className="h-3 w-24 rounded bg-muted/50 animate-pulse" />
+              <div className="absolute inset-0 p-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="h-3 w-28 rounded bg-primary/10 animate-pulse" />
+                  <div className="h-2 w-16 rounded bg-muted/50 animate-pulse" />
                 </div>
-                <div className="grid grid-cols-8 gap-2 items-end h-32">
+                <div className="grid grid-cols-8 gap-1 items-end h-20">
                   {Array.from({ length: 8 }).map((_, i) => (
                     <div
                       key={i}
@@ -357,7 +296,7 @@ const ChartCard = React.memo(function ChartCard({
                   ))}
                 </div>
                 <div className="flex items-center justify-center">
-                  <Loader2 className="w-5 h-5 text-sky-400/30 animate-spin" />
+                  <Loader2 className="w-4 h-4 text-primary/20 animate-spin" />
                 </div>
               </div>
             </div>
@@ -382,7 +321,7 @@ function DeleteConfirmInner({
   return (
     <motion.div
       ref={focusTrapRef}
-      className="w-full max-w-sm rounded-2xl border border-border/60 bg-popover shadow-2xl p-5"
+      className="w-full max-w-sm rounded-md border border-border/50 bg-popover shadow-lg p-5"
       initial={{ y: 16, scale: 0.97, opacity: 0 }}
       animate={{ y: 0, scale: 1, opacity: 1 }}
       exit={{ y: 10, scale: 0.98, opacity: 0 }}
@@ -395,7 +334,7 @@ function DeleteConfirmInner({
       <div className="flex items-center justify-end gap-2">
         <button
           onClick={onCancel}
-          className="px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
+          className="px-3 py-1.5 rounded-lg border border-border/50 text-xs text-muted-foreground hover:text-foreground hover:bg-primary/[0.08] transition-colors"
         >
           Cancel
         </button>
@@ -416,7 +355,6 @@ interface DashboardGalleryProps {
 
 export default function DashboardGallery({ chartsByCategory }: DashboardGalleryProps) {
   const { user } = useAuth();
-  const { theme } = useTheme();
   const role = String(user?.role || '').toLowerCase();
   const isOwner = !!user && role === 'owner';
   const isAdminRole = !!user && (role === 'admin' || user.is_admin);
@@ -431,61 +369,28 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     [currentUserId]
   );
   const queryClient = useQueryClient();
+  const router = useRouter();
 
-  // ⚡ Performance Optimized State
+  // Performance Optimized State
   const [localCharts, setLocalCharts] = useState<ChartMeta[]>([]);
   const [originalCharts, setOriginalCharts] = useState<ChartMeta[]>([]);
   const [refreshingChartIds, setRefreshingChartIds] = useState<Record<string, boolean>>({});
   const [deletingChartIds, setDeletingChartIds] = useState<Record<string, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [copySignals, setCopySignals] = useState<Record<string, number>>({});
-  const [dirtyChartIds, setDirtyChartIds] = useState<Set<string>>(new Set());
-  // Store code for dirty charts so we can save without re-entering edit mode
-  const dirtyChartData = useRef<Record<string, { code: string; name: string; category: string }>>({});
 
   const [mounted, setMounted] = useState(false);
-  const [quickJumpId, setQuickJumpId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  // Expanded by default for large screens
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const [activeCategory, setActiveCategory] = useState<string>('all');
 
-  const { sidebarOpen, setSidebarOpen, toggleSidebar } = useResponsiveSidebar();
-  const [collapsedSidebarCategories, setCollapsedSidebarCategories] = useState<Record<string, boolean>>({});
-  const [activeStudioChartId, setActiveStudioChartId] = useState<string | null>(null);
-
-  // ── Inline Chart Editor State ──
-  const [editingChartId, setEditingChartId] = useState<string | null>(null);
-  const [editCode, setEditCode] = useState('');
-  const [editName, setEditName] = useState('');
-  const [editCategory, setEditCategory] = useState('');
-  const [editPreviewFigure, setEditPreviewFigure] = useState<any>(null);
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editSuccess, setEditSuccess] = useState<string | null>(null);
-  const [editLoading, setEditLoading] = useState(false);
-  const [editSaving, setEditSaving] = useState(false);
-  const [editTsSearch, setEditTsSearch] = useState('');
-  const [editTsQuery, setEditTsQuery] = useState('');
-  const editCodeRef = useRef<any>(null);
-  const prevLayoutBeforeEdit = useRef<LayoutMode>('grid');
-
-  // Timeseries search for inline editor
-  const { data: editTsResults = [], isLoading: editTsLoading } = useQuery<{ id: string; code: string; name?: string | null; category?: string | null }[]>({
-    queryKey: ['inline-ts-search', editTsQuery],
-    queryFn: () => apiFetchJson(`/api/timeseries?limit=20&offset=0&search=${encodeURIComponent(editTsQuery)}`),
-    enabled: editTsQuery.length > 0,
-    staleTime: 1000 * 60 * 2,
+  // Layout mode (grid / stack) — gracefully handle stored 'single' from before
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => {
+    if (typeof window === 'undefined') return 'grid';
+    const stored = localStorage.getItem('dashboard-layout-mode');
+    if (stored === 'grid' || stored === 'stack') return stored;
+    return 'grid';
   });
-
-  // ── Layout mode (grid / single / stack) ──
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(() =>
-    typeof window !== 'undefined' ? (localStorage.getItem('dashboard-layout-mode') as LayoutMode) || 'grid' : 'grid'
-  );
-  const prevLayoutModeRef = useRef<LayoutMode>('grid');
-
-  // Single mode: index into filteredCharts
-  const [singleChartIdx, setSingleChartIdx] = useState(0);
 
   // Stack mode
   const [stackChartCount, setStackChartCount] = useState<2 | 3 | 4>(2);
@@ -495,12 +400,6 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
   const stackDragStartHeights = useRef<number[]>([]);
   const stackDragPaneIdx = useRef(0);
   const stackContainerRef = useRef<HTMLDivElement>(null);
-
-  // X-axis sync
-  const [syncXAxis, setSyncXAxis] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? localStorage.getItem('dashboard-sync-xaxis') === 'true' : false
-  );
-  const [xSyncRange, setXSyncRange] = useState<[any, any] | null>(null);
 
   // Persist layout mode
   useEffect(() => {
@@ -513,259 +412,17 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     setStackHeights(Array.from({ length: stackChartCount }, () => eq));
   }, [stackChartCount]);
 
-  // Keep singleChartIdx in sync with scroll-spy quickJumpId (grid mode drives it)
-  useEffect(() => {
-    const idx = filteredCharts.findIndex(c => c.id === quickJumpId);
-    if (idx !== -1 && layoutMode !== 'single') setSingleChartIdx(idx);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quickJumpId]); // intentionally narrow — only sync when quickJumpId changes
-
-  const handleXRangeChange = useCallback((range: [any, any] | null) => {
-    if (syncXAxis) setXSyncRange(range);
-  }, [syncXAxis]);
-
-  // Initial Sync from URL
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const chartId = searchParams.get('chartId');
-    const isNew = searchParams.get('new') === 'true';
-    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
-
-    if (isNew) {
-        setActiveStudioChartId('');
-        setSidebarOpen(prev => prev || isDesktop);
-    } else if (chartId) {
-        setActiveStudioChartId(chartId);
-        setQuickJumpId(chartId);
-        setSidebarOpen(prev => prev || isDesktop);
-    } else {
-        setActiveStudioChartId(null);
-    }
-  }, [searchParams]); // intentionally omit sidebarOpen — we only auto-open on URL change, not on manual toggle
-
-  // Override onOpenStudio → inline editing mode
-  const handleOpenInStudio = useCallback(async (chartId: string | null) => {
-    // Save current layout so we can restore on close
-    prevLayoutBeforeEdit.current = layoutMode;
-    setEditLoading(true);
-    setEditError(null);
-    setEditSuccess(null);
-    setEditPreviewFigure(null);
-
-    // If new chart, setup defaults and enter edit mode instantly
-    if (!chartId) {
-      setEditCode(DEFAULT_CODE);
-      setEditName('Untitled Analysis');
-      setEditCategory('ChartPack');
-      setEditingChartId('new');
-      setLayoutMode('single');
-      setEditLoading(false);
-      return;
-    }
-
-    try {
-      const full = await apiFetchJson(`/api/custom/${chartId}`);
-      setEditCode(full.code || '');
-      setEditName(full.name || 'Untitled');
-      setEditCategory(full.category || '');
-      setEditPreviewFigure(full.figure || null);
-      setEditingChartId(chartId);
-      // Switch to single-chart mode, focused on this chart
-      const idx = localCharts.findIndex(c => c.id === chartId);
-      if (idx !== -1) setSingleChartIdx(idx);
-      setLayoutMode('single');
-    } catch (err: any) {
-      setEditError(err?.message || 'Failed to load chart');
-    } finally {
-      setEditLoading(false);
-    }
-  }, [layoutMode, localCharts]);
-
-  const handleCloseInlineEdit = useCallback(() => {
-    // Update local chart data with latest run result so dashboard reflects changes
-    if (editingChartId && editingChartId !== 'new' && editPreviewFigure) {
-      setLocalCharts(prev => prev.map(c =>
-        c.id === editingChartId ? { ...c, figure: editPreviewFigure, name: editName } : c
-      ));
-    }
-    setEditingChartId(null);
-    setEditCode('');
-    setEditName('');
-    setEditCategory('');
-    setEditPreviewFigure(null);
-    setEditError(null);
-    setEditSuccess(null);
-    setEditTsSearch('');
-    setEditTsQuery('');
-    setLayoutMode(prevLayoutBeforeEdit.current);
-  }, [editingChartId, editPreviewFigure, editName]);
-  
-  const handleCloseStudio = useCallback(() => {
-    router.push('/', { scroll: false });
+  // Navigate to Studio for editing
+  const handleEditInStudio = useCallback((chartId: string) => {
+    router.push(`/studio?chartId=${chartId}`);
   }, [router]);
 
-  // Inline editor: Run code
-  const handleInlineRun = useCallback(async () => {
-    const latestCode = editCodeRef.current ? editCodeRef.current.getValue() : editCode;
-    if (editCodeRef.current && latestCode !== editCode) setEditCode(latestCode);
-    if (!latestCode.trim() || !editingChartId) return;
-    setEditLoading(true);
-    setEditError(null);
-    setEditSuccess(null);
-    try {
-      const isNew = editingChartId === 'new';
+  // Navigate to Studio for new chart
+  const handleNewChart = useCallback(() => {
+    router.push('/studio?new=true');
+  }, [router]);
 
-      if (isNew) {
-        const res = await apiFetch('/api/custom', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: editName, code: latestCode, category: editCategory }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Execution/Save failed');
-
-        setLocalCharts(prev => [...prev, { ...data, rank: prev.length }]);
-
-        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-        setEditSuccess('Created successfully.');
-        // Brief delay so user sees success before switching to chart
-        setTimeout(() => setEditingChartId(null), 300);
-      } else {
-        const res = await apiFetch('/api/custom/preview', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: latestCode }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Execution failed');
-        setLocalCharts(prev => prev.map(c =>
-          c.id === editingChartId ? { ...c, figure: data, name: editName, code: latestCode } : c
-        ));
-        // Update the Chart component's query cache so it shows the new figure
-        queryClient.setQueryData(['chart-figure', editingChartId], data);
-        setDirtyChartIds(prev => new Set(prev).add(editingChartId));
-        dirtyChartData.current[editingChartId] = { code: latestCode, name: editName, category: editCategory };
-        setEditSuccess('Executed.');
-        setTimeout(() => setEditingChartId(null), 300);
-      }
-    } catch (err: any) {
-      setEditError(err?.message || 'Execution failed');
-    } finally {
-      setEditLoading(false);
-    }
-  }, [editCode, editingChartId, editName, editCategory, queryClient]);
-
-  // Inline editor: Save chart
-  const handleInlineSave = useCallback(async () => {
-    if (!editingChartId) return;
-    const latestCode = editCodeRef.current ? editCodeRef.current.getValue() : editCode;
-    if (editCodeRef.current && latestCode !== editCode) setEditCode(latestCode);
-    setEditSaving(true);
-    setEditError(null);
-    setEditSuccess(null);
-    try {
-      const isNew = editingChartId === 'new';
-      const url = isNew ? '/api/custom' : `/api/custom/${editingChartId}`;
-      const method = isNew ? 'POST' : 'PUT';
-      const res = await apiFetch(url, {
-        method: method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName, code: latestCode, category: editCategory }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Save failed');
-      if (data?.figure) setEditPreviewFigure(data.figure);
-      setEditSuccess('Saved successfully.');
-      // Refresh dashboard data
-      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      
-      const savedChartId = isNew ? data.id : editingChartId;
-      
-      if (isNew) {
-        setEditingChartId(savedChartId);
-        setLocalCharts(prev => [...prev, { ...data, rank: prev.length }]);
-      } else {
-        setLocalCharts(prev => prev.map(c => c.id === editingChartId ? { ...c, name: editName, category: editCategory, figure: data?.figure || c.figure, code: latestCode } : c));
-      }
-
-      // Update the Chart component's query cache so it shows the new figure
-      if (data?.figure && savedChartId) {
-        queryClient.setQueryData(['chart-figure', savedChartId], data.figure);
-      }
-
-      // Clear dirty state
-      setDirtyChartIds(prev => { const next = new Set(prev); next.delete(savedChartId); return next; });
-      delete dirtyChartData.current[savedChartId];
-    } catch (err: any) {
-      setEditError(err?.message || 'Save failed');
-    } finally {
-      setEditSaving(false);
-    }
-  }, [editingChartId, editCode, editName, editCategory, queryClient]);
-
-  // Save unsaved chart from card header icon
-  const handleSaveUnsavedChart = useCallback(async (chartId: string) => {
-    const data = dirtyChartData.current[chartId];
-    if (!data) return;
-    try {
-      const res = await apiFetch(`/api/custom/${chartId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: data.name, code: data.code, category: data.category }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result?.detail || 'Save failed');
-      // Update local chart and query cache with server figure
-      if (result?.figure) {
-        setLocalCharts(prev => prev.map(c => c.id === chartId ? { ...c, figure: result.figure } : c));
-        queryClient.setQueryData(['chart-figure', chartId], result.figure);
-      }
-      // Clear dirty
-      setDirtyChartIds(prev => { const next = new Set(prev); next.delete(chartId); return next; });
-      delete dirtyChartData.current[chartId];
-      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-    } catch (err: any) {
-      console.error('Save failed:', err);
-    }
-  }, [queryClient]);
-
-  // Inline editor: Insert timeseries snippet
-  const handleInsertTs = useCallback((code: string, name?: string | null) => {
-    const alias = code.replace(/[^A-Za-z0-9_]/g, '_').toLowerCase();
-    const snippet = `\n# ${name || code}\n${alias} = Series('${code}')\n`;
-    const editor = editCodeRef.current;
-    if (editor) {
-      const model = editor.getModel();
-      const pos = editor.getPosition();
-      if (pos && model) {
-        editor.executeEdits('insert-series', [{
-          range: { startLineNumber: pos.lineNumber, startColumn: pos.column, endLineNumber: pos.lineNumber, endColumn: pos.column },
-          text: snippet,
-        }]);
-        editor.focus();
-        setEditSuccess(`Inserted Series('${code}')`);
-        return;
-      }
-    }
-    setEditCode(prev => prev + snippet);
-    setEditSuccess(`Inserted Series('${code}')`);
-  }, []);
-
-  // Keyboard shortcuts for inline editor
-  useEffect(() => {
-    if (!editingChartId) return;
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleInlineRun(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleInlineSave(); }
-      if (e.key === 'Escape') { handleCloseInlineEdit(); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [editingChartId, handleInlineRun, handleInlineSave, handleCloseInlineEdit]);
-
-  const chartAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const mainScrollRef = useRef<HTMLElement>(null);
-  const isAutoScrolling = useRef(false);
+  const mainScrollRef = useRef<HTMLDivElement>(null);
 
   // Export state
   const [exporting, setExporting] = useState(false);
@@ -868,7 +525,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     }
   };
 
-  // 🔄 Prop to Local State Sync
+  // Prop to Local State Sync
   useEffect(() => {
     const uniqueChartsMap = new Map<string, ChartMeta>();
     Object.values(chartsByCategory || {}).forEach(charts => {
@@ -876,10 +533,10 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         charts.forEach(c => uniqueChartsMap.set(c.id, c));
       }
     });
-    
+
     const sorted = Array.from(uniqueChartsMap.values())
       .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
-      
+
     setLocalCharts(sorted);
     setOriginalCharts([...sorted]);
   }, [chartsByCategory]);
@@ -894,7 +551,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  // 🔍 Filter & Sort charts (Memoized)
+  // Filter & Sort charts (Memoized)
   const allFilteredCharts = useMemo(() => {
     let result = [...localCharts];
 
@@ -911,172 +568,39 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     return result;
   }, [localCharts, isOwner, isAdminRole, isChartOwner, debouncedSearch]);
 
-  // No pagination: render all charts at once
-  const filteredCharts = allFilteredCharts;
+  // Category + search filtering
+  const filteredCharts = useMemo(() => {
+    if (activeCategory === 'all') return allFilteredCharts;
+    return allFilteredCharts.filter(c => (c.category || 'Uncategorized') === activeCategory);
+  }, [allFilteredCharts, activeCategory]);
 
-  // Group filtered charts by category (preserving rank order within each group)
+  // Group ALL filtered charts by category (for tab labels and "All" view)
   const groupedCharts = useMemo(() => {
     const groups = new Map<string, ChartMeta[]>();
-    for (const chart of filteredCharts) {
+    for (const chart of allFilteredCharts) {
       const cat = chart.category || 'Uncategorized';
       if (!groups.has(cat)) groups.set(cat, []);
       groups.get(cat)!.push(chart);
     }
     return Array.from(groups.entries()).map(([category, charts]) => ({ category, charts }));
-  }, [filteredCharts]);
+  }, [allFilteredCharts]);
 
-  const allSidebarCategoriesCollapsed = useMemo(() => {
-    if (groupedCharts.length === 0) return false;
-    return groupedCharts.every(({ category }) => !!collapsedSidebarCategories[category]);
-  }, [groupedCharts, collapsedSidebarCategories]);
-
-  const toggleCollapseAllSidebarCategories = useCallback(() => {
-    setCollapsedSidebarCategories((prev) => {
-      const shouldCollapseAll = !groupedCharts.every(({ category }) => !!prev[category]);
-      const next: Record<string, boolean> = {};
-      for (const { category } of groupedCharts) {
-        next[category] = shouldCollapseAll;
-      }
-      return next;
-    });
-  }, [groupedCharts]);
-
-  // 📡 Active Chart Tracking (Scroll Spy)
-  useEffect(() => {
-    if (filteredCharts.length === 0) return;
-
-    const observerOptions = {
-      root: mainScrollRef.current, // scroll spy against the actual scroll container
-      rootMargin: '-10% 0px -70% 0px',
-      threshold: 0
-    };
-
-    const observer = new IntersectionObserver((entries) => {
-      if (isAutoScrolling.current) return;
-      
-      const intersecting = entries.find(e => e.isIntersecting);
-      if (intersecting) {
-        setQuickJumpId(intersecting.target.id.replace('chart-anchor-', ''));
-      }
-    }, observerOptions);
-
-    filteredCharts.forEach(chart => {
-      const el = document.getElementById(`chart-anchor-${chart.id}`);
-      if (el) observer.observe(el);
-    });
-
-    return () => observer.disconnect();
-  }, [filteredCharts]);
+  // Derive category list for tabs
+  const categories = useMemo(() => groupedCharts.map(g => g.category), [groupedCharts]);
 
 
-  const setChartAnchorRef = useCallback(
-    (chartId: string) => (node: HTMLDivElement | null) => {
-      if (node) {
-        chartAnchorRefs.current[chartId] = node;
-        return;
-      }
-      delete chartAnchorRefs.current[chartId];
-    },
-    []
-  );
-
-  const scrollToChart = useCallback((chartId: string) => {
-    if (!chartId) return;
-    const target =
-      chartAnchorRefs.current[chartId] ||
-      document.getElementById(`chart-anchor-${chartId}`);
-    if (!target) return;
-
-    const container = mainScrollRef.current;
-    if (!container) return;
-
-    isAutoScrolling.current = true;
-    const stickyOffset = 16;
-    const y = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - stickyOffset;
-
-    container.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
-
-    // Clear auto-scroll flag after animation
-    setTimeout(() => {
-      isAutoScrolling.current = false;
-    }, 800);
-  }, []);
-
-  useEffect(() => {
-    if (filteredCharts.length === 0) {
-      if (quickJumpId) setQuickJumpId('');
-      return;
-    }
-    if (!quickJumpId || !filteredCharts.some((c) => c.id === quickJumpId)) {
-      setQuickJumpId(filteredCharts[0].id);
-    }
-  }, [filteredCharts, quickJumpId]);
-
-  const handleQuickJumpSelect = useCallback(
-    (chartId: string) => {
-      setQuickJumpId(chartId);
-
-      // Close navigator on mobile when selecting a chart
-      if (typeof window !== 'undefined' && window.innerWidth < 768) {
-        setSidebarOpen(false);
-      }
-
-      // If inline editor is open, switch to the selected chart
-      if (editingChartId) {
-        handleOpenInStudio(chartId);
-        return;
-      }
-
-      // If we are in Studio view, switch the active chart via URL
-      if (activeStudioChartId !== null) {
-        router.push(`?chartId=${encodeURIComponent(chartId)}`, { scroll: false });
-      } else if (layoutMode === 'single') {
-        const idx = filteredCharts.findIndex(c => c.id === chartId);
-        if (idx !== -1) setSingleChartIdx(idx);
-      } else {
-        scrollToChart(chartId);
-      }
-    },
-    [scrollToChart, activeStudioChartId, router, layoutMode, filteredCharts, editingChartId, handleOpenInStudio]
-  );
-
-  // ── Keyboard navigation ──
+  // Keyboard navigation
   const keyNavHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     keyNavHandlerRef.current = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (
-        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || 
-        target.contentEditable === 'true' || 
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
+        target.contentEditable === 'true' ||
         target.closest('.monaco-editor')
       ) return;
-      const len = filteredCharts.length;
-      if (!len) return;
-
-      if (e.key === 'j' || (e.key === 'ArrowDown' && layoutMode !== 'grid')) {
-        e.preventDefault();
-        const next = (singleChartIdx + 1) % len;
-        setSingleChartIdx(next);
-        setQuickJumpId(filteredCharts[next].id);
-        if (layoutMode === 'grid') scrollToChart(filteredCharts[next].id);
-      }
-      if (e.key === 'k' || (e.key === 'ArrowUp' && layoutMode !== 'grid')) {
-        e.preventDefault();
-        const prev = (singleChartIdx - 1 + len) % len;
-        setSingleChartIdx(prev);
-        setQuickJumpId(filteredCharts[prev].id);
-        if (layoutMode === 'grid') scrollToChart(filteredCharts[prev].id);
-      }
-      if (e.key === 'f') {
-        setLayoutMode(cur => {
-          if (cur === 'single') return prevLayoutModeRef.current;
-          prevLayoutModeRef.current = cur;
-          return 'single';
-        });
-      }
-      if (e.key === 'Escape') setLayoutMode('grid');
     };
-  }, [filteredCharts, layoutMode, singleChartIdx, scrollToChart]);
+  }, [filteredCharts, layoutMode]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => keyNavHandlerRef.current(e);
@@ -1084,7 +608,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     return () => window.removeEventListener('keydown', h);
   }, []);
 
-  // ── Stack drag-resize ──
+  // Stack drag-resize
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!isStackDragging.current || !stackContainerRef.current) return;
@@ -1145,7 +669,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
     [canRefreshAllCharts, isChartOwner]
   );
 
-  // 🛠️ Stable Handlers
+  // Stable Handlers
   const togglePdfMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: boolean }) => {
       return apiFetchJson(`/api/custom/${id}`, {
@@ -1251,14 +775,14 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       setLocalCharts(prev => {
           const oldIndex = prev.findIndex(c => c.id === id);
           if (oldIndex === -1) return prev;
-          
+
           const newIndex = Math.max(0, Math.min(newRank, prev.length - 1));
           if (oldIndex === newIndex) return prev;
-          
+
           const next = [...prev];
           const [item] = next.splice(oldIndex, 1);
           next.splice(newIndex, 0, item);
-          
+
           return next.map((c, i) => ({ ...c, rank: i }));
       });
   }, []);
@@ -1300,26 +824,17 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
 
   if (!mounted) {
     return (
-      <div className="p-4 md:p-6 space-y-6 min-h-[800px] animate-pulse">
-        {/* Skeleton Stats */}
-        <div className="flex items-center gap-6 pb-5 border-b border-border/40">
-          {[80, 60, 72].map((w, i) => (
-            <div key={i} className="space-y-1.5">
-              <div className={`h-7 w-${w === 80 ? 12 : w === 60 ? 8 : 10} bg-foreground/5 rounded`} />
-              <div className="h-3 w-16 bg-foreground/5 rounded" />
-            </div>
-          ))}
-        </div>
+      <div className="p-2 md:p-3 space-y-4 min-h-[600px] animate-pulse w-full">
         {/* Skeleton Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))' }}>
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="bg-card border border-border/60 rounded-xl h-[380px] flex flex-col overflow-hidden">
-              <div className="h-10 border-b border-border/40 px-4 flex items-center gap-2">
-                <div className="h-3 w-40 bg-foreground/5 rounded" />
+            <div key={i} className="bg-card border border-border/30 rounded-[var(--radius)] h-[260px] max-h-[400px] flex flex-col overflow-hidden">
+              <div className="h-6 border-b border-border/25 px-2.5 flex items-center gap-1.5">
+                <div className="h-2 w-28 bg-primary/[0.06] rounded" />
               </div>
-              <div className="flex-1 p-3">
-                <div className="w-full h-full bg-foreground/[0.03] rounded-lg flex items-center justify-center">
-                   <Loader2 className="w-5 h-5 text-muted-foreground/20 animate-spin" />
+              <div className="flex-1 p-1.5">
+                <div className="w-full h-full bg-primary/[0.04] rounded flex items-center justify-center">
+                   <Loader2 className="w-4 h-4 text-muted-foreground/20 animate-spin" />
                 </div>
               </div>
             </div>
@@ -1328,134 +843,58 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       </div>
     );
   }
-  const sidebarContent = (
-    <>
-      {/* Search */}
-      <div className="px-2 py-1.5 border-b border-border/40">
-        <div className="flex items-center gap-1">
-          <div className="relative group flex-1 min-w-0">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/60 group-focus-within:text-foreground/60 transition-colors" />
+
+  const displayGroups = activeCategory === 'all'
+    ? groupedCharts
+    : [{ category: activeCategory, charts: filteredCharts }];
+
+  return (
+    <div className="h-[calc(100vh-48px)] flex flex-col overflow-hidden">
+      {/* Combined tab bar: category tabs | search | layout + actions */}
+      <div className="px-4 sm:px-5 lg:px-6 border-b border-border/25 shrink-0">
+        <div className="flex items-center gap-2 -mb-px">
+          {/* Category tabs */}
+          <div className="flex gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0">
+            <button
+              onClick={() => setActiveCategory('all')}
+              className={`tab-link ${activeCategory === 'all' ? 'active' : ''}`}
+            >
+              All
+              <span className="ml-1 text-[9px] text-muted-foreground/40 font-mono">{allFilteredCharts.length}</span>
+            </button>
+            {categories.map(cat => {
+              const count = groupedCharts.find(g => g.category === cat)?.charts.length ?? 0;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`tab-link ${activeCategory === cat ? 'active' : ''}`}
+                >
+                  {cat}
+                  <span className="ml-1 text-[9px] text-muted-foreground/40 font-mono">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search */}
+          <div className="relative shrink-0">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/35 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
               aria-label="Search charts"
-              className="w-full h-6 pl-6 pr-2 rounded border border-border/50 bg-background/50 text-[11px] outline-none focus:ring-1 focus:ring-sky-500/25 placeholder:text-muted-foreground/60"
+              className="w-28 focus:w-44 transition-all pl-7 pr-2 py-1.5 text-[11px] font-medium bg-transparent border border-border/40 rounded-md text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/40"
             />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                aria-label="Clear search"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-accent/30 text-muted-foreground/60"
-              >
-                <X className="w-2 h-2" />
-              </button>
-            )}
           </div>
-          <button
-            onClick={toggleCollapseAllSidebarCategories}
-            disabled={groupedCharts.length === 0}
-            className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/50 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.05] disabled:opacity-40"
-            title={allSidebarCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'}
-          >
-            {allSidebarCategoriesCollapsed ? <UnfoldVertical className="w-3 h-3" /> : <FoldVertical className="w-3 h-3" />}
-          </button>
-        </div>
-      </div>
 
-      {/* Chart List */}
-      <div className="flex-grow overflow-y-auto custom-scrollbar px-2 py-2 space-y-1">
-        {groupedCharts.map(({ category, charts }) => {
-          const collapsed = !!collapsedSidebarCategories[category];
-          return (
-            <div key={category} className="rounded-lg border border-border/40 overflow-hidden">
-              <button
-                onClick={() =>
-                  setCollapsedSidebarCategories((prev) => ({ ...prev, [category]: !prev[category] }))
-                }
-                className="w-full px-2.5 py-1.5 bg-background/40 flex items-center justify-between text-left text-[10px] text-muted-foreground hover:text-foreground"
-              >
-                <span className="truncate">{category}</span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="text-[9px]">{charts.length}</span>
-                  <ChevronDown className={`w-3 h-3 transition-transform ${collapsed ? '-rotate-90' : 'rotate-0'}`} />
-                </span>
-              </button>
-              {!collapsed && (
-                <div className="px-1.5 py-1 space-y-px">
-                  {charts.map((chart) => {
-                    const isActive = chart.id === quickJumpId;
-                    const idx = filteredCharts.findIndex((c) => c.id === chart.id);
-                    return (
-                      <button
-                        key={chart.id}
-                        onClick={() => handleQuickJumpSelect(chart.id)}
-                        className={`w-full group relative flex items-center gap-2.5 px-2 py-1.5 rounded-md cursor-pointer transition-all duration-100 ${
-                          isActive
-                            ? 'bg-foreground/[0.07] text-foreground'
-                            : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
-                        }`}
-                      >
-                        <span className={`text-[9px] font-mono tabular-nums shrink-0 w-4 text-right ${
-                          isActive ? 'text-foreground/60' : 'text-muted-foreground/40'
-                        }`}>
-                          {idx + 1}
-                        </span>
-                        <div className="flex-1 min-w-0 flex flex-col items-start text-left">
-                          <span className="text-[10px] font-medium leading-tight truncate w-full">
-                            {chart.name || 'Untitled'}
-                          </span>
-                        </div>
-                        {chart.public && (
-                          <>
-                            <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-emerald-500/40'}`} aria-hidden="true" />
-                            <span className="sr-only">Public</span>
-                          </>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {filteredCharts.length === 0 && (
-          <div className="py-8 px-4 text-center">
-            <p className="text-[10px] text-muted-foreground/50">No charts found</p>
-          </div>
-        )}
-      </div>
-    </>
-  );
+          <div className="w-px h-3 bg-border/30" />
 
-  return (
-    <NavigatorShell
-      sidebarOpen={sidebarOpen}
-      onSidebarToggle={toggleSidebar}
-      sidebarIcon={<LayoutGrid className="w-3.5 h-3.5 text-sky-400" />}
-      sidebarLabel="Dashboard"
-      sidebarHeaderActions={
-        <>
-          <button
-            onClick={() => handleOpenInStudio(null)}
-            className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/8 transition-colors"
-            title="New chart"
-            aria-label="New chart"
-          >
-            <Plus className="w-3 h-3" />
-          </button>
-        </>
-      }
-      sidebarContent={sidebarContent}
-      mainClassName={layoutMode !== 'grid' ? 'overflow-hidden' : ''}
-      topBarRight={
-        <>
-          {/* Group 1: Layout mode */}
+          {/* Layout mode buttons */}
           {([
             { mode: 'grid' as LayoutMode, icon: <LayoutGrid className="w-3 h-3" />, label: 'Grid' },
-            { mode: 'single' as LayoutMode, icon: <Square className="w-3 h-3" />, label: 'Single' },
             { mode: 'stack' as LayoutMode, icon: <Rows2 className="w-3 h-3" />, label: 'Stack' },
           ]).map(({ mode, icon, label }) => (
             <button
@@ -1463,8 +902,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
               onClick={() => setLayoutMode(mode)}
               className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
                 layoutMode === mode
-                  ? 'bg-foreground text-background'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-primary/10'
               }`}
               title={`${label} mode`}
               aria-label={`${label} mode`}
@@ -1484,8 +923,8 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                   onClick={() => setStackChartCount(n)}
                   className={`w-5 h-5 rounded text-[10px] font-mono transition-colors ${
                     stackChartCount === n
-                      ? 'bg-foreground text-background'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-primary/10'
                   }`}
                   title={`${n} panes`}
                 >
@@ -1495,36 +934,14 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             </>
           )}
 
-          <div className="w-px h-3 bg-border/40 mx-0.5" />
-
-          {/* Group 2: X-axis sync */}
-          <button
-            onClick={() => {
-              const next = !syncXAxis;
-              setSyncXAxis(next);
-              localStorage.setItem('dashboard-sync-xaxis', String(next));
-              if (!next) setXSyncRange(null);
-            }}
-            className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
-              syncXAxis
-                ? 'text-sky-400 bg-sky-500/10 hover:bg-sky-500/20'
-                : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
-            }`}
-            title={syncXAxis ? 'X-axis synced — click to disable' : 'Sync X-axis across charts'}
-            aria-label={syncXAxis ? 'Disable X-axis sync' : 'Sync X-axis across charts'}
-            aria-pressed={syncXAxis}
-          >
-            {syncXAxis ? <Link2 className="w-3 h-3" /> : <Link2Off className="w-3 h-3" />}
-          </button>
-
           {(canRefreshAllCharts || isOwner) && <div className="w-px h-3 bg-border/40 mx-0.5" />}
 
-          {/* Group 4: Actions */}
+          {/* Actions */}
           {canRefreshAllCharts && (
             <button
               onClick={handleRefreshAll}
               disabled={isRefreshing}
-              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-colors"
+              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-primary/10 disabled:opacity-40 transition-colors"
               title="Refresh all charts"
               aria-label="Refresh all charts"
             >
@@ -1536,7 +953,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
               <button
                 onClick={handleExportPDF}
                 disabled={exporting}
-                className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-colors"
+                className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-primary/10 disabled:opacity-40 transition-colors"
                 title="Export PDF"
                 aria-label="Export PDF"
               >
@@ -1553,210 +970,25 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
               </button>
             </>
           )}
-        </>
-      }
-      mainScrollRef={mainScrollRef}
-    >
-      {/* Main Content */}
-      {layoutMode === 'single' ? (
-        /* ── SINGLE MODE ── */
-        <div className="h-full flex flex-col overflow-hidden">
-          {/* Chart nav strip */}
-          <div className="h-8 px-3 border-b border-border/40 shrink-0 flex items-center gap-2">
-            <button
-              onClick={() => {
-                const prev = (singleChartIdx - 1 + filteredCharts.length) % filteredCharts.length;
-                setSingleChartIdx(prev);
-                setQuickJumpId(filteredCharts[prev]?.id ?? '');
-              }}
-              disabled={filteredCharts.length <= 1}
-              aria-label="Previous chart"
-              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-xs font-medium text-foreground/80 flex-1 truncate text-center" aria-live="polite">
-              {filteredCharts[singleChartIdx]?.name ?? ''}
-            </span>
-            <button
-              onClick={() => {
-                const next = (singleChartIdx + 1) % filteredCharts.length;
-                setSingleChartIdx(next);
-                setQuickJumpId(filteredCharts[next]?.id ?? '');
-              }}
-              disabled={filteredCharts.length <= 1}
-              aria-label="Next chart"
-              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
 
-          {/* Main chart area */}
-          <div className="flex-1 min-h-0 p-3">
-            {editingChartId ? (
-                /* ── INLINE EDITING: code editor replaces chart content inside same card frame ── */
-                <div className="bg-card border border-border/60 rounded-xl overflow-hidden flex flex-col h-full animate-in fade-in duration-150">
-                  {/* Card header — matches ChartCard style */}
-                  <div className="px-4 py-2.5 flex items-center justify-between gap-2 border-b border-border/40">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <Code2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                      <input
-                        value={editName}
-                        onChange={e => setEditName(e.target.value)}
-                        className="text-xs font-medium bg-transparent border-none outline-none text-foreground flex-1 min-w-0"
-                        placeholder="Chart name"
-                        aria-label="Chart name"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={handleInlineRun}
-                        disabled={editLoading}
-                        className="flex items-center gap-1 h-6 px-2 rounded text-[11px] font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
-                        title="Run (Ctrl+Enter)"
-                      >
-                        {editLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                        Run
-                      </button>
-                      <button
-                        onClick={handleInlineSave}
-                        disabled={editSaving}
-                        className="flex items-center gap-1 h-6 px-2 rounded text-[11px] font-medium bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 transition-colors disabled:opacity-50"
-                        title="Save (Ctrl+S)"
-                      >
-                        {editSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                        Save
-                      </button>
-                      <button
-                        onClick={handleCloseInlineEdit}
-                        className="p-1 rounded transition-colors text-muted-foreground/40 hover:text-muted-foreground hover:bg-foreground/[0.06]"
-                        title="Close (Esc)"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
+          <div className="w-px h-3 bg-border/40 mx-0.5" />
 
-                  {/* Status bar */}
-                  {(editError || editSuccess) && (
-                    <div role="status" aria-live="polite" className={`px-3 py-1 text-[11px] font-mono shrink-0 ${editError ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                      {editError || editSuccess}
-                    </div>
-                  )}
-
-                  {/* Code editor — fills the chart area */}
-                  <div className="flex-1 min-h-0 relative">
-                    {editLoading && (
-                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm">
-                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-background border border-border/50 shadow-lg">
-                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">Executing...</span>
-                        </div>
-                      </div>
-                    )}
-                    <MonacoEditor
-                      height="100%"
-                      language="python"
-                      theme={theme === 'light' ? 'vs' : 'vs-dark'}
-                      value={editCode}
-                      onChange={(v: string | undefined) => setEditCode(v || '')}
-                      beforeMount={registerIxCompletions}
-                      onMount={(editor: any) => { editCodeRef.current = editor; }}
-                      options={{
-                        minimap: { enabled: false },
-                        fontSize: 13,
-                        fontFamily: "'JetBrains Mono', monospace",
-                        padding: { top: 8 },
-                        lineNumbers: 'on',
-                        scrollBeyondLastLine: false,
-                        wordWrap: 'on',
-                        tabSize: 4,
-                        automaticLayout: true,
-                        quickSuggestions: true,
-                        suggestOnTriggerCharacters: true,
-                        parameterHints: { enabled: true },
-                      }}
-                    />
-                  </div>
-
-                  {/* Timeseries search strip */}
-                  <div className="shrink-0 border-t border-border/40">
-                    <div className="px-3 py-1.5 flex items-center gap-2">
-                      <div className="relative flex-1 min-w-0">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
-                        <input
-                          value={editTsSearch}
-                          onChange={e => setEditTsSearch(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') setEditTsQuery(editTsSearch.trim()); }}
-                          placeholder="Search timeseries… (Enter)"
-                          aria-label="Search timeseries"
-                          className="w-full pl-7 pr-2 py-1 text-[11px] font-mono bg-transparent border border-border/50 rounded-md text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-border transition-colors"
-                        />
-                        {editTsSearch && (
-                          <button
-                            onClick={() => { setEditTsSearch(''); setEditTsQuery(''); }}
-                            aria-label="Clear timeseries search"
-                            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-foreground/[0.06] text-muted-foreground/40"
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        )}
-                      </div>
-                      {editTsLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground/50 shrink-0" />}
-                    </div>
-                    {(editTsQuery.length > 0 || editTsResults.length > 0) && (
-                      <div className="max-h-32 overflow-y-auto border-t border-border/40">
-                        {editTsResults.map(ts => (
-                          <button
-                            key={ts.id}
-                            onClick={() => handleInsertTs(ts.code, ts.name)}
-                            className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-foreground/[0.04] transition-colors group flex items-center gap-2 border-b border-border/30 last:border-b-0"
-                          >
-                            <span className="font-mono text-sky-400/80 shrink-0">{ts.code}</span>
-                            <span className="text-muted-foreground/50 truncate flex-1">{ts.name || ''}</span>
-                            <Plus className="w-3 h-3 text-muted-foreground/20 group-hover:text-emerald-400 shrink-0 transition-colors" />
-                          </button>
-                        ))}
-                        {!editTsLoading && editTsQuery && editTsResults.length === 0 && (
-                          <div className="px-3 py-2 text-[11px] text-muted-foreground/40 text-center">No results for &ldquo;{editTsQuery}&rdquo;</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : filteredCharts[singleChartIdx] ? (
-                /* ── Normal chart view ── */
-                <ChartCard
-                  key={filteredCharts[singleChartIdx].id}
-                  chart={filteredCharts[singleChartIdx]}
-                  expanded={true}
-                  canEdit={canEditChart(filteredCharts[singleChartIdx])}
-                  canRefresh={canRefreshChart(filteredCharts[singleChartIdx])}
-                  canDelete={canDeleteChart(filteredCharts[singleChartIdx])}
-                  canManageVisibility={canManageVisibility}
-                  isReorderable={false}
-                  onTogglePdf={handleTogglePdf}
-                  onRefreshChart={handleRefreshChart}
-                  onCopyChart={handleCopyFromHeader}
-                  onDeleteChart={handleDeleteChart}
-                  isRefreshingChart={!!refreshingChartIds[filteredCharts[singleChartIdx].id]}
-                  isDeletingChart={!!deletingChartIds[filteredCharts[singleChartIdx].id]}
-                  onRankChange={handleRankChange}
-                  copySignal={copySignals[filteredCharts[singleChartIdx].id] || 0}
-                  onOpenStudio={handleOpenInStudio}
-                  syncXRange={syncXAxis ? xSyncRange : null}
-                  onXRangeChange={handleXRangeChange}
-                  unsavedChanges={dirtyChartIds.has(filteredCharts[singleChartIdx].id)}
-                  onSaveChart={handleSaveUnsavedChart}
-                />
-              ) : null}
-          </div>
-
+          <button
+            onClick={handleNewChart}
+            className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-primary/10 transition-colors"
+            title="New chart"
+            aria-label="New chart"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
         </div>
-      ) : layoutMode === 'stack' ? (
-        /* ── STACK MODE ── */
-        <div ref={stackContainerRef} className="h-full flex flex-col overflow-hidden">
+      </div>
+
+      {/* Main content */}
+      <div ref={mainScrollRef} className={`flex-1 min-h-0 ${layoutMode === 'grid' ? 'overflow-y-auto' : 'overflow-hidden'}`}>
+      {layoutMode === 'stack' ? (
+        /* STACK MODE */
+        <div ref={stackContainerRef} className="h-full flex flex-col overflow-hidden max-w-[1400px] mx-auto w-full">
           {filteredCharts.slice(0, stackChartCount).map((chart, paneIdx) => (
             <React.Fragment key={chart.id}>
               <div
@@ -1779,16 +1011,12 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                   isDeletingChart={!!deletingChartIds[chart.id]}
                   onRankChange={handleRankChange}
                   copySignal={copySignals[chart.id] || 0}
-                  onOpenStudio={handleOpenInStudio}
-                  syncXRange={syncXAxis ? xSyncRange : null}
-                  onXRangeChange={handleXRangeChange}
-                  unsavedChanges={dirtyChartIds.has(chart.id)}
-                  onSaveChart={handleSaveUnsavedChart}
+                  onEditInStudio={handleEditInStudio}
                 />
               </div>
               {paneIdx < Math.min(stackChartCount, filteredCharts.length) - 1 && (
                 <div
-                  className="h-1 shrink-0 cursor-row-resize bg-border/40 hover:bg-sky-500/40 active:bg-sky-500/60 transition-colors"
+                  className="h-1 shrink-0 cursor-row-resize bg-border/40 hover:bg-primary/40 active:bg-primary/60 transition-colors"
                   onMouseDown={(e) => startStackDrag(paneIdx, e)}
                 />
               )}
@@ -1796,38 +1024,28 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
           ))}
         </div>
       ) : (
-        <div className="transition-all duration-300 p-4 md:p-6 max-w-screen-2xl mx-auto w-full">
+        <div className="transition-all duration-300 p-2 md:p-3 w-full">
           {/* Grid Display — grouped by category */}
-          <div className="space-y-10">
-          {groupedCharts.map(({ category, charts: groupCharts }) => {
-            return (
+          <div className="space-y-4">
+          {displayGroups.map(({ category, charts: groupCharts }) => (
               <div key={category}>
-                {/* Category Section Header */}
-                {groupedCharts.length > 1 && (
-                  <div className="flex items-center gap-3 mb-5 px-1">
-                    <span className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-widest shrink-0">
+                {/* Category Section Header — only when showing all categories */}
+                {displayGroups.length > 1 && (
+                  <div className="flex items-center gap-2 mb-2 px-0.5">
+                    <span className="text-[9px] font-semibold text-muted-foreground/50 uppercase tracking-[0.15em] shrink-0">
                       {category}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/35 font-mono shrink-0 tabular-nums">{groupCharts.length}</span>
-                    <div className="h-px flex-1 bg-gradient-to-r from-border/50 to-transparent" />
+                    <span className="text-[9px] text-muted-foreground/30 font-mono shrink-0 tabular-nums">{groupCharts.length}</span>
+                    <div className="h-px flex-1 bg-border/30" />
                   </div>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-                  {groupCharts.map((chart, localIdx) => {
-                    return (
-                      <motion.div
+                <div className="grid gap-3 [&>*]:max-h-[400px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))' }}>
+                  {groupCharts.map((chart) => (
+                      <div
                         key={chart.id}
                         id={`chart-anchor-${chart.id}`}
-                        ref={setChartAnchorRef(chart.id)}
                         className="h-full flex flex-col"
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true, margin: "-50px" }}
-                        transition={{
-                          duration: 0.5,
-                          ease: [0.23, 1, 0.32, 1],
-                          delay: localIdx % 4 * 0.05
-                        }}
+                        style={{ contentVisibility: 'auto', containIntrinsicSize: '0 300px' }}
                       >
                         <ChartCard
                           chart={chart}
@@ -1844,24 +1062,18 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
                           isDeletingChart={!!deletingChartIds[chart.id]}
                           onRankChange={handleRankChange}
                           copySignal={copySignals[chart.id] || 0}
-                          onOpenStudio={handleOpenInStudio}
-                          syncXRange={syncXAxis ? xSyncRange : null}
-                          onXRangeChange={handleXRangeChange}
-                          unsavedChanges={dirtyChartIds.has(chart.id)}
-                          onSaveChart={handleSaveUnsavedChart}
+                          onEditInStudio={handleEditInStudio}
                         />
-                      </motion.div>
-                    );
-                  })}
+                      </div>
+                    ))}
                 </div>
               </div>
-            );
-          })}
+            ))}
           </div>
 
           {/* Empty State */}
           {filteredCharts.length === 0 && (
-            <div className="py-32 text-center border border-dashed border-border/40 rounded-xl">
+            <div className="py-20 text-center border border-dashed border-border/30 rounded-lg">
               <Layers className="w-8 h-8 text-muted-foreground/20 mx-auto mb-3" />
               <p className="text-sm font-medium text-muted-foreground/50">No indicators found</p>
               {searchQuery && <p className="text-xs text-muted-foreground/40 mt-1">Try a different search term</p>}
@@ -1870,7 +1082,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
         </div>
       )}
 
-      {/* 💾 Save Order Floating Bar */}
+      {/* Save Order Floating Bar */}
       <AnimatePresence>
         {isReorderEnabled && isOrderDirty && (
           <motion.div
@@ -1880,21 +1092,21 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
             transition={{ duration: 0.2 }}
             role="status"
             aria-live="polite"
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-4 py-2.5 bg-popover/95 backdrop-blur-md border border-amber-500/30 rounded-2xl shadow-2xl shadow-black/20"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-4 py-2.5 bg-popover/95 backdrop-blur-md border border-primary/30 rounded-md shadow-lg shadow-black/20"
           >
-            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
-            <span className="text-[11px] font-mono text-amber-400 uppercase tracking-widest">Unsaved order</span>
+            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" aria-hidden="true" />
+            <span className="text-[11px] font-mono text-primary uppercase tracking-widest">Unsaved order</span>
             <div className="flex items-center gap-2 ml-1">
               <button
                 onClick={handleResetOrder}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/50 text-muted-foreground hover:text-foreground text-[10px] font-semibold transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius)] border border-border/50 text-muted-foreground hover:text-foreground text-[10px] font-semibold transition-colors"
               >
                 <RotateCcw className="w-3 h-3" /> Reset
               </button>
               <button
                 onClick={handleSaveOrder}
                 disabled={reorderMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-400 text-[10px] font-bold transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-primary/15 border border-primary/30 hover:bg-primary/25 text-primary text-[10px] font-bold transition-colors disabled:opacity-50"
               >
                 {reorderMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 Save Order
@@ -1908,7 +1120,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
       <AnimatePresence>
         {deleteTarget && (
           <motion.div
-            className="fixed inset-0 z-[220] flex items-center justify-center bg-foreground/40 dark:bg-black/70 backdrop-blur-md px-4"
+            className="fixed inset-0 z-[220] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1925,7 +1137,7 @@ export default function DashboardGallery({ chartsByCategory }: DashboardGalleryP
           </motion.div>
         )}
       </AnimatePresence>
-    </NavigatorShell>
+      </div>
+    </div>
   );
 }
-
