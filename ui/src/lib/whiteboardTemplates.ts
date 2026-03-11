@@ -281,3 +281,207 @@ export const WELCOME_TEMPLATE = {
   },
   files: {},
 };
+
+
+// ── Macro Research Pipeline Template ──
+
+// Layout
+const MR_BOX_W = 180;
+const MR_BOX_H = 120;
+const MR_GAP_X = 60;
+const MR_GAP_Y = 50;
+const MR_START_X = 60;
+const MR_START_Y = 100;
+
+// Source row (row 1) — 7 boxes
+const mr_srcY = MR_START_Y;
+const mr_srcX = (i: number) => MR_START_X + i * (MR_BOX_W + 20);
+
+// Processing row (row 2)
+const mr_procY = MR_START_Y + MR_BOX_H + MR_GAP_Y;
+
+// Analysis row (row 3)
+const mr_analysisY = mr_procY + MR_BOX_H + MR_GAP_Y;
+
+// Output row (row 4)
+const mr_outputY = mr_analysisY + MR_BOX_H + MR_GAP_Y;
+
+// IDs
+const MR_TITLE = tid();
+
+// Sources
+const MR_YT = tid(); const MR_YT_T = tid();
+const MR_CB = tid(); const MR_CB_T = tid();
+const MR_NEWS = tid(); const MR_NEWS_T = tid();
+const MR_TG = tid(); const MR_TG_T = tid();
+const MR_DATA = tid(); const MR_DATA_T = tid();
+const MR_DRIVE = tid(); const MR_DRIVE_T = tid();
+const MR_REPORTS = tid(); const MR_REPORTS_T = tid();
+
+// Processing
+const MR_NLM = tid(); const MR_NLM_T = tid();
+
+// Analysis
+const MR_BRIEF = tid(); const MR_BRIEF_T = tid();
+const MR_RISK = tid(); const MR_RISK_T = tid();
+const MR_TAKE = tid(); const MR_TAKE_T = tid();
+
+// Outputs
+const MR_INFOG = tid(); const MR_INFOG_T = tid();
+const MR_SLIDES = tid(); const MR_SLIDES_T = tid();
+const MR_DB = tid(); const MR_DB_T = tid();
+const MR_VAULT = tid(); const MR_VAULT_T = tid();
+
+// Arrows
+const MR_A1 = tid(); const MR_A2 = tid(); const MR_A3 = tid();
+const MR_A4 = tid(); const MR_A5 = tid(); const MR_A6 = tid();
+const MR_A7 = tid();
+const MR_A8 = tid(); const MR_A9 = tid(); const MR_A10 = tid();
+const MR_A11 = tid(); const MR_A12 = tid();
+const MR_A13 = tid(); const MR_A14 = tid();
+
+// Source section label
+const MR_SRC_LABEL = tid();
+const MR_PROC_LABEL = tid();
+const MR_ANALYSIS_LABEL = tid();
+const MR_OUT_LABEL = tid();
+
+// Narrower boxes for source row
+const SRC_W = 140;
+const SRC_H = 90;
+
+// NotebookLM box — wide
+const NLM_W = 500;
+const NLM_H = 100;
+
+// Analysis boxes
+const AN_W = 200;
+const AN_H = 100;
+
+// Output boxes
+const OUT_W = 160;
+const OUT_H = 80;
+
+// Source positions (7 across)
+const srcX = (i: number) => MR_START_X + i * (SRC_W + 14);
+const srcCenterX = MR_START_X + (7 * (SRC_W + 14) - 14) / 2;
+
+// NotebookLM centered
+const nlmX = srcCenterX - NLM_W / 2;
+
+// Analysis 3 boxes centered
+const anTotalW = 3 * AN_W + 2 * 40;
+const anStartX = srcCenterX - anTotalW / 2;
+const anX = (i: number) => anStartX + i * (AN_W + 40);
+
+// Output 4 boxes centered
+const outTotalW = 4 * OUT_W + 3 * 30;
+const outStartX = srcCenterX - outTotalW / 2;
+const outX = (i: number) => outStartX + i * (OUT_W + 30);
+
+export const MACRO_RESEARCH_TEMPLATE = {
+  elements: [
+    // Title
+    text(MR_TITLE, MR_START_X, MR_START_Y - 60, 800, 36,
+      'Macro Research Pipeline', 28, null, '#1e1e1e'),
+
+    // Section labels
+    text(MR_SRC_LABEL, MR_START_X, mr_srcY - 24, 200, 20,
+      'SOURCES', 14, null, '#868e96'),
+    text(MR_PROC_LABEL, MR_START_X, mr_procY - 24, 200, 20,
+      'PROCESSING', 14, null, '#868e96'),
+    text(MR_ANALYSIS_LABEL, MR_START_X, mr_analysisY - 24, 200, 20,
+      'ANALYSIS', 14, null, '#868e96'),
+    text(MR_OUT_LABEL, MR_START_X, mr_outputY - 24, 200, 20,
+      'OUTPUTS', 14, null, '#868e96'),
+
+    // ── Row 1: Sources ──
+    rect(MR_YT, srcX(0), mr_srcY, SRC_W, SRC_H, '#a5d8ff', '#1971c2', [MR_YT_T]),
+    text(MR_YT_T, srcX(0), mr_srcY, SRC_W, SRC_H,
+      'YouTube\n\n35 channels\n20 top videos', 13, MR_YT),
+
+    rect(MR_CB, srcX(1), mr_srcY, SRC_W, SRC_H, '#b2f2bb', '#2f9e44', [MR_CB_T]),
+    text(MR_CB_T, srcX(1), mr_srcY, SRC_W, SRC_H,
+      'Central Banks\n\nFed, BoE, ECB\nMinutes & Stmts', 13, MR_CB),
+
+    rect(MR_NEWS, srcX(2), mr_srcY, SRC_W, SRC_H, '#ffd8a8', '#e8590c', [MR_NEWS_T]),
+    text(MR_NEWS_T, srcX(2), mr_srcY, SRC_W, SRC_H,
+      'News RSS\n\n176 articles\nMultiple feeds', 13, MR_NEWS),
+
+    rect(MR_TG, srcX(3), mr_srcY, SRC_W, SRC_H, '#d0bfff', '#7048e8', [MR_TG_T]),
+    text(MR_TG_T, srcX(3), mr_srcY, SRC_W, SRC_H,
+      'Telegram\n\n536 messages\nMacro channels', 13, MR_TG),
+
+    rect(MR_DATA, srcX(4), mr_srcY, SRC_W, SRC_H, '#ffc9c9', '#e03131', [MR_DATA_T]),
+    text(MR_DATA_T, srcX(4), mr_srcY, SRC_W, SRC_H,
+      'Macro Data\n\n29 indicators\nTimeseries DB', 13, MR_DATA),
+
+    rect(MR_DRIVE, srcX(5), mr_srcY, SRC_W, SRC_H, '#99e9f2', '#0c8599', [MR_DRIVE_T]),
+    text(MR_DRIVE_T, srcX(5), mr_srcY, SRC_W, SRC_H,
+      'Google Drive\n\nRecent files\nResearch docs', 13, MR_DRIVE),
+
+    rect(MR_REPORTS, srcX(6), mr_srcY, SRC_W, SRC_H, '#eebefa', '#9c36b5', [MR_REPORTS_T]),
+    text(MR_REPORTS_T, srcX(6), mr_srcY, SRC_W, SRC_H,
+      'Reports\n\n80 research URLs\nBuyside/Sellside', 13, MR_REPORTS),
+
+    // ── Row 2: NotebookLM ──
+    rect(MR_NLM, nlmX, mr_procY, NLM_W, NLM_H, '#fff3bf', '#f08c00', [MR_NLM_T]),
+    text(MR_NLM_T, nlmX, mr_procY, NLM_W, NLM_H,
+      'Google NotebookLM\n\nIngest all sources → Generate briefing, risk scorecard, takeaways\nGenerate infographic & slide deck', 14, MR_NLM),
+
+    // ── Row 3: Analysis Outputs ──
+    rect(MR_BRIEF, anX(0), mr_analysisY, AN_W, AN_H, '#d3f9d8', '#37b24d', [MR_BRIEF_T]),
+    text(MR_BRIEF_T, anX(0), mr_analysisY, AN_W, AN_H,
+      'Briefing\n\nMarket state, themes\ngeopolitics, policy', 13, MR_BRIEF),
+
+    rect(MR_RISK, anX(1), mr_analysisY, AN_W, AN_H, '#ffe3e3', '#f03e3e', [MR_RISK_T]),
+    text(MR_RISK_T, anX(1), mr_analysisY, AN_W, AN_H,
+      'Risk Scorecard\n\nGeopolitical, Credit\nLiquidity, Inflation', 13, MR_RISK),
+
+    rect(MR_TAKE, anX(2), mr_analysisY, AN_W, AN_H, '#e7f5ff', '#1c7ed6', [MR_TAKE_T]),
+    text(MR_TAKE_T, anX(2), mr_analysisY, AN_W, AN_H,
+      'Takeaways\n\nAsset positioning\nActionable insights', 13, MR_TAKE),
+
+    // ── Row 4: Final Outputs ──
+    rect(MR_INFOG, outX(0), mr_outputY, OUT_W, OUT_H, '#fff4e6', '#e8590c', [MR_INFOG_T]),
+    text(MR_INFOG_T, outX(0), mr_outputY, OUT_W, OUT_H,
+      'Infographic\nPNG', 13, MR_INFOG),
+
+    rect(MR_SLIDES, outX(1), mr_outputY, OUT_W, OUT_H, '#f3f0ff', '#7048e8', [MR_SLIDES_T]),
+    text(MR_SLIDES_T, outX(1), mr_outputY, OUT_W, OUT_H,
+      'Slide Deck\nPDF', 13, MR_SLIDES),
+
+    rect(MR_DB, outX(2), mr_outputY, OUT_W, OUT_H, '#e6fcf5', '#0ca678', [MR_DB_T]),
+    text(MR_DB_T, outX(2), mr_outputY, OUT_W, OUT_H,
+      'PostgreSQL\nDB Storage', 13, MR_DB),
+
+    rect(MR_VAULT, outX(3), mr_outputY, OUT_W, OUT_H, '#f8f0fc', '#ae3ec9', [MR_VAULT_T]),
+    text(MR_VAULT_T, outX(3), mr_outputY, OUT_W, OUT_H,
+      'Obsidian Vault\nMarkdown', 13, MR_VAULT),
+
+    // ── Arrows: Sources → NotebookLM ──
+    arrow(MR_A1, [[0, 0], [0, MR_GAP_Y]], srcX(0) + SRC_W / 2, mr_srcY + SRC_H, MR_YT, MR_NLM),
+    arrow(MR_A2, [[0, 0], [0, MR_GAP_Y]], srcX(1) + SRC_W / 2, mr_srcY + SRC_H, MR_CB, MR_NLM),
+    arrow(MR_A3, [[0, 0], [0, MR_GAP_Y]], srcX(2) + SRC_W / 2, mr_srcY + SRC_H, MR_NEWS, MR_NLM),
+    arrow(MR_A4, [[0, 0], [0, MR_GAP_Y]], srcX(3) + SRC_W / 2, mr_srcY + SRC_H, MR_TG, MR_NLM),
+    arrow(MR_A5, [[0, 0], [0, MR_GAP_Y]], srcX(4) + SRC_W / 2, mr_srcY + SRC_H, MR_DATA, MR_NLM),
+    arrow(MR_A6, [[0, 0], [0, MR_GAP_Y]], srcX(5) + SRC_W / 2, mr_srcY + SRC_H, MR_DRIVE, MR_NLM),
+    arrow(MR_A7, [[0, 0], [0, MR_GAP_Y]], srcX(6) + SRC_W / 2, mr_srcY + SRC_H, MR_REPORTS, MR_NLM),
+
+    // NotebookLM → Analysis
+    arrow(MR_A8, [[0, 0], [0, MR_GAP_Y]], nlmX + NLM_W * 0.25, mr_procY + NLM_H, MR_NLM, MR_BRIEF),
+    arrow(MR_A9, [[0, 0], [0, MR_GAP_Y]], nlmX + NLM_W * 0.5, mr_procY + NLM_H, MR_NLM, MR_RISK),
+    arrow(MR_A10, [[0, 0], [0, MR_GAP_Y]], nlmX + NLM_W * 0.75, mr_procY + NLM_H, MR_NLM, MR_TAKE),
+
+    // Analysis → Outputs
+    arrow(MR_A11, [[0, 0], [0, MR_GAP_Y]], anX(0) + AN_W / 2, mr_analysisY + AN_H, MR_BRIEF, MR_DB),
+    arrow(MR_A12, [[0, 0], [0, MR_GAP_Y]], anX(1) + AN_W / 2, mr_analysisY + AN_H, MR_RISK, MR_INFOG),
+    arrow(MR_A13, [[0, 0], [0, MR_GAP_Y]], anX(2) + AN_W / 2, mr_analysisY + AN_H, MR_TAKE, MR_SLIDES),
+    arrow(MR_A14, [[0, 0], [0, MR_GAP_Y]], anX(2) + AN_W / 2 + 60, mr_analysisY + AN_H, MR_TAKE, MR_VAULT),
+  ],
+  appState: {
+    viewBackgroundColor: '#ffffff',
+    gridSize: null,
+  },
+  files: {},
+};

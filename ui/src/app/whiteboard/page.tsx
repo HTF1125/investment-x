@@ -9,7 +9,7 @@ import ExcalidrawEditor from '@/components/ExcalidrawEditor';
 import {
   Plus, ArrowLeft, Loader2, Trash2, PenTool, Clock, LayoutTemplate,
 } from 'lucide-react';
-import { WELCOME_TEMPLATE } from '@/lib/whiteboardTemplates';
+import { WELCOME_TEMPLATE, MACRO_RESEARCH_TEMPLATE } from '@/lib/whiteboardTemplates';
 
 // ── Types ──
 
@@ -72,14 +72,11 @@ function WhiteboardGallery() {
   });
 
   const createFromTemplateMut = useMutation({
-    mutationFn: () =>
+    mutationFn: (tmpl: { title: string; scene_data: any }) =>
       apiFetchJson<WhiteboardDetail>('/api/whiteboards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'Investment Thesis Framework',
-          scene_data: WELCOME_TEMPLATE,
-        }),
+        body: JSON.stringify(tmpl),
       }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['whiteboards'] });
@@ -140,18 +137,32 @@ function WhiteboardGallery() {
           <p className="text-[11px] text-muted-foreground/30 mt-1 mb-4">
             Create a blank canvas or start from a pre-built template
           </p>
-          <button
-            onClick={() => createFromTemplateMut.mutate()}
-            disabled={createFromTemplateMut.isPending}
-            className="h-8 px-3.5 rounded-[var(--radius)] border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {createFromTemplateMut.isPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <LayoutTemplate className="w-3.5 h-3.5" />
-            )}
-            Start from Template
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => createFromTemplateMut.mutate({ title: 'Investment Thesis Framework', scene_data: WELCOME_TEMPLATE })}
+              disabled={createFromTemplateMut.isPending}
+              className="h-8 px-3.5 rounded-[var(--radius)] border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {createFromTemplateMut.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <LayoutTemplate className="w-3.5 h-3.5" />
+              )}
+              Thesis Template
+            </button>
+            <button
+              onClick={() => createFromTemplateMut.mutate({ title: 'Macro Research Pipeline', scene_data: MACRO_RESEARCH_TEMPLATE })}
+              disabled={createFromTemplateMut.isPending}
+              className="h-8 px-3.5 rounded-[var(--radius)] border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {createFromTemplateMut.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <LayoutTemplate className="w-3.5 h-3.5" />
+              )}
+              Macro Research
+            </button>
+          </div>
         </div>
       )}
 
@@ -252,19 +263,33 @@ function WhiteboardEditorView({ whiteboardId }: { whiteboardId: string }) {
     let thumbnailBase64: string | undefined;
     try {
       const { exportToBlob } = await import('@excalidraw/excalidraw');
-      const blob = await exportToBlob({
-        elements: scene.elements,
-        appState: { ...scene.appState, exportWithDarkMode: false },
-        files: scene.files || {},
-        maxWidthOrHeight: 400,
-        getDimensions: () => ({ width: 400, height: 250, scale: 1 }),
-      });
-      const buffer = await blob.arrayBuffer();
-      thumbnailBase64 = btoa(
-        new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ''),
+      const visibleElements = scene.elements.filter(
+        (el: any) => !el.isDeleted,
       );
-    } catch {
-      // Thumbnail generation failed — save without it
+      if (visibleElements.length > 0) {
+        const blob = await exportToBlob({
+          elements: visibleElements,
+          appState: {
+            ...scene.appState,
+            exportWithDarkMode: false,
+            exportBackground: true,
+          },
+          files: scene.files || {},
+          maxWidthOrHeight: 400,
+          mimeType: 'image/png',
+        });
+        if (blob && blob.size > 0) {
+          const buffer = await blob.arrayBuffer();
+          thumbnailBase64 = btoa(
+            new Uint8Array(buffer).reduce(
+              (s, b) => s + String.fromCharCode(b),
+              '',
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('Thumbnail generation failed:', e);
     }
 
     updateMut.mutate({
