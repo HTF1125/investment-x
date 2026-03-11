@@ -31,6 +31,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY_MS);
   const { isAuthenticated } = useAuth();
 
+  const prevProcessesRef = useRef<ProcessInfo[]>([]);
+
   const { data: processes = [] } = useQuery<ProcessInfo[]>({
     queryKey: TASK_PROCESSES_QUERY_KEY,
     queryFn: () => apiFetchJson<ProcessInfo[]>("/api/task/processes"),
@@ -39,6 +41,25 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     refetchIntervalInBackground: false,
     initialData: [],
   });
+
+  // When a "Refresh Charts" task transitions to completed, invalidate chart queries
+  useEffect(() => {
+    const prev = prevProcessesRef.current;
+    prevProcessesRef.current = processes;
+
+    for (const p of processes) {
+      if (p.status !== "completed") continue;
+      const wasPending = prev.find(
+        (pp) => pp.id === p.id && pp.status === "running",
+      );
+      if (!wasPending) continue;
+      if (p.name.includes("Refresh Charts") || p.name.includes("Daily Data")) {
+        queryClient.invalidateQueries({ queryKey: ["chart-figure"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        queryClient.invalidateQueries({ queryKey: ["custom-charts"] });
+      }
+    }
+  }, [processes, queryClient]);
 
   useEffect(() => {
     if (isAuthenticated) {
