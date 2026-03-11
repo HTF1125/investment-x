@@ -4,7 +4,6 @@ Main FastAPI application.
 
 import os
 import time
-from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -19,403 +18,51 @@ from slowapi.errors import RateLimitExceeded
 from ix.db.conn import ensure_connection, conn
 from ix.utils.logger import setup_logging
 
-# Initialize application logging
 logger = setup_logging(service_name="backend")
-# logger = get_logger(__name__)
-
-# Timezone config
 
 scheduler = AsyncIOScheduler()
-StartupCheck = tuple[str, Callable[[], None]]
 
 
-def _ensure_schema_versions_table() -> None:
-    """Create the schema_versions tracking table if it doesn't exist."""
+def _run_startup_migrations() -> None:
+    """Run all schema migrations in a single transaction."""
     if not ensure_connection():
-        return
-    try:
-        with conn.engine.begin() as db_conn:
-            db_conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS schema_versions (
-                        migration_name VARCHAR(255) PRIMARY KEY,
-                        applied_at TIMESTAMP DEFAULT NOW(),
-                        success BOOLEAN NOT NULL DEFAULT TRUE,
-                        error_message TEXT
-                    )
-                    """
-                )
-            )
-    except Exception as exc:
-        logger.warning(f"Could not create schema_versions table: {exc}")
-
-
-def _record_migration(migration_name: str, success: bool, error_message: str | None = None) -> None:
-    """Record a migration result in the schema_versions table."""
-    if not ensure_connection():
-        return
-    try:
-        with conn.engine.begin() as db_conn:
-            db_conn.execute(
-                text(
-                    """
-                    INSERT INTO schema_versions (migration_name, applied_at, success, error_message)
-                    VALUES (:name, NOW(), :success, :error)
-                    ON CONFLICT (migration_name)
-                    DO UPDATE SET applied_at = NOW(), success = :success, error_message = :error
-                    """
-                ),
-                {"name": migration_name, "success": success, "error": error_message},
-            )
-    except Exception as exc:
-        logger.warning(f"Could not record migration '{migration_name}': {exc}")
-
-
-def _ensure_user_role_schema() -> None:
-    """Idempotent runtime migration for user role-based authorization."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping user role schema check because DB connection is unavailable."
-        )
+        logger.warning("Skipping startup migrations — DB connection unavailable.")
         return
 
     try:
-        with conn.engine.begin() as db_conn:
-            user_table = db_conn.execute(
+        from ix.db.conn import Base as ModelBase
+
+        # Import all models so metadata knows about them
+        import ix.db.models  # noqa: F401
+
+        # Create any missing tables in one call
+        ModelBase.metadata.create_all(bind=conn.engine, checkfirst=True)
+
+        # Run ALTER TABLE migrations in a single transaction
+        with conn.engine.begin() as db:
+            # User table columns
+            user_exists = db.execute(
                 text("SELECT to_regclass('public.\"user\"')")
             ).scalar()
-            if not user_table:
-                logger.info(
-                    "Skipping user role schema check because user table does not exist."
-                )
-                return
+            if user_exists:
+                db.execute(text(
+                    'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS role VARCHAR(32) DEFAULT \'general\''
+                ))
+                db.execute(text(
+                    'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT \'{}\'::jsonb'
+                ))
+                db.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_user_role ON \"user\" (role)"
+                ))
 
-            db_conn.execute(
-                text('ALTER TABLE "user" ' "ADD COLUMN IF NOT EXISTS role VARCHAR(32)")
-            )
-            db_conn.execute(
-                text("CREATE INDEX IF NOT EXISTS ix_user_role " 'ON "user" (role)')
-            )
-            db_conn.execute(
-                text(
-                    """
-                    UPDATE "user"
-                    SET role = CASE
-                        WHEN role IN ('owner', 'admin', 'general') THEN role
-                        WHEN is_admin = TRUE THEN 'admin'
-                        ELSE 'general'
-                    END
-                    """
-                )
-            )
-            # Keep legacy compatibility flag in sync with role semantics.
-            db_conn.execute(
-                text(
-                    """
-                    UPDATE "user"
-                    SET is_admin = CASE
-                        WHEN role IN ('owner', 'admin') THEN TRUE
-                        ELSE FALSE
-                    END
-                    """
-                )
-            )
-            db_conn.execute(
-                text('ALTER TABLE "user" ' "ALTER COLUMN role SET DEFAULT 'general'")
-            )
-
-        logger.info("User role schema check completed.")
-    except Exception as exc:
-        logger.warning(f"User role schema check failed: {exc}")
-
-
-def _ensure_charts_rename() -> None:
-    """Idempotent runtime migration: rename table custom_charts→charts and column export_pdf→public."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping charts rename migration because DB connection is unavailable."
-        )
-        return
-
-    try:
-        with conn.engine.begin() as db_conn:
-            old_table = db_conn.execute(
-                text("SELECT to_regclass('public.custom_charts')")
-            ).scalar()
-            if old_table:
-                db_conn.execute(text("ALTER TABLE custom_charts RENAME TO charts"))
-                logger.info("Renamed table custom_charts → charts.")
-
-            table_exists = db_conn.execute(
-                text("SELECT to_regclass('public.charts')")
-            ).scalar()
-            if not table_exists:
-                return
-
-            col_exists = db_conn.execute(
-                text(
-                    "SELECT 1 FROM information_schema.columns "
-                    "WHERE table_name = 'charts' AND column_name = 'export_pdf'"
-                )
-            ).first()
-            if col_exists:
-                db_conn.execute(
-                    text("ALTER TABLE charts RENAME COLUMN export_pdf TO public")
-                )
-                logger.info("Renamed column export_pdf → public in charts table.")
-
-        logger.info("Charts rename migration completed.")
-    except Exception as exc:
-        logger.warning(f"Charts rename migration failed: {exc}")
-
-
-def _ensure_custom_chart_owner_schema() -> None:
-    """Idempotent runtime migration for custom chart creator ownership fields."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping custom chart owner schema check because DB connection is unavailable."
-        )
-        return
-
-    try:
-        with conn.engine.begin() as db_conn:
-            table_exists = db_conn.execute(
-                text("SELECT to_regclass('public.charts')")
-            ).scalar()
-            if not table_exists:
-                logger.info(
-                    "Skipping custom chart owner schema check because charts table does not exist."
-                )
-                return
-
-            db_conn.execute(
-                text(
-                    "ALTER TABLE charts "
-                    "ADD COLUMN IF NOT EXISTS created_by_user_id UUID"
-                )
-            )
-            db_conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS ix_charts_created_by_user_id "
-                    "ON charts (created_by_user_id)"
-                )
-            )
-
-            fk_exists = db_conn.execute(
-                text(
-                    """
-                    SELECT 1
-                    FROM pg_constraint con
-                    JOIN pg_class rel ON rel.oid = con.conrelid
-                    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-                    JOIN pg_attribute att ON att.attrelid = rel.oid
-                        AND att.attnum = ANY(con.conkey)
-                    WHERE con.contype = 'f'
-                      AND nsp.nspname = 'public'
-                      AND rel.relname = 'charts'
-                      AND att.attname = 'created_by_user_id'
-                    LIMIT 1
-                    """
-                )
-            ).first()
-
-            if not fk_exists:
-                db_conn.execute(
-                    text(
-                        """
-                        ALTER TABLE charts
-                        ADD CONSTRAINT fk_charts_created_by_user_id
-                        FOREIGN KEY (created_by_user_id) REFERENCES "user"(id)
-                        ON DELETE SET NULL
-                        """
-                    )
-                )
-
-        logger.info("Custom chart owner schema check completed.")
-    except Exception as exc:
-        logger.warning(f"Custom chart owner schema check failed: {exc}")
-
-
-def _ensure_chart_style_column() -> None:
-    """Idempotent runtime migration to add chart_style column to charts table."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping chart_style column check because DB connection is unavailable."
-        )
-        return
-
-    try:
-        with conn.engine.begin() as db_conn:
-            table_exists = db_conn.execute(
-                text("SELECT to_regclass('public.charts')")
-            ).scalar()
-            if not table_exists:
-                return
-            db_conn.execute(
-                text(
-                    "ALTER TABLE charts "
-                    "ADD COLUMN IF NOT EXISTS chart_style VARCHAR(32)"
-                )
-            )
-        logger.info("chart_style column migration completed.")
-    except Exception as exc:
-        logger.warning(f"chart_style column migration failed: {exc}")
-
-
-def _ensure_investment_notes_schema() -> None:
-    """Idempotent runtime migration for the investment_notes table."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping investment notes schema check because DB connection is unavailable."
-        )
-        return
-
-    try:
-        from ix.db.models.investment_note import InvestmentNote
-
-        InvestmentNote.__table__.create(bind=conn.engine, checkfirst=True)
-        logger.info("Investment notes schema check completed.")
-    except Exception as exc:
-        logger.warning(f"Investment notes schema check failed: {exc}")
-
-
-def _ensure_system_settings_schema() -> None:
-    """Idempotent runtime migration for system_settings table."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping system_settings schema check because DB connection is unavailable."
-        )
-        return
-
-    try:
-        from ix.db.models.system_setting import SystemSetting
-
-        SystemSetting.__table__.create(bind=conn.engine, checkfirst=True)
-        logger.info("System settings schema check completed.")
-    except Exception as exc:
-        logger.warning(f"System settings schema check failed: {exc}")
-
-
-def _ensure_news_items_schema() -> None:
-    """Idempotent runtime migration for unified news_items table."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping news_items schema check because DB connection is unavailable."
-        )
-        return
-
-    try:
-        from ix.db.models.news_item import NewsItem
-
-        NewsItem.__table__.create(bind=conn.engine, checkfirst=True)
-        logger.info("News items schema check completed.")
-    except Exception as exc:
-        logger.warning(f"News items schema check failed: {exc}")
-
-
-def _ensure_runtime_logs_schema() -> None:
-    """Idempotent runtime migration for runtime log storage."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping runtime logs schema check because DB connection is unavailable."
-        )
-        return
-
-    try:
-        from ix.db.models.runtime_log import RuntimeLog
-
-        RuntimeLog.__table__.create(bind=conn.engine, checkfirst=True)
-        logger.info("Runtime logs schema check completed.")
-    except Exception as exc:
-        logger.warning(f"Runtime logs schema check failed: {exc}")
-
-
-def _drop_financial_news_table() -> None:
-    """Idempotent runtime migration to remove legacy financial_news table."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping financial_news drop because DB connection is unavailable."
-        )
-        return
-
-    try:
-        with conn.engine.begin() as db_conn:
-            db_conn.execute(text("DROP TABLE IF EXISTS financial_news"))
-        logger.info("Legacy financial_news table dropped (if it existed).")
-    except Exception as exc:
-        logger.warning(f"financial_news drop failed: {exc}")
-
-
-def _ensure_macro_outlook_schema() -> None:
-    """Idempotent migration for macro_outlook table."""
-    if not ensure_connection():
-        logger.warning(
-            "Skipping macro_outlook schema check because DB connection is unavailable."
-        )
-        return
-
-    try:
-        from ix.db.models.macro_outlook import MacroOutlook
-
-        MacroOutlook.__table__.create(bind=conn.engine, checkfirst=True)
-        logger.info("Macro outlook schema check completed.")
-    except Exception as exc:
-        logger.warning(f"Macro outlook schema check failed: {exc}")
-
-
-def _ensure_research_report_schema() -> None:
-    """Idempotent migration for research_report table."""
-    if not ensure_connection():
-        logger.warning("Skipping research_report schema check — DB unavailable.")
-        return
-    try:
-        from ix.db.models.research_report import ResearchReport
-        ResearchReport.__table__.create(bind=conn.engine, checkfirst=True)
-        # Add slide_deck column if missing (added after initial table creation)
-        with conn.engine.begin() as db_conn:
-            db_conn.execute(text(
+            # Research report: slide_deck column
+            db.execute(text(
                 "ALTER TABLE research_report ADD COLUMN IF NOT EXISTS slide_deck BYTEA"
             ))
-        logger.info("Research report schema check completed.")
+
+        logger.info("Startup migrations completed.")
     except Exception as exc:
-        logger.warning(f"Research report schema check failed: {exc}")
-
-
-_STARTUP_CHECKS: tuple[StartupCheck, ...] = (
-    ("user role schema", _ensure_user_role_schema),
-    ("charts rename", _ensure_charts_rename),
-    ("custom chart owner schema", _ensure_custom_chart_owner_schema),
-    ("chart_style column", _ensure_chart_style_column),
-    ("investment notes schema", _ensure_investment_notes_schema),
-    ("system settings schema", _ensure_system_settings_schema),
-    ("news items schema", _ensure_news_items_schema),
-    ("runtime logs schema", _ensure_runtime_logs_schema),
-    ("legacy financial_news cleanup", _drop_financial_news_table),
-    ("macro outlook schema", _ensure_macro_outlook_schema),
-    ("research report schema", _ensure_research_report_schema),
-)
-
-
-def _run_startup_checks() -> None:
-    """Run startup schema checks with version tracking and structured logging."""
-    _ensure_schema_versions_table()
-
-    for check_name, check_fn in _STARTUP_CHECKS:
-        logger.info(f"Running startup check: {check_name}")
-        start = time.time()
-        try:
-            check_fn()
-            duration = time.time() - start
-            logger.info(f"Migration '{check_name}' completed in {duration:.2f}s")
-            _record_migration(check_name, success=True)
-        except Exception as exc:
-            duration = time.time() - start
-            error_msg = str(exc)
-            logger.exception(
-                f"Startup check '{check_name}' failed after {duration:.2f}s: {error_msg}"
-            )
-            _record_migration(check_name, success=False, error_message=error_msg)
+        logger.warning(f"Startup migrations failed: {exc}")
 
 
 @asynccontextmanager
@@ -427,7 +74,7 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Initializing FastAPI application...")
 
-    _run_startup_checks()
+    _run_startup_migrations()
 
     logger.info("FastAPI application started")
     yield
@@ -474,9 +121,20 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept"],
 )
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to all responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 @app.middleware("http")
@@ -542,8 +200,8 @@ _DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() in ("true", "1", "ye
 if _DEBUG_MODE:
 
     @app.get("/api/test-error")
-    async def test_error():
-        """Endpoint to test error handling."""
+    async def test_error(_=Depends(_get_admin_user)):
+        """Endpoint to test error handling — admin only."""
         raise Exception("Critical test failure")
 
 
@@ -597,7 +255,7 @@ async def global_exception_handler(request, exc):
         status_code=500,
         content={
             "error": "Internal server error",
-            "detail": str(exc) if _DEBUG_MODE else "An unexpected error occurred.",
+            "detail": "An unexpected error occurred.",
         },
     )
 
@@ -615,7 +273,6 @@ try:
         news,
         custom,
         insights,
-        notes,
         user,
     )
 
@@ -631,7 +288,6 @@ try:
     app.include_router(news.router, prefix="/api", tags=["News"])
     app.include_router(custom.router, prefix="/api", tags=["Custom"])
     app.include_router(insights.router, prefix="/api", tags=["Insights"])
-    app.include_router(notes.router, prefix="/api", tags=["Notes"])
     from ix.api.routers import quant
     app.include_router(quant.router, prefix="/api", tags=["Quant"])
     from ix.api.routers import wartime
@@ -641,6 +297,10 @@ try:
     from ix.api.routers import dashboard
 
     app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
+    from ix.api.routers import whiteboard
+    app.include_router(whiteboard.router, prefix="/api", tags=["Whiteboard"])
+    from ix.api.routers import collectors
+    app.include_router(collectors.router, prefix="/api", tags=["Collectors"])
     logger.info("Routers registered successfully")
 
     # Legacy Dash chartbook mount removed with charts table decommission.
@@ -688,7 +348,7 @@ if static_dir:
     if _DEBUG_MODE:
 
         @app.get("/api/debug-fs")
-        async def debug_fs():
+        async def debug_fs(_=Depends(_get_admin_user)):
             try:
                 files = os.listdir(os.getcwd())
                 static_exists = os.path.exists(static_dir)

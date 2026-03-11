@@ -8,15 +8,12 @@ from typing import Optional
 from sqlalchemy.orm import Session as SessionType
 from ix.misc.auth import verify_token
 from ix.db.models.user import User
-from ix.db.conn import Session
+from ix.db.conn import Session, get_session
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
-
-def get_db():
-    """Dependency to get database session."""
-    with Session() as session:
-        yield session
+# Unified session dependency — use get_db in routers via Depends(get_db)
+get_db = get_session
 
 
 from fastapi import Request

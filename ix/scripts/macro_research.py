@@ -20,6 +20,7 @@ Usage:
     python scripts/macro_research.py --skip-telegram     # skip Telegram
     python scripts/macro_research.py --skip-central-banks # skip central bank minutes
     python scripts/macro_research.py --skip-data         # skip macro data snapshot
+    python scripts/macro_research.py --skip-reports      # skip investment report URLs
 """
 
 import argparse
@@ -66,6 +67,30 @@ CHANNELS = [
     {"url": "https://www.youtube.com/@bravosresearch", "name": "Bravos Research"},
     {"url": "https://www.youtube.com/@JamieTree", "name": "JamieTree"},
     # {"url": "https://www.youtube.com/@C-Documentary", "name": "C-Documentary"},
+    # ── P0 — Must Have ──
+    {"url": "https://www.youtube.com/@PBoyle", "name": "Patrick Boyle"},
+    {"url": "https://www.youtube.com/@EurodollarUniversity", "name": "Eurodollar University"},
+    {"url": "https://www.youtube.com/@jackfarley", "name": "Jack Farley"},
+    {"url": "https://www.youtube.com/@Wealthion", "name": "Wealthion"},
+    {"url": "https://www.youtube.com/@TheDavidLinReport", "name": "David Lin Report"},
+    {"url": "https://www.youtube.com/@CNBCtelevision", "name": "CNBC Television"},
+    {"url": "https://www.youtube.com/@FinancialTimes", "name": "Financial Times"},
+    {"url": "https://www.youtube.com/@TheEconomist", "name": "The Economist"},
+    # ── P1 — High Value ──
+    {"url": "https://www.youtube.com/@kitco", "name": "Kitco News"},
+    {"url": "https://www.youtube.com/@GeorgeGammon", "name": "George Gammon"},
+    {"url": "https://www.youtube.com/@MacroVoices", "name": "Macro Voices"},
+    {"url": "https://www.youtube.com/@JosephCarlsonShow", "name": "Joseph Carlson"},
+    {"url": "https://www.youtube.com/@ThePlainBagel", "name": "The Plain Bagel"},
+    {"url": "https://www.youtube.com/@peterschiff", "name": "Peter Schiff"},
+    {"url": "https://www.youtube.com/@principlesbyraydalio", "name": "Principles by Ray Dalio"},
+    {"url": "https://www.youtube.com/@BlackRock", "name": "BlackRock"},
+    {"url": "https://www.youtube.com/@Blockworks", "name": "Blockworks"},
+    # ── P2 — Nice to Have ──
+    {"url": "https://www.youtube.com/@Pensioncraft", "name": "Pensioncraft"},
+    {"url": "https://www.youtube.com/@HeresyFinancial", "name": "Heresy Financial"},
+    {"url": "https://www.youtube.com/@TheMaverickofWallStreet", "name": "Maverick of Wall Street"},
+    {"url": "https://www.youtube.com/@1MarkMoss", "name": "Mark Moss"},
 ]
 
 # ── RSS News Feeds ─────────────────────────────────────────────────
@@ -75,6 +100,35 @@ RSS_FEEDS = {
     "MarketWatch": "http://feeds.marketwatch.com/marketwatch/topstories/",
     "Investing.com": "https://www.investing.com/rss/news.rss",
     "WSJ Markets": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+    # ── P0 — Must Have ──
+    "Reuters Business": "https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best",
+    "Financial Times": "https://www.ft.com/rss/home",
+    "Barron's": "https://www.barrons.com/rss",
+    "Calculated Risk": "https://www.calculatedriskblog.com/feeds/posts/default",
+    "Wolf Street": "https://wolfstreet.com/feed/",
+    # ── P1 — High Value ──
+    "ZeroHedge": "https://feeds.feedburner.com/zerohedge/feed",
+    "The Macro Tourist": "https://themacrotourist.com/feed/",
+    "Advisor Perspectives": "https://www.advisorperspectives.com/rss",
+    "Mish Talk": "https://mishtalk.com/feed",
+    "Pragmatic Capitalism": "https://www.pragcap.com/feed/",
+    # ── P2 — Nice to Have ──
+    "Econbrowser": "https://econbrowser.com/feed",
+    "Macro Man": "https://macro-man.blogspot.com/feeds/posts/default",
+    # ── Central Bank Speeches / Research RSS ──
+    "BIS Speeches": "https://www.bis.org/doclist/cbspeeches.rss",
+    "Fed Speeches": "https://www.federalreserve.gov/feeds/speeches.xml",
+    "ECB Research": "https://www.ecb.europa.eu/rss/pub.html",
+    "NY Fed Liberty Street": "https://libertystreeteconomics.newyorkfed.org/feed/",
+    "St. Louis Fed On The Economy": "https://www.stlouisfed.org/on-the-economy/rss",
+    # ── Newsletters / Substack ──
+    "Lykeion": "https://thelykeion.substack.com/feed",
+    "The Overshoot": "https://theovershoot.co/feed",
+    "Employ America": "https://employamerica.substack.com/feed",
+    "The Transcript": "https://www.thetranscript.substack.com/feed",
+    "Macro Trading Floor": "https://themacrotradingfloor.substack.com/feed",
+    "Concoda": "https://concoda.substack.com/feed",
+    "Prometheus Research": "https://prometheusresearch.substack.com/feed",
 }
 
 # ── Telegram Channels (single source of truth in ix.misc.telegram) ──
@@ -118,7 +172,111 @@ CENTRAL_BANKS = [
         "rss": "https://www.rba.gov.au/rss/rss-cb-media-releases.xml",
         "format": "html",
     },
+    {
+        "name": "People's Bank of China",
+        "listing": "http://www.pbc.gov.cn/en/3688110/3688172/index.html",
+        "format": "html",
+    },
+    {
+        "name": "Swiss National Bank",
+        "rss": "https://www.snb.ch/en/rss/mmr",
+        "format": "html",
+    },
+    {
+        "name": "Bank of Canada",
+        "rss": "https://www.bankofcanada.ca/content_type/publications/feed/",
+        "format": "html",
+    },
+    {
+        "name": "Riksbank (Sweden)",
+        "listing": "https://www.riksbank.se/en-gb/press-and-published/notices-and-press-releases/",
+        "format": "html",
+    },
 ]
+
+# ── Investment Research Sites (Firecrawl) ─────────────────────────
+RESEARCH_SITES = [
+    # ── Buyside / Asset Managers ──
+    {"url": "https://www.blackrock.com/us/individual/insights/blackrock-investment-institute/weekly-commentary", "name": "BlackRock Weekly Commentary"},
+    {"url": "https://www.blackrock.com/corporate/insights/blackrock-investment-institute/interactive-charts/market-risk-monitor", "name": "BlackRock Risk Monitor"},
+    {"url": "https://am.jpmorgan.com/us/en/asset-management/adv/insights/market-insights/market-updates/weekly-market-recap", "name": "JP Morgan Weekly Recap"},
+    {"url": "https://am.jpmorgan.com/us/en/asset-management/adv/insights/market-insights/guide-to-the-markets/", "name": "JP Morgan Guide to Markets"},
+    {"url": "https://www.schroders.com/en/global/individual/insights/", "name": "Schroders Insights"},
+    {"url": "https://www.gmo.com/americas/research-library/", "name": "GMO Research Library"},
+    {"url": "https://www.oaktreecapital.com/insights/memos", "name": "Oaktree Howard Marks Memos"},
+    {"url": "https://www.bridgewater.com/research-and-insights", "name": "Bridgewater Research"},
+    {"url": "https://www.aqr.com/Insights/Research", "name": "AQR Research"},
+    {"url": "https://www.man.com/insights", "name": "Man Group Insights"},
+    {"url": "https://www.pimco.com/en-us/insights", "name": "PIMCO Insights"},
+    {"url": "https://www.pgim.com/insights", "name": "PGIM Insights"},
+    {"url": "https://www.nuveen.com/en-us/insights", "name": "Nuveen Insights"},
+    {"url": "https://russellinvestments.com/us/insights", "name": "Russell Investments Insights"},
+    {"url": "https://www.invesco.com/us/insights", "name": "Invesco Insights"},
+    {"url": "https://www.franklintempleton.com/insights", "name": "Franklin Templeton Insights"},
+    {"url": "https://www.mfs.com/en-us/investment-professional/insights.html", "name": "MFS Insights"},
+    {"url": "https://www.robeco.com/en-int/insights", "name": "Robeco Insights"},
+    {"url": "https://www.researchaffiliates.com/publications", "name": "Research Affiliates"},
+    {"url": "https://www.crescat.net/investment-research/investor-letters/", "name": "Crescat Capital Letters"},
+    {"url": "https://www.hussmanfunds.com/comment.html", "name": "Hussman Weekly Commentary"},
+    # ── Sellside / Investment Banks ──
+    {"url": "https://www.goldmansachs.com/insights/goldman-sachs-research", "name": "Goldman Sachs Research"},
+    {"url": "https://www.morganstanley.com/ideas", "name": "Morgan Stanley Ideas"},
+    {"url": "https://www.jpmorgan.com/insights/global-research", "name": "JP Morgan Global Research"},
+    {"url": "https://www.db.com/what-we-do/insights", "name": "Deutsche Bank Research"},
+    {"url": "https://www.ubs.com/global/en/investment-bank/insights-and-data/global-research.html", "name": "UBS Global Research"},
+    {"url": "https://www.barclays.com/insight.html", "name": "Barclays Insight"},
+    # ── Hedge Fund Letters / Aggregators ──
+    {"url": "https://hedgefundalpha.com/letters/", "name": "Hedge Fund Alpha Letters"},
+    # ── ETF / Market Data ──
+    {"url": "https://ark-invest.com/articles", "name": "ARK Invest Articles"},
+    {"url": "https://www.etf.com/sections/features-and-news", "name": "ETF.com Features"},
+    {"url": "https://www.wisdomtree.com/investments/blog", "name": "WisdomTree Blog"},
+    # ── Independent Research / Macro ──
+    {"url": "https://www.advisorperspectives.com/", "name": "Advisor Perspectives"},
+    {"url": "https://seekingalpha.com/market-news", "name": "Seeking Alpha"},
+    {"url": "https://www.yardeni.com/blog/", "name": "Yardeni Research Blog"},
+    # ── Central Bank / Government Research ──
+    {"url": "https://www.federalreserve.gov/econres.htm", "name": "Fed Economic Research"},
+    {"url": "https://libertystreeteconomics.newyorkfed.org/", "name": "NY Fed Liberty Street"},
+    {"url": "https://www.bis.org/publ/work.htm", "name": "BIS Working Papers"},
+    {"url": "https://www.imf.org/en/Publications/WEO", "name": "IMF World Economic Outlook"},
+    {"url": "https://www.bcaresearch.com/", "name": "BCA Research"},
+    # ── P0 — Must Have (Asset Managers) ──
+    {"url": "https://institutional.fidelity.com/app/literature/list/702.html", "name": "Fidelity Institutional Insights"},
+    {"url": "https://www.troweprice.com/personal-investing/resources/insights/global-markets-weekly-update.html", "name": "T. Rowe Price Weekly Update"},
+    {"url": "https://advisors.vanguard.com/insights/all", "name": "Vanguard Research"},
+    {"url": "https://www.capitaleconomics.com/publications", "name": "Capital Economics"},
+    {"url": "https://www.oxfordeconomics.com/resource-hub/", "name": "Oxford Economics"},
+    # ── P1 — High Value ──
+    {"url": "https://www.lazardassetmanagement.com/research", "name": "Lazard Asset Management"},
+    {"url": "https://www.wellington.com/en-us/insights", "name": "Wellington Management"},
+    {"url": "https://www.ssga.com/us/en/intermediary/ic/insights", "name": "State Street Global Advisors"},
+    {"url": "https://www.nb.com/en/global/insights", "name": "Neuberger Berman"},
+    # ── P2 — Nice to Have ──
+    {"url": "https://www.alliancebernstein.com/corporate/en/insights.html", "name": "AllianceBernstein Insights"},
+    {"url": "https://www.northerntrust.com/united-states/insights-research", "name": "Northern Trust AM"},
+    {"url": "https://www.tcw.com/insights", "name": "TCW Group"},
+    # ── New — Hedge Funds / Quant Firms ──
+    {"url": "https://www.deshaw.com/what-we-think", "name": "D.E. Shaw"},
+    {"url": "https://www.twosigma.com/insights/", "name": "Two Sigma"},
+    {"url": "https://www.citadel.com/insights/", "name": "Citadel"},
+    {"url": "https://panteracapital.com/blockchain-letter/", "name": "Pantera Capital"},
+    {"url": "https://www.crossbordercapital.com/blog", "name": "CrossBorder Capital (Liquidity)"},
+    # ── New — Korean Sources ──
+    {"url": "https://www.bok.or.kr/eng/bbs/E0002956/list.do", "name": "BOK Economic Review"},
+    {"url": "https://www.kdi.re.kr/eng/research/forumList.do", "name": "KDI Policy Forum"},
+    # ── New — Academic / Policy Think Tanks ──
+    {"url": "https://www.nber.org/papers?page=1&perPage=20&sortBy=public_date", "name": "NBER Working Papers"},
+    {"url": "https://www.brookings.edu/articles/?topic=economic-studies", "name": "Brookings Economic Studies"},
+    {"url": "https://www.piie.com/research", "name": "PIIE Research"},
+    {"url": "https://www.kansascityfed.org/research/jackson-hole-economic-symposium/", "name": "Jackson Hole Papers"},
+    # ── New — Earnings / Positioning ──
+    {"url": "https://seekingalpha.com/earnings/earnings-call-transcripts", "name": "Seeking Alpha Transcripts"},
+    {"url": "https://www.apolloacademy.com/chart-of-the-week/", "name": "Apollo Chart of the Week"},
+]
+
+
+
 
 # ── Macro Data Series for Snapshot ─────────────────────────────────
 # { display_name: timeseries_code }
@@ -190,7 +348,7 @@ def fetch_channel_videos(
     """Fetch recent videos from a channel using yt-dlp."""
     target_url = f"{channel_url}/videos"
     if date_after or date_before:
-        cmd = ["yt-dlp", "-j", "--playlist-end", str(max_per_channel * 5)]
+        cmd = ["yt-dlp", "--flat-playlist", "-j", "--playlist-end", str(max_per_channel * 5)]
         if date_after:
             cmd += ["--dateafter", str(date_after)]
         if date_before:
@@ -384,24 +542,15 @@ def scrape_rss_news(days=3):
 # ═══════════════════════════════════════════════════════════════════
 
 
-async def scrape_telegram_direct(days=3, max_per_channel=30):
-    """Read recent Telegram messages directly via telethon.
-
-    Returns (telegram_text, msg_count) — no database dependency.
-    Uses session/credentials from ix.misc.telegram module.
-    """
-    try:
-        from telethon import TelegramClient
-    except ImportError:
-        print("  [WARN] telethon not installed. pip install telethon")
-        return None, 0
+async def _scrape_telegram_inner(days=3, max_per_channel=30):
+    """Inner Telegram scrape (no timeout — caller wraps with wait_for)."""
+    from telethon import TelegramClient
 
     if not _TG_API_ID or not _TG_API_HASH:
         print("  [WARN] TELEGRAM_API_ID/TELEGRAM_API_HASH not set.")
         return None, 0
 
     client = TelegramClient(_TG_SESSION, int(_TG_API_ID), _TG_API_HASH)
-
     cutoff = datetime.utcnow() - timedelta(days=days)
     all_msgs = []
 
@@ -409,12 +558,15 @@ async def scrape_telegram_direct(days=3, max_per_channel=30):
         await client.connect()
         if not await client.is_user_authorized():
             print("  [WARN] Telegram session expired. Run telethon login to re-auth.")
+            await client.disconnect()
             return None, 0
 
         for channel_url in TELEGRAM_CHANNELS:
             channel_name = channel_url.split("/")[-1]
             try:
-                entity = await client.get_input_entity(channel_url)
+                entity = await asyncio.wait_for(
+                    client.get_input_entity(channel_url), timeout=15
+                )
                 async for msg in client.iter_messages(entity, limit=max_per_channel):
                     if msg.date and msg.date.replace(tzinfo=None) < cutoff:
                         break
@@ -434,13 +586,16 @@ async def scrape_telegram_direct(days=3, max_per_channel=30):
                                 ),
                             }
                         )
-            except Exception as e:
-                # Silently skip channels we can't access
-                pass
+            except Exception:
+                pass  # Skip channels we can't access
 
         await client.disconnect()
     except Exception as e:
         print(f"  [WARN] Telegram connection error: {e}")
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
         return None, 0
 
     if not all_msgs:
@@ -455,6 +610,29 @@ async def scrape_telegram_direct(days=3, max_per_channel=30):
             break
 
     return text, len(all_msgs)
+
+
+async def scrape_telegram_direct(days=3, max_per_channel=30):
+    """Read recent Telegram messages with a hard 120s timeout.
+
+    Returns (telegram_text, msg_count) — no database dependency.
+    """
+    try:
+        from telethon import TelegramClient  # noqa: F401
+    except ImportError:
+        print("  [WARN] telethon not installed. pip install telethon")
+        return None, 0
+
+    try:
+        return await asyncio.wait_for(
+            _scrape_telegram_inner(days, max_per_channel), timeout=120
+        )
+    except asyncio.TimeoutError:
+        print("  [WARN] Telegram scraping timed out after 120s.")
+        return None, 0
+    except Exception as e:
+        print(f"  [WARN] Telegram scraping failed: {e}")
+        return None, 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -651,7 +829,12 @@ def fetch_central_bank_urls(days=90):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# 5. Macro Data Snapshot (timeseries DB)
+
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 6. Macro Data Snapshot (timeseries DB)
 # ═══════════════════════════════════════════════════════════════════
 
 
@@ -793,13 +976,65 @@ def build_macro_data_snapshot():
 # ═══════════════════════════════════════════════════════════════════
 
 
-async def get_nlm_client():
-    """Get an authenticated NotebookLM client."""
+async def get_nlm_client(timeout=60):
+    """Get an authenticated NotebookLM client with timeout."""
     from notebooklm import NotebookLMClient
 
-    client = await NotebookLMClient.from_storage()
-    await client._core.open()
+    client = await asyncio.wait_for(
+        NotebookLMClient.from_storage(), timeout=timeout
+    )
+    await asyncio.wait_for(client._core.open(), timeout=timeout)
     return client
+
+
+def _auto_refresh_notebooklm_auth():
+    """Auto-refresh NotebookLM auth using Playwright persistent profile.
+
+    Runs in a child process with a hard 45s timeout to prevent blocking
+    the main pipeline if Playwright hangs or opens an interactive prompt.
+    """
+    from pathlib import Path as _Path
+
+    home = _Path.home() / ".notebooklm"
+    profile_dir = home / "browser_profile"
+    storage_path = home / "storage_state.json"
+
+    if not profile_dir.exists():
+        return False
+
+    # Run Playwright in a subprocess so it can't block the main process
+    refresh_script = f'''
+import sys, time
+try:
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=r"{profile_dir}",
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled", "--password-store=basic"],
+            ignore_default_args=["--enable-automation"],
+        )
+        page = context.pages[0] if context.pages else context.new_page()
+        page.goto("https://notebooklm.google.com/", wait_until="networkidle", timeout=30000)
+        time.sleep(2)
+        url = page.url
+        ok = "notebooklm.google.com" in url and "accounts.google.com" not in url
+        if ok:
+            context.storage_state(path=r"{storage_path}")
+        context.close()
+        sys.exit(0 if ok else 1)
+except Exception:
+    sys.exit(1)
+'''
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", refresh_script],
+            capture_output=True, text=True, timeout=45,
+            stdin=subprocess.DEVNULL,  # Prevent stdin blocking
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, Exception):
+        return False
 
 
 def ensure_notebooklm_auth():
@@ -810,7 +1045,19 @@ def ensure_notebooklm_auth():
         print("OK")
         return True
 
-    print("expired.")
+    # Try auto-refresh from persistent browser profile
+    print("expired. Attempting auto-refresh...", end=" ", flush=True)
+    if _auto_refresh_notebooklm_auth():
+        stdout, stderr, rc = run_cmd(["notebooklm", "list"], timeout=30)
+        if rc == 0 and "Error" not in stdout and "Authentication" not in stdout:
+            print("OK (auto-refreshed)")
+            return True
+
+    # Fall back to manual login (only if running interactively)
+    print("auto-refresh failed.")
+    if not sys.stdin.isatty():
+        print("  [ERROR] Non-interactive session — cannot prompt for login.")
+        return False
     print("  Launching NotebookLM login (browser will open)...")
     print("  >> Log in to Google, then press ENTER in this terminal. <<\n")
     rc = subprocess.call(["notebooklm", "login"], timeout=180)
@@ -1069,10 +1316,20 @@ async def main():
         "--skip-data", action="store_true", help="Skip macro data snapshot"
     )
     parser.add_argument(
+        "--skip-reports", action="store_true", help="Skip investment report URLs"
+    )
+    parser.add_argument(
         "--drive-max", type=int, default=15, help="Max Drive files to add (default: 15)"
     )
     parser.add_argument(
         "--language", type=str, default="en", help="Output language (default: en)"
+    )
+    parser.add_argument(
+        "--vault", type=str, default="D:/vault",
+        help="Obsidian vault path for saving outputs (default: D:/vault)"
+    )
+    parser.add_argument(
+        "--skip-vault", action="store_true", help="Skip saving to Obsidian vault"
     )
     args = parser.parse_args()
 
@@ -1089,7 +1346,7 @@ async def main():
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="ix_research_"))
 
-    total_steps = 8
+    total_steps = 9
     print(f"{'='*60}")
     print(f"  Macro Research Pipeline")
     print(f"  Date: {report_label}  |  Range: {date_after}–{date_before}")
@@ -1106,6 +1363,8 @@ async def main():
         src_parts.append("Central Banks")
     if not args.skip_data:
         src_parts.append("Macro Data")
+    if not args.skip_reports:
+        src_parts.append("Reports")
     print(f"  Sources: {' + '.join(src_parts) or 'None'}")
     if args.topic:
         print(f"  Topic filter: {args.topic}")
@@ -1116,22 +1375,51 @@ async def main():
     if not ensure_notebooklm_auth():
         print("  Cannot proceed without NotebookLM auth. Aborting.")
         sys.exit(1)
-    client = await get_nlm_client()
+    print("  Initializing NotebookLM client...", end=" ", flush=True)
+    try:
+        client = await get_nlm_client(timeout=60)
+        print("OK")
+    except asyncio.TimeoutError:
+        print("TIMEOUT")
+        print("  [ERROR] NotebookLM client init timed out after 60s. Aborting.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"FAILED ({e})")
+        print("  [ERROR] Could not initialize NotebookLM client. Aborting.")
+        sys.exit(1)
 
     # ── Step 2: Fetch & score YouTube videos ──
     selected = []
     if not args.skip_youtube:
-        print(f"\n[2/{total_steps}] Fetching videos from {len(CHANNELS)} channels...")
+        print(f"\n[2/{total_steps}] Fetching videos from {len(CHANNELS)} channels (parallel)...")
         all_videos = []
-        for ch in CHANNELS:
-            print(f"  Scanning: {ch['name']}...", end=" ", flush=True)
-            videos = fetch_channel_videos(
-                ch["url"], args.max_per_channel, date_after, date_before
+
+        async def _fetch_channel(ch):
+            """Fetch videos from one channel in a thread (yt-dlp is blocking)."""
+            loop = asyncio.get_event_loop()
+            videos = await loop.run_in_executor(
+                None,
+                lambda: fetch_channel_videos(
+                    ch["url"], args.max_per_channel, date_after, date_before
+                ),
             )
             for v in videos:
                 v["channel"] = ch["name"]
-            all_videos.extend(videos)
-            print(f"{len(videos)} videos")
+            return ch["name"], videos
+
+        # Run all channels concurrently (yt-dlp subprocess per channel)
+        BATCH = 8  # Limit concurrency to avoid overwhelming yt-dlp
+        for batch_start in range(0, len(CHANNELS), BATCH):
+            batch = CHANNELS[batch_start : batch_start + BATCH]
+            results = await asyncio.gather(
+                *[_fetch_channel(ch) for ch in batch], return_exceptions=True
+            )
+            for r in results:
+                if isinstance(r, Exception):
+                    continue
+                name, videos = r
+                all_videos.extend(videos)
+                print(f"  {name}: {len(videos)} videos")
 
         print(f"\n  Total videos fetched: {len(all_videos)}")
         print(f"  Scoring and ranking...")
@@ -1178,6 +1466,7 @@ async def main():
     added_telegram = 0
     added_cb = 0
     added_data = 0
+    added_reports = 0
     drive_files = []
 
     # 4a: YouTube videos (parallel batches for speed)
@@ -1359,6 +1648,24 @@ async def main():
         else:
             print(f"  No macro data available.")
 
+    # 4g: Investment Reports (add URLs directly to NotebookLM)
+    if not args.skip_reports:
+        sites = RESEARCH_SITES[:args.max_report_sites] if hasattr(args, "max_report_sites") else RESEARCH_SITES[:20]
+        print(f"\n  --- Investment Reports ({len(sites)} URLs) ---")
+        for site in sites:
+            print(f"    {site['name'][:50]}...", end=" ", flush=True)
+            try:
+                cmd_str = f'source add --notebook "{nb_id}" "{site["url"]}"'
+                stdout, rc = notebooklm_cmd(cmd_str, timeout=60)
+                if rc == 0:
+                    added_reports += 1
+                    print("OK")
+                else:
+                    print("FAILED")
+            except Exception as e:
+                print(f"error: {e}")
+        print(f"  Reports: {added_reports}/{len(sites)} added")
+
     print(f"\n  ── Source Summary ──")
     print(f"  YouTube:       {added_yt}")
     print(f"  Drive:         {added_drive}")
@@ -1366,6 +1673,7 @@ async def main():
     print(f"  News (RSS):    {added_news}")
     print(f"  Telegram:      {added_telegram}")
     print(f"  Macro Data:    {added_data} indicators")
+    print(f"  Reports:       {added_reports}")
 
     # ── Step 5: Ask NotebookLM for analysis ──
     print(f"\n[5/{total_steps}] Requesting NotebookLM analysis...")
@@ -1522,10 +1830,12 @@ async def main():
         print(f"\n[7/{total_steps}] Skipping slide deck generation.")
 
     # ── Step 8: Save to database ──
+    # Uses raw psycopg2 with staged saves (text, then binaries separately)
+    # to avoid SSL connection drops on large payloads to Render Postgres.
     print(f"\n[8/{total_steps}] Saving report to database...")
     try:
-        from ix.db.conn import Session as DBSession
-        from ix.db.models.research_report import ResearchReport
+        import psycopg2
+        from urllib.parse import urlparse as _urlparse
 
         report_date = (
             target_date.date() if hasattr(target_date, "date") else target_date
@@ -1545,6 +1855,7 @@ async def main():
             "news": added_news,
             "telegram": added_telegram,
             "macro_data": added_data,
+            "reports": added_reports,
         }
 
         def _sanitize_text(text):
@@ -1555,51 +1866,203 @@ async def main():
         briefing_safe = _sanitize_text(briefing_text)
         scorecard_safe = _sanitize_text(scorecard_text)
         takeaways_safe = _sanitize_text(takeaways_text)
+        sources_json = json.dumps(sources_data, default=str)
 
-        for attempt in range(1, 4):
-            try:
-                with DBSession() as db:
-                    existing = (
-                        db.query(ResearchReport)
-                        .filter(ResearchReport.date == report_date)
-                        .first()
+        settings = Settings()
+        _db_url = (
+            os.environ.get("DATABASE_URL")
+            or os.environ.get("DB_URL")
+            or settings.db_url
+        )
+        _parsed = _urlparse(_db_url)
+
+        def _get_pg_conn(retries=5, delay=5):
+            for _i in range(retries):
+                try:
+                    return psycopg2.connect(
+                        host=_parsed.hostname,
+                        port=_parsed.port or 5432,
+                        dbname=_parsed.path.lstrip("/"),
+                        user=_parsed.username,
+                        password=_parsed.password,
+                        sslmode="require",
+                        connect_timeout=30,
                     )
-                    if existing:
-                        existing.briefing = briefing_safe
-                        existing.risk_scorecard = scorecard_safe
-                        existing.takeaways = takeaways_safe
-                        if infographic_bytes:
-                            existing.infographic = infographic_bytes
-                        if slide_deck_bytes:
-                            existing.slide_deck = slide_deck_bytes
-                        existing.sources = sources_data
-                        print(f"  Updated existing report for {report_label}.")
-                    else:
-                        report = ResearchReport(
-                            date=report_date,
-                            briefing=briefing_safe,
-                            risk_scorecard=scorecard_safe,
-                            takeaways=takeaways_safe,
-                            infographic=infographic_bytes,
-                            slide_deck=slide_deck_bytes,
-                            sources=sources_data,
-                        )
-                        db.add(report)
-                        print(f"  Saved new report for {report_label}.")
+                except Exception as _e:
+                    print(f"    Connection attempt {_i+1}/{retries} failed: {_e}")
+                    if _i < retries - 1:
+                        time.sleep(delay)
+                        delay = min(delay * 1.5, 30)
+            raise ConnectionError("All DB connection attempts failed")
 
-                break  # Exit retry loop on success
+        # Stage 1: Text fields + sources
+        print("  Stage 1/3: Saving text fields...")
+        _conn = _get_pg_conn()
+        _cur = _conn.cursor()
+        _cur.execute(
+            "SELECT id FROM research_report WHERE date = %s", (report_date,)
+        )
+        _row = _cur.fetchone()
+        if _row:
+            _cur.execute(
+                "UPDATE research_report SET briefing=%s, risk_scorecard=%s, "
+                "takeaways=%s, sources=%s::jsonb, updated_at=now() WHERE date=%s",
+                (briefing_safe, scorecard_safe, takeaways_safe, sources_json, report_date),
+            )
+            print(f"  Updated existing report for {report_label}.")
+        else:
+            _cur.execute(
+                "INSERT INTO research_report (date, briefing, risk_scorecard, "
+                "takeaways, sources, created_at, updated_at) "
+                "VALUES (%s,%s,%s,%s,%s::jsonb,now(),now())",
+                (report_date, briefing_safe, scorecard_safe, takeaways_safe, sources_json),
+            )
+            print(f"  Saved new report for {report_label}.")
+        _conn.commit()
+        _cur.close()
+        _conn.close()
 
-            except Exception as e:
-                print(f"  [WARN] DB save attempt {attempt}/3 failed: {e}")
-                if attempt < 3:
-                    import time
+        # Stage 2: Infographic binary
+        if infographic_bytes:
+            print(f"  Stage 2/3: Uploading infographic ({len(infographic_bytes):,} bytes)...")
+            time.sleep(2)
+            _conn = _get_pg_conn()
+            _cur = _conn.cursor()
+            _cur.execute(
+                "UPDATE research_report SET infographic=%s, updated_at=now() WHERE date=%s",
+                (psycopg2.Binary(infographic_bytes), report_date),
+            )
+            _conn.commit()
+            _cur.close()
+            _conn.close()
+            print("  Infographic saved.")
 
-                    time.sleep(2)
-                else:
-                    print(f"  [ERROR] Final attempt to save to database failed.")
+        # Stage 3: Slide deck binary
+        if slide_deck_bytes:
+            print(f"  Stage 3/3: Uploading slide deck ({len(slide_deck_bytes):,} bytes)...")
+            time.sleep(2)
+            _conn = _get_pg_conn()
+            _cur = _conn.cursor()
+            _cur.execute(
+                "UPDATE research_report SET slide_deck=%s, updated_at=now() WHERE date=%s",
+                (psycopg2.Binary(slide_deck_bytes), report_date),
+            )
+            _conn.commit()
+            _cur.close()
+            _conn.close()
+            print("  Slide deck saved.")
 
     except Exception as e:
-        print(f"  [ERROR] Database pipeline failed: {e}")
+        print(f"  [ERROR] Database save failed: {e}")
+
+    # ── Step 9: Save to Obsidian vault ──
+    if not args.skip_vault:
+        vault_path = Path(args.vault)
+        if vault_path.exists():
+            print(f"\n[9/{total_steps}] Saving to Obsidian vault ({vault_path})...")
+            vault_date = target_date.strftime("%Y-%m-%d")
+            vault_date_compact = target_date.strftime("%Y%m%d")
+
+            # Build source summary
+            src_summary = []
+            if added_yt:
+                src_summary.append(f"YouTube: {added_yt} videos")
+            if added_drive:
+                src_summary.append(f"Drive: {added_drive} PDFs")
+            if added_cb:
+                src_summary.append(f"Central Banks: {added_cb} docs")
+            if added_news:
+                src_summary.append(f"News: {added_news} feeds")
+            if added_telegram:
+                src_summary.append(f"Telegram: {added_telegram} channels")
+            if added_data:
+                src_summary.append(f"Macro Data: {added_data} snapshot")
+            if added_reports:
+                src_summary.append(f"Reports: {added_reports} articles")
+
+            # YouTube video list for frontmatter
+            video_list = ""
+            if selected:
+                for v in selected[:20]:
+                    ch = v.get("channel", "Unknown")
+                    t = v.get("title", "Untitled")
+                    video_list += f"  - \"{ch}: {t}\"\n"
+
+            # Build the research note
+            report_dir = vault_path / "Research" / "YouTube"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            report_file = report_dir / f"{vault_date_compact}_Macro-Intel.md"
+
+            note_parts = [
+                f"---",
+                f"type: youtube-research",
+                f"date: {vault_date}",
+                f"sources:",
+            ]
+            for s in src_summary:
+                note_parts.append(f"  - \"{s}\"")
+            if video_list:
+                note_parts.append(f"videos:")
+                note_parts.append(video_list.rstrip())
+            note_parts.append(f"tags: [research, macro, weekly-intel]")
+            note_parts.append(f"---")
+            note_parts.append(f"")
+            note_parts.append(f"# Macro Intelligence — {vault_date}")
+            note_parts.append(f"")
+            note_parts.append(f"**Sources:** {' | '.join(src_summary)}")
+            note_parts.append(f"")
+
+            if briefing_text:
+                note_parts.append(briefing_text)
+                note_parts.append("")
+
+            if scorecard_text:
+                note_parts.append(f"---")
+                note_parts.append(f"")
+                note_parts.append(scorecard_text)
+                note_parts.append("")
+
+            if takeaways_text:
+                note_parts.append(f"---")
+                note_parts.append(f"")
+                note_parts.append(takeaways_text)
+                note_parts.append("")
+
+            # Save infographic as image
+            if infographic_bytes:
+                infographic_dir = vault_path / "Research" / "Infographics"
+                infographic_dir.mkdir(parents=True, exist_ok=True)
+                infographic_file = infographic_dir / f"{vault_date_compact}_Macro-Intel.png"
+                with open(infographic_file, "wb") as f:
+                    f.write(infographic_bytes)
+                note_parts.append(f"---")
+                note_parts.append(f"")
+                note_parts.append(f"## Infographic")
+                note_parts.append(f"")
+                note_parts.append(f"![[{vault_date_compact}_Macro-Intel.png]]")
+                note_parts.append(f"")
+                print(f"  Infographic saved to {infographic_file}")
+
+            # Save slide deck as PDF
+            if slide_deck_bytes:
+                infographic_dir = vault_path / "Research" / "Infographics"
+                infographic_dir.mkdir(parents=True, exist_ok=True)
+                slide_file = infographic_dir / f"{vault_date_compact}_Macro-Intel_slides.pdf"
+                with open(slide_file, "wb") as f:
+                    f.write(slide_deck_bytes)
+                note_parts.append(f"## Slide Deck")
+                note_parts.append(f"")
+                note_parts.append(f"![[{vault_date_compact}_Macro-Intel_slides.pdf]]")
+                note_parts.append(f"")
+                print(f"  Slide deck saved to {slide_file}")
+
+            with open(report_file, "w", encoding="utf-8") as f:
+                f.write("\n".join(note_parts))
+            print(f"  Report saved to {report_file}")
+        else:
+            print(f"\n[9/{total_steps}] Vault path {vault_path} not found, skipping.")
+    else:
+        print(f"\n[9/{total_steps}] Skipping vault export.")
 
     # ── Cleanup ──
     print(f"\n  Cleaning up NotebookLM notebook...")
@@ -1617,11 +2080,13 @@ async def main():
 
     # ── Done ──
     print(f"\n{'='*60}")
-    print(f"  DONE! Report saved to database for {report_label}.")
+    print(f"  DONE! Report saved for {report_label}.")
     print(f"  YouTube: {added_yt} | Drive: {added_drive} | Central Banks: {added_cb}")
     print(
-        f"  News: {added_news} | Telegram: {added_telegram} | Macro Data: {added_data}"
+        f"  News: {added_news} | Telegram: {added_telegram} | Macro Data: {added_data} | Reports: {added_reports}"
     )
+    if not args.skip_vault and Path(args.vault).exists():
+        print(f"  Vault: {Path(args.vault) / 'Research' / 'YouTube' / (target_date.strftime('%Y%m%d') + '_Macro-Intel.md')}")
     print(f"{'='*60}")
 
 

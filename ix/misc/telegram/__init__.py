@@ -62,22 +62,177 @@ CHANNELS_TO_SCRAPE = [
     "t.me/awake_schedule",
     "t.me/eugene2team",
     "t.me/Brain_And_Body_Research",
+    # ── English-Language Macro / Research (P0) ──
+    "t.me/MarketEar",
+    "t.me/unusual_whales",
+    "t.me/CryptoMacroNews",
+    "t.me/zaborskychannel",
+    "t.me/biancoresearch",
+    # ── English-Language Macro / Research (P1) ──
+    "t.me/MacroAlf",
+    "t.me/TheTerminal",
+    "t.me/BISgram",
+    "t.me/FedWatch",
+    # ── English-Language Macro / Research (P2) ──
+    "t.me/realvisionchannel",
+    "t.me/GoldTelegraph",
+    "t.me/MacroScope",
 ]
 
 
-async def scrape_all_channels(progress_cb=None):
-    """Scrape all channels defined in CHANNELS_TO_SCRAPE.
+def _ensure_db():
+    """Dispose stale pool and reconnect with retries."""
+    if conn.engine:
+        conn.engine.dispose()
+    conn._is_connected = False
+    return conn.connect(max_retries=3, retry_delay=5.0)
 
-    Args:
-        progress_cb: Optional callback(current, total, channel_name) for progress updates.
-    """
+
+def _db_insert(channel_name: str, new_messages: list) -> int:
+    """Insert messages with dedup. Returns count inserted."""
+    with Session() as session:
+        msg_ids = [m.message_id for m in new_messages]
+        existing = (
+            session.query(TelegramMessage.message_id)
+            .filter(TelegramMessage.channel_name == channel_name)
+            .filter(TelegramMessage.message_id.in_(msg_ids))
+            .all()
+        )
+        existing_ids = {r[0] for r in existing}
+        to_insert = [m for m in new_messages if m.message_id not in existing_ids]
+        if to_insert:
+            session.add_all(to_insert)
+            session.commit()
+            logger.info(f"Inserted {len(to_insert)} new messages.")
+            return len(to_insert)
+        else:
+            logger.info("No new messages to insert (all duplicates).")
+            return 0
+
+
+async def scrape_all_channels(progress_cb=None):
+    """Scrape all channels using a single Telegram client session."""
+    if TelegramClient is None:
+        logger.error("telethon is not installed. pip install telethon")
+        return
+
+    if not API_ID or not API_HASH:
+        logger.error("TELEGRAM_API_ID and TELEGRAM_API_HASH must be set.")
+        return
+
+    # Ensure DB + table
+    _ensure_db()
+    if conn.engine:
+        TelegramMessage.__table__.create(conn.engine, checkfirst=True)
+        logger.info("Checked/Created TelegramMessage table.")
+
+    # Single Telegram client for the entire run
+    client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            logger.error("Telegram session expired. Run telethon login to re-auth.")
+            return
+    except Exception as e:
+        logger.error(f"Failed to connect Telegram client: {e}")
+        return
+
     total = len(CHANNELS_TO_SCRAPE)
-    for idx, channel in enumerate(CHANNELS_TO_SCRAPE, start=1):
-        if progress_cb:
-            progress_cb(idx, total, channel)
-        # Add a small delay between channels to be polite
-        await scrape_channel(channel, limit=50)
-        await asyncio.sleep(2)
+    total_inserted = 0
+
+    try:
+        for idx, channel in enumerate(CHANNELS_TO_SCRAPE, start=1):
+            if progress_cb:
+                progress_cb(idx, total, channel)
+            try:
+                count = await _scrape_single(client, channel)
+                total_inserted += count
+            except Exception as e:
+                logger.error(f"[{idx}/{total}] Failed {channel}: {e}")
+            await asyncio.sleep(2)
+    finally:
+        await client.disconnect()
+
+    logger.info(f"=== ALL DONE. Total inserted: {total_inserted} across {total} channels ===")
+
+
+async def _scrape_single(client, channel_name: str) -> int:
+    """Scrape one channel. Returns count of inserted messages."""
+    logger.info(f"Scraping {channel_name}...")
+
+    # Resolve entity
+    try:
+        entity = await client.get_input_entity(channel_name)
+    except Exception as e:
+        logger.error(f"Could not find entity '{channel_name}': {e}")
+        return 0
+
+    # Get min_id from DB (with fallback)
+    min_id = 0
+    try:
+        with Session() as session:
+            last_msg = (
+                session.query(TelegramMessage.message_id)
+                .filter(TelegramMessage.channel_name == channel_name)
+                .order_by(TelegramMessage.message_id.desc())
+                .first()
+            )
+            if last_msg:
+                min_id = last_msg[0]
+                logger.info(f"  min_id={min_id}")
+            else:
+                logger.info(f"  No existing messages. Initial scrape.")
+    except Exception:
+        logger.warning(f"  DB read failed for min_id, using 0. Will reconnect on insert.")
+
+    # Determine scraping parameters
+    offset_date = None
+    if min_id == 0:
+        offset_date = datetime.utcnow() - timedelta(hours=24)
+
+    # Fetch messages from Telegram
+    new_messages = []
+    count_processed = 0
+
+    async for msg in client.iter_messages(entity, limit=2000, min_id=min_id):
+        if min_id == 0 and offset_date and msg.date:
+            if msg.date.replace(tzinfo=None) < offset_date:
+                break
+        count_processed += 1
+        if not msg.message:
+            continue
+
+        new_messages.append(TelegramMessage(
+            channel_name=channel_name,
+            message_id=msg.id,
+            sender_id=msg.sender_id,
+            sender_name=None,
+            date=(msg.date.replace(tzinfo=None) + timedelta(hours=9)) if msg.date else None,
+            message=msg.message,
+            views=msg.views if hasattr(msg, "views") else None,
+        ))
+
+    if not new_messages:
+        logger.info(f"  No new messages (processed {count_processed}).")
+        return 0
+
+    # Insert with retry (longer delays for Render free-tier recovery)
+    for attempt in range(3):
+        try:
+            count = _db_insert(channel_name, new_messages)
+            logger.info(f"  Done. Processed {count_processed}, Inserted {count}.")
+            return count
+        except Exception as e:
+            if attempt < 2:
+                wait = 10 * (attempt + 1)  # 10s, 20s
+                logger.warning(f"  DB insert attempt {attempt+1} failed, waiting {wait}s: {e}")
+                await asyncio.sleep(wait)
+                _ensure_db()
+            else:
+                logger.error(f"  DB insert failed after 3 attempts: {e}")
+                return 0
+
+    return 0
 
 
 def run_scrape_all():
@@ -103,159 +258,26 @@ def create_telegram_table():
 
 
 async def scrape_channel(channel_name: str, limit: int = 100):
-    """
-    Scrape messages from a Telegram channel and store them in the database.
-
-    Args:
-        channel_name (str): The username or URL of the telegram channel (e.g. 'bloomberg').
-        limit (int): Number of messages to retrieve.
-    """
+    """Scrape a single channel (standalone, creates its own client)."""
     if TelegramClient is None:
-        logger.error("telethon is not installed. Please run `pip install telethon`.")
+        logger.error("telethon is not installed.")
         return
 
     if not API_ID or not API_HASH:
-        logger.error(
-            "TELEGRAM_API_ID and TELEGRAM_API_HASH must be set in environment variables (e.g. .env file)."
-        )
+        logger.error("TELEGRAM_API_ID and TELEGRAM_API_HASH must be set.")
         return
 
-    # Create table if needed
     create_telegram_table()
 
     client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
-
     try:
         await client.connect()
         if not await client.is_user_authorized():
-            logger.error("Telegram session expired. Run telethon login to re-auth.")
+            logger.error("Telegram session expired.")
             return
-    except Exception as e:
-        logger.error(f"Failed to connect Telegram client: {e}")
-        return
-
-    logger.info(f"Scraping {channel_name}...")
-
-    count_new = 0
-    count_processed = 0
-    new_messages = []
-
-    try:
-        # Get channel entity
-        try:
-            entity = await client.get_input_entity(channel_name)
-        except Exception as e:
-            logger.error(f"Could not find entity '{channel_name}': {e}")
-            await client.disconnect()
-            return
-
-        # 1. Determine start point (min_id)
-        # We want to fetch messages newer than what we already have.
-        min_id = 0
-
-        with Session() as session:
-            # check the latest message_id for this channel
-            last_msg = (
-                session.query(TelegramMessage.message_id)
-                .filter(TelegramMessage.channel_name == channel_name)
-                .order_by(TelegramMessage.message_id.desc())
-                .first()
-            )
-            if last_msg:
-                min_id = last_msg[0]
-                logger.info(f"Latest known message_id for {channel_name}: {min_id}")
-            else:
-                logger.info(
-                    f"No existing messages found for {channel_name}. Doing initial scrape."
-                )
-
-        # 2. Fetch messages
-        # Strategy:
-        # - If we have min_id (incremental): Fetch newly added messages (up to safety limit).
-        # - If NO min_id (initial): Fetch messages from the last 24 hours using offset_date.
-
-        scrape_limit = None
-        offset_date = None
-
-        if min_id > 0:
-            # Incremental update: Get everything new
-            scrape_limit = 2000  # Safety cap
-        else:
-            # Initial scrape: Get last 24 hours
-            offset_date = datetime.utcnow() - timedelta(hours=24)
-            logger.info("Doing initial scrape for last 24 hours of messages.")
-            # We set a high limit because we want ALL messages in that window
-            scrape_limit = 2000
-
-        async for msg in client.iter_messages(
-            entity, limit=scrape_limit, min_id=min_id
-        ):
-            # If doing initial scrape (no min_id), stop if we go beyond 24 hours
-            if min_id == 0 and offset_date and msg.date:
-                # msg.date is offset-aware usually (UTC), offset_date is naive UTC in my code above?
-                # Let's make offset_date offset-aware to match
-                if msg.date.replace(tzinfo=None) < offset_date:
-                    logger.info(
-                        "Reached messages older than 24 hours. Stopping initial scrape."
-                    )
-                    break
-            count_processed += 1
-            if not msg.message:
-                continue
-
-            # Basic info extraction
-            # msg.id is the ID within the channel
-            t_msg = TelegramMessage(
-                channel_name=channel_name,
-                message_id=msg.id,
-                sender_id=msg.sender_id,
-                sender_name=None,  # Extracting sender name requires more calls usually if it's a user
-                # Convert UTC to KST (+9h) before storing
-                date=(
-                    (msg.date.replace(tzinfo=None) + timedelta(hours=9))
-                    if msg.date
-                    else None
-                ),
-                message=msg.message,
-                views=msg.views if hasattr(msg, "views") else None,
-            )
-            new_messages.append(t_msg)
-
-        # Batch insert
-        if new_messages:
-            with Session() as session:
-                # 3. Deduplicate (just in case)
-                # Since we used min_id, duplication should be rare, but
-                # let's double check to be safe against race conditions or overlapping IDs.
-                msg_ids = [m.message_id for m in new_messages]
-                existing = (
-                    session.query(TelegramMessage.message_id)
-                    .filter(TelegramMessage.channel_name == channel_name)
-                    .filter(TelegramMessage.message_id.in_(msg_ids))
-                    .all()
-                )
-                existing_ids = {r[0] for r in existing}
-
-                to_insert = [
-                    m for m in new_messages if m.message_id not in existing_ids
-                ]
-
-                if to_insert:
-                    session.add_all(to_insert)
-                    session.commit()
-                    count_new = len(to_insert)
-                    logger.info(f"Inserted {count_new} new messages.")
-                else:
-                    logger.info("No new messages to insert (filtered duplicates).")
-        else:
-            logger.info("No new messages found on Telegram.")
-
-    except Exception as e:
-        logger.error(f"Error during scraping: {e}")
+        await _scrape_single(client, channel_name)
     finally:
         await client.disconnect()
-
-    logger.info(f"Finished. Processed {count_processed}, Inserted {count_new}.")
 
 
 def run_scraper(channel_name: str, limit: int = 100):

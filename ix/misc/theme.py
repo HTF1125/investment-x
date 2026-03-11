@@ -136,7 +136,7 @@ class ChartTheme:
             # scatter/quadrant charts with numeric axes (e.g. -200 to 200).
             if pd.api.types.is_numeric_dtype(s):
                 return False
-            parsed = pd.to_datetime(s, errors="coerce")
+            parsed = pd.to_datetime(s, errors="coerce", format="mixed")
             return parsed.notna().mean() >= 0.8
         except Exception:
             return False
@@ -149,7 +149,7 @@ class ChartTheme:
             s = pd.Series(list(values)).dropna()
             if s.empty:
                 return None, None
-            parsed = pd.to_datetime(s, errors="coerce")
+            parsed = pd.to_datetime(s, errors="coerce", format="mixed")
             if parsed.notna().mean() < 0.8:
                 return None, None
             parsed = parsed.dropna()
@@ -829,3 +829,10 @@ class Theme:
 
     def format_chart(self, fig: go.Figure) -> go.Figure:
         return chart_theme.apply(fig, mode="light")
+
+
+def theme_figure_for_delivery(figure: Any) -> Any:
+    """Apply canonical theme when returning figures to dashboard/studio clients."""
+    if figure is None:
+        return None
+    return chart_theme.apply_json(figure, mode="light")

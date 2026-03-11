@@ -79,7 +79,7 @@ def _normalize_external_loggers() -> None:
 
 
 class DatabaseLogHandler(logging.Handler):
-    """Persist selected application logs to the runtime_logs table."""
+    """Persist selected application logs to the logs table."""
 
     def __init__(self, service_name: str):
         super().__init__(level=logging.INFO)
@@ -123,7 +123,7 @@ class DatabaseLogHandler(logging.Handler):
                 db_conn.execute(
                     text(
                         """
-                        INSERT INTO runtime_logs
+                        INSERT INTO logs
                             (level, logger_name, module, function, message, path, line_no, service, exception, created_at)
                         VALUES
                             (:level, :logger_name, :module, :function, :message, :path, :line_no, :service, :exception, NOW())

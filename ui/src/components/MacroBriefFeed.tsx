@@ -15,6 +15,7 @@ import {
   Shield,
   Zap,
   ExternalLink,
+  Info,
   Youtube,
   FileText,
   X,
@@ -22,7 +23,14 @@ import {
   Calendar,
   Presentation,
   Download,
+  Loader2,
+  MessageSquare,
+  Rss,
+  Building2,
+  BarChart3,
+  Globe,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Types
@@ -52,6 +60,16 @@ interface DriveSource {
   file_id: string;
 }
 
+export interface SourceCounts {
+  youtube?: number;
+  drive?: number;
+  central_banks?: number;
+  news?: number;
+  telegram?: number;
+  macro_data?: number;
+  reports?: number;
+}
+
 export interface ReportData {
   date: string;
   briefing: string | null;
@@ -60,6 +78,7 @@ export interface ReportData {
   sources: {
     selected_videos?: VideoSource[];
     drive_files?: DriveSource[];
+    counts?: SourceCounts;
   };
   has_infographic: boolean;
   has_slide_deck: boolean;
@@ -78,14 +97,55 @@ export interface RiskItem {
 
 export function parseRiskScorecard(md: string): RiskItem[] {
   const items: RiskItem[] = [];
-  const blockRegex = /\*\*([^:*]+):\s*(\d+)\/10\*\*\s*\n\*\*Key Expert[s]?:\*\*\s*(.+?)\n\*\*Why:\*\*\s*([\s\S]*?)(?=\n\n\*\*[A-Z]|\nResumed conversation:|$)/g;
+  // Split on risk category headers: **Category: N/10**
+  const headerRegex = /\*\*([^:*]+):\s*(\d+)\/10\*\*/g;
+  const headers: { category: string; score: number; start: number; end: number }[] = [];
   let match;
-  while ((match = blockRegex.exec(md)) !== null) {
-    items.push({
+  while ((match = headerRegex.exec(md)) !== null) {
+    headers.push({
       category: match[1].trim(),
       score: parseInt(match[2], 10),
-      experts: match[3].trim(),
-      description: match[4].trim().replace(/\s*\[\d+[-,\s\d]*\]/g, ''),
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+
+  for (let i = 0; i < headers.length; i++) {
+    const blockEnd = i + 1 < headers.length ? headers[i + 1].start : md.length;
+    const block = md.substring(headers[i].end, blockEnd).trim();
+
+    // Try to extract experts from various formats:
+    //   **Key Expert[s]:** Name      or   * **Key Expert[s]:** Name
+    let experts = '';
+    const expertMatch = block.match(/\*\*Key\s+Expert[s]?:\*\*\s*(.+)/i);
+    if (expertMatch) {
+      experts = expertMatch[1].trim();
+    }
+
+    // Extract description from various formats:
+    //   **Why:** text     or  **Key Evidence & Explanation:** text  or  just bullet body
+    let description = '';
+    const whyMatch = block.match(/\*\*Why:\*\*\s*([\s\S]*?)(?=\n\*\s+\*\*|\n\n|$)/i);
+    const evidenceMatch = block.match(
+      /\*\*Key Evidence[^*]*:\*\*\s*([\s\S]*?)(?=\n\*\s+\*\*[A-Z]|\n\n\*\*[A-Z]|$)/i,
+    );
+    if (whyMatch) {
+      description = whyMatch[1].trim();
+    } else if (evidenceMatch) {
+      description = evidenceMatch[1].trim();
+    } else {
+      // Fallback: use the whole block minus any **Label:** prefixes
+      description = block.replace(/\*\s+\*\*[^*]+\*\*\s*/g, '').trim();
+    }
+
+    // Clean citation references [1, 2] etc.
+    description = description.replace(/\s*\[\d+[-,\s\d]*\]/g, '');
+
+    items.push({
+      category: headers[i].category,
+      score: headers[i].score,
+      experts,
+      description: description.substring(0, 2000),
     });
   }
   return items;
@@ -226,6 +286,7 @@ function ScoreBar({ score }: { score: number }) {
 /* ── PDF Slide Viewer ──────────────────────────────────────────────────── */
 
 function SlideDeckViewer({ pdfUrl, date }: { pdfUrl: string; date: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -233,6 +294,7 @@ function SlideDeckViewer({ pdfUrl, date }: { pdfUrl: string; date: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const renderingRef = useRef(false);
+  const [resizeNonce, setResizeNonce] = useState(0);
 
   // Load PDF
   useEffect(() => {
@@ -321,7 +383,23 @@ function SlideDeckViewer({ pdfUrl, date }: { pdfUrl: string; date: string }) {
 
     renderPage();
     return () => { cancelled = true; };
-  }, [pdfDoc, currentPage]);
+  }, [pdfDoc, currentPage, resizeNonce]);
+
+  // Re-render canvas when container resizes
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => setResizeNonce((n) => n + 1), 150);
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      clearTimeout(timeoutId);
+    };
+  }, []);
 
   // Keyboard navigation
   useEffect(() => {
@@ -340,8 +418,21 @@ function SlideDeckViewer({ pdfUrl, date }: { pdfUrl: string; date: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-muted-foreground text-sm animate-pulse">
-        Loading slide deck...
+      <div className="space-y-3" role="status" aria-busy="true" aria-label="Loading slide deck">
+        <div className="relative rounded-[var(--radius)] border border-border/50 overflow-hidden bg-primary/[0.03]" style={{ paddingBottom: '56.25%' }}>
+          <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Presentation className="w-8 h-8 text-muted-foreground/15" />
+          </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="w-2 h-2 rounded-full bg-primary/10" />
+            ))}
+          </div>
+          <div className="h-3 w-12 rounded bg-primary/[0.06]" />
+        </div>
       </div>
     );
   }
@@ -358,7 +449,7 @@ function SlideDeckViewer({ pdfUrl, date }: { pdfUrl: string; date: string }) {
   return (
     <div className="space-y-3">
       {/* Slide canvas */}
-      <div className="relative rounded-[var(--radius)] border border-border/50 overflow-hidden bg-primary/[0.03]">
+      <div ref={containerRef} className="relative rounded-[var(--radius)] border border-border/50 overflow-hidden bg-primary/[0.03]">
         <canvas ref={canvasRef} className="w-full block" />
 
         {/* Left/right click zones */}
@@ -367,7 +458,7 @@ function SlideDeckViewer({ pdfUrl, date }: { pdfUrl: string; date: string }) {
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="absolute left-0 top-0 bottom-0 w-1/4 cursor-w-resize group"
+              className="absolute left-0 top-0 bottom-0 w-1/4 cursor-pointer group"
               aria-label="Previous slide"
             >
               <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-2 shadow-lg">
@@ -377,7 +468,7 @@ function SlideDeckViewer({ pdfUrl, date }: { pdfUrl: string; date: string }) {
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="absolute right-0 top-0 bottom-0 w-1/4 cursor-e-resize group"
+              className="absolute right-0 top-0 bottom-0 w-1/4 cursor-pointer group"
               aria-label="Next slide"
             >
               <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-2 shadow-lg">
@@ -530,6 +621,9 @@ export default function MacroBriefFeed({
   const [expandedBriefing, setExpandedBriefing] = useState<Record<number, boolean>>({});
   const [showSources, setShowSources] = useState(false);
   const [mediaView, setMediaView] = useState<'slides' | 'infographic'>('slides');
+  const [infographicLoaded, setInfographicLoaded] = useState(false);
+
+  useEffect(() => { setInfographicLoaded(false); }, [selectedDate, mediaView]);
 
   const riskItems = useMemo(
     () => (report?.risk_scorecard ? parseRiskScorecard(report.risk_scorecard) : []),
@@ -548,6 +642,7 @@ export default function MacroBriefFeed({
 
   const videoSources = useMemo(() => report?.sources?.selected_videos ?? [], [report?.sources?.selected_videos]);
   const driveSources = useMemo(() => report?.sources?.drive_files ?? [], [report?.sources?.drive_files]);
+  const sourceCounts = useMemo(() => report?.sources?.counts ?? {}, [report?.sources?.counts]);
 
   const toggleBriefingSection = useCallback(
     (i: number) => setExpandedBriefing((prev) => ({ ...prev, [i]: !prev[i] })),
@@ -558,8 +653,13 @@ export default function MacroBriefFeed({
 
   if (datesLoading) {
     return (
-      <div role="status" aria-live="polite" className="h-32 animate-pulse flex items-center justify-center text-muted-foreground text-sm">
-        Loading research reports...
+      <div role="status" aria-busy="true" aria-label="Loading research reports" className="h-32 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
+        <div className="flex items-center gap-2">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-2 w-16 rounded bg-primary/[0.06]" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -649,8 +749,49 @@ export default function MacroBriefFeed({
       {/* ── Content ──────────────────────────────────────────────────────── */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
         {reportLoading ? (
-          <div className="flex items-center justify-center py-20 text-muted-foreground text-sm animate-pulse">
-            Loading report...
+          <div className="px-5 md:px-8 py-6 space-y-10 max-w-[1600px] mx-auto" role="status" aria-busy="true" aria-label="Loading report">
+            {/* Media + takeaways skeleton */}
+            <div className="flex flex-col lg:flex-row gap-6">
+              <div className="flex-1 min-w-0 lg:max-w-[60%]">
+                <div className="relative rounded-[var(--radius)] border border-border/50 overflow-hidden bg-primary/[0.03]" style={{ paddingBottom: '56.25%' }}>
+                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent" />
+                </div>
+              </div>
+              <div className="lg:w-[40%] shrink-0 space-y-2.5">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="rounded-lg border border-primary/20 bg-primary/[0.03] p-3 space-y-2">
+                    <div className="h-3 w-3/4 rounded bg-primary/[0.06]" />
+                    <div className="h-2 w-full rounded bg-primary/[0.04]" />
+                    <div className="h-2 w-5/6 rounded bg-primary/[0.04]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Risk cards skeleton */}
+            <div>
+              <div className="h-3 w-28 rounded bg-primary/[0.06] mb-4" />
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="rounded-lg border border-border/40 bg-primary/[0.02] px-3.5 py-3 space-y-2">
+                    <div className="h-2.5 w-20 rounded bg-primary/[0.06]" />
+                    <div className="h-1.5 rounded-full bg-primary/10" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Briefing skeleton */}
+            <div>
+              <div className="h-3 w-24 rounded bg-primary/[0.06] mb-4" />
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="rounded-[var(--radius)] border border-border/40 bg-primary/[0.02] px-4 py-3 space-y-2">
+                    <div className="h-3 w-2/3 rounded bg-primary/[0.06]" />
+                    <div className="h-2 w-full rounded bg-primary/[0.04]" />
+                    <div className="h-2 w-4/5 rounded bg-primary/[0.04]" />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : reportError ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
@@ -658,7 +799,7 @@ export default function MacroBriefFeed({
             Failed to load report
           </div>
         ) : report ? (
-          <div className="px-5 md:px-8 py-6 space-y-10 max-w-[1600px] mx-auto">
+          <div key={selectedDate} className="px-5 md:px-8 py-6 space-y-10 max-w-[1600px] mx-auto animate-fade-in">
 
             {/* ── Media + Takeaways (side-by-side on lg) ────────────────── */}
             {(report.has_slide_deck || report.has_infographic || takeaways.length > 0) && (
@@ -706,16 +847,31 @@ export default function MacroBriefFeed({
                       </SectionHeading>
                     )}
 
+                    {/* Media content with crossfade on view toggle */}
+                    <AnimatePresence mode="wait">
                     {/* Slide Deck view */}
                     {((report.has_slide_deck && report.has_infographic && mediaView === 'slides') ||
                       (report.has_slide_deck && !report.has_infographic)) && (
-                      <SlideDeckViewer pdfUrl={slideDeckUrl} date={report.date} />
+                      <motion.div
+                        key="slides"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <SlideDeckViewer pdfUrl={slideDeckUrl} date={report.date} />
+                      </motion.div>
                     )}
 
                     {/* Infographic view */}
                     {((report.has_slide_deck && report.has_infographic && mediaView === 'infographic') ||
                       (!report.has_slide_deck && report.has_infographic)) && (
-                      <div
+                      <motion.div
+                        key="infographic"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
                         className="group relative rounded-[var(--radius)] border border-border/50 overflow-hidden bg-primary/[0.03] cursor-zoom-in"
                         onClick={() => setLightboxOpen(true)}
                         role="button"
@@ -728,12 +884,22 @@ export default function MacroBriefFeed({
                         }}
                         aria-label="Click to enlarge infographic"
                       >
+                        {/* Skeleton shown while image loads */}
+                        {!infographicLoaded && (
+                          <div className="absolute inset-0 z-[1] bg-primary/[0.03] overflow-hidden">
+                            <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent" />
+                            <div className="flex items-center justify-center h-full min-h-[200px]">
+                              <ImageIcon className="w-8 h-8 text-muted-foreground/15" />
+                            </div>
+                          </div>
+                        )}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={infographicSrc}
                           alt={`Macro infographic for ${selectedDate}`}
-                          className="w-full h-auto"
+                          className={`w-full h-auto transition-opacity duration-300 ${infographicLoaded ? 'opacity-100' : 'opacity-0'}`}
                           loading="lazy"
+                          onLoad={() => setInfographicLoaded(true)}
                         />
                         <div className="absolute inset-0 flex items-center justify-center bg-foreground/0 group-hover:bg-primary/[0.06] transition-colors">
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground shadow-lg">
@@ -741,8 +907,9 @@ export default function MacroBriefFeed({
                             Click to enlarge
                           </div>
                         </div>
-                      </div>
+                      </motion.div>
                     )}
+                    </AnimatePresence>
                   </div>
                 )}
 
@@ -778,31 +945,25 @@ export default function MacroBriefFeed({
                   Risk Scorecard
                 </SectionHeading>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {riskItems.map((r, i) => (
-                    <div key={i} className={`rounded-lg border px-3.5 py-3 ${scoreBgClass(r.score)} ${scoreBorderClass(r.score)}`}>
+                    <div key={i} className={`group relative rounded-lg border px-3.5 py-3 ${scoreBgClass(r.score)} ${scoreBorderClass(r.score)}`}>
                       <div className="flex items-center gap-1.5 mb-2">
                         <AlertTriangle className={`w-3 h-3 ${scoreColor(r.score)}`} />
-                        <span className="text-[11px] font-semibold text-foreground truncate">{r.category}</span>
+                        <span className="text-[11px] font-semibold text-foreground truncate flex-1">{r.category}</span>
+                        {r.description && (
+                          <span className="relative shrink-0">
+                            <Info className="w-3 h-3 text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors cursor-help" />
+                            <span className="pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 transition-opacity duration-150 absolute right-0 top-full mt-1.5 z-50 w-[280px] max-h-[200px] overflow-y-auto rounded-md border border-border/60 bg-card shadow-lg px-3 py-2.5">
+                              <span className="block text-[11px] text-muted-foreground/80 leading-relaxed whitespace-normal">{r.description}</span>
+                              {r.experts && (
+                                <span className="block mt-1.5 text-[10px] font-mono text-muted-foreground/40">{r.experts}</span>
+                              )}
+                            </span>
+                          </span>
+                        )}
                       </div>
                       <ScoreBar score={r.score} />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-3">
-                  {riskItems.map((r, i) => (
-                    <div key={i} className="rounded-[var(--radius)] border border-border/40 bg-primary/[0.02] overflow-hidden">
-                      <div className="px-4 py-3 border-b border-border/25 flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <span className={`text-[13px] font-semibold ${scoreColor(r.score)}`}>{r.category}</span>
-                          <span className={`text-[11px] font-mono font-bold tabular-nums ${scoreColor(r.score)}`}>{r.score}/10</span>
-                        </div>
-                        <span className="text-[10px] text-muted-foreground/50 font-mono">{r.experts}</span>
-                      </div>
-                      <div className="px-4 py-3">
-                        <p className="text-sm text-muted-foreground/80 leading-relaxed">{r.description}</p>
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -854,7 +1015,7 @@ export default function MacroBriefFeed({
             )}
 
             {/* ── Sources ────────────────────────────────────────────────── */}
-            {(videoSources.length > 0 || driveSources.length > 0) && (
+            {(videoSources.length > 0 || driveSources.length > 0 || Object.values(sourceCounts).some(v => v && v > 0)) && (
               <section className="pt-2 border-t border-border/25">
                 <details
                   className="group"
@@ -863,13 +1024,61 @@ export default function MacroBriefFeed({
                 >
                   <summary className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground/40 font-mono cursor-pointer hover:text-muted-foreground/60 transition-colors list-none select-none py-1">
                     <ExternalLink className="w-3 h-3" />
-                    Sources ({videoSources.length + driveSources.length})
+                    Sources
                     <span className="ml-auto">
                       {showSources ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     </span>
                   </summary>
 
                   <div className="mt-3 space-y-4">
+                    {/* Source counts summary */}
+                    {Object.values(sourceCounts).some(v => v && v > 0) && (
+                      <div className="flex flex-wrap gap-2">
+                        {(sourceCounts.youtube ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground/60 bg-primary/[0.04] border border-border/30 rounded-md px-2 py-1">
+                            <Youtube className="w-3 h-3 text-rose-400/50" />
+                            {sourceCounts.youtube} videos
+                          </span>
+                        )}
+                        {(sourceCounts.drive ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground/60 bg-primary/[0.04] border border-border/30 rounded-md px-2 py-1">
+                            <FileText className="w-3 h-3 text-primary/50" />
+                            {sourceCounts.drive} PDFs
+                          </span>
+                        )}
+                        {(sourceCounts.news ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground/60 bg-primary/[0.04] border border-border/30 rounded-md px-2 py-1">
+                            <Rss className="w-3 h-3 text-amber-400/50" />
+                            {sourceCounts.news} news feeds
+                          </span>
+                        )}
+                        {(sourceCounts.telegram ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground/60 bg-primary/[0.04] border border-border/30 rounded-md px-2 py-1">
+                            <MessageSquare className="w-3 h-3 text-sky-400/50" />
+                            {sourceCounts.telegram} messages
+                          </span>
+                        )}
+                        {(sourceCounts.central_banks ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground/60 bg-primary/[0.04] border border-border/30 rounded-md px-2 py-1">
+                            <Building2 className="w-3 h-3 text-emerald-400/50" />
+                            {sourceCounts.central_banks} central bank docs
+                          </span>
+                        )}
+                        {(sourceCounts.macro_data ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground/60 bg-primary/[0.04] border border-border/30 rounded-md px-2 py-1">
+                            <BarChart3 className="w-3 h-3 text-violet-400/50" />
+                            {sourceCounts.macro_data} indicators
+                          </span>
+                        )}
+                        {(sourceCounts.reports ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground/60 bg-primary/[0.04] border border-border/30 rounded-md px-2 py-1">
+                            <Globe className="w-3 h-3 text-primary/50" />
+                            {sourceCounts.reports} research reports
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {videoSources.length > 0 && (
                       <div>
                         <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-mono mb-2">

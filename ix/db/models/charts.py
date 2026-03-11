@@ -1,0 +1,51 @@
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, JSON, Boolean, Index, Integer
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.sql import func
+from ix.db.conn import Base
+from sqlalchemy.orm import relationship
+
+
+class Charts(Base):
+    """
+    Model for storing user-defined charts.
+    """
+
+    __tablename__ = "charts"
+
+    id = Column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=False), ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    code = Column(Text, nullable=False)  # The Python code
+    name = Column(String, nullable=True)  # Name of the analysis
+    category = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    tags = Column(JSONB, default=list)
+
+    figure = Column(JSONB, nullable=True)  # Cached execution result
+    chart_style = Column(String(32), nullable=True)  # Visual style preset (default/minimal/terminal/presentation)
+    public = Column(Boolean, default=True, nullable=False)  # Visible to all users
+    is_deleted = Column(Boolean, nullable=False, default=False, index=True)
+    deleted_at = Column(DateTime, nullable=True)
+
+    # "order" is a reserved keyword in SQL, so we quote it or use a different name in DB.
+    rank = Column("order", Integer, default=0, index=True)
+
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    creator = relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+
+# GIN index for tags containment queries
+Index("ix_charts_tags_gin", Charts.tags, postgresql_using="gin")
+
+# Indexes for common query patterns
+Index("ix_charts_updated_at", Charts.updated_at.desc())
+Index("ix_charts_category", Charts.category)
+Index("ix_charts_public", Charts.public)

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Boolean, DateTime, text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from typing import Optional
 from datetime import datetime, timezone
 import bcrypt
@@ -27,6 +27,7 @@ class User(Base):
     role = Column(String, nullable=False, default=ROLE_GENERAL, index=True)
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, nullable=True)
+    preferences = Column(JSONB, default=dict, nullable=False, server_default=text("'{}'::jsonb"))
 
     @classmethod
     def normalize_role(cls, role: Optional[str]) -> str:

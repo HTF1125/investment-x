@@ -1,12 +1,13 @@
 'use client';
 
-import { BookOpen, Newspaper, MessageSquare, Shield, Activity } from 'lucide-react';
+import { BookOpen, Newspaper, MessageSquare, Shield, Activity, TrendingUp } from 'lucide-react';
 import type { IntelTab } from '@/hooks/useIntelState';
 
 const TABS: { key: IntelTab; label: string; shortLabel: string; icon: React.ReactNode }[] = [
   { key: 'research', label: 'Research', shortLabel: 'Research', icon: <BookOpen className="w-3.5 h-3.5" /> },
   { key: 'news', label: 'News Feed', shortLabel: 'News', icon: <Newspaper className="w-3.5 h-3.5" /> },
   { key: 'signals', label: 'Signals', shortLabel: 'Signals', icon: <MessageSquare className="w-3.5 h-3.5" /> },
+  { key: 'positioning', label: 'Positioning', shortLabel: 'Pos', icon: <TrendingUp className="w-3.5 h-3.5" /> },
   { key: 'wartime', label: 'Wartime', shortLabel: 'War', icon: <Shield className="w-3.5 h-3.5" /> },
   { key: 'stress', label: 'Stress Test', shortLabel: 'Stress', icon: <Activity className="w-3.5 h-3.5" /> },
 ];

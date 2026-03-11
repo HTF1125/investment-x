@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
 
-export type IntelTab = 'research' | 'news' | 'signals' | 'wartime' | 'stress';
+export type IntelTab = 'research' | 'news' | 'signals' | 'positioning' | 'wartime' | 'stress';
 
 export interface ReportDateMeta {
   date: string;
@@ -64,7 +64,7 @@ export function useIntelState(): IntelState {
   const setActiveTab = useCallback(
     (tab: IntelTab) => {
       setActiveTabRaw(tab);
-      if (tab === 'wartime' || tab === 'stress') {
+      if (tab === 'wartime' || tab === 'stress' || tab === 'positioning') {
         setSidePanelOpen(false);
       }
     },

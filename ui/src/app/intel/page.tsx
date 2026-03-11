@@ -2,8 +2,8 @@
 
 import { Suspense, lazy, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
 import AppShell from '@/components/AppShell';
-import AuthGuard from '@/components/AuthGuard';
 import PageSkeleton from '@/components/PageSkeleton';
 import MacroBriefFeed from '@/components/MacroBriefFeed';
 import NewsFeed from '@/components/NewsFeed';
@@ -22,12 +22,18 @@ import {
 import type { ReportData } from '@/components/MacroBriefFeed';
 import { Loader2 } from 'lucide-react';
 
+const tabTransition = { duration: 0.15, ease: 'easeOut' } as const;
+const tabInitial = { opacity: 0 } as const;
+const tabAnimate = { opacity: 1 } as const;
+const tabExit = { opacity: 0 } as const;
+
 const WartimeContent = lazy(() =>
   import('@/components/WartimeContent').then((m) => ({ default: m.WartimeContent })),
 );
 const StressTestContent = lazy(() =>
   import('@/components/StressTestContent').then((m) => ({ default: m.StressTestContent })),
 );
+const PositioningTab = lazy(() => import('@/components/intel/PositioningTab'));
 
 function LazyFallback({ label }: { label: string }) {
   return (
@@ -97,8 +103,7 @@ export default function IntelPage() {
   const state = useIntelState();
 
   return (
-    <AuthGuard>
-      <Suspense
+    <Suspense
         fallback={
           <AppShell hideFooter>
             <PageSkeleton label="Loading intel" />
@@ -117,35 +122,49 @@ export default function IntelPage() {
             <div className="flex-1 flex min-h-0 overflow-hidden">
               {/* Main content */}
               <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-                {state.activeTab === 'research' && <ResearchTab state={state} />}
+                <AnimatePresence mode="wait">
+                  {state.activeTab === 'research' && (
+                    <motion.div key="research" initial={tabInitial} animate={tabAnimate} exit={tabExit} transition={tabTransition} className="h-full">
+                      <ResearchTab state={state} />
+                    </motion.div>
+                  )}
 
-                {state.activeTab === 'news' && (
-                  <div className="h-full">
-                    <NewsFeed embedded />
-                  </div>
-                )}
+                  {state.activeTab === 'news' && (
+                    <motion.div key="news" initial={tabInitial} animate={tabAnimate} exit={tabExit} transition={tabTransition} className="h-full">
+                      <NewsFeed embedded />
+                    </motion.div>
+                  )}
 
-                {state.activeTab === 'signals' && (
-                  <div className="h-full">
-                    <TelegramFeed embedded />
-                  </div>
-                )}
+                  {state.activeTab === 'signals' && (
+                    <motion.div key="signals" initial={tabInitial} animate={tabAnimate} exit={tabExit} transition={tabTransition} className="h-full">
+                      <TelegramFeed embedded />
+                    </motion.div>
+                  )}
 
-                {state.activeTab === 'wartime' && (
-                  <Suspense fallback={<LazyFallback label="Loading wartime analysis" />}>
-                    <div className="flex-1 overflow-y-auto">
-                      <WartimeContent embedded />
-                    </div>
-                  </Suspense>
-                )}
+                  {state.activeTab === 'positioning' && (
+                    <motion.div key="positioning" initial={tabInitial} animate={tabAnimate} exit={tabExit} transition={tabTransition} className="h-full">
+                      <Suspense fallback={<LazyFallback label="Loading positioning data" />}>
+                        <PositioningTab />
+                      </Suspense>
+                    </motion.div>
+                  )}
 
-                {state.activeTab === 'stress' && (
-                  <Suspense fallback={<LazyFallback label="Loading stress analysis" />}>
-                    <div className="flex-1 overflow-y-auto">
-                      <StressTestContent embedded />
-                    </div>
-                  </Suspense>
-                )}
+                  {state.activeTab === 'wartime' && (
+                    <motion.div key="wartime" initial={tabInitial} animate={tabAnimate} exit={tabExit} transition={tabTransition} className="h-full">
+                      <Suspense fallback={<LazyFallback label="Loading wartime analysis" />}>
+                        <WartimeContent embedded />
+                      </Suspense>
+                    </motion.div>
+                  )}
+
+                  {state.activeTab === 'stress' && (
+                    <motion.div key="stress" initial={tabInitial} animate={tabAnimate} exit={tabExit} transition={tabTransition} className="h-full">
+                      <Suspense fallback={<LazyFallback label="Loading stress analysis" />}>
+                        <StressTestContent embedded />
+                      </Suspense>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Collapsible side panel */}
@@ -154,6 +173,5 @@ export default function IntelPage() {
           </div>
         </AppShell>
       </Suspense>
-    </AuthGuard>
   );
 }

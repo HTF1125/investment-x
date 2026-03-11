@@ -39,6 +39,7 @@ class UnifiedNewsItemSchema(BaseModel):
     source_item_id: Optional[str] = None
     url: Optional[str] = None
     title: str
+    body_text: Optional[str] = None
     summary: Optional[str] = None
     published_at: Optional[datetime] = None
     discovered_at: datetime
@@ -116,6 +117,18 @@ def get_unified_news_items(
     return [UnifiedNewsItemSchema.model_validate(r) for r in rows]
 
 
+@router.get("/news/items/{item_id}", response_model=UnifiedNewsItemSchema)
+def get_news_item_detail(
+    item_id: str,
+    db: Session = Depends(get_session),
+):
+    """Return a single news item with full body_text."""
+    item = db.query(NewsItem).filter(NewsItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="News item not found")
+    return UnifiedNewsItemSchema.model_validate(item)
+
+
 # ── Research Reports (from database) ─────────────────────────────
 
 def _is_valid_date(name: str) -> bool:
@@ -170,7 +183,18 @@ def get_research_report(
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
 
     report_date = datetime.strptime(date, "%Y-%m-%d").date()
-    row = db.query(ResearchReport).filter(ResearchReport.date == report_date).first()
+    row = (
+        db.query(
+            ResearchReport.briefing,
+            ResearchReport.risk_scorecard,
+            ResearchReport.takeaways,
+            ResearchReport.infographic.isnot(None).label("has_infographic"),
+            ResearchReport.slide_deck.isnot(None).label("has_slide_deck"),
+            ResearchReport.sources,
+        )
+        .filter(ResearchReport.date == report_date)
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail=f"No report found for {date}")
 
@@ -179,8 +203,8 @@ def get_research_report(
         "briefing": row.briefing,
         "risk_scorecard": row.risk_scorecard,
         "takeaways": row.takeaways,
-        "has_infographic": row.infographic is not None,
-        "has_slide_deck": row.slide_deck is not None or (_SLIDE_DECKS_DIR / f"{date}.pdf").is_file(),
+        "has_infographic": row.has_infographic,
+        "has_slide_deck": row.has_slide_deck or (_SLIDE_DECKS_DIR / f"{date}.pdf").is_file(),
         "sources": row.sources or {},
     }
 

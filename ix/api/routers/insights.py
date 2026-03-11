@@ -67,7 +67,7 @@ def list_insights(
 
 
 @router.post("/insights/upload")
-async def upload_insight(
+def upload_insight(
     file: UploadFile = File(...),
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -78,7 +78,7 @@ async def upload_insight(
     """
     logger.info(f"Processing upload: {file.filename}")
     try:
-        content = await file.read()
+        content = file.file.read()
         if not content:
             raise HTTPException(status_code=400, detail="File is empty")
 

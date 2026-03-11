@@ -21,16 +21,15 @@ from ix.db.conn import Base
 from ix.misc import get_logger
 from .user import User
 from .telegram import TelegramMessage
-from .custom_chart import CustomChart
+from .charts import Charts
 from .task_process import TaskProcess
-from .investment_note import InvestmentNote
-from .system_setting import SystemSetting
 from .news_item import NewsItem
-from .audit_log import AuditLog
-from .runtime_log import RuntimeLog
-from .user_preference import UserPreference
+from .logs import Logs
 from .macro_outlook import MacroOutlook
 from .research_report import ResearchReport
+from .whiteboard import Whiteboard
+from .collector_state import CollectorState
+from .institutional_holding import InstitutionalHolding
 import pandas as pd
 import threading
 
@@ -84,41 +83,41 @@ __all__ = [
     "Timeseries",
     "TimeseriesData",
     "Universe",
-    "EconomicCalendar",
     "TacticalView",
     "User",
     "TelegramMessage",
     "Insights",
-    "CustomChart",
+    "Charts",
     "TaskProcess",
-    "InvestmentNote",
-    "SystemSetting",
     "NewsItem",
-    "AuditLog",
-    "RuntimeLog",
-    "UserPreference",
+    "Logs",
     "MacroOutlook",
     "ResearchReport",
+    "Whiteboard",
+    "CollectorState",
+    "InstitutionalHolding",
 ]
 
 
 def all():
     """Return all model classes."""
     return [
-        EconomicCalendar,
-        Universe,
+        User,
         Timeseries,
+        TimeseriesData,
+        Universe,
         TacticalView,
         Insights,
-        CustomChart,
+        Charts,
         TaskProcess,
-        InvestmentNote,
         NewsItem,
-        AuditLog,
-        RuntimeLog,
-        UserPreference,
+        TelegramMessage,
+        Logs,
         MacroOutlook,
         ResearchReport,
+        Whiteboard,
+        CollectorState,
+        InstitutionalHolding,
     ]
 
 
@@ -696,52 +695,6 @@ class Universe(Base):
         """Get percentage change for universe."""
         return self.get_series(field="PX_LAST").pct_change(periods=periods)
 
-
-class EconomicCalendar(Base):
-    """EconomicCalendar model."""
-
-    __tablename__ = "economic_calendar"
-
-    id = Column(
-        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
-    )
-    date = Column(String, nullable=False)
-    time = Column(String, nullable=False)
-    event = Column(String, nullable=False)
-    zone = Column(String, nullable=True)
-    currency = Column(String, nullable=True)
-    importance = Column(String, nullable=True)
-    actual = Column(String, nullable=True)
-    forecast = Column(String, nullable=True)
-    previous = Column(String, nullable=True)
-
-    @classmethod
-    def get_dataframe(cls):
-        """Get economic calendar as DataFrame."""
-        import pandas as pd
-        from ix.db.conn import Session
-
-        with Session() as session:
-            releases = session.query(cls).all()
-            data = [
-                {
-                    "id": str(r.id),
-                    "date": r.date,
-                    "time": r.time,
-                    "event": r.event,
-                    "zone": r.zone,
-                    "currency": r.currency,
-                    "importance": r.importance,
-                    "actual": r.actual,
-                    "forecast": r.forecast,
-                    "previous": r.previous,
-                }
-                for r in releases
-            ]
-            df = pd.DataFrame(data)
-            if not df.empty:
-                df = df.set_index("id")
-            return df
 
 
 class TacticalView(Base):

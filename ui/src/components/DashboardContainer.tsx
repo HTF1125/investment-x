@@ -1,22 +1,36 @@
 'use client';
 
-import React, { useMemo } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
-import DashboardWorkspace from '@/components/dashboard/DashboardWorkspace';
+import Dashboard from '@/components/dashboard/Dashboard';
+import ChartDetailView from '@/components/dashboard/ChartDetailView';
+import ChartSkeletonGrid from '@/components/dashboard/ChartSkeletonGrid';
 import AppShell from '@/components/AppShell';
-import { RefreshCw, WifiOff, Activity } from 'lucide-react';
+import { RefreshCw, WifiOff, Activity, Loader2 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 
-const INITIAL_DASHBOARD_FIGURE_BATCH_SIZE = 9;
+const CustomChartEditor = dynamic(() => import('@/components/CustomChartEditor'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center">
+      <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+    </div>
+  ),
+});
 
 interface DashboardFigureBatchResponse {
   charts: Record<string, { figure?: any; chart_style?: string | null }>;
 }
 
 export default function DashboardContainer({ initialData }: { initialData?: any }) {
-  const { token } = useAuth();
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const chartId = searchParams.get('chartId');
+  const isNewChart = searchParams.get('new') === 'true';
 
+  // All hooks must be called unconditionally
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: () => apiFetchJson('/api/v1/dashboard/summary?include_figures=false'),
@@ -25,61 +39,61 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     refetchOnWindowFocus: false,
   });
 
-  const initialFigureIds = useMemo(() => {
+  // Non-blocking prefetch: seed individual chart figure caches in the background
+  useEffect(() => {
+    if (chartId || isNewChart) return; // skip when not on gallery
     const chartsByCategory = data?.charts_by_category as Record<string, any[]> | undefined;
-    if (!chartsByCategory) return [] as string[];
+    if (!chartsByCategory) return;
 
     const uniqueCharts = new Map<string, any>();
-    Object.values(chartsByCategory).forEach((charts) => {
-      charts.forEach((chart) => {
+    Object.values(chartsByCategory).forEach(charts => {
+      charts.forEach(chart => {
         if (chart?.id) uniqueCharts.set(chart.id, chart);
       });
     });
 
-    return Array.from(uniqueCharts.values())
+    const firstIds = Array.from(uniqueCharts.values())
       .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
-      .slice(0, INITIAL_DASHBOARD_FIGURE_BATCH_SIZE)
-      .map((chart) => String(chart.id));
-  }, [data]);
+      .slice(0, 9)
+      .map(chart => String(chart.id));
 
-  const initialFigureQuery = useQuery({
-    queryKey: ['dashboard-initial-figures', initialFigureIds],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      initialFigureIds.forEach((id) => params.append('ids', id));
-      return apiFetchJson<DashboardFigureBatchResponse>(
-        `/api/v1/dashboard/charts/figures?${params.toString()}`
-      );
-    },
-    enabled: initialFigureIds.length > 0,
-    staleTime: 1000 * 60 * 5,
-    gcTime: 1000 * 60 * 10,
-    refetchOnWindowFocus: false,
-  });
+    if (firstIds.length === 0) return;
 
-  const hydratedChartsByCategory = useMemo(() => {
-    const chartsByCategory = data?.charts_by_category as Record<string, any[]> | undefined;
-    if (!chartsByCategory) return null;
+    const params = new URLSearchParams();
+    firstIds.forEach(id => params.append('ids', id));
 
-    const prefetchedFigures = initialFigureQuery.data?.charts ?? {};
-    if (Object.keys(prefetchedFigures).length === 0) return chartsByCategory;
+    queryClient.prefetchQuery({
+      queryKey: ['dashboard-initial-figures', firstIds],
+      queryFn: async () => {
+        const batch = await apiFetchJson<DashboardFigureBatchResponse>(
+          `/api/v1/dashboard/charts/figures?${params.toString()}`
+        );
+        for (const [id, entry] of Object.entries(batch.charts)) {
+          if (entry.figure) {
+            queryClient.setQueryData(['chart-figure', id], entry.figure);
+          }
+        }
+        return batch;
+      },
+      staleTime: 1000 * 60 * 5,
+    });
+  }, [data, queryClient, chartId, isNewChart]);
 
-    return Object.fromEntries(
-      Object.entries(chartsByCategory).map(([category, charts]) => [
-        category,
-        (charts as any[]).map((chart) => {
-          const prefetched = prefetchedFigures[String(chart.id)];
-          if (!prefetched?.figure) return chart;
-          return {
-            ...chart,
-            figure: prefetched.figure,
-            chart_style: prefetched.chart_style ?? chart.chart_style ?? null,
-          };
-        }),
-      ])
+  // ── Route: new chart editor ──
+  if (isNewChart) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-background flex flex-col">
+        <CustomChartEditor mode="standalone" initialChartId={null} />
+      </div>
     );
-  }, [data, initialFigureQuery.data]);
+  }
 
+  // ── Route: chart detail page ──
+  if (chartId) {
+    return <ChartDetailView chartId={chartId} />;
+  }
+
+  // ── Route: dashboard gallery ──
 
   if (isError) {
     return (
@@ -106,32 +120,19 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     );
   }
 
-  const waitingForInitialFigures =
-    !!data?.charts_by_category &&
-    initialFigureIds.length > 0 &&
-    initialFigureQuery.isLoading &&
-    !initialFigureQuery.isError;
-  const showLoading = (!data && isLoading) || waitingForInitialFigures;
-
-  if (showLoading) {
+  if (!data && isLoading) {
     return (
-      <AppShell>
-        <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-6 animate-in fade-in duration-500">
-            <div className="w-10 h-10 border-2 border-border/40 border-t-foreground/60 rounded-full animate-spin" />
-            <div className="text-center space-y-1.5">
-              <p className="text-sm font-medium text-foreground">Loading dashboard</p>
-              <p className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-wider">
-                Syncing data pipelines...
-              </p>
+      <AppShell hideFooter>
+        <div className="h-[calc(100vh-48px)] flex flex-col overflow-hidden">
+          <div className="px-4 sm:px-5 lg:px-6 border-b border-border/20 shrink-0 h-11 flex items-center">
+            <div className="flex gap-1.5 animate-pulse">
+              <div className="h-5 w-8 bg-primary/[0.06] rounded-[var(--radius)]" />
+              <div className="h-5 w-16 bg-primary/[0.04] rounded-[var(--radius)]" />
+              <div className="h-5 w-14 bg-primary/[0.03] rounded-[var(--radius)]" />
+              <div className="h-5 w-12 bg-primary/[0.03] rounded-[var(--radius)]" />
             </div>
-            {!token && (
-              <a
-                href="/login"
-                className="mt-2 px-5 py-2 border border-border/50 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] transition-all"
-              >
-                Return to Login
-              </a>
-            )}
+          </div>
+          <ChartSkeletonGrid />
         </div>
       </AppShell>
     );
@@ -139,37 +140,29 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
 
   if (!data && !isLoading && !isError) {
     return (
-        <AppShell>
-          <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-5 animate-in fade-in">
-              <div className="w-14 h-14 rounded-lg bg-muted/30 border border-border/50 flex items-center justify-center">
-                <Activity className="w-6 h-6 text-muted-foreground/40" />
-              </div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-medium text-foreground">Connection timed out</p>
-                <p className="text-xs text-muted-foreground">Unable to reach the data pipeline</p>
-              </div>
-              <button
-                onClick={() => refetch()}
-                className="px-5 py-2 border border-border/50 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] transition-all"
-              >
-                Retry
-              </button>
+      <AppShell>
+        <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-5 animate-in fade-in">
+          <div className="w-14 h-14 rounded-lg bg-muted/30 border border-border/50 flex items-center justify-center">
+            <Activity className="w-6 h-6 text-muted-foreground/40" />
           </div>
-        </AppShell>
+          <div className="text-center space-y-1">
+            <p className="text-sm font-medium text-foreground">Connection timed out</p>
+            <p className="text-xs text-muted-foreground">Unable to reach the data pipeline</p>
+          </div>
+          <button
+            onClick={() => refetch()}
+            className="px-5 py-2 border border-border/50 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] transition-all"
+          >
+            Retry
+          </button>
+        </div>
+      </AppShell>
     );
   }
 
   return (
-      <AppShell hideFooter>
-      {hydratedChartsByCategory ? (
-        <DashboardWorkspace
-          chartsByCategory={hydratedChartsByCategory}
-        />
-      ) : (
-        <div className="text-center py-20 text-muted-foreground">
-          Loading Data Dictionary...
-        </div>
-      )}
+    <AppShell hideFooter>
+      <Dashboard chartsByCategory={data.charts_by_category || {}} />
     </AppShell>
   );
 }

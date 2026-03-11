@@ -1,7 +1,7 @@
 from typing import Optional, List
 import pandas as pd
 from ix.misc.terminal import get_logger
-from ix.misc.date import tomorrow, onemonthbefore, onemonthlater
+from ix.misc.date import tomorrow
 
 logger = get_logger(__name__)
 
@@ -13,25 +13,6 @@ def _get_pandas_datareader():
         logger.warning(f"pandas_datareader unavailable: {exc}")
         return None
     return pdr
-
-
-def get_bloomberg_data(
-    code: str,
-    field: str = "PX_LAST",
-    start: str = "1950-1-1",
-    end: str = "",
-) -> pd.DataFrame:
-    if not end:
-        end = tomorrow().date().strftime("%Y-%m-%d")
-    try:
-        from xbbg import blp
-        data = blp.bdh(code, field, start_date=start, end_date=end)
-        data.columns = [code]
-        data.index.name = "date"
-        data.index = pd.to_datetime(data.index)
-        return data
-    except Exception as e:
-        return pd.DataFrame()
 
 
 def get_yahoo_data(
@@ -68,49 +49,42 @@ def get_fred_data(
     ticker: str,
     start: str = "1900-1-1",
     end: str = tomorrow().date().strftime("%Y-%m-%d"),
+    retries: int = 2,
+    timeout: int = 60,
 ) -> pd.DataFrame:
 
     logger = get_logger(get_fred_data)
-    try:
-        pdr = _get_pandas_datareader()
-        if pdr is None:
-            raise ImportError("pandas_datareader is required for FRED data")
+    pdr = _get_pandas_datareader()
+    if pdr is None:
+        raise ImportError("pandas_datareader is required for FRED data")
 
-        data = pdr.DataReader(
-            name=ticker,
-            data_source="fred",
-            start=start,
-            end=end,
-        )
-        return data
-    except Exception as exc:
-        logger.warning(f"Download data from `fred` fail for ticker {ticker}")
-        logger.exception(exc)
-        return pd.DataFrame()
+    for attempt in range(retries + 1):
+        try:
+            import requests
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Investment-X Research)"
+            })
+            reader = pdr.fred.FredReader(
+                symbols=ticker,
+                start=start,
+                end=end,
+            )
+            reader.session = session
+            reader.timeout = timeout
+            data = reader.read()
+            return data
+        except Exception as exc:
+            if attempt < retries:
+                import time
+                wait = 5 * (attempt + 1)
+                logger.info(f"FRED {ticker} attempt {attempt + 1} failed, retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                logger.warning(f"Download data from `fred` fail for ticker {ticker}")
+                logger.error(str(exc))
+                return pd.DataFrame()
 
-
-def get_economic_releases(
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-    importances: List[str] = ["high"],
-):
-    import investpy
-
-    if start is None:
-        start = onemonthbefore().strftime("%d/%m/%Y")
-    if end is None:
-        end = onemonthlater().strftime("%d/%m/%Y")
-    logger.info(f"Fetching economic releases from {start} to {end}")
-    try:
-        releases = investpy.economic_calendar(
-            from_date=start,
-            to_date=end,
-            importances=importances,
-        ).set_index(keys=["id"], drop=True)
-    except Exception as e:
-        logger.error(f"Error retrieving releases: {e}")
-        releases = pd.DataFrame()  # Return an empty DataFrame on error
-    return releases
 
 
 def get_naver_data(

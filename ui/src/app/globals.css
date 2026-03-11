@@ -140,6 +140,7 @@
   .btn-toolbar {
     @apply h-7 px-2.5 rounded-[var(--radius)] border border-border/40 text-[11px] font-medium
            text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] hover:border-primary/25
+           focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background
            inline-flex items-center gap-1.5
            transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
   }
@@ -149,6 +150,7 @@
   .btn-icon {
     @apply flex items-center justify-center w-7 h-7 rounded-[var(--radius)]
            text-muted-foreground hover:text-primary hover:bg-primary/10
+           focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background
            active:scale-95 transition-all duration-150;
   }
 
@@ -156,6 +158,32 @@
 
   .focus-ring {
     @apply focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background;
+  }
+
+  /* ── Button variants ─────────────────────────────────────────────── */
+
+  .btn-primary {
+    @apply h-8 px-3.5 rounded-[var(--radius)] bg-primary text-primary-foreground text-[11px] font-semibold
+           inline-flex items-center justify-center gap-1.5
+           hover:opacity-90 active:scale-[0.98]
+           focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background
+           transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply h-8 px-3.5 rounded-[var(--radius)] border border-border/50 bg-transparent text-foreground text-[11px] font-medium
+           inline-flex items-center justify-center gap-1.5
+           hover:bg-primary/[0.06] hover:border-primary/25
+           focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background
+           transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply h-8 px-3.5 rounded-[var(--radius)] border border-rose-500/20 bg-rose-500/[0.06] text-rose-400 text-[11px] font-medium
+           inline-flex items-center justify-center gap-1.5
+           hover:bg-rose-500/10 hover:border-rose-500/40
+           focus:outline-none focus:ring-2 focus:ring-rose-500/25 focus:ring-offset-1 focus:ring-offset-background
+           transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
   /* ── Staggered fade-in animation ───────────────────────────────────── */

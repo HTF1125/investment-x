@@ -37,7 +37,7 @@ export default function AppShell({
     <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-background">
       <Navbar onOpenSearch={openSearch} />
       {/* Match fixed navbar height (48px) */}
-      <main id="main-content" className="pt-[48px] flex-grow relative z-0 max-w-[1440px] mx-auto w-full">
+      <main id="main-content" className="pt-[48px] flex-grow relative max-w-[1440px] mx-auto w-full">
         {children}
       </main>
       {!hideFooter && <Footer />}

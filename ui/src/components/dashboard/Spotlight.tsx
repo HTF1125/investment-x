@@ -137,14 +137,13 @@ export default function Spotlight({
       <motion.div
         className={`flex flex-col bg-background rounded-lg border border-border/50 shadow-lg overflow-hidden ${
           editing
-            ? 'w-[98vw] h-[94vh] max-w-[1800px] max-h-[960px]'
-            : 'w-[92vw] h-[85vh] max-w-[960px] max-h-[640px]'
+            ? 'w-screen h-[100dvh] sm:w-[98vw] sm:h-[94vh] sm:max-w-[1800px] sm:max-h-[960px] sm:rounded-lg rounded-none'
+            : 'w-[95vw] h-[85vh] max-w-[960px] max-h-[640px]'
         }`}
         initial={{ scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.96, opacity: 0 }}
         transition={{ duration: 0.15 }}
-        layout
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       >
       {/* Top bar */}
@@ -234,10 +233,10 @@ export default function Spotlight({
       </div>
 
       {/* Content area: chart only, or split editor + chart */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
+      <div className={`flex-1 min-h-0 flex overflow-hidden ${editing ? 'flex-col sm:flex-row' : ''}`}>
         {/* Editor panel (left side, only when editing) */}
         {editing && (
-          <div className="w-[60%] min-w-[400px] max-w-[1000px] shrink-0 border-r border-border/40 flex flex-col overflow-hidden">
+          <div className="w-full sm:w-[60%] sm:min-w-[400px] sm:max-w-[1000px] shrink-0 border-r border-border/40 flex flex-col overflow-hidden">
             <CustomChartEditor
               mode="integrated"
               initialChartId={chart.id}

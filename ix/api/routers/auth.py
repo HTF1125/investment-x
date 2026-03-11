@@ -109,7 +109,8 @@ def logout(response: Response):
 
 
 @router.post("/auth/register", response_model=UserResponse)
-def register(user_data: UserRegister):
+@_limiter.limit("3/minute")
+def register(request: Request, user_data: UserRegister):
     """
     Register a new user.
     """

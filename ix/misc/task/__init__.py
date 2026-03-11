@@ -1,10 +1,6 @@
 from ix.misc.terminal import get_logger
-from ix.misc import as_date, onemonthbefore, onemonthlater
-
-# from ix.db import EconomicCalendar  # Commented out - MongoDB not in use
 import pandas as pd
 
-# from ix.db.models import Timeseries  # Commented out - MongoDB not in use
 from ix.misc.crawler import get_yahoo_data
 from ix.misc.crawler import get_fred_data
 from ix.misc.crawler import get_naver_data
@@ -13,26 +9,6 @@ from ix.db.custom.macro import macro_data
 
 
 logger = get_logger(__name__)
-
-
-# def update_economic_calendar():
-
-#     data = investpy.economic_calendar(
-#         from_date=as_date(onemonthbefore(), "%d/%m/%Y"),
-#         to_date=as_date(onemonthlater(), "%d/%m/%Y"),
-#     )
-
-#     if not isinstance(data, pd.DataFrame):
-#         return
-#     data["date"] = pd.to_datetime(data["date"], dayfirst=True).dt.strftime("%Y-%m-%d")
-#     data = data.drop(columns=["id"])
-
-#     EconomicCalendar.delete_all()
-#     objs = []
-#     for record in data.to_dict("records"):
-#         record = {str(key): value for key, value in record.items()}
-#         objs.append(EconomicCalendar(**record))
-#     EconomicCalendar.insert_many(objs)
 
 
 def _update_source_data(source_name, fetcher, progress_cb=None, start_index: int = 0, total_count: int | None = None):
@@ -270,11 +246,11 @@ def refresh_all_charts(progress_cb=None):
         progress_cb: Optional callback(current, total, chart_code) for progress updates.
     """
     from ix.db.conn import Session
-    from ix.db.models import CustomChart
+    from ix.db.models import Charts
     from ix.api.routers.custom import execute_custom_code, get_clean_figure_json
 
     with Session() as s:
-        charts = s.query(CustomChart).order_by(CustomChart.rank.asc()).all()
+        charts = s.query(Charts).order_by(Charts.rank.asc()).all()
         total = len(charts)
         logger.info(f"Found {total} charts to refresh.")
 

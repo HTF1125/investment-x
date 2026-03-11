@@ -76,13 +76,17 @@ class Connection:
                 self.engine = create_engine(
                     db_url,
                     poolclass=QueuePool,
-                    pool_size=40,  # Doubled to 40
-                    max_overflow=80,  # Doubled to 80
+                    pool_size=10,
+                    max_overflow=20,
                     pool_pre_ping=True,  # Verify connections before using them
                     pool_recycle=3600,  # Recycle connections after 1 hour
                     echo=False,  # Set to True for SQL query logging
                     connect_args={
-                        "connect_timeout": 10,  # Increased timeout for connection attempts
+                        "connect_timeout": 10,
+                        "keepalives": 1,
+                        "keepalives_idle": 30,
+                        "keepalives_interval": 10,
+                        "keepalives_count": 5,
                     },
                 )
 
@@ -219,6 +223,10 @@ def get_session():
     session = conn.SessionLocal()
     try:
         yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     finally:
         session.close()
 

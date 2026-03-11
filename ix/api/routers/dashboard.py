@@ -3,12 +3,12 @@ from sqlalchemy.orm import Session, joinedload, load_only
 from sqlalchemy import or_
 from typing import List, Dict, Any
 from ix.db.conn import get_session
-from ix.db.models import CustomChart as Chart
+from ix.db.models import Charts
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from ix.api.dependencies import get_optional_user
 from ix.api.rate_limit import limiter as _limiter
-from ix.misc.theme import chart_theme
+from ix.misc.theme import chart_theme, theme_figure_for_delivery as _theme_figure_for_delivery
 
 router = APIRouter()
 
@@ -48,13 +48,6 @@ class DashboardFigureBatchResponse(BaseModel):
 from ix.db.models.user import User
 
 
-def _theme_figure_for_delivery(figure: Any) -> Any:
-    """Apply canonical misc theme at response-time without mutating DB payload."""
-    if figure is None:
-        return None
-    return chart_theme.apply_json(figure, mode="light")
-
-
 def _apply_private_cache_headers(response: Response, max_age: int = 60) -> None:
     response.headers["Cache-Control"] = (
         f"private, max-age={max_age}, stale-while-revalidate={max_age * 2}"
@@ -62,7 +55,7 @@ def _apply_private_cache_headers(response: Response, max_age: int = 60) -> None:
     response.headers["Vary"] = "Cookie, Authorization"
 
 
-def _can_view_chart(chart: Chart, current_user: User | None) -> bool:
+def _can_view_chart(chart: Charts, current_user: User | None) -> bool:
     is_admin = bool(current_user and current_user.effective_role in User.ADMIN_ROLES)
     current_uid = str(getattr(current_user, "id", "") or "") if current_user else ""
     is_owner_chart = bool(
@@ -92,24 +85,24 @@ def get_dashboard_summary(
     include_code_for_user = bool(include_code and is_admin)
 
     chart_columns = [
-        Chart.id,
-        Chart.name,
-        Chart.category,
-        Chart.description,
-        Chart.updated_at,
-        Chart.rank,
-        Chart.public,
-        Chart.created_by_user_id,
-        Chart.chart_style,
+        Charts.id,
+        Charts.name,
+        Charts.category,
+        Charts.description,
+        Charts.updated_at,
+        Charts.rank,
+        Charts.public,
+        Charts.created_by_user_id,
+        Charts.chart_style,
     ]
     if include_figures:
-        chart_columns.append(Chart.figure)
+        chart_columns.append(Charts.figure)
     if include_code_for_user:
-        chart_columns.append(Chart.code)
+        chart_columns.append(Charts.code)
 
-    query = db.query(Chart).options(
+    query = db.query(Charts).options(
         load_only(*chart_columns),
-        joinedload(Chart.creator).load_only(
+        joinedload(Charts.creator).load_only(
             User.id,
             User.email,
             User.first_name,
@@ -121,12 +114,12 @@ def get_dashboard_summary(
         if current_uid:
             query = query.filter(
                 or_(
-                    Chart.public == True,
-                    Chart.created_by_user_id == current_uid,
+                    Charts.public == True,
+                    Charts.created_by_user_id == current_uid,
                 )
             )
         else:
-            query = query.filter(Chart.public == True)
+            query = query.filter(Charts.public == True)
 
     charts = query.all()
 
@@ -186,17 +179,17 @@ def get_chart_figure(
     """
     _apply_private_cache_headers(response)
     chart_fields = [
-        Chart.id,
-        Chart.name,
-        Chart.figure,
-        Chart.chart_style,
-        Chart.public,
-        Chart.created_by_user_id,
+        Charts.id,
+        Charts.name,
+        Charts.figure,
+        Charts.chart_style,
+        Charts.public,
+        Charts.created_by_user_id,
     ]
-    chart = db.query(Chart).options(load_only(*chart_fields)).filter(Chart.id == chart_id).first()
+    chart = db.query(Charts).options(load_only(*chart_fields)).filter(Charts.id == chart_id).first()
     if not chart:
         # Try finding by name if ID fails (less preferred but helps migration)
-        chart = db.query(Chart).options(load_only(*chart_fields)).filter(Chart.name == chart_id).first()
+        chart = db.query(Charts).options(load_only(*chart_fields)).filter(Charts.name == chart_id).first()
         if not chart:
             raise HTTPException(status_code=404, detail="Chart not found")
 
@@ -238,16 +231,16 @@ def get_chart_figures(
     # Keep the endpoint intentionally small to protect response size.
     requested_ids = requested_ids[:12]
     chart_fields = [
-        Chart.id,
-        Chart.figure,
-        Chart.chart_style,
-        Chart.public,
-        Chart.created_by_user_id,
+        Charts.id,
+        Charts.figure,
+        Charts.chart_style,
+        Charts.public,
+        Charts.created_by_user_id,
     ]
     charts = (
-        db.query(Chart)
+        db.query(Charts)
         .options(load_only(*chart_fields))
-        .filter(Chart.id.in_(requested_ids))
+        .filter(Charts.id.in_(requested_ids))
         .all()
     )
 

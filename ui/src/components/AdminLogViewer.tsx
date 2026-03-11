@@ -7,7 +7,7 @@ import { Activity, AlertTriangle, Loader2, Search, ShieldAlert, Waves } from 'lu
 import { useAuth } from '@/context/AuthContext';
 import { apiFetchJson } from '@/lib/api';
 
-type RuntimeLog = {
+type LogEntry = {
   id: string;
   level: string;
   logger_name: string;
@@ -58,9 +58,9 @@ export default function AdminLogViewer() {
     return params.toString();
   }, [debouncedSearch, level, limit]);
 
-  const { data: logs = [], isLoading, isFetching, isError, error } = useQuery<RuntimeLog[]>({
+  const { data: logs = [], isLoading, isFetching, isError, error } = useQuery<LogEntry[]>({
     queryKey: ['admin-logs', level, debouncedSearch, limit],
-    queryFn: () => apiFetchJson<RuntimeLog[]>(`/api/admin/logs?${queryString}`),
+    queryFn: () => apiFetchJson<LogEntry[]>(`/api/admin/logs?${queryString}`),
     staleTime: 15_000,
   });
 

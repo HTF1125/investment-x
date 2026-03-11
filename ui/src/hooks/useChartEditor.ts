@@ -330,6 +330,7 @@ export function useChartEditor({ mode, initialChartId }: UseChartEditorOptions) 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: codeToRun }),
+        timeoutMs: 120000,
       });
       const data = await parseBodySafe(res);
       if (!res.ok) {
@@ -364,6 +365,7 @@ export function useChartEditor({ mode, initialChartId }: UseChartEditorOptions) 
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        timeoutMs: 120000,
       });
       const data = await parseBodySafe(res);
       if (!res.ok) {
@@ -566,6 +568,7 @@ export function useChartEditor({ mode, initialChartId }: UseChartEditorOptions) 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code: chartCode }),
+          timeoutMs: 120000,
         });
 
         if (!res.ok) errorCount++;

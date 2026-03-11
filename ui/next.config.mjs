@@ -2,6 +2,7 @@ import { resolve } from 'path';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ['@excalidraw/excalidraw'],
   webpack(config, { isServer }) {
     // Point react-plotly.js (which imports plotly.js/dist/plotly) to the
     // much smaller plotly.js-dist-min bundle to avoid shipping both.

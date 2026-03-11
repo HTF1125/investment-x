@@ -15,8 +15,6 @@ import html
 import re
 import traceback
 import concurrent.futures
-import multiprocessing as mp
-import queue
 import base64
 from io import BytesIO
 from reportlab.pdfgen import canvas
@@ -26,10 +24,10 @@ import textwrap
 import sys
 
 from ix.db.conn import get_session
-from ix.db.models import CustomChart, User
+from ix.db.models import Charts, User
 from ix.api.dependencies import get_current_user, user_role as _user_role, is_owner_role as _is_owner, is_admin_role as _is_admin, user_id_str as _user_id
 from ix.misc import get_logger
-from ix.misc.theme import chart_theme
+from ix.misc.theme import chart_theme, theme_figure_for_delivery as _theme_figure_for_delivery
 from ix.utils.safe_custom_code import (
     SAFE_CUSTOM_CHART_BUILTINS,
     UnsafeCustomChartCodeError,
@@ -42,8 +40,6 @@ from ix.api.task_utils import start_process, update_process, ProcessStatus
 logger = get_logger(__name__)
 
 router = APIRouter()
-
-_CUSTOM_CHART_EXEC_TIMEOUT_SECONDS = 120
 
 from ix.api.rate_limit import limiter as _limiter
 
@@ -74,13 +70,6 @@ _LEGACY_STYLE_PALETTE = [
     "#2dd4bf",
     "#f97316",
 ]
-
-
-def _theme_figure_for_delivery(figure: Any) -> Any:
-    """Apply canonical misc theme when returning figures to dashboard/studio clients."""
-    if figure is None:
-        return None
-    return chart_theme.apply_json(figure, mode="light")
 
 
 def _json_dumps_fast(payload: Any) -> str:
@@ -165,7 +154,7 @@ def _prepare_custom_chart_code(code: str) -> str:
             status_code=400,
             detail={
                 "error": "Validation Error",
-                "message": str(exc),
+                "message": "Chart code contains forbidden syntax. Please review and try again.",
             },
         ) from exc
     return normalized
@@ -193,7 +182,7 @@ def _compact_figure_for_html(figure: Any) -> Dict[str, Any]:
     return compact
 
 
-def _creator_metadata(chart: CustomChart) -> Dict[str, Optional[str]]:
+def _creator_metadata(chart: Charts) -> Dict[str, Optional[str]]:
     creator = getattr(chart, "creator", None)
     creator_id = getattr(chart, "created_by_user_id", None)
     creator_email = getattr(creator, "email", None) if creator is not None else None
@@ -207,8 +196,8 @@ def _creator_metadata(chart: CustomChart) -> Dict[str, Optional[str]]:
     }
 
 
-def _to_custom_chart_response(chart: CustomChart):
-    payload = CustomChartResponse.from_orm(chart)
+def _to_custom_chart_response(chart: Charts):
+    payload = ChartResponse.from_orm(chart)
     payload.figure = _theme_figure_for_delivery(chart.figure)
     creator_meta = _creator_metadata(chart)
     payload.created_by_user_id = creator_meta["created_by_user_id"]
@@ -218,12 +207,12 @@ def _to_custom_chart_response(chart: CustomChart):
 
 
 
-def _is_chart_owner(chart: CustomChart, user: User) -> bool:
+def _is_chart_owner(chart: Charts, user: User) -> bool:
     chart_owner_id = str(getattr(chart, "created_by_user_id", "") or "")
     return bool(chart_owner_id and chart_owner_id == _user_id(user))
 
 
-def _can_edit_chart(chart: CustomChart, user: User) -> bool:
+def _can_edit_chart(chart: Charts, user: User) -> bool:
     if _is_owner(user):
         return True
     if _is_admin(user):
@@ -231,7 +220,7 @@ def _can_edit_chart(chart: CustomChart, user: User) -> bool:
     return _is_chart_owner(chart, user)
 
 
-def _can_view_chart(chart: CustomChart, user: User) -> bool:
+def _can_view_chart(chart: Charts, user: User) -> bool:
     return (
         bool(getattr(chart, "public", False))
         or _is_owner(user)
@@ -259,7 +248,7 @@ def _assert_can_create_chart(user: User) -> None:
 # --- Pydantic Models ---
 
 
-class CustomChartCreate(BaseModel):
+class ChartCreate(BaseModel):
     name: str = "Untitled Analysis"
     code: str
     category: Optional[str] = "Personal"
@@ -269,7 +258,7 @@ class CustomChartCreate(BaseModel):
     chart_style: Optional[str] = None
 
 
-class CustomChartUpdate(BaseModel):
+class ChartUpdate(BaseModel):
     name: Optional[str] = None
     code: Optional[str] = None
     category: Optional[str] = None
@@ -286,7 +275,7 @@ class PublicToggle(BaseModel):
     public: bool
 
 
-class CustomChartResponse(BaseModel):
+class ChartResponse(BaseModel):
     id: str
     name: Optional[str]
     code: str
@@ -307,7 +296,7 @@ class CustomChartResponse(BaseModel):
         from_attributes = True
 
 
-class CustomChartListItemResponse(BaseModel):
+class ChartListItemResponse(BaseModel):
     id: str
     name: Optional[str]
     category: Optional[str]
@@ -348,10 +337,10 @@ class PDFExportRequest(BaseModel):
 
 
 def _to_custom_chart_list_item(
-    chart: CustomChart,
+    chart: Charts,
     include_code: bool = False,
     include_figure: bool = False,
-) -> CustomChartListItemResponse:
+) -> ChartListItemResponse:
     creator_meta = _creator_metadata(chart)
     payload: Dict[str, Any] = {
         "id": str(chart.id),
@@ -371,7 +360,7 @@ def _to_custom_chart_list_item(
         payload["code"] = chart.code
     if include_figure:
         payload["figure"] = _theme_figure_for_delivery(chart.figure)
-    return CustomChartListItemResponse(**payload)
+    return ChartListItemResponse(**payload)
 
 
 def _load_explicit_export_charts(
@@ -383,8 +372,8 @@ def _load_explicit_export_charts(
     if not requested_ids:
         return []
 
-    query = db.query(*columns) if columns else db.query(CustomChart)
-    charts = query.filter(CustomChart.id.in_(requested_ids)).all()
+    query = db.query(*columns) if columns else db.query(Charts)
+    charts = query.filter(Charts.id.in_(requested_ids)).all()
     chart_map = {str(chart.id): chart for chart in charts}
 
     missing_ids = [chart_id for chart_id in requested_ids if chart_id not in chart_map]
@@ -521,104 +510,34 @@ def _build_custom_chart_global_scope(db_session: Optional[Session]) -> Dict[str,
     }
 
 
-def _run_custom_chart_code_worker(code: str, result_queue: Any) -> None:
-    db_session = None
-    try:
-        from ix.db.conn import conn, ensure_connection
-
-        if not ensure_connection():
-            raise ConnectionError("Failed to establish database connection")
-
-        db_session = conn.SessionLocal()
-        global_scope = _build_custom_chart_global_scope(db_session)
-        code_snippet = (code[:100] + "...") if len(code) > 100 else code
-        logger.info("Executing custom chart code. Snippet: %s", code_snippet)
-
-        exec(code, global_scope)
-        fig_result = global_scope.get("fig")
-
-        if fig_result is None:
-            for key, value in global_scope.items():
-                if isinstance(value, go.Figure):
-                    logger.info("Using alternative figure found in scope: %s", key)
-                    fig_result = value
-                    break
-
-        if fig_result is None:
-            raise ValueError(
-                "The code must define a variable named 'fig' containing the Plotly figure."
-            )
-
-        try:
-            fig_result = _custom_chart_apply_theme(fig_result)
-        except Exception as theme_err:
-            logger.warning("Theme application skipped due to error: %s", theme_err)
-
-        result_queue.put({"ok": True, "figure": get_clean_figure_json(fig_result)})
-    except Exception as exc:
-        logger.error("Error executing custom chart code: %s", exc)
-        logger.error(traceback.format_exc())
-        result_queue.put(
-            {
-                "ok": False,
-                "error_type": type(exc).__name__,
-                "message": str(exc),
-                "traceback": traceback.format_exc(),
-            }
-        )
-    finally:
-        if db_session is not None:
-            db_session.close()
-
-
-def _run_custom_chart_code_isolated(code: str) -> Dict[str, Any]:
-    ctx = mp.get_context("spawn")
-    result_queue = ctx.Queue(maxsize=1)
-    proc = ctx.Process(
-        target=_run_custom_chart_code_worker,
-        args=(code, result_queue),
-        daemon=True,
-    )
-
-    try:
-        proc.start()
-        proc.join(timeout=_CUSTOM_CHART_EXEC_TIMEOUT_SECONDS)
-
-        if proc.is_alive():
-            proc.terminate()
-            proc.join(timeout=5)
-            raise TimeoutError(
-                f"Custom chart execution exceeded {_CUSTOM_CHART_EXEC_TIMEOUT_SECONDS}s timeout"
-            )
-
-        try:
-            payload = result_queue.get(timeout=1)
-        except queue.Empty as exc:
-            raise RuntimeError(
-                f"Custom chart worker exited without returning a result (exitcode={proc.exitcode})"
-            ) from exc
-
-        if not payload.get("ok"):
-            raise RuntimeError(payload.get("message") or "Custom chart execution failed")
-
-        figure = payload.get("figure")
-        if not isinstance(figure, dict):
-            raise RuntimeError("Custom chart worker returned an invalid figure payload")
-        return figure
-    finally:
-        result_queue.close()
-        result_queue.join_thread()
-
-
 def execute_custom_code(code: str, *, validated: bool = False):
     """
-    Executes user-provided Python code.
+    Executes user-provided Python code in-process.
     Expected contract: The code must define a 'fig' variable OR return a Plotly figure.
-    WE ARE INJECTING 'df_plot' into the scope.
     """
     code = code if validated else _prepare_custom_chart_code(code)
     try:
-        return _run_custom_chart_code_isolated(code)
+        from ix.db.conn import conn as _conn, ensure_connection as _ensure_conn
+        _ensure_conn()
+        _db = _conn.SessionLocal()
+        try:
+            global_scope = _build_custom_chart_global_scope(_db)
+            exec(code, global_scope)
+            fig_result = global_scope.get("fig")
+            if fig_result is None:
+                for value in global_scope.values():
+                    if isinstance(value, go.Figure):
+                        fig_result = value
+                        break
+            if fig_result is None:
+                raise ValueError("The code must define a variable named 'fig' containing the Plotly figure.")
+            try:
+                fig_result = _custom_chart_apply_theme(fig_result)
+            except Exception as exc:
+                logger.debug("Theme apply failed during exec: %s", exc)
+            return get_clean_figure_json(fig_result)
+        finally:
+            _db.close()
     except Exception as exc:
         if isinstance(exc, UnsafeCustomChartCodeError):
             logger.warning("Rejected unsafe custom chart code during execution: %s", exc)
@@ -626,20 +545,11 @@ def execute_custom_code(code: str, *, validated: bool = False):
                 status_code=400,
                 detail={
                     "error": "Validation Error",
-                    "message": str(exc),
+                    "message": "Chart code contains forbidden syntax. Please review and try again.",
                 },
             ) from exc
         if isinstance(exc, HTTPException):
             raise
-        if isinstance(exc, TimeoutError):
-            logger.error("Custom chart code timed out")
-            raise HTTPException(
-                status_code=408,
-                detail={
-                    "error": "Timeout Error",
-                    "message": "Chart execution timed out",
-                },
-            ) from exc
         if isinstance(exc, SyntaxError):
             logger.error("Syntax error in custom chart code: %s", exc)
             raise HTTPException(
@@ -704,8 +614,9 @@ def decode_plotly_binary_arrays(figure_data: Any) -> Any:
                     if dims:
                         arr = arr.reshape(tuple(dims))
                 return arr.tolist()
-            except Exception:
+            except Exception as exc:
                 # If decoding fails, keep original payload so rendering can still try fallback paths.
+                logger.debug("ndarray decode failed, keeping original payload: %s", exc)
                 return figure_data
         return {k: decode_plotly_binary_arrays(v) for k, v in figure_data.items()}
     if isinstance(figure_data, list):
@@ -761,11 +672,12 @@ def render_chart_image(
         if isinstance(raw, str):
             try:
                 return pio.from_json(raw, skip_invalid=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("pio.from_json(str) failed, trying json.dumps fallback: %s", exc)
         try:
             return pio.from_json(json.dumps(raw), skip_invalid=True)
-        except Exception:
+        except Exception as exc:
+            logger.debug("pio.from_json(json.dumps) failed, using go.Figure fallback: %s", exc)
             return go.Figure(raw, skip_invalid=True)
 
     def _prepare_pdf_figure(fig: go.Figure) -> go.Figure:
@@ -862,8 +774,8 @@ def render_chart_image(
                         trace.update(
                             text=np.round(np.array(z_data, dtype=float), 1).tolist()
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Heatmap text rounding failed: %s", exc)
                 if not getattr(trace, "texttemplate", None):
                     trace.update(texttemplate="%{text}")
                 trace.update(
@@ -881,8 +793,8 @@ def render_chart_image(
                     trace.update(
                         textfont=dict(size=max(28, int(current_size * 2.5)))
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Trace textfont scaling failed: %s", exc)
 
             # Scale colorbar tick labels if present
             colorbar = getattr(trace, "colorbar", None)
@@ -896,8 +808,8 @@ def render_chart_image(
                             tickfont=dict(size=max(28, int(cb_size * 2.5)))
                         )
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Colorbar tickfont scaling failed: %s", exc)
 
         return fig
 
@@ -910,7 +822,7 @@ def render_chart_image(
 
 
 def generate_pdf_buffer(
-    charts: List[CustomChart],
+    charts: List[Charts],
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
     theme: str = "light",
 ) -> BytesIO:
@@ -1110,8 +1022,32 @@ def preview_custom_chart(
 
     start_time = time.time()
     logger.info(f"Previewing custom chart. Code length: {len(body.code)}")
+
     try:
-        fig = execute_custom_code(body.code)
+        code = body.code if getattr(body, '_validated', False) else _prepare_custom_chart_code(body.code)
+        # Run directly in-process (no multiprocessing) for reliability
+        from ix.db.conn import conn as _conn, ensure_connection as _ensure_conn
+        _ensure_conn()
+        _db = _conn.SessionLocal()
+        try:
+            global_scope = _build_custom_chart_global_scope(_db)
+            exec(code, global_scope)
+            fig_result = global_scope.get("fig")
+            if fig_result is None:
+                for key, value in global_scope.items():
+                    if isinstance(value, go.Figure):
+                        fig_result = value
+                        break
+            if fig_result is None:
+                raise ValueError("The code must define a variable named 'fig' containing the Plotly figure.")
+            try:
+                fig_result = _custom_chart_apply_theme(fig_result)
+            except Exception as exc:
+                logger.debug("Theme apply failed during batch preview: %s", exc)
+            fig = get_clean_figure_json(fig_result)
+        finally:
+            _db.close()
+
         exec_duration = time.time() - start_time
         logger.info(f"Chart execution completed in {exec_duration:.2f}s")
     except Exception as e:
@@ -1154,9 +1090,11 @@ def preview_custom_chart(
         )
 
 
-@router.post("/custom", response_model=CustomChartResponse)
+@router.post("/custom", response_model=ChartResponse)
+@_limiter.limit("10/minute")
 def create_custom_chart(
-    chart_data: CustomChartCreate,
+    request: Request,
+    chart_data: ChartCreate,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -1170,14 +1108,15 @@ def create_custom_chart(
     try:
         fig = execute_custom_code(normalized_code, validated=True)
         figure_json = get_clean_figure_json(fig)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Initial figure render failed for new chart '%s': %s", chart_data.name, exc)
         figure_json = None
 
     # Determine next rank
-    max_rank = db.query(func.max(CustomChart.rank)).scalar() or 0
+    max_rank = db.query(func.max(Charts.rank)).scalar() or 0
     next_rank = max_rank + 1
 
-    new_chart = CustomChart(
+    new_chart = Charts(
         name=chart_data.name,
         code=normalized_code,
         category=chart_data.category,
@@ -1191,13 +1130,18 @@ def create_custom_chart(
     )
 
     db.add(new_chart)
-    db.commit()
-    db.refresh(new_chart)
+    try:
+        db.commit()
+        db.refresh(new_chart)
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed while creating chart '%s'", chart_data.name)
+        raise HTTPException(status_code=500, detail="Failed to save chart")
     logger.info(f"New chart created with ID: {new_chart.id}, Name: '{new_chart.name}'")
     return _to_custom_chart_response(new_chart)
 
 
-@router.get("/custom", response_model=List[CustomChartListItemResponse])
+@router.get("/custom", response_model=List[ChartListItemResponse])
 def list_custom_charts(
     response: Response,
     include_code: bool = False,
@@ -1209,8 +1153,8 @@ def list_custom_charts(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    query = db.query(CustomChart).options(
-        joinedload(CustomChart.creator).load_only(
+    query = db.query(Charts).options(
+        joinedload(Charts.creator).load_only(
             User.id,
             User.email,
             User.first_name,
@@ -1220,8 +1164,8 @@ def list_custom_charts(
     if not (_is_owner(current_user) or _is_admin(current_user)):
         query = query.filter(
             or_(
-                CustomChart.created_by_user_id == _user_id(current_user),
-                CustomChart.public == True,
+                Charts.created_by_user_id == _user_id(current_user),
+                Charts.public == True,
             )
         )
 
@@ -1229,52 +1173,52 @@ def list_custom_charts(
     if not include_code and not include_figure:
         query = query.options(
             load_only(
-                CustomChart.id,
-                CustomChart.name,
-                CustomChart.category,
-                CustomChart.description,
-                CustomChart.tags,
-                CustomChart.public,
-                CustomChart.rank,
-                CustomChart.created_by_user_id,
-                CustomChart.created_at,
-                CustomChart.updated_at,
+                Charts.id,
+                Charts.name,
+                Charts.category,
+                Charts.description,
+                Charts.tags,
+                Charts.public,
+                Charts.rank,
+                Charts.created_by_user_id,
+                Charts.created_at,
+                Charts.updated_at,
             )
         )
     elif include_code and not include_figure:
         query = query.options(
             load_only(
-                CustomChart.id,
-                CustomChart.name,
-                CustomChart.category,
-                CustomChart.description,
-                CustomChart.tags,
-                CustomChart.public,
-                CustomChart.rank,
-                CustomChart.created_by_user_id,
-                CustomChart.created_at,
-                CustomChart.updated_at,
-                CustomChart.code,
+                Charts.id,
+                Charts.name,
+                Charts.category,
+                Charts.description,
+                Charts.tags,
+                Charts.public,
+                Charts.rank,
+                Charts.created_by_user_id,
+                Charts.created_at,
+                Charts.updated_at,
+                Charts.code,
             )
         )
     elif include_figure and not include_code:
         query = query.options(
             load_only(
-                CustomChart.id,
-                CustomChart.name,
-                CustomChart.category,
-                CustomChart.description,
-                CustomChart.tags,
-                CustomChart.public,
-                CustomChart.rank,
-                CustomChart.created_by_user_id,
-                CustomChart.created_at,
-                CustomChart.updated_at,
-                CustomChart.figure,
+                Charts.id,
+                Charts.name,
+                Charts.category,
+                Charts.description,
+                Charts.tags,
+                Charts.public,
+                Charts.rank,
+                Charts.created_by_user_id,
+                Charts.created_at,
+                Charts.updated_at,
+                Charts.figure,
             )
         )
 
-    charts = query.order_by(CustomChart.rank.asc(), CustomChart.created_at.desc()).all()
+    charts = query.order_by(Charts.rank.asc(), Charts.created_at.desc()).all()
     return [
         _to_custom_chart_list_item(
             chart,
@@ -1286,7 +1230,9 @@ def list_custom_charts(
 
 
 @router.put("/custom/reorder")
+@_limiter.limit("10/minute")
 def reorder_custom_charts(
+    request: Request,
     order_data: ReorderRequest,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -1297,34 +1243,48 @@ def reorder_custom_charts(
     ids = [item.id for item in order_data.items]
 
     # Fetch all relevant charts to update
-    charts = db.query(CustomChart).filter(CustomChart.id.in_(ids)).all()
+    charts = db.query(Charts).filter(Charts.id.in_(ids)).all()
     chart_map = {str(c.id): c for c in charts}
 
     for index, chart_id in enumerate(ids):
         if str(chart_id) in chart_map:
             chart_map[str(chart_id)].rank = index
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed while reordering charts")
+        raise HTTPException(status_code=500, detail="Failed to reorder charts")
     return {"message": "Reordered successfully"}
 
 
 @router.patch("/custom/public")
+@_limiter.limit("10/minute")
 def toggle_public(
+    request: Request,
     data: PublicToggle,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
     """Toggle the public flag for one or more charts."""
     _assert_owner_only(current_user)
-    db.query(CustomChart).filter(CustomChart.id.in_(data.ids)).update(
-        {CustomChart.public: data.public}, synchronize_session="fetch"
+    db.query(Charts).filter(Charts.id.in_(data.ids)).update(
+        {Charts.public: data.public}, synchronize_session="fetch"
     )
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed while toggling public flag")
+        raise HTTPException(status_code=500, detail="Failed to update chart visibility")
     return {"message": f"Updated {len(data.ids)} chart(s)"}
 
 
 @router.post("/custom/pdf")
+@_limiter.limit("5/minute")
 def export_custom_charts_pdf(
+    request: Request,
     items: str = Form(default="[]"),
     theme: str = Form(default="light"),
     db: Session = Depends(get_session),
@@ -1361,9 +1321,9 @@ def export_custom_charts_pdf(
         else:
             # Auto-select all charts flagged for export
             ordered_charts = (
-                db.query(CustomChart)
-                .filter(CustomChart.public.is_(True))
-                .order_by(CustomChart.rank.asc())
+                db.query(Charts)
+                .filter(Charts.public.is_(True))
+                .order_by(Charts.rank.asc())
                 .all()
             )
 
@@ -1413,7 +1373,9 @@ def export_custom_charts_pdf(
 
 
 @router.post("/custom/html")
+@_limiter.limit("5/minute")
 def export_custom_charts_html(
+    request: Request,
     items: str = Form(default="[]"),
     theme: str = Form(default="light"),
     db: Session = Depends(get_session),
@@ -1440,14 +1402,14 @@ def export_custom_charts_html(
 
     try:
         chart_columns = (
-            CustomChart.id,
-            CustomChart.name,
-            CustomChart.category,
-            CustomChart.description,
-            CustomChart.public,
-            CustomChart.created_by_user_id,
-            CustomChart.updated_at,
-            CustomChart.figure,
+            Charts.id,
+            Charts.name,
+            Charts.category,
+            Charts.description,
+            Charts.public,
+            Charts.created_by_user_id,
+            Charts.updated_at,
+            Charts.figure,
         )
 
         if requested_ids:
@@ -1460,8 +1422,8 @@ def export_custom_charts_html(
         else:
             ordered_charts = (
                 db.query(*chart_columns)
-                .filter(CustomChart.public.is_(True))
-                .order_by(CustomChart.rank.asc())
+                .filter(Charts.public.is_(True))
+                .order_by(Charts.rank.asc())
                 .all()
             )
 
@@ -1663,7 +1625,7 @@ def export_custom_charts_html(
         raise HTTPException(status_code=500, detail="HTML export failed")
 
 
-@router.get("/custom/{chart_id}", response_model=CustomChartResponse)
+@router.get("/custom/{chart_id}", response_model=ChartResponse)
 def get_custom_chart(
     chart_id: str,
     response: Response,
@@ -1674,7 +1636,7 @@ def get_custom_chart(
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    chart = db.query(CustomChart).filter(CustomChart.id == chart_id).first()
+    chart = db.query(Charts).filter(Charts.id == chart_id).first()
 
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
@@ -1683,14 +1645,16 @@ def get_custom_chart(
     return _to_custom_chart_response(chart)
 
 
-@router.post("/custom/{chart_id}/refresh", response_model=CustomChartResponse)
+@router.post("/custom/{chart_id}/refresh", response_model=ChartResponse)
+@_limiter.limit("10/minute")
 def refresh_custom_chart(
+    request: Request,
     chart_id: str,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
     """Re-execute chart code and persist refreshed figure."""
-    chart = db.query(CustomChart).filter(CustomChart.id == chart_id).first()
+    chart = db.query(Charts).filter(Charts.id == chart_id).first()
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
 
@@ -1722,20 +1686,27 @@ def refresh_custom_chart(
             },
         )
 
-    db.commit()
-    db.refresh(chart)
+    try:
+        db.commit()
+        db.refresh(chart)
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed while refreshing chart %s", chart_id)
+        raise HTTPException(status_code=500, detail="Failed to save refreshed chart")
     return _to_custom_chart_response(chart)
 
 
-@router.put("/custom/{chart_id}", response_model=CustomChartResponse)
+@router.put("/custom/{chart_id}", response_model=ChartResponse)
+@_limiter.limit("10/minute")
 def update_custom_chart(
+    request: Request,
     chart_id: str,
-    update_data: CustomChartUpdate,
+    update_data: ChartUpdate,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
     """Update a custom chart."""
-    chart = db.query(CustomChart).filter(CustomChart.id == chart_id).first()
+    chart = db.query(Charts).filter(Charts.id == chart_id).first()
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
     if not _can_edit_chart(chart, current_user):
@@ -1746,9 +1717,6 @@ def update_custom_chart(
     logger.info(
         f"PUT /custom/{chart_id} - New Code Len: {code_len}, Old Code Len: {old_code_len}"
     )
-
-    if not chart:
-        raise HTTPException(status_code=404, detail="Chart not found")
 
     # Update fields if provided
     if update_data.name is not None:
@@ -1791,8 +1759,13 @@ def update_custom_chart(
                 },
             )
 
-    db.commit()
-    db.refresh(chart)
+    try:
+        db.commit()
+        db.refresh(chart)
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed while updating chart %s", chart_id)
+        raise HTTPException(status_code=500, detail="Failed to save chart update")
     logger.info(
         f"Chart {chart.id} updated successfully. Figure updated: {update_data.code is not None}"
     )
@@ -1800,13 +1773,15 @@ def update_custom_chart(
 
 
 @router.delete("/custom/{chart_id}")
+@_limiter.limit("10/minute")
 def delete_custom_chart(
+    request: Request,
     chart_id: str,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
     """Delete a custom chart."""
-    chart = db.query(CustomChart).filter(CustomChart.id == chart_id).first()
+    chart = db.query(Charts).filter(Charts.id == chart_id).first()
 
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
@@ -1814,5 +1789,10 @@ def delete_custom_chart(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     db.delete(chart)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed while deleting chart %s", chart_id)
+        raise HTTPException(status_code=500, detail="Failed to delete chart")
     return {"message": "Chart deleted successfully"}

@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Search, BarChart3, TrendingUp, Radio,
-  Settings, FileText, ArrowRight, Activity,
+  Settings, ArrowRight, Activity, PenTool,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -24,7 +24,7 @@ const NAV_ITEMS: SearchItem[] = [
   { id: 'dashboard', label: 'Dashboard', description: 'Chart gallery & analytics', icon: <BarChart3 className="w-3.5 h-3.5" />, href: '/', section: 'Pages' },
   { id: 'intel', label: 'Intel', description: 'Research briefings & wartime', icon: <Radio className="w-3.5 h-3.5" />, href: '/intel', section: 'Pages' },
   { id: 'macro', label: 'Macro Outlook', description: 'Regime analysis & liquidity', icon: <TrendingUp className="w-3.5 h-3.5" />, href: '/macro', section: 'Pages' },
-  { id: 'notes', label: 'Reports', description: 'Research notes & publishing', icon: <FileText className="w-3.5 h-3.5" />, href: '/notes', section: 'Pages' },
+  { id: 'whiteboard', label: 'Whiteboard', description: 'Diagrams & visual thinking', icon: <PenTool className="w-3.5 h-3.5" />, href: '/whiteboard', section: 'Pages' },
   { id: 'admin', label: 'System Admin', description: 'Timeseries management', icon: <Settings className="w-3.5 h-3.5" />, href: '/admin/timeseries', section: 'Pages' },
 ];
 
@@ -153,7 +153,7 @@ export default function GlobalSearchPalette({ isOpen, onClose }: GlobalSearchPal
         >
           <motion.div
             ref={focusTrapRef}
-            className="w-full max-w-md bg-card border border-border/40 rounded-xl shadow-2xl shadow-black/30 overflow-hidden flex flex-col"
+            className="w-full max-w-md bg-card border border-border/40 rounded-xl shadow-lg shadow-black/20 overflow-hidden flex flex-col"
             initial={{ y: -8, scale: 0.98, opacity: 0 }}
             animate={{ y: 0, scale: 1, opacity: 1 }}
             exit={{ y: -6, scale: 0.98, opacity: 0 }}
@@ -223,7 +223,7 @@ export default function GlobalSearchPalette({ isOpen, onClose }: GlobalSearchPal
             </div>
 
             {/* Footer */}
-            <div className="px-4 py-2 border-t border-border/15 flex items-center gap-3 text-[9px] text-muted-foreground/25 font-mono">
+            <div className="px-4 py-2 border-t border-border/15 flex items-center gap-3 text-[10px] text-muted-foreground/40 font-mono">
               <span><kbd className="px-1 py-0.5 rounded border border-border/15 text-[8px]">&#8593;&#8595;</kbd> navigate</span>
               <span><kbd className="px-1 py-0.5 rounded border border-border/15 text-[8px]">&#8629;</kbd> go</span>
             </div>

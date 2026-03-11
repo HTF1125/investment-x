@@ -1,10 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  Star, Maximize2, Eye, EyeOff,
-  RefreshCw, Copy, Trash2, Pencil,
-} from 'lucide-react';
+import { Star, EyeOff, Copy, Check } from 'lucide-react';
 import Chart from '../Chart';
 import type { ChartMeta } from '@/types/chart';
 
@@ -27,15 +24,8 @@ export interface ChartTileProps {
 
 const ChartTile = React.memo(function ChartTile({
   chart,
-  canEdit,
-  canRefresh,
-  canDelete,
   canManageVisibility,
-  onToggleVisibility,
-  onRefresh,
   onCopy,
-  onDelete,
-  isRefreshing,
   copySignal,
   onOpenSpotlight,
   isFavorite,
@@ -43,8 +33,8 @@ const ChartTile = React.memo(function ChartTile({
 }: ChartTileProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [isInView, setIsInView] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  // Viewport-based lazy rendering
   useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
@@ -57,57 +47,31 @@ const ChartTile = React.memo(function ChartTile({
     return () => observer.disconnect();
   }, []);
 
-  const handleExpand = useCallback(() => {
+  const handleClick = useCallback(() => {
     onOpenSpotlight?.(chart.id);
   }, [chart.id, onOpenSpotlight]);
+
+  const handleCopy = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onCopy?.(chart.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [chart.id, onCopy]);
 
   return (
     <div
       ref={cardRef}
-      className="group relative rounded-[var(--radius)] border border-border/30 bg-card overflow-hidden transition-all duration-200 hover:border-primary/25 hover:shadow-lg hover:shadow-black/[0.06] dark:hover:shadow-black/25"
+      role="button"
+      tabIndex={0}
+      aria-label={`Open chart: ${chart.name || 'Untitled'}`}
+      onClick={handleClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick(); } }}
+      className="group relative panel-card overflow-hidden cursor-pointer transition-all duration-200 hover:border-primary/20 hover:shadow-md hover:shadow-black/[0.04] dark:hover:shadow-black/20 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background"
     >
-      {/* ── Header ── */}
-      <div className="flex items-center gap-2 px-3 py-1.5 min-h-[32px]">
-        <span className="text-[11px] font-medium text-foreground/80 truncate flex-1 leading-tight">
-          {chart.name || 'Untitled'}
-        </span>
-
-        {chart.category && (
-          <span className="text-[9px] font-mono text-muted-foreground/40 bg-primary/[0.04] px-1.5 py-0.5 rounded-[calc(var(--radius)-2px)] shrink-0 hidden sm:inline-block">
-            {chart.category}
-          </span>
-        )}
-
-        {/* Favorite — always visible */}
-        {onToggleFavorite && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggleFavorite(chart.id); }}
-            className={`shrink-0 p-0.5 rounded transition-colors ${
-              isFavorite
-                ? 'text-amber-400 hover:text-amber-300'
-                : 'text-transparent group-hover:text-muted-foreground/25 hover:!text-muted-foreground/60'
-            }`}
-            title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-          >
-            <Star className={`w-3 h-3 ${isFavorite ? 'fill-current' : ''}`} />
-          </button>
-        )}
-
-        {/* Private indicator */}
-        {canManageVisibility && chart.public === false && (
-          <span className="shrink-0 text-muted-foreground/30" title="Private">
-            <EyeOff className="w-3 h-3" />
-          </span>
-        )}
-      </div>
-
-      {/* ── Chart area ── */}
-      <div
-        className="relative h-[300px] cursor-pointer bg-background border-t border-border/15"
-        onClick={handleExpand}
-      >
+      {/* Chart area — full bleed, no interaction */}
+      <div className="relative h-[190px] bg-background/50">
         {isInView ? (
-          <div className="w-full h-full p-1.5">
+          <div className="w-full h-full px-1 pt-1 pointer-events-none">
             <Chart
               id={chart.id}
               initialFigure={chart.figure}
@@ -117,86 +81,63 @@ const ChartTile = React.memo(function ChartTile({
           </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <div className="w-4 h-4 border-2 border-border/30 border-t-primary/40 rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-border/20 border-t-primary/30 rounded-full animate-spin" />
           </div>
         )}
+        {/* Click overlay — ensures click always reaches the card */}
+        <div className="absolute inset-0 z-10" />
+      </div>
 
-        {/* ── Hover action bar ── */}
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 pb-2 pt-6 bg-gradient-to-t from-background/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto">
-          <TileAction
-            icon={<Maximize2 className="w-3.5 h-3.5" />}
-            title="Expand"
-            onClick={(e) => { e.stopPropagation(); handleExpand(); }}
-          />
-          {canEdit && (
-            <TileAction
-              icon={<Pencil className="w-3.5 h-3.5" />}
-              title="Edit"
-              onClick={(e) => { e.stopPropagation(); onOpenSpotlight?.(chart.id); }}
-            />
-          )}
-          {canRefresh && (
-            <TileAction
-              icon={<RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />}
-              title="Refresh"
-              onClick={(e) => { e.stopPropagation(); onRefresh?.(chart.id); }}
-              disabled={isRefreshing}
-            />
-          )}
-          <TileAction
-            icon={<Copy className="w-3.5 h-3.5" />}
-            title="Copy as PNG"
-            onClick={(e) => { e.stopPropagation(); onCopy?.(chart.id); }}
-          />
-          {canManageVisibility && (
-            <TileAction
-              icon={chart.public ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              title={chart.public ? 'Make Private' : 'Make Public'}
-              onClick={(e) => { e.stopPropagation(); onToggleVisibility(chart.id, !chart.public); }}
-            />
-          )}
-          {canDelete && (
-            <TileAction
-              icon={<Trash2 className="w-3.5 h-3.5" />}
-              title="Delete"
-              onClick={(e) => { e.stopPropagation(); onDelete?.(chart.id); }}
-              variant="danger"
-            />
+      {/* Footer — name + actions */}
+      <div className="flex items-center gap-2 px-3 py-2 border-t border-border/15 min-h-[36px]">
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-medium text-foreground/80 truncate leading-tight">
+            {chart.name || 'Untitled'}
+          </p>
+          {chart.category && (
+            <p className="text-[9px] font-mono text-muted-foreground/30 mt-0.5 truncate">
+              {chart.category}
+            </p>
           )}
         </div>
+
+        {/* Private indicator */}
+        {canManageVisibility && chart.public === false && (
+          <span className="shrink-0 text-muted-foreground/20" title="Private">
+            <EyeOff className="w-3 h-3" />
+          </span>
+        )}
+
+        {/* Copy */}
+        <button
+          onClick={handleCopy}
+          className="shrink-0 p-1 rounded-[calc(var(--radius)-2px)] opacity-0 group-hover:opacity-100 text-muted-foreground/30 hover:text-foreground hover:bg-primary/[0.06] transition-all"
+          title="Copy as PNG"
+        >
+          {copied ? (
+            <Check className="w-3 h-3 text-emerald-400" />
+          ) : (
+            <Copy className="w-3 h-3" />
+          )}
+        </button>
+
+        {/* Favorite */}
+        {onToggleFavorite && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(chart.id); }}
+            className={`shrink-0 p-1 rounded-[calc(var(--radius)-2px)] transition-all ${
+              isFavorite
+                ? 'text-amber-400 hover:text-amber-300 opacity-100'
+                : 'opacity-0 group-hover:opacity-100 text-muted-foreground/20 hover:text-amber-400 hover:bg-amber-500/[0.06]'
+            }`}
+            title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          >
+            <Star className={`w-3 h-3 ${isFavorite ? 'fill-current' : ''}`} />
+          </button>
+        )}
       </div>
     </div>
   );
 });
-
-/* ── Hover action button ── */
-function TileAction({
-  icon,
-  title,
-  onClick,
-  disabled,
-  variant,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  onClick: (e: React.MouseEvent) => void;
-  disabled?: boolean;
-  variant?: 'danger';
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={`w-7 h-7 rounded-[var(--radius)] backdrop-blur-sm flex items-center justify-center transition-colors disabled:opacity-40 ${
-        variant === 'danger'
-          ? 'bg-background/90 border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/40'
-          : 'bg-background/90 border border-border/40 text-muted-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/25'
-      }`}
-    >
-      {icon}
-    </button>
-  );
-}
 
 export default ChartTile;
