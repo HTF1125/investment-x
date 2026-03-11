@@ -279,13 +279,19 @@ function WhiteboardEditorView({ whiteboardId }: { whiteboardId: string }) {
           mimeType: 'image/png',
         });
         if (blob && blob.size > 0) {
-          const buffer = await blob.arrayBuffer();
-          thumbnailBase64 = btoa(
-            new Uint8Array(buffer).reduce(
-              (s, b) => s + String.fromCharCode(b),
-              '',
-            ),
-          );
+          // Use FileReader for reliable base64 conversion (btoa+reduce is fragile)
+          thumbnailBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const dataUrl = reader.result as string;
+              // Strip "data:image/png;base64," prefix
+              const b64 = dataUrl.split(',')[1];
+              if (b64) resolve(b64);
+              else reject(new Error('Empty base64'));
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
         }
       }
     } catch (e) {
