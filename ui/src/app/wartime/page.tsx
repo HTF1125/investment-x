@@ -739,18 +739,19 @@ function WartimePlot({
   const [isRendering, setIsRendering] = useState(true);
 
   useEffect(() => {
+    const node = plotRef.current;
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
     let plotlyModule: any = null;
 
     const renderPlot = async () => {
-      if (!plotRef.current) return;
+      if (!node) return;
       setIsRendering(true);
       setPlotError(null);
 
       try {
         plotlyModule = (await import('plotly.js-dist-min')).default;
-        if (cancelled || !plotRef.current) return;
+        if (cancelled || !node) return;
 
         const data = clonePlotValue(figure.data ?? []);
         const layout = stripUndefinedDeep(clonePlotValue(figure.layout ?? {}));
@@ -758,26 +759,26 @@ function WartimePlot({
         layout.uirevision = `${plotId}-${theme}-${lang}`;
 
         try {
-          plotlyModule.purge(plotRef.current);
+          plotlyModule.purge(node);
         } catch {}
 
         await plotlyModule.react(
-          plotRef.current,
+          node,
           stripUndefinedDeep(data),
           layout,
           { responsive: true, displayModeBar: false, displaylogo: false },
         );
 
-        if (cancelled || !plotRef.current) return;
+        if (cancelled || !node.isConnected) return;
 
         if (typeof ResizeObserver !== 'undefined') {
           resizeObserver = new ResizeObserver(() => {
-            if (!plotRef.current || !plotRef.current.isConnected) return;
+            if (!node.isConnected) return;
             try {
-              plotlyModule.Plots.resize(plotRef.current);
+              plotlyModule.Plots.resize(node);
             } catch {}
           });
-          resizeObserver.observe(plotRef.current);
+          resizeObserver.observe(node);
         }
       } catch (error) {
         if (!cancelled) {
@@ -795,9 +796,9 @@ function WartimePlot({
     return () => {
       cancelled = true;
       resizeObserver?.disconnect();
-      if (plotRef.current && plotlyModule) {
+      if (node && plotlyModule) {
         try {
-          plotlyModule.purge(plotRef.current);
+          plotlyModule.purge(node);
         } catch {}
       }
     };
@@ -1048,43 +1049,43 @@ function WartimePageContent() {
   const spxLineChart = useMemo(() => {
     if (!data) return null;
     return buildLineChart(data.spx.rebased, t.spxChartTitle, t.spxYAxis, t.spxXAxis, theme, lang);
-  }, [data, theme, lang]);
+  }, [data, theme, lang, t]);
 
   const goldLineChart = useMemo(() => {
     if (!data) return null;
     return buildLineChart(data.gold.rebased, t.goldChartTitle, t.goldYAxis, t.spxXAxis, theme, lang);
-  }, [data, theme, lang]);
+  }, [data, theme, lang, t]);
 
   const oilLineChart = useMemo(() => {
     if (!data) return null;
     return buildLineChart(data.oil.rebased, t.oilChartTitle, t.oilYAxis, t.spxXAxis, theme, lang);
-  }, [data, theme, lang]);
+  }, [data, theme, lang, t]);
 
   const krwLineChart = useMemo(() => {
     if (!data) return null;
     return buildLineChart(data.krw.rebased, t.krwChartTitle, t.krwYAxis, t.spxXAxis, theme, lang);
-  }, [data, theme, lang]);
+  }, [data, theme, lang, t]);
 
   const mddBarChart = useMemo(() => {
     if (!data) return null;
     const hist = data.spx.stats.filter(r => !r.conflict.includes('Current'));
     return buildBarChart(hist.map(r => r.conflict), hist.map(r => r.mdd * 100),
       hist.map(r => r.mdd < -0.15 ? '#EF4444' : '#F97316'), t.barMddHover, 260, theme, lang);
-  }, [data, theme, lang]);
+  }, [data, theme, lang, t]);
 
   const bottomBarChart = useMemo(() => {
     if (!data) return null;
     const hist = data.spx.stats.filter(r => !r.conflict.includes('Current'));
     return buildBarChart(hist.map(r => r.conflict), hist.map(r => r.days_to_bottom),
       hist.map(() => '#6366F1'), t.barBottomHover, 260, theme, lang);
-  }, [data, theme, lang]);
+  }, [data, theme, lang, t]);
 
   const recoveryBarChart = useMemo(() => {
     if (!data) return null;
     const hist = data.spx.stats.filter(r => !r.conflict.includes('Current'));
     return buildBarChart(hist.map(r => r.conflict), hist.map(r => r.recovery_days ?? 200),
       hist.map(r => r.recovery_days === null ? '#9CA3AF' : '#10B981'), t.barRecoveryHover, 260, theme, lang);
-  }, [data, theme, lang]);
+  }, [data, theme, lang, t]);
 
   const distributionBandChart = useMemo(() => {
     if (!data) return null;
@@ -1096,7 +1097,7 @@ function WartimePageContent() {
       theme,
       lang,
     );
-  }, [data, theme, lang]);
+  }, [data, theme, lang, t]);
 
   const currentCompareRows = useMemo(() => {
     if (!data) return [];

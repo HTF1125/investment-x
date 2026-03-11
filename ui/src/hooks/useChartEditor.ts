@@ -179,7 +179,7 @@ export function useChartEditor({ mode, initialChartId }: UseChartEditorOptions) 
     }
     const savedCode = localStorage.getItem('studio-show-code');
     if (savedCode !== null) setShowCode(savedCode !== 'false');
-  }, []);
+  }, [mode]);
 
   const togglePreview = useCallback(() => {
     const next = !showPreview;

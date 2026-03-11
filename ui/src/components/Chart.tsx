@@ -176,7 +176,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
     ...figure.layout,
     autosize: true,
     dragmode: interactive ? 'zoom' : false,
-  } : {}, [figure?.layout, interactive]);
+  } : {}, [figure, interactive]);
 
   const plotConfig = React.useMemo(() => ({
     responsive: true,

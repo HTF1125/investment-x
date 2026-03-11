@@ -72,7 +72,7 @@ export default function OverviewTab({ snapshot, timeseries, tsLoading, backtest,
       layout: { yaxis: { ...YAXIS_BASE, title: 'Cum. Return (%)', ticksuffix: '%', titlefont: { size: 10 } }, xaxis: XAXIS_DATE, hovermode: 'x unified', legend: { orientation: 'h', y: 1.08, font: { size: 9 } }, margin: CHART_M },
     };
     return themed(fig, theme);
-  }, [backtest, target, theme]);
+  }, [backtest, theme]);
 
   return (
     <div className="space-y-3">

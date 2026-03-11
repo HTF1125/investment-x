@@ -166,6 +166,7 @@ function WhiteboardGallery() {
             {/* Thumbnail */}
             <div className="aspect-[16/10] bg-background/50 flex items-center justify-center overflow-hidden">
               {board.thumbnail ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={`data:image/png;base64,${board.thumbnail}`}
                   alt={board.title}

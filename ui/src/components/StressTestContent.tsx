@@ -71,12 +71,6 @@ function RecoveryChart({ data, selectedEvents, theme }: {
   const ref = useRef<HTMLDivElement>(null);
   const plotlyRef = useRef<any>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    import('plotly.js-dist-min').then(mod => { if (!cancelled) plotlyRef.current = mod.default; render(); });
-    return () => { cancelled = true; };
-  }, []);
-
   const render = useCallback(() => {
     if (!plotlyRef.current || !ref.current) return;
 
@@ -123,6 +117,12 @@ function RecoveryChart({ data, selectedEvents, theme }: {
     plotlyRef.current.react(ref.current, fig.data, fig.layout, { responsive: true, displayModeBar: false });
   }, [selectedEvents, theme, data]);
 
+  useEffect(() => {
+    let cancelled = false;
+    import('plotly.js-dist-min').then(mod => { if (!cancelled) { plotlyRef.current = mod.default; render(); } });
+    return () => { cancelled = true; };
+  }, [render]);
+
   useEffect(() => { render(); }, [render]);
   return <div ref={ref} className="w-full h-[380px]" />;
 }
@@ -137,12 +137,6 @@ function ReturnHeatmap({ events, horizons, theme, title }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const plotlyRef = useRef<any>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    import('plotly.js-dist-min').then(mod => { if (!cancelled) plotlyRef.current = mod.default; render(); });
-    return () => { cancelled = true; };
-  }, []);
 
   const render = useCallback(() => {
     if (!plotlyRef.current || !ref.current) return;
@@ -170,6 +164,12 @@ function ReturnHeatmap({ events, horizons, theme, title }: {
     applyChartTheme(fig, theme as 'light' | 'dark', { transparentBackground: true });
     plotlyRef.current.react(ref.current, fig.data, fig.layout, { responsive: true, displayModeBar: false });
   }, [events, horizons, theme, title]);
+
+  useEffect(() => {
+    let cancelled = false;
+    import('plotly.js-dist-min').then(mod => { if (!cancelled) { plotlyRef.current = mod.default; render(); } });
+    return () => { cancelled = true; };
+  }, [render]);
 
   useEffect(() => { render(); }, [render]);
   return <div ref={ref} className="w-full" />;

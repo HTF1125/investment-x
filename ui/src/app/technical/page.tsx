@@ -441,7 +441,7 @@ export default function TechnicalPage() {
     debouncedState.ticker, debouncedState.freq, debouncedState.showSqz, debouncedState.showST,
     debouncedState.showElliott, debouncedState.showTD, debouncedState.showMACD, debouncedState.showRSI,
     debouncedState.showBB, debouncedState.showVWAP, debouncedState.showStoch, debouncedState.showATR,
-    debouncedState.maConfigs
+    debouncedState.maConfigs, prefMutation
   ]);
 
   // ── Queries (Powered by debouncedState) ───────────────────────────────────
