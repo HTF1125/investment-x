@@ -253,7 +253,11 @@ export function applyChartTheme(
 ): PlotlyFigure | null | undefined {
   if (!figure) return figure;
 
-  const cleaned = structuredClone(figure);
+  // Only deep-clone layout (which gets mutated). Data arrays are read-only here.
+  const cleaned = {
+    ...figure,
+    layout: structuredClone(figure.layout || {}),
+  };
   const tokens = THEME_TOKENS[theme];
   const transparent = options.transparentBackground ?? false;
   const data = Array.isArray(cleaned.data) ? cleaned.data : [];

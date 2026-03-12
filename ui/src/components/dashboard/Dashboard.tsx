@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   RefreshCw, FileText, FileCode, Plus, Search,
@@ -94,9 +94,13 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
   const router = useRouter();
   const perms = useDashboardPermissions();
   const charts = useDashboardCharts(chartsByCategory);
+  const onVisibilityToggled = useCallback(
+    (id: string, status: boolean) => charts.updateChartOptimistic(id, { public: status }),
+    [charts.updateChartOptimistic],
+  );
   const actions = useDashboardActions({
     onChartDeleted: charts.removeChart,
-    onVisibilityToggled: (id, status) => charts.updateChartOptimistic(id, { public: status }),
+    onVisibilityToggled,
     onOrderSaved: charts.resetOrder,
   });
 
@@ -104,19 +108,23 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
     router.push(`/?chartId=${chartId}`);
   }, [router]);
 
+  // Use ref for allCharts to avoid recreating handlers on every chart list change
+  const allChartsRef = useRef(charts.allCharts);
+  allChartsRef.current = charts.allCharts;
+
   // Delete handler
   const handleDeleteChart = useCallback((id: string) => {
-    const target = charts.allCharts.find(c => c.id === id);
+    const target = allChartsRef.current.find(c => c.id === id);
     if (!target || !perms.canDeleteChart(target)) return;
     actions.setDeleteTarget({ id, name: target.name || id });
-  }, [charts.allCharts, perms, actions]);
+  }, [perms, actions]);
 
   // Refresh handler
   const handleRefreshChart = useCallback((id: string) => {
-    const target = charts.allCharts.find(c => c.id === id);
+    const target = allChartsRef.current.find(c => c.id === id);
     if (!target || !perms.canRefreshChart(target)) return;
     actions.refreshChart(id);
-  }, [charts.allCharts, perms, actions]);
+  }, [perms, actions]);
 
   // Visibility handler
   const handleToggleVisibility = useCallback((id: string, status: boolean) => {
@@ -248,9 +256,9 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
                       <motion.div
                         key={chart.id}
                         id={`chart-anchor-${chart.id}`}
-                        initial={{ opacity: 0, y: 8 }}
+                        initial={ci < 12 ? { opacity: 0, y: 8 } : false}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25, delay: Math.min(ci * 0.03, 0.3) }}
+                        transition={ci < 12 ? { duration: 0.2, delay: ci * 0.025 } : { duration: 0 }}
                         style={{
                           contentVisibility: 'auto',
                           containIntrinsicSize: '0 248px',

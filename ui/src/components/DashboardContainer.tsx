@@ -54,7 +54,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
 
     const firstIds = Array.from(uniqueCharts.values())
       .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
-      .slice(0, 9)
+      .slice(0, 20)
       .map(chart => String(chart.id));
 
     if (firstIds.length === 0) return;

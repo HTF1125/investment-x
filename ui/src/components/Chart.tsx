@@ -126,20 +126,23 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
   React.useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
+    let resizeTimer: ReturnType<typeof setTimeout>;
     const observer = new ResizeObserver(() => {
-      const gd = graphDivRef.current;
-      // Plotly crashes if `resize()` is called on an unmounted or hidden container
-      if (!gd || !gd.isConnected || gd.clientHeight === 0 || gd.clientWidth === 0) return;
-      import('plotly.js-dist-min')
-        .then(({ default: Plotly }) => {
-          if (gd && gd.isConnected && gd.clientHeight > 0 && gd.clientWidth > 0) {
-            (Plotly as unknown as { Plots: { resize: (gd: HTMLElement) => void } }).Plots.resize(gd);
-          }
-        })
-        .catch((err) => console.warn('[Chart] resize failed:', err));
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const gd = graphDivRef.current;
+        if (!gd || !gd.isConnected || gd.clientHeight === 0 || gd.clientWidth === 0) return;
+        import('plotly.js-dist-min')
+          .then(({ default: Plotly }) => {
+            if (gd && gd.isConnected && gd.clientHeight > 0 && gd.clientWidth > 0) {
+              (Plotly as unknown as { Plots: { resize: (gd: HTMLElement) => void } }).Plots.resize(gd);
+            }
+          })
+          .catch((err) => console.warn('[Chart] resize failed:', err));
+      }, 150);
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => { clearTimeout(resizeTimer); observer.disconnect(); };
   }, []);
 
   const handleCopy = React.useCallback(async () => {
@@ -229,14 +232,14 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
         ) : (
           <motion.div
             key="chart"
-            initial={{ opacity: 0, scale: 0.99, filter: 'blur(4px)' }}
-            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
             className="w-full h-full"
           >
             {!plotRenderError ? (
               <Plot
-                key={`${id}-${theme}-${plotRetryNonce}`}
+                key={`${id}-${plotRetryNonce}`}
                 data={figure.data}
                 layout={plotLayout}
                 config={plotConfig}
