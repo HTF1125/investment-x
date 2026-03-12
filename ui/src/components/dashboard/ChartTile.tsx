@@ -69,7 +69,7 @@ const ChartTile = React.memo(function ChartTile({
       className="group relative panel-card overflow-hidden cursor-pointer transition-all duration-200 hover:border-primary/20 hover:shadow-md hover:shadow-black/[0.04] dark:hover:shadow-black/20 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background"
     >
       {/* Chart area — full bleed, no interaction */}
-      <div className="relative h-[190px] bg-background/50">
+      <div className="relative h-[260px] bg-background/50">
         {isInView ? (
           <div className="w-full h-full px-1 pt-1 pointer-events-none">
             <Chart

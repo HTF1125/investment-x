@@ -261,7 +261,7 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
                         transition={ci < 12 ? { duration: 0.2, delay: ci * 0.025 } : { duration: 0 }}
                         style={{
                           contentVisibility: 'auto',
-                          containIntrinsicSize: '0 248px',
+                          containIntrinsicSize: '0 318px',
                         }}
                       >
                         <ChartErrorBoundary>
