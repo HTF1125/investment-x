@@ -5,6 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from ix.misc import Settings, get_logger
 import time
 import os
+import threading
 from typing import Optional
 from contextlib import contextmanager
 from urllib.parse import urlparse, urlunparse
@@ -26,11 +27,20 @@ class Connection:
         self.SessionLocal = None
         self.Session = None  # scoped_session
         self._is_connected = False
+        self._lock = threading.Lock()
 
     def connect(self, max_retries: int = 1, retry_delay: float = 1.0) -> bool:
         if self.is_connected():
             return True
 
+        with self._lock:
+            # Re-check inside lock to avoid duplicate initialization
+            if self.is_connected():
+                return True
+
+            return self._connect_locked(max_retries, retry_delay)
+
+    def _connect_locked(self, max_retries: int, retry_delay: float) -> bool:
         for attempt in range(max_retries):
             try:
                 # Reduced logging for repetitive attempts

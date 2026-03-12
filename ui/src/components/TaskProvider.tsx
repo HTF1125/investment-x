@@ -108,6 +108,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // Close any existing EventSource to prevent zombie connections
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+
       let receivedMessage = false;
       eventSource = new EventSource("/api/task/stream");
 

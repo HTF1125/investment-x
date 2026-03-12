@@ -538,6 +538,7 @@ def execute_custom_code(code: str, *, validated: bool = False):
             return get_clean_figure_json(fig_result)
         finally:
             _db.close()
+            _conn.Session.remove()
     except Exception as exc:
         if isinstance(exc, UnsafeCustomChartCodeError):
             logger.warning("Rejected unsafe custom chart code during execution: %s", exc)
@@ -884,6 +885,13 @@ def generate_pdf_buffer(
         except concurrent.futures.TimeoutError:
             logger.error("PDF generation timed out waiting for chart renders.")
 
+    # 2b. Validate results — substitute placeholder for failed renders
+    for i, img_data in enumerate(results):
+        if img_data is None:
+            chart_name = valid_charts[i].name or f"chart-{i}"
+            logger.warning(f"PDF: chart '{chart_name}' rendered as None, substituting placeholder")
+            results[i] = b""  # empty bytes — will be skipped during PDF assembly
+
     # 3. Construct PDF using xhtml2pdf
     is_dark = theme.lower() == "dark"
     body_bg = "#0f172a" if is_dark else "#ffffff"
@@ -1047,6 +1055,7 @@ def preview_custom_chart(
             fig = get_clean_figure_json(fig_result)
         finally:
             _db.close()
+            _conn.Session.remove()
 
         exec_duration = time.time() - start_time
         logger.info(f"Chart execution completed in {exec_duration:.2f}s")

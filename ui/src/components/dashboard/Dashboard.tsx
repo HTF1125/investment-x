@@ -12,6 +12,7 @@ import { useDashboardCharts } from '@/hooks/useDashboardCharts';
 import { useDashboardActions } from '@/hooks/useDashboardActions';
 import { useDashboardPermissions } from '@/hooks/useDashboardPermissions';
 import ChartTile from './ChartTile';
+import { ChartErrorBoundary } from '@/components/ChartErrorBoundary';
 import type { ChartMeta } from '@/types/chart';
 
 // ── Delete Confirmation Modal ──
@@ -255,22 +256,24 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
                           containIntrinsicSize: '0 248px',
                         }}
                       >
-                        <ChartTile
-                          chart={chart}
-                          canEdit={perms.canEditChart(chart)}
-                          canRefresh={perms.canRefreshChart(chart)}
-                          canDelete={perms.canDeleteChart(chart)}
-                          canManageVisibility={perms.canManageVisibility}
-                          onToggleVisibility={handleToggleVisibility}
-                          onRefresh={handleRefreshChart}
-                          onCopy={actions.copyChart}
-                          onDelete={handleDeleteChart}
-                          isRefreshing={!!actions.refreshingChartIds[chart.id]}
-                          copySignal={actions.copySignals[chart.id] || 0}
-                          onOpenSpotlight={openChart}
-                          isFavorite={charts.favorites.has(chart.id)}
-                          onToggleFavorite={charts.toggleFavorite}
-                        />
+                        <ChartErrorBoundary>
+                          <ChartTile
+                            chart={chart}
+                            canEdit={perms.canEditChart(chart)}
+                            canRefresh={perms.canRefreshChart(chart)}
+                            canDelete={perms.canDeleteChart(chart)}
+                            canManageVisibility={perms.canManageVisibility}
+                            onToggleVisibility={handleToggleVisibility}
+                            onRefresh={handleRefreshChart}
+                            onCopy={actions.copyChart}
+                            onDelete={handleDeleteChart}
+                            isRefreshing={!!actions.refreshingChartIds[chart.id]}
+                            copySignal={actions.copySignals[chart.id] || 0}
+                            onOpenSpotlight={openChart}
+                            isFavorite={charts.favorites.has(chart.id)}
+                            onToggleFavorite={charts.toggleFavorite}
+                          />
+                        </ChartErrorBoundary>
                       </motion.div>
                     ))}
                   </div>
