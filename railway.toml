@@ -1,0 +1,4 @@
+# Per-service settings (dockerfilePath, healthcheck, cron) are configured
+# via Railway dashboard/API to avoid conflicts between services.
+# - investment-x-web: Dockerfile.combined, healthcheck /api/health
+# - fetch-data-cron:  Dockerfile.fetchdata, cron 0 * * * *, no healthcheck
