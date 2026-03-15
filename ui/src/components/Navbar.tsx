@@ -38,9 +38,11 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
 
 function LiveBadge() {
   const [time, setTime] = useState('');
+  const [tz, setTz] = useState('');
   useEffect(() => {
     const fmt = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     setTime(fmt());
+    setTz(Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop()?.replace(/_/g, ' ') ?? '');
     const id = setInterval(() => setTime(fmt()), 30000);
     return () => clearInterval(id);
   }, []);
@@ -48,11 +50,11 @@ function LiveBadge() {
   return (
     <div className="hidden xl:flex items-center gap-2.5 text-[10px]" role="status" aria-label="Live data active">
       <div className="flex items-center gap-1.5">
-        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
-        <span className="text-emerald-500 font-semibold uppercase tracking-wider">Live</span>
+        <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" aria-hidden="true" />
+        <span className="text-success font-semibold uppercase tracking-wider">Live</span>
       </div>
       <span className="w-px h-3 bg-border/40" />
-      <span className="text-muted-foreground/50 tracking-wide font-mono text-[9px]">KST</span>
+      {tz && <span className="text-muted-foreground/50 tracking-wide font-mono text-[9px]">{tz}</span>}
       {time && (
         <span className="text-foreground font-mono text-[10px] tabular-nums">{time}</span>
       )}
@@ -148,7 +150,7 @@ function UserMenu() {
             <div className="p-1">
               <button
                 onClick={() => { setOpen(false); logout(); }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[calc(var(--radius)-2px)] text-[11px] font-medium text-muted-foreground hover:text-rose-400 hover:bg-rose-500/[0.06] transition-all duration-150"
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[calc(var(--radius)-2px)] text-[11px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/[0.06] transition-all duration-150"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 Sign out
@@ -215,6 +217,7 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
         {/* Desktop nav links */}
         <div className="hidden md:flex items-center gap-0.5 shrink-0">
           <NavLink href="/">Dashboard</NavLink>
+          <NavLink href="/chartpack">ChartPack</NavLink>
           <NavLink href="/intel">Intel</NavLink>
           <NavLink href="/macro">Macro</NavLink>
           <NavLink href="/whiteboard">Whiteboard</NavLink>
@@ -290,6 +293,7 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
             className="md:hidden absolute top-[48px] left-0 right-0 bg-card border-b border-border/25 px-4 py-3 flex flex-col gap-0.5 shadow-lg z-[90]"
           >
             <MobileNavLink href="/">Dashboard</MobileNavLink>
+            <MobileNavLink href="/chartpack">ChartPack</MobileNavLink>
             <MobileNavLink href="/intel">Intel</MobileNavLink>
             <MobileNavLink href="/macro">Macro</MobileNavLink>
             <MobileNavLink href="/whiteboard">Whiteboard</MobileNavLink>
@@ -300,7 +304,7 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
               {isAuthenticated ? (
                 <button
                   onClick={logout}
-                  className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius)] text-[11.5px] font-medium text-muted-foreground hover:text-rose-400 hover:bg-rose-500/[0.06] transition-all w-full"
+                  className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius)] text-[11.5px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/[0.06] transition-all w-full"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign out

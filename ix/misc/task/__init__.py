@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 def _update_source_data(source_name, fetcher, progress_cb=None, start_index: int = 0, total_count: int | None = None):
     """Generic update function for a given data source."""
-    logger.info(f"Starting {source_name} data update process.")
+    logger.info("Starting %s data update process.", source_name)
 
     count_total = 0
     count_skipped_no_ticker = 0
@@ -44,13 +44,13 @@ def _update_source_data(source_name, fetcher, progress_cb=None, start_index: int
                 total = total_count if total_count is not None else len(ts_data_list)
                 progress_cb(current, total, ts_code)
             if ts_source_code is None:
-                logger.debug(f"Skipping timeseries {ts_code} (no source_ticker).")
+                logger.debug("Skipping timeseries %s (no source_ticker).", ts_code)
                 count_skipped_no_ticker += 1
                 continue
 
             ticker, field = str(ts_source_code).split(":", maxsplit=1)
 
-            logger.debug(f"Fetching data for {ticker} (field: {field}).")
+            logger.debug("Fetching data for %s (field: %s).", ticker, field)
             try:
                 # Prefer positional ticker to support fetchers with different kwarg names
                 # (e.g. get_fred_data(ticker=...)).
@@ -61,11 +61,11 @@ def _update_source_data(source_name, fetcher, progress_cb=None, start_index: int
                     fetched = fetcher(code=ticker)
                 _data = fetched[field]
             except Exception as e:
-                logger.warning(f"Error fetching data for {ts_source_code}: {e}")
+                logger.warning("Error fetching data for %s: %s", ts_source_code, e)
                 continue
 
             if _data.empty:
-                logger.debug(f"No data returned for {ts_source_code}. Skipping.")
+                logger.debug("No data returned for %s. Skipping.", ts_source_code)
                 count_skipped_empty_data += 1
                 continue
 
@@ -74,15 +74,12 @@ def _update_source_data(source_name, fetcher, progress_cb=None, start_index: int
             )
             if ts_reloaded is not None:
                 ts_reloaded.data = _data
-                logger.info(f"Updated data for {ts_code} from {ts_source_code}.")
+                logger.info("Updated data for %s from %s.", ts_code, ts_source_code)
                 count_updated += 1
 
     logger.info(
-        f"{source_name} data update complete: "
-        f"{count_total} total, "
-        f"{count_updated} updated, "
-        f"{count_skipped_no_ticker} skipped (no ticker), "
-        f"{count_skipped_empty_data} skipped (empty data)."
+        "%s data update complete: %d total, %d updated, %d skipped (no ticker), %d skipped (empty data).",
+        source_name, count_total, count_updated, count_skipped_no_ticker, count_skipped_empty_data,
     )
 
 
@@ -213,7 +210,7 @@ def send_data_reports():
             )
             recipients = [u.email for u in admins if u.email]
     except Exception as e:
-        logger.error(f"Error fetching email recipients from database: {e}")
+        logger.error("Error fetching email recipients from database: %s", e)
         return
 
     if not recipients:
@@ -247,24 +244,24 @@ def refresh_all_charts(progress_cb=None):
     """
     from ix.db.conn import Session
     from ix.db.models import Charts
-    from ix.api.routers.custom import execute_custom_code, get_clean_figure_json
+    from ix.api.routers.charts.custom import execute_custom_code, get_clean_figure_json
 
     with Session() as s:
         charts = s.query(Charts).order_by(Charts.rank.asc()).all()
         total = len(charts)
-        logger.info(f"Found {total} charts to refresh.")
+        logger.info("Found %d charts to refresh.", total)
 
         for idx, chart in enumerate(charts, start=1):
             try:
                 if progress_cb:
                     progress_cb(idx, total, chart.name or chart.id)
                 logger.info(
-                    f"Refreshing [{idx}/{total}] {chart.name or chart.id} ({chart.category})..."
+                    "Refreshing [%d/%d] %s (%s)...", idx, total, chart.name or chart.id, chart.category
                 )
                 fig = execute_custom_code(chart.code)
                 chart.figure = get_clean_figure_json(fig)
             except Exception as e:
-                logger.error(f"Failed to refresh {chart.name or chart.id}: {e}")
+                logger.error("Failed to refresh %s: %s", chart.name or chart.id, e)
 
         s.commit()
         logger.info("All charts processed.")
@@ -279,3 +276,27 @@ def run_daily_tasks():
     refresh_all_charts()
     # send_data_reports()
     logger.info("Daily tasks execution completed")
+
+
+def run_macro_research():
+    """Run the macro research pipeline as a background task."""
+    import subprocess
+    import sys
+
+    logger.info("Starting macro research pipeline...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/macro_research.py",
+             "--skip-youtube", "--skip-drive", "--skip-telegram",
+             "--days", "3"],
+            capture_output=True, text=True, timeout=1800,  # 30 min max
+            cwd=str(__import__("pathlib").Path(__file__).resolve().parents[3]),
+        )
+        if result.returncode == 0:
+            logger.info("Macro research pipeline completed successfully")
+        else:
+            logger.warning("Macro research pipeline failed: %s", result.stderr[:500])
+    except subprocess.TimeoutExpired:
+        logger.error("Macro research pipeline timed out after 30 minutes")
+    except Exception as e:
+        logger.error("Macro research pipeline error: %s", e)

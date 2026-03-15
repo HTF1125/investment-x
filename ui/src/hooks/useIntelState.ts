@@ -4,15 +4,11 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
 
-export type IntelTab = 'research' | 'news' | 'signals' | 'positioning' | 'wartime' | 'stress';
+export type IntelTab = 'research' | 'wartime' | 'stress';
 
 export interface ReportDateMeta {
   date: string;
   has_briefing: boolean;
-  has_risk_scorecard: boolean;
-  has_takeaways: boolean;
-  has_infographic: boolean;
-  has_slide_deck: boolean;
 }
 
 export interface IntelState {
@@ -27,19 +23,11 @@ export interface IntelState {
   selectedDate: string | null;
   hasPrev: boolean;
   hasNext: boolean;
-
-  sidePanelOpen: boolean;
-  toggleSidePanel: () => void;
-  setSidePanelOpen: (open: boolean) => void;
-  sidePanelTab: 'news' | 'signals';
-  setSidePanelTab: (tab: 'news' | 'signals') => void;
 }
 
 export function useIntelState(): IntelState {
-  const [activeTab, setActiveTabRaw] = useState<IntelTab>('research');
+  const [activeTab, setActiveTab] = useState<IntelTab>('research');
   const [dateIdx, setDateIdx] = useState(0);
-  const [sidePanelOpen, setSidePanelOpen] = useState(false);
-  const [sidePanelTab, setSidePanelTab] = useState<'news' | 'signals'>('news');
 
   const {
     data: reportDates = [],
@@ -54,22 +42,6 @@ export function useIntelState(): IntelState {
   const selectedDate = reportDates[dateIdx]?.date ?? null;
   const hasPrev = dateIdx < reportDates.length - 1;
   const hasNext = dateIdx > 0;
-
-  const toggleSidePanel = useCallback(
-    () => setSidePanelOpen((prev) => !prev),
-    [],
-  );
-
-  // Auto-close side panel on chart-heavy tabs
-  const setActiveTab = useCallback(
-    (tab: IntelTab) => {
-      setActiveTabRaw(tab);
-      if (tab === 'wartime' || tab === 'stress' || tab === 'positioning') {
-        setSidePanelOpen(false);
-      }
-    },
-    [],
-  );
 
   // Keyboard shortcuts: [ / ] for date navigation on Research tab
   useEffect(() => {
@@ -101,10 +73,5 @@ export function useIntelState(): IntelState {
     selectedDate,
     hasPrev,
     hasNext,
-    sidePanelOpen,
-    toggleSidePanel,
-    setSidePanelOpen,
-    sidePanelTab,
-    setSidePanelTab,
   };
 }

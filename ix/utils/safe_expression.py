@@ -12,6 +12,7 @@ from ix.utils.blocklists import BLOCKED_PANDAS_ATTRIBUTES
 
 
 MAX_EXPRESSION_LENGTH = 4000
+MAX_CODE_BLOCK_LENGTH = 8000
 
 _BLOCKED_ATTRIBUTE_NAMES = set(BLOCKED_PANDAS_ATTRIBUTES)
 
@@ -88,6 +89,11 @@ _ALLOWED_NODE_TYPES = (
     ast.USub,
     ast.UnaryOp,
     ast.keyword,
+    # exec-mode nodes (multi-statement code blocks)
+    ast.Module,
+    ast.Assign,
+    ast.Expr,
+    ast.Store,
 )
 
 
@@ -110,6 +116,7 @@ def _build_query_context() -> dict[str, Any]:
         "StandardScalar",
         "Clip",
         "Ffill",
+        "Cycle",
         "CycleForecast",
         "Drawdown",
         "Rebase",
@@ -438,6 +445,20 @@ TIMESERIES_EXPRESSION_CONTEXT: dict[str, Any] = {
     "round": round,
     "min": min,
     "max": max,
+    "len": len,
+    "int": int,
+    "float": float,
+    "str": str,
+    "range": range,
+    "enumerate": enumerate,
+    "zip": zip,
+    "list": list,
+    "dict": dict,
+    "tuple": tuple,
+    "set": set,
+    "True": True,
+    "False": False,
+    "None": None,
 }
 
 EVALUATION_EXPRESSION_CONTEXT: dict[str, Any] = {
@@ -452,6 +473,8 @@ class _SafeExpressionValidator(ast.NodeVisitor):
         self.allowed_callables = {
             name for name, value in context.items() if callable(value)
         }
+        # Track names created by assignment so they can be used later
+        self._assigned_names: set[str] = set()
 
     def generic_visit(self, node: ast.AST) -> None:
         if not isinstance(node, _ALLOWED_NODE_TYPES):
@@ -461,7 +484,12 @@ class _SafeExpressionValidator(ast.NodeVisitor):
         super().generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
-        if node.id not in self.allowed_names:
+        # Allow assignment targets — register the name
+        if isinstance(node.ctx, ast.Store):
+            self._assigned_names.add(node.id)
+            return
+        # Allow context names and previously assigned names
+        if node.id not in self.allowed_names and node.id not in self._assigned_names:
             raise UnsafeExpressionError(f"Unknown name: {node.id}")
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
@@ -491,8 +519,6 @@ class _SafeExpressionValidator(ast.NodeVisitor):
         for arg in node.args:
             self.visit(arg)
         for keyword in node.keywords:
-            if keyword.arg is None:
-                raise UnsafeExpressionError("Argument unpacking is not allowed")
             self.visit(keyword.value)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
@@ -541,3 +567,48 @@ def safe_eval_expression(expression: str, context: Mapping[str, Any]) -> Any:
     _SafeExpressionValidator(context).visit(tree)
     compiled = compile(tree, "<safe-expression>", "eval")
     return eval(compiled, {"__builtins__": {}}, dict(context))
+
+
+def safe_exec_code(code: str, context: Mapping[str, Any]) -> Any:
+    """Execute a multi-line code block and return the ``result`` variable.
+
+    The code must assign its output to a variable named ``result``
+    (pd.DataFrame or pd.Series).  All statements are validated through
+    the same AST safety checker used by single-expression eval.
+    """
+    code_clean = (code or "").strip()
+    if not code_clean:
+        raise UnsafeExpressionError("Code block cannot be empty")
+    if len(code_clean) > MAX_CODE_BLOCK_LENGTH:
+        raise UnsafeExpressionError(
+            f"Code block exceeds {MAX_CODE_BLOCK_LENGTH} characters"
+        )
+
+    try:
+        tree = ast.parse(code_clean, mode="exec")
+    except SyntaxError as exc:
+        raise UnsafeExpressionError(f"Invalid syntax: {exc.msg}") from exc
+
+    # Pre-collect all assignment target names so forward references work
+    validator = _SafeExpressionValidator(context)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    validator._assigned_names.add(target.id)
+    validator.visit(tree)
+
+    compiled = compile(tree, "<safe-code-block>", "exec")
+    local_ns: dict[str, Any] = dict(context)
+    exec(compiled, {"__builtins__": {}}, local_ns)  # noqa: S102
+
+    result = local_ns.get("result")
+    if result is None:
+        raise UnsafeExpressionError(
+            'Code block must assign output to a variable named "result"'
+        )
+    if not isinstance(result, (pd.Series, pd.DataFrame)):
+        raise UnsafeExpressionError(
+            f'"result" must be a DataFrame or Series, got {type(result).__name__}'
+        )
+    return result

@@ -100,7 +100,7 @@ export default function PropertiesDrawer({
             {mode === 'standalone' && (
               <div className="flex items-center justify-between p-2 border border-border/50 rounded-lg">
                 <div className="flex items-center gap-2">
-                  <div className={`w-1.5 h-1.5 rounded-full ${exportPdf ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${exportPdf ? 'bg-success' : 'bg-muted-foreground/30'}`} />
                   <span className="text-[11px] text-muted-foreground">Publish to Report</span>
                 </div>
                 <button

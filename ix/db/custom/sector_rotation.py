@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 
 from ix.db.query import Series
 from ix.core.transforms import StandardScalar
+
+logger = logging.getLogger(__name__)
 
 
 # ── US GICS Sector ETFs ─────────────────────────────────────────────────────
@@ -69,7 +73,7 @@ def _load_sectors(sector_map: dict[str, str], freq: str = "W") -> pd.DataFrame:
             if len(s.dropna()) > 100:
                 data[name] = s
         except Exception:
-            pass
+            logger.debug("Failed to load sector data for '%s' (%s)", name, code, exc_info=True)
     return pd.DataFrame(data).dropna(how="all")
 
 

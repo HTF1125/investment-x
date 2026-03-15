@@ -60,6 +60,11 @@ def _run_startup_migrations() -> None:
                 "ALTER TABLE research_report ADD COLUMN IF NOT EXISTS slide_deck BYTEA"
             ))
 
+            # Chart packs: is_published column
+            db.execute(text(
+                "ALTER TABLE chart_packs ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT false"
+            ))
+
         logger.info("Startup migrations completed.")
     except Exception as exc:
         logger.warning(f"Startup migrations failed: {exc}")
@@ -75,6 +80,18 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing FastAPI application...")
 
     _run_startup_migrations()
+
+    # Schedule macro research pipeline daily at 06:00 UTC
+    from ix.misc.task import run_macro_research
+    scheduler.add_job(
+        run_macro_research,
+        "cron", hour=6, minute=0,
+        id="macro_research",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    scheduler.start()
+    logger.info(f"Scheduler started with {len(scheduler.get_jobs())} job(s)")
 
     logger.info("FastAPI application started")
     yield
@@ -262,48 +279,72 @@ async def global_exception_handler(request, exc):
 
 # Include routers with error handling
 try:
-    from ix.api.routers import (
-        auth,
-        admin,
-        timeseries,
-        series,
-        evaluation,
-        task,
-        risk,
-        news,
-        custom,
-        insights,
-        user,
+    from ix.api.routers.auth import auth_router, admin_router, user_router
+    from ix.api.routers.data import (
+        timeseries_router,
+        series_router,
+        evaluation_router,
+        collectors_router,
+        sources_router,
     )
+    from ix.api.routers.charts import (
+        custom_router,
+        chart_packs_router,
+        chart_workspaces_router,
+        whiteboard_router,
+        dashboard_router,
+    )
+    from ix.api.routers.analytics import (
+        quant_router,
+        technical_router,
+        macro_router,
+        wartime_router,
+    )
+    from ix.api.routers.research import (
+        news_router,
+        insights_router,
+        scorecards_router,
+    )
+    from ix.api.routers.tasks import task_router
+    from ix.api.routers.risk import risk_router
 
     logger.info("Importing routers...")
-    app.include_router(auth.router, prefix="/api", tags=["Authentication"])
-    app.include_router(admin.router, prefix="/api", tags=["Admin"])
-    app.include_router(user.router, prefix="/api", tags=["User"])
-    app.include_router(timeseries.router, prefix="/api", tags=["Timeseries"])
-    app.include_router(series.router, prefix="/api", tags=["Series"])
-    app.include_router(evaluation.router, prefix="/api", tags=["Evaluation"])
-    app.include_router(task.router, prefix="/api", tags=["Tasks"])
-    app.include_router(risk.router, prefix="/api", tags=["Risk"])
-    app.include_router(news.router, prefix="/api", tags=["News"])
-    app.include_router(custom.router, prefix="/api", tags=["Custom"])
-    app.include_router(insights.router, prefix="/api", tags=["Insights"])
-    from ix.api.routers import quant
-    app.include_router(quant.router, prefix="/api", tags=["Quant"])
-    from ix.api.routers import wartime
-    app.include_router(wartime.router, prefix="/api", tags=["Wartime"])
-    from ix.api.routers import macro
-    app.include_router(macro.router, prefix="/api", tags=["Macro"])
-    from ix.api.routers import dashboard
 
-    app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
-    from ix.api.routers import whiteboard
-    app.include_router(whiteboard.router, prefix="/api", tags=["Whiteboard"])
-    from ix.api.routers import collectors
-    app.include_router(collectors.router, prefix="/api", tags=["Collectors"])
+    # Auth & User
+    app.include_router(auth_router, prefix="/api", tags=["Authentication"])
+    app.include_router(admin_router, prefix="/api", tags=["Admin"])
+    app.include_router(user_router, prefix="/api", tags=["User"])
+
+    # Data Management
+    app.include_router(timeseries_router, prefix="/api", tags=["Timeseries"])
+    app.include_router(series_router, prefix="/api", tags=["Series"])
+    app.include_router(evaluation_router, prefix="/api", tags=["Evaluation"])
+    app.include_router(collectors_router, prefix="/api", tags=["Collectors"])
+    app.include_router(sources_router, prefix="/api", tags=["Sources"])
+
+    # Charts & Visualization
+    app.include_router(custom_router, prefix="/api", tags=["Custom"])
+    app.include_router(chart_packs_router, prefix="/api", tags=["Chart Packs"])
+    app.include_router(chart_workspaces_router, prefix="/api", tags=["Chart Workspaces"])
+    app.include_router(whiteboard_router, prefix="/api", tags=["Whiteboard"])
+    app.include_router(dashboard_router, prefix="/api/v1", tags=["Dashboard"])
+
+    # Analytics & Quantitative
+    app.include_router(quant_router, prefix="/api", tags=["Quant"])
+    app.include_router(technical_router, prefix="/api", tags=["Technical"])
+    app.include_router(macro_router, prefix="/api", tags=["Macro"])
+    app.include_router(wartime_router, prefix="/api", tags=["Wartime"])
+
+    # Research & News
+    app.include_router(news_router, prefix="/api", tags=["News"])
+    app.include_router(insights_router, prefix="/api", tags=["Insights"])
+    app.include_router(scorecards_router, prefix="/api/v1", tags=["Scorecards"])
+
+    # Tasks & Risk
+    app.include_router(task_router, prefix="/api", tags=["Tasks"])
+    app.include_router(risk_router, prefix="/api", tags=["Risk"])
+
     logger.info("Routers registered successfully")
-
-    # Legacy Dash chartbook mount removed with charts table decommission.
 
 except Exception as e:
     import traceback

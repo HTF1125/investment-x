@@ -201,7 +201,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
                     {canToggleExport && (
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleExportPdf(chart.id, !chart.public); }}
-                        className={`w-2.5 h-2.5 rounded-sm border flex items-center justify-center transition-all ${chart.public ? 'bg-emerald-500 border-emerald-400' : 'border-muted-foreground/30 hover:border-muted-foreground/50'}`}
+                        className={`w-2.5 h-2.5 rounded-sm border flex items-center justify-center transition-all ${chart.public ? 'bg-success border-success/70' : 'border-muted-foreground/30 hover:border-muted-foreground/50'}`}
                         title={chart.public ? "Included in PDF" : "Excluded from PDF"}
                       >
                         {chart.public && <CheckCircle2 className="w-2 h-2 text-white" />}
@@ -210,7 +210,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
                     {canDeleteChart(chart) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setDeleteConfirm(chart.id); }}
-                        className="p-0.5 text-muted-foreground/60 hover:text-rose-400 transition-all"
+                        className="p-0.5 text-muted-foreground/60 hover:text-destructive transition-all"
                         title="Delete Analysis"
                       >
                         <Trash2 className="w-2.5 h-2.5" />
@@ -265,7 +265,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
             {['SPX_INDEX', 'NDX_INDEX', 'EUR_USD', 'GOLD_CMD', 'UST_10Y', 'BTC_USD'].map(symbol => (
               <div key={symbol} className="group flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-primary/[0.06] transition-colors cursor-pointer">
                 <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/70" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-success/70" />
                   <span className="text-[11px] font-mono text-muted-foreground group-hover:text-foreground transition-colors">{symbol}</span>
                 </div>
                 <span className="text-[10px] text-muted-foreground/40 font-mono">Live</span>
@@ -319,7 +319,7 @@ export default function SidebarPanel({ state }: SidebarPanelProps) {
             <div className="pt-4 border-t border-border/50">
               <button
                 onClick={() => { if(confirm('Clear current analysis?')) clearEditor(); }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-border/50 rounded-lg text-muted-foreground text-[11px] hover:text-rose-500 hover:border-rose-500/30 transition-all"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-border/50 rounded-lg text-muted-foreground text-[11px] hover:text-destructive hover:border-destructive/30 transition-all"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Clear Editor

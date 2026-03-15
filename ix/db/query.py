@@ -31,7 +31,11 @@ from ix.core.transforms import (  # noqa: F401
 from ix.core.quantitative.statistics import Cycle  # noqa: F401
 
 
-def MultiSeries(**series: pd.Series) -> pd.DataFrame:
+def MultiSeries(series: dict[str, pd.Series] | None = None, **kwargs: pd.Series) -> pd.DataFrame:
+    if series is None:
+        series = kwargs
+    elif kwargs:
+        series = {**series, **kwargs}
     out = []
     for name, s in series.items():
         out.append(s.rename(name))
@@ -79,7 +83,7 @@ def Series(
         # Alias handling: if code contains '=', treat as NAME=REAL_CODE
         if "=" in code and ":" not in code.split("=", 1)[0]:
             alias_name, real_code = code.split("=", maxsplit=1)
-            s = Series(code=real_code, freq=freq).sort_index()
+            s = Series(code=real_code, freq=freq, ccy=ccy, scale=scale, session=session, _skip_fx=_skip_fx, strict=strict).sort_index()
             s.name = alias_name.upper()
             return s.copy()
 

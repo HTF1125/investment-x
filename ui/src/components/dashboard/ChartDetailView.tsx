@@ -218,7 +218,7 @@ export default function ChartDetailView({ chartId }: { chartId: string }) {
             className="p-1.5 rounded-[var(--radius)] text-muted-foreground/40 hover:text-foreground hover:bg-primary/[0.06] transition-colors"
             title="Copy as PNG"
           >
-            <Copy className={`w-3.5 h-3.5 ${copied ? 'text-emerald-400' : ''}`} />
+            <Copy className={`w-3.5 h-3.5 ${copied ? 'text-success' : ''}`} />
           </button>
           {canRefresh && (
             <button
@@ -253,7 +253,7 @@ export default function ChartDetailView({ chartId }: { chartId: string }) {
                   router.push('/');
                 }
               }}
-              className="p-1.5 rounded-[var(--radius)] text-muted-foreground/20 hover:text-rose-400 hover:bg-rose-500/[0.06] transition-colors"
+              className="p-1.5 rounded-[var(--radius)] text-muted-foreground/20 hover:text-destructive hover:bg-destructive/[0.06] transition-colors"
               title="Delete chart"
             >
               <Trash2 className="w-3.5 h-3.5" />

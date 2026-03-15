@@ -54,7 +54,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
 
     const firstIds = Array.from(uniqueCharts.values())
       .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
-      .slice(0, 20)
+      .slice(0, 4) // Only proactively load the top row instead of 20 to save upfront memory on slow connections
       .map(chart => String(chart.id));
 
     if (firstIds.length === 0) return;
@@ -75,7 +75,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
         }
         return batch;
       },
-      staleTime: 1000 * 60 * 5,
+      staleTime: 1000 * 60 * 2,
     });
   }, [data, queryClient, chartId, isNewChart]);
 
@@ -99,8 +99,8 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
     return (
       <AppShell>
         <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-5 px-4">
-          <div className="w-14 h-14 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-            <WifiOff className="w-6 h-6 text-rose-400" />
+          <div className="w-14 h-14 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+            <WifiOff className="w-6 h-6 text-destructive" />
           </div>
           <div className="text-center space-y-1">
             <p className="text-sm font-medium text-foreground">Connection failed</p>
@@ -110,7 +110,7 @@ export default function DashboardContainer({ initialData }: { initialData?: any 
           </div>
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-2 px-5 py-2 border border-rose-500/30 text-rose-400 rounded-lg text-xs font-medium hover:bg-rose-500/10 transition-all"
+            className="flex items-center gap-2 px-5 py-2 border border-destructive/30 text-destructive rounded-lg text-xs font-medium hover:bg-destructive/10 transition-all"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Retry

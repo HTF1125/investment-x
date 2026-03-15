@@ -119,7 +119,7 @@ export default function EditorPanel({
                 <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => insertSeriesSnippet(ts)}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-emerald-500/80 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-success/80 hover:text-success hover:bg-success/10 transition-colors"
                     title="Insert Series() into code"
                   >
                     <Plus className="w-3 h-3" />
@@ -193,8 +193,8 @@ export default function EditorPanel({
             <Terminal className="w-3 h-3 text-muted-foreground/50 shrink-0" />
             <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider flex-1">Output</span>
             {error
-              ? <span className="text-[10px] font-medium text-rose-500">{typeof error === 'string' ? 'Error' : error.error || 'Error'}</span>
-              : <span className="text-[10px] font-medium text-emerald-500">OK</span>
+              ? <span className="text-[10px] font-medium text-destructive">{typeof error === 'string' ? 'Error' : error.error || 'Error'}</span>
+              : <span className="text-[10px] font-medium text-success">OK</span>
             }
             <span className="text-muted-foreground/30 text-[10px]">{consoleExpanded ? '\u25B2' : '\u25BC'}</span>
           </button>
@@ -208,11 +208,11 @@ export default function EditorPanel({
               >
                 <div className="px-3 py-2.5 font-mono text-[11px] leading-relaxed max-h-40 overflow-y-auto">
                   {error ? (
-                    <pre className="text-rose-400 whitespace-pre-wrap break-words">
+                    <pre className="text-destructive whitespace-pre-wrap break-words">
                       {typeof error === 'string' ? error : error.message || JSON.stringify(error)}
                     </pre>
                   ) : (
-                    <span className="text-emerald-500">{successMsg}</span>
+                    <span className="text-success">{successMsg}</span>
                   )}
                 </div>
               </motion.div>

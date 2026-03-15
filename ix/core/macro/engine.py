@@ -5,8 +5,12 @@ They transform raw indicator data into z-scores, composite signals,
 regime probabilities, liquidity phases, and allocation weights.
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from ix.core.macro.config import (
     REGIME_NAMES,
@@ -254,7 +258,7 @@ def build_axis_composite(
             if len(z.dropna()) > 52:
                 normalized[name] = z
         except Exception:
-            pass
+            logger.debug("Failed to normalize indicator '%s'", name, exc_info=True)
 
     if not normalized:
         return {}, pd.Series(dtype=float)
@@ -327,7 +331,7 @@ def build_adaptive_composite(
             if len(z.dropna()) > 52:
                 normalized[name] = z
         except Exception:
-            pass
+            logger.debug("Failed to normalize indicator '%s'", name, exc_info=True)
 
     if not normalized:
         return {}, pd.Series(dtype=float), {}, pd.DataFrame()

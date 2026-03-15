@@ -36,7 +36,7 @@ const nextConfig = {
     }
     
     // Use environment variable for backend URL, fallback to 127.0.0.1 for dev to avoid IPv6 issues
-    let apiUrl = process.env.INTERNAL_API_URL || process.env.API_URL || 'http://127.0.0.1:8000';
+    let apiUrl = process.env.INTERNAL_API_URL || process.env.API_URL || 'http://127.0.0.1:8001';
     
     // Ensure protocol for Render internal URLs (which might be just host:port)
     if (apiUrl && !apiUrl.startsWith('http')) {

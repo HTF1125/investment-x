@@ -836,7 +836,7 @@ function WartimePlot({
       {plotError && (
         <div className="absolute inset-0 flex items-center justify-center text-center px-4">
           <div className="flex flex-col items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-500/70" />
+            <AlertTriangle className="w-5 h-5 text-warning/70" />
             <div className="text-[11px] text-muted-foreground">{plotError}</div>
           </div>
         </div>
@@ -1157,7 +1157,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
       <Wrapper>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="flex flex-col items-center gap-2 text-center">
-            <AlertTriangle className="w-5 h-5 text-amber-500/50" />
+            <AlertTriangle className="w-5 h-5 text-warning/50" />
             <p className="text-xs text-muted-foreground">{t.loadError}</p>
           </div>
         </div>
@@ -1303,7 +1303,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
             <div className="stat-label mb-3">{t.oilTableLabel}</div>
             <CommodityStatsTable stats={data.oil.stats} t={t} lang={lang} />
           </div>
-          <div className="panel-card p-4 border-amber-500/30 bg-amber-500/[0.05] flex gap-3">
+          <div className="panel-card p-4 border-warning/30 bg-warning/[0.05] flex gap-3">
             <span className="text-lg shrink-0">⚡</span>
             <p className="text-[12px] text-foreground/80 leading-relaxed">
               <strong>{t.shaleTitle}</strong> {t.shaleText}
@@ -1457,10 +1457,10 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
 
         {/* ── COVID Warning ───────────────────────────────────────────────── */}
         <section>
-          <div className="panel-card p-5 border-amber-500/40 bg-amber-500/[0.05] flex gap-4">
-            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div className="panel-card p-5 border-warning/40 bg-warning/[0.05] flex gap-4">
+            <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
             <div className="space-y-2">
-              <div className="text-[13px] font-semibold text-amber-600 dark:text-amber-400">{t.covidTitle}</div>
+              <div className="text-[13px] font-semibold text-warning">{t.covidTitle}</div>
               <p className="text-[12px] text-foreground/80 leading-relaxed">
                 {lang === 'ko'
                   ? <>{t.covidText1}<strong>{t.covidCaution}</strong>.</>

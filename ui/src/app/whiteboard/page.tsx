@@ -171,8 +171,11 @@ function WhiteboardGallery() {
         {boards.map((board) => (
           <div
             key={board.id}
+            role="button"
+            tabIndex={0}
             onClick={() => router.push(`/whiteboard?id=${board.id}`)}
-            className="group rounded-[var(--radius)] border border-border/30 bg-card hover:border-border/60 transition-all duration-150 cursor-pointer overflow-hidden"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/whiteboard?id=${board.id}`); } }}
+            className="group rounded-[var(--radius)] border border-border/30 bg-card hover:border-border/60 transition-all duration-150 cursor-pointer overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
           >
             {/* Thumbnail */}
             <div className="aspect-[16/10] bg-background/50 flex items-center justify-center overflow-hidden">
@@ -206,7 +209,7 @@ function WhiteboardGallery() {
               </div>
               <button
                 onClick={(e) => handleDelete(e, board.id)}
-                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[var(--radius)] text-muted-foreground/40 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[var(--radius)] text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-all"
                 title="Delete"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -389,7 +392,7 @@ function WhiteboardEditorView({ whiteboardId }: { whiteboardId: string }) {
               ? 'text-muted-foreground/30'
               : saveStatus === 'saving'
                 ? 'text-primary/60'
-                : 'text-amber-500/60'
+                : 'text-warning/60'
           }`}
         >
           {saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : 'Unsaved'}

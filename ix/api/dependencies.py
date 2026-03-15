@@ -5,7 +5,6 @@ FastAPI dependencies for authentication and database.
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
-from sqlalchemy.orm import Session as SessionType
 from ix.misc.auth import verify_token
 from ix.db.models.user import User
 from ix.db.conn import Session, get_session

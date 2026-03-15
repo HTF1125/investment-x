@@ -12,7 +12,11 @@ Each loader tuple has the shape:
 - monthly: True if the indicator is released monthly (uses shorter z-score window)
 """
 
+import logging
+
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from ix.db.query import Series
 from ix.db.custom import (
@@ -95,7 +99,7 @@ def _ism_prices_paid() -> pd.Series:
         if "Prices Paid" in df.columns:
             return df["Prices Paid"].dropna()
     except Exception:
-        pass
+        logger.debug("Failed to load ISM Prices Paid", exc_info=True)
     return pd.Series(dtype=float)
 
 
@@ -106,7 +110,7 @@ def _cpi_3m_annualized() -> pd.Series:
         if "CPI 3m Ann" in df.columns:
             return df["CPI 3m Ann"].dropna()
     except Exception:
-        pass
+        logger.debug("Failed to load CPI 3m annualized", exc_info=True)
     return pd.Series(dtype=float)
 
 

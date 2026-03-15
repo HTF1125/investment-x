@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from ix.api.routers.custom import _load_explicit_export_charts
+from ix.api.routers.charts.custom import _load_explicit_export_charts
 from ix.api.task_utils import TaskEventSubscriber, _deliver_task_event
 from ix.db.models import Timeseries
 from ix.db.query import Series

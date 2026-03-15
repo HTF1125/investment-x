@@ -721,7 +721,7 @@ export default function TimeseriesManager() {
                   >
                     <td className="px-4 py-3.5 font-mono text-primary text-xs whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        {ts.favorite && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+                        {ts.favorite && <Star className="w-3.5 h-3.5 text-warning fill-warning" />}
                         <span className="font-semibold">{ts.code}</span>
                       </div>
                     </td>
@@ -745,7 +745,7 @@ export default function TimeseriesManager() {
                       <div className="flex items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => setViewChartItem(ts)}
-                          className="p-2 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all"
+                          className="p-2 text-muted-foreground hover:text-success hover:bg-success/10 rounded-lg transition-all"
                           title="View Chart"
                         >
                           <LineChart className="w-4 h-4" />
@@ -759,7 +759,7 @@ export default function TimeseriesManager() {
                         </button>
                         <button
                           onClick={() => setDeleteTarget(ts)}
-                          className="p-2 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
+                          className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
                           title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -886,12 +886,12 @@ export default function TimeseriesManager() {
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Delete confirmation" onClick={() => setDeleteTarget(null)}>
           <div
-            className="bg-card border border-rose-500/30 rounded-lg w-full max-w-md shadow-lg shadow-black/60 p-8 mx-4"
+            className="bg-card border border-destructive/30 rounded-lg w-full max-w-md shadow-lg shadow-black/60 p-8 mx-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-4 mb-6">
-              <div className="w-14 h-14 rounded-md bg-gradient-to-br from-rose-500/20 to-red-500/20 flex items-center justify-center border border-rose-500/30">
-                <AlertTriangle className="w-7 h-7 text-rose-400" />
+              <div className="w-14 h-14 rounded-md bg-destructive/15 flex items-center justify-center border border-destructive/30">
+                <AlertTriangle className="w-7 h-7 text-destructive" />
               </div>
               <div>
                 <h3 className="text-xl font-bold text-foreground">Delete Timeseries</h3>
@@ -899,7 +899,7 @@ export default function TimeseriesManager() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
-              Are you sure you want to delete <span className="font-mono text-rose-300 font-semibold">{deleteTarget.code}</span>
+              Are you sure you want to delete <span className="font-mono text-destructive font-semibold">{deleteTarget.code}</span>
               {deleteTarget.name ? ` (${deleteTarget.name})` : ''}? All associated data will be permanently removed.
             </p>
             <div className="flex items-center justify-end gap-3">
@@ -912,7 +912,7 @@ export default function TimeseriesManager() {
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 rounded-lg transition-all shadow-lg shadow-rose-500/30 disabled:opacity-50"
+                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-lg transition-all shadow-lg shadow-destructive/20 disabled:opacity-50"
               >
                 {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Delete
@@ -932,13 +932,13 @@ export default function TimeseriesManager() {
             transition={{ duration: 0.2 }}
             className={`fixed bottom-6 left-6 right-6 sm:left-auto sm:right-6 sm:max-w-md z-[60] flex items-start sm:items-center gap-3 px-5 py-4 rounded-md shadow-lg border ${
               toast.type === 'success'
-                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+                ? 'bg-success/15 border-success/30 text-success'
+                : 'bg-destructive/15 border-destructive/30 text-destructive'
             }`}
             role="alert"
           >
             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              toast.type === 'success' ? 'bg-emerald-500/20' : 'bg-rose-500/20'
+              toast.type === 'success' ? 'bg-success/20' : 'bg-destructive/20'
             }`}>
               {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
             </div>

@@ -177,6 +177,7 @@ dmypy.json
 
 # debug
 npm-debug.log*
+npm-cache/
 yarn-debug.log*
 yarn-error.log*
 
@@ -206,3 +207,16 @@ DWS/
 
 # Gemini config
 GEMINI.md
+
+# Ad-hoc test/research files
+test_yf_*.py
+qqq_data.json
+qqq_out.txt
+macro_predictor.py
+macro_regime_strategy.py
+
+# Scripts directory
+scripts/
+
+# Docs (unused)
+docs/

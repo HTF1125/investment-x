@@ -16,6 +16,7 @@ class ResearchReport(Base):
     takeaways = Column(Text)
     infographic = deferred(Column(LargeBinary))
     slide_deck = deferred(Column(LargeBinary))
+    audio = deferred(Column(LargeBinary))
     sources = Column(JSONB, default=dict)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)

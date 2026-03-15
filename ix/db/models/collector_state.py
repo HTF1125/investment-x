@@ -1,4 +1,3 @@
-from datetime import datetime
 from sqlalchemy import Column, DateTime, Integer, String, text, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from ix.db.conn import Base

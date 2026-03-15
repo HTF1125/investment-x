@@ -80,7 +80,7 @@ export default function SessionExpiredModal() {
           </div>
 
           {error && (
-            <p className="text-[11px] text-rose-400 font-medium">{error}</p>
+            <p role="alert" className="text-[11px] text-destructive font-medium">{error}</p>
           )}
 
           <div className="flex items-center gap-2 pt-1">

@@ -30,7 +30,7 @@ export function ErrorBox({ message }: { message: string }) {
   return (
     <div className="flex items-center justify-center py-10">
       <div className="flex flex-col items-center gap-2 text-center">
-        <AlertCircle className="w-5 h-5 text-rose-500/60" />
+        <AlertCircle className="w-5 h-5 text-destructive/60" />
         <p className="text-[11px] text-muted-foreground">{message}</p>
       </div>
     </div>

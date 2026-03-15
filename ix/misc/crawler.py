@@ -10,7 +10,7 @@ def _get_pandas_datareader():
     try:
         import pandas_datareader as pdr
     except Exception as exc:
-        logger.warning(f"pandas_datareader unavailable: {exc}")
+        logger.warning("pandas_datareader unavailable: %s", exc)
         return None
     return pdr
 
@@ -27,6 +27,7 @@ def get_yahoo_data(
         end = tomorrow().date().strftime("%Y-%m-%d")
     try:
         import yfinance as yf
+
         data = yf.download(
             tickers=code,
             start=start,
@@ -37,11 +38,10 @@ def get_yahoo_data(
             multi_level_index=False,
         )
         if data is None:
-            raise
+            raise ValueError(f"yfinance returned None for ticker {code}")
         return data
     except Exception as exc:
-        logger.warning(f"Download data from `yahoo` fail for ticker {code}")
-        logger.exception(exc)
+        logger.warning("Download data from `yahoo` fail for ticker %s: %s", code, exc)
         return pd.DataFrame()
 
 
@@ -58,13 +58,17 @@ def get_fred_data(
     if pdr is None:
         raise ImportError("pandas_datareader is required for FRED data")
 
+    # Short timeout to gracefully skip if St. Louis Fed is blocked by Korean ISPs
+    timeout = min(timeout, 10)
+
     for attempt in range(retries + 1):
         try:
             import requests
+
             session = requests.Session()
-            session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Investment-X Research)"
-            })
+            session.headers.update(
+                {"User-Agent": "Mozilla/5.0 (Investment-X Research)"}
+            )
             reader = pdr.fred.FredReader(
                 symbols=ticker,
                 start=start,
@@ -73,18 +77,27 @@ def get_fred_data(
             reader.session = session
             reader.timeout = timeout
             data = reader.read()
+            if not data.empty:
+                data.columns = ["PX_LAST"]
             return data
         except Exception as exc:
+            if "timed out" in str(exc).lower() or isinstance(exc, TimeoutError):
+                logger.warning(
+                    "FRED connection timed out (likely firewall/ISP block) for %s", ticker
+                )
+                return pd.DataFrame()  # Fail fast instead of retrying forever
+
             if attempt < retries:
                 import time
+
                 wait = 5 * (attempt + 1)
-                logger.info(f"FRED {ticker} attempt {attempt + 1} failed, retrying in {wait}s...")
+                logger.info(
+                    "FRED %s attempt %d failed, retrying in %ds...", ticker, attempt + 1, wait
+                )
                 time.sleep(wait)
             else:
-                logger.warning(f"Download data from `fred` fail for ticker {ticker}")
-                logger.error(str(exc))
+                logger.warning("Download data from `fred` fail for ticker %s: %s", ticker, exc)
                 return pd.DataFrame()
-
 
 
 def get_naver_data(
@@ -109,6 +122,5 @@ def get_naver_data(
         data = data.apply(pd.to_numeric)
         return data
     except Exception as exc:
-        logger.warning(f"Download data from `naver` fail for ticker {ticker}")
-        logger.exception(exc)
+        logger.warning("Download data from `naver` fail for ticker %s: %s", ticker, exc)
         return pd.DataFrame()

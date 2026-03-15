@@ -52,7 +52,7 @@ export default function RootLayout({
       <body>
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:z-[9999] focus:bg-background focus:text-foreground focus:p-2 focus:border focus:border-border"
+          className="absolute -top-10 left-0 z-[9999] bg-background text-foreground p-2 border border-border focus:top-0 transition-[top]"
         >
           Skip to main content
         </a>

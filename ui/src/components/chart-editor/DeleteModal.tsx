@@ -36,7 +36,7 @@ export default function DeleteModal({
             className="relative w-full max-w-sm bg-background border border-border/50 rounded-lg shadow-md p-6"
           >
             <div className="flex items-center gap-4 mb-6">
-              <div className="w-10 h-10 rounded-lg bg-rose-500/[0.08] flex items-center justify-center text-rose-500">
+              <div className="w-10 h-10 rounded-lg bg-destructive/[0.08] flex items-center justify-center text-destructive">
                 <Trash2 className="w-6 h-6" />
               </div>
               <div>

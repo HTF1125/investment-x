@@ -32,7 +32,7 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
 
       return (
         <div className="flex flex-col items-center justify-center min-h-[200px] gap-3 p-6 text-center">
-          <div className="text-sm font-semibold text-rose-400">Something went wrong</div>
+          <div className="text-sm font-semibold text-destructive">Something went wrong</div>
           <div className="text-xs text-muted-foreground max-w-md">
             {this.state.error?.message || 'An unexpected error occurred.'}
           </div>

@@ -851,7 +851,7 @@ export default function TechnicalPage() {
                                 className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${cfg.enabled ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/30 text-muted-foreground/40'}`}
                               >{cfg.enabled ? 'On' : 'Off'}</button>
                               <div className="flex-1" />
-                              <button onClick={() => setState(s => ({ ...s, maConfigs: s.maConfigs.filter((_, i) => i !== idx) }))} className="opacity-0 group-hover/ma:opacity-100 transition-opacity p-1 rounded hover:bg-rose-500/10 text-muted-foreground/40 hover:text-rose-500"><X className="w-3 h-3" /></button>
+                              <button onClick={() => setState(s => ({ ...s, maConfigs: s.maConfigs.filter((_, i) => i !== idx) }))} className="opacity-0 group-hover/ma:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 text-muted-foreground/40 hover:text-destructive"><X className="w-3 h-3" /></button>
                             </div>
                           );
                         })}
@@ -1008,7 +1008,7 @@ export default function TechnicalPage() {
                 {isFetching ? (
                   <><Loader2 className="w-3.5 h-3.5 animate-spin text-primary" /><span className="text-[11px] font-medium text-primary">Updating</span></>
                 ) : (
-                  <><span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span></span><span className="text-[11px] font-medium text-muted-foreground">Live</span></>
+                  <><span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span></span><span className="text-[11px] font-medium text-muted-foreground">Live</span></>
                 )}
               </div>
 
@@ -1058,7 +1058,7 @@ export default function TechnicalPage() {
                         <button
                           onClick={() => handleExport('pptx')}
                           disabled={!!exportingFormat}
-                          className="p-1.5 rounded-md transition-all text-muted-foreground hover:text-amber-500 hover:bg-amber-500/[0.07]"
+                          className="p-1.5 rounded-md transition-all text-muted-foreground hover:text-warning hover:bg-warning/[0.07]"
                           title="Export to PowerPoint"
                         >
                           {exportingFormat === 'pptx' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PresentationIcon className="w-3.5 h-3.5" />}
@@ -1120,7 +1120,7 @@ export default function TechnicalPage() {
             {/* Error State */}
             {!isLoading && error && (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 backdrop-blur-sm">
-                <div className="bg-rose-500/10 text-rose-500 px-4 py-2 rounded-lg border border-rose-500/20 text-sm font-medium">
+                <div className="bg-destructive/10 text-destructive px-4 py-2 rounded-lg border border-destructive/20 text-sm font-medium">
                   {(error as Error)?.message || 'Failed to load chart'}
                 </div>
               </div>
@@ -1157,7 +1157,7 @@ export default function TechnicalPage() {
 function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   useEffect(() => { const t = setTimeout(onDismiss, 4000); return () => clearTimeout(t); }, [onDismiss]);
   return (
-    <div className="fixed bottom-4 right-4 z-[200] bg-rose-500/90 text-white px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
+    <div className="fixed bottom-4 right-4 z-[200] bg-destructive text-background px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
       {message}
       <button onClick={onDismiss} className="ml-1 opacity-70 hover:opacity-100">&times;</button>
     </div>

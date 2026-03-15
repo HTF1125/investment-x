@@ -16,11 +16,20 @@ export const TACTICAL_COLORS: Record<string, string> = {
 export const REGIME_ORDER = ['Goldilocks', 'Reflation', 'Stagflation', 'Deflation'];
 
 export const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'regime', label: 'Regime' },
-  { key: 'liquidity', label: 'Liquidity' },
-  { key: 'tactical', label: 'Tactical' },
+  { key: 'methodology', label: 'Methodology' },
+  { key: 'strategy', label: 'Backtest' },
+  { key: 'factors', label: 'Factors' },
+  { key: 'cross-market', label: 'Cross-Market' },
+  { key: 'robustness', label: 'Robustness' },
+  { key: 'signal', label: 'Current Signal' },
 ];
+
+export const STRAT_COLORS: Record<string, string> = {
+  Growth: '#3fb950', Inflation: '#f0883e', Liquidity: '#58a6ff',
+  Tactical: '#bc8cff', Regime: '#f85149', Blended: '#39d2c0',
+};
+
+export const STRAT_ORDER = ['Growth', 'Inflation', 'Liquidity', 'Tactical', 'Regime', 'Blended'];
 
 export const PLOTLY_CONFIG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d' as const, 'select2d' as const] };
 

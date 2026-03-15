@@ -58,7 +58,7 @@ const AXIS_KEY_REGEX = /^(x|y)axis(\d*)$/;
  * Curated color palette matching the backend Investment-X design system.
  * Ordered for maximum contrast between adjacent traces.
  */
-const COLORWAY = [
+export const COLORWAY = [
   '#00D2FF', // Cyan
   '#FF69B4', // Magenta
   '#A020F0', // Purple

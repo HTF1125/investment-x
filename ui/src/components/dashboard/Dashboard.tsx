@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   RefreshCw, FileText, FileCode, Plus, Search,
-  Layers, Loader2, Save, RotateCcw,
+  Layers, Loader2, Save, RotateCcw, Table2,
 } from 'lucide-react';
+import Scorecards from './Scorecards';
+import MacroRegimeSummary from './MacroRegimeSummary';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useDashboardCharts } from '@/hooks/useDashboardCharts';
@@ -38,7 +40,7 @@ function DeleteConfirmModal({
     >
       <div className="text-sm font-semibold text-foreground mb-1">Delete Chart</div>
       <div className="text-xs text-muted-foreground mb-4">
-        Delete <span className="text-rose-400 font-mono font-medium">{target.name}</span>? This action cannot be undone.
+        Delete <span className="text-destructive font-mono font-medium">{target.name}</span>? This action cannot be undone.
       </div>
       <div className="flex items-center justify-end gap-2">
         <button onClick={onCancel} className="btn-secondary h-7 text-[10px]">Cancel</button>
@@ -94,6 +96,7 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
   const router = useRouter();
   const perms = useDashboardPermissions();
   const charts = useDashboardCharts(chartsByCategory);
+  const [showScorecards, setShowScorecards] = useState(false);
   const onVisibilityToggled = useCallback(
     (id: string, status: boolean) => charts.updateChartOptimistic(id, { public: status }),
     [charts.updateChartOptimistic],
@@ -148,21 +151,28 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
           {/* Category tabs */}
           <div className="flex gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0 -mb-px">
             <button
-              onClick={() => charts.setActiveCategory('all')}
-              className={`tab-link ${charts.activeCategory === 'all' ? 'active' : ''}`}
+              onClick={() => { setShowScorecards(false); charts.setActiveCategory('all'); }}
+              className={`tab-link ${!showScorecards && charts.activeCategory === 'all' ? 'active' : ''}`}
             >
               All
               <span className="ml-1.5 text-[9px] text-muted-foreground/30 font-mono tabular-nums">
                 {charts.allCharts.length}
               </span>
             </button>
+            <button
+              onClick={() => setShowScorecards(true)}
+              className={`tab-link ${showScorecards ? 'active' : ''}`}
+            >
+              <Table2 className="w-3 h-3 mr-1 inline-block" />
+              Scorecards
+            </button>
             {charts.categories.map(cat => {
               const count = charts.groupedCharts.find(g => g.category === cat)?.charts.length ?? 0;
               return (
                 <button
                   key={cat}
-                  onClick={() => charts.setActiveCategory(cat)}
-                  className={`tab-link ${charts.activeCategory === cat ? 'active' : ''}`}
+                  onClick={() => { setShowScorecards(false); charts.setActiveCategory(cat); }}
+                  className={`tab-link ${!showScorecards && charts.activeCategory === cat ? 'active' : ''}`}
                 >
                   {cat}
                   <span className="ml-1.5 text-[9px] text-muted-foreground/30 font-mono tabular-nums">
@@ -212,7 +222,7 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
               <button
                 onClick={actions.exportHTML}
                 disabled={actions.exportingHtml}
-                className="btn-icon w-6 h-6 text-rose-400/60 hover:text-rose-400 hover:bg-rose-500/[0.08]"
+                className="btn-icon w-6 h-6 text-destructive/60 hover:text-destructive hover:bg-destructive/[0.08]"
                 title="Export HTML"
               >
                 <FileCode className={`w-3 h-3 ${actions.exportingHtml ? 'animate-pulse' : ''}`} />
@@ -232,8 +242,14 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
         </div>
       </div>
 
-      {/* ── Chart Gallery ── */}
+      {/* ── Content Area ── */}
       <div className="overflow-y-auto flex-1 min-h-0">
+        {showScorecards ? (
+          <>
+            <Scorecards />
+            <MacroRegimeSummary />
+          </>
+        ) : (
         <div className="p-3 sm:p-4 lg:p-5">
           {hasCharts ? (
             displayGroups.map((group, gi) => {
@@ -303,6 +319,7 @@ export default function Dashboard({ chartsByCategory }: DashboardProps) {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* ── Save Order Bar ── */}

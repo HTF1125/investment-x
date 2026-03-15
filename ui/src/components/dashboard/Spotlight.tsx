@@ -173,7 +173,7 @@ export default function Spotlight({
             <button
               onClick={() => onToggleFavorite(chart.id)}
               className={`p-1.5 rounded-md transition-colors ${
-                isFavorite ? 'text-amber-400' : 'text-muted-foreground/40 hover:text-muted-foreground'
+                isFavorite ? 'text-warning' : 'text-muted-foreground/40 hover:text-muted-foreground'
               } hover:bg-primary/10`}
               title={isFavorite ? 'Remove favorite' : 'Add favorite'}
             >
@@ -185,7 +185,7 @@ export default function Spotlight({
             className="p-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-primary/10 transition-colors"
             title="Copy as PNG"
           >
-            <Copy className={`w-3.5 h-3.5 ${copied ? 'text-emerald-400' : ''}`} />
+            <Copy className={`w-3.5 h-3.5 ${copied ? 'text-success' : ''}`} />
           </button>
           {canRefresh && (
             <button
@@ -223,7 +223,7 @@ export default function Spotlight({
           {canDelete && (
             <button
               onClick={() => { onDelete?.(chart.id); onClose(); }}
-              className="p-1.5 rounded-md text-muted-foreground/40 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+              className="p-1.5 rounded-md text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
               title="Delete"
             >
               <Trash2 className="w-3.5 h-3.5" />

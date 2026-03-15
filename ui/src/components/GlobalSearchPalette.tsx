@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Search, BarChart3, TrendingUp, Radio,
-  Settings, ArrowRight, Activity, PenTool,
+  Settings, ArrowRight, Activity, PenTool, LineChart,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ interface SearchItem {
 
 const NAV_ITEMS: SearchItem[] = [
   { id: 'dashboard', label: 'Dashboard', description: 'Chart gallery & analytics', icon: <BarChart3 className="w-3.5 h-3.5" />, href: '/', section: 'Pages' },
+  { id: 'charts', label: 'Charts', description: 'Build charts from timeseries', icon: <LineChart className="w-3.5 h-3.5" />, href: '/charts', section: 'Pages' },
   { id: 'intel', label: 'Intel', description: 'Research briefings & wartime', icon: <Radio className="w-3.5 h-3.5" />, href: '/intel', section: 'Pages' },
   { id: 'macro', label: 'Macro Outlook', description: 'Regime analysis & liquidity', icon: <TrendingUp className="w-3.5 h-3.5" />, href: '/macro', section: 'Pages' },
   { id: 'whiteboard', label: 'Whiteboard', description: 'Diagrams & visual thinking', icon: <PenTool className="w-3.5 h-3.5" />, href: '/whiteboard', section: 'Pages' },
@@ -195,7 +196,7 @@ export default function GlobalSearchPalette({ isOpen, onClose }: GlobalSearchPal
                         data-idx={globalIdx}
                         onClick={() => executeItem(item)}
                         onMouseEnter={() => setSelectedIdx(globalIdx)}
-                        className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors duration-75 ${
+                        className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset ${
                           globalIdx === selectedIdx
                             ? 'bg-foreground/[0.08] text-foreground'
                             : 'text-muted-foreground hover:bg-foreground/[0.04]'

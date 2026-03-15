@@ -206,9 +206,9 @@ export default function PositioningTab() {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {c.last_error ? (
-                    <span className="w-2 h-2 rounded-full bg-rose-500" title={c.last_error} />
+                    <span className="w-2 h-2 rounded-full bg-destructive" title={c.last_error} />
                   ) : c.last_success_at ? (
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="w-2 h-2 rounded-full bg-success" />
                   ) : (
                     <span className="w-2 h-2 rounded-full bg-border/40" />
                   )}

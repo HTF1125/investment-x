@@ -35,7 +35,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // Store token in state to avoid direct localStorage reads during render (SSR hydration safety)
+  // Opaque auth marker for components that check !!token — actual auth uses HttpOnly cookies
   const [token, setToken] = useState<string | null>(null);
   const [viewAsUser, setViewAsUser] = useState(false);
   const [isSessionExpired, setIsSessionExpired] = useState(false);
@@ -66,51 +66,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } as User;
   }, []);
 
-  // Sync token from localStorage on mount only (client-side)
-  useEffect(() => {
-    const stored = localStorage.getItem('token');
-    if (stored) setToken(stored);
-  }, []);
-
-  // Persist token changes to localStorage
-  const updateToken = useCallback((newToken: string | null) => {
-    setToken(newToken);
-    if (newToken) {
-      localStorage.setItem('token', newToken);
-    } else {
-      localStorage.removeItem('token');
-    }
-  }, []);
 
   useEffect(() => {
     const initAuth = async () => {
-      // With cookies, we don't strictly need to check localStorage, 
-      // but we do it for cross-tab session persistence if cookies are volatile
-      const storedToken = localStorage.getItem('token');
-      
       try {
         const res = await fetch('/api/auth/me', {
-          credentials: 'include', // Use browser cookies
-          headers: storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {},
+          credentials: 'include',
         });
-        
+
         if (res.ok) {
           const userData = await res.json();
           setUser(normalizeUser(userData));
-          if (storedToken) setToken(storedToken);
+          setToken('cookie'); // Opaque marker so !!token works for auth checks
         } else {
-          updateToken(null);
+          setToken(null);
           setUser(null);
         }
       } catch {
-        updateToken(null);
+        setToken(null);
         setUser(null);
       }
       setLoading(false);
     };
 
     initAuth();
-  }, [normalizeUser, updateToken]);
+  }, [normalizeUser]);
 
   // Listen for 401 session-expired events dispatched by apiFetch
   useEffect(() => {
@@ -133,18 +113,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.detail || 'Login failed');
     }
-    const data = await res.json();
-    updateToken(data.access_token);
+    await res.json(); // consume response body
+    setToken('cookie');
     const meRes = await fetch('/api/auth/me', {
       credentials: 'include',
-      headers: { 'Authorization': `Bearer ${data.access_token}` },
     });
     if (meRes.ok) {
       const userData = await meRes.json();
       setUser(normalizeUser(userData));
     }
     setIsSessionExpired(false);
-  }, [normalizeUser, updateToken]);
+  }, [normalizeUser]);
 
   const login = useCallback(async (email: string, password: string, rememberMe: boolean = false) => {
     setLoading(true);
@@ -168,14 +147,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(errorMessage);
       }
 
-      const data = await res.json();
-      // Token is now set in cookie, but we still update localStorage for legacy CSR components
-      updateToken(data.access_token);
-      
-      // Fetch user details immediately with the token we just received
+      await res.json(); // consume response body; cookie is set by the server
+      setToken('cookie');
+
+      // Fetch user details — cookie is sent automatically
       const meRes = await fetch('/api/auth/me', {
         credentials: 'include',
-        headers: { 'Authorization': `Bearer ${data.access_token}` },
       });
       
       if (meRes.ok) {
@@ -189,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [normalizeUser, router, updateToken]);
+  }, [normalizeUser, router]);
 
   const register = useCallback(async (email: string, password: string, firstName?: string, lastName?: string) => {
     setLoading(true);
@@ -229,11 +206,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.warn('Logout request failed', err);
     } finally {
-      updateToken(null);
+      setToken(null);
       setUser(null);
       router.push('/login');
     }
-  }, [router, updateToken]);
+  }, [router]);
 
   return (
     <AuthContext.Provider value={{

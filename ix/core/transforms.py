@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 from pandas.tseries.offsets import MonthEnd
 from scipy.optimize import curve_fit
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_series(series: pd.Series) -> pd.Series:
@@ -16,7 +19,7 @@ def _clean_series(series: pd.Series) -> pd.Series:
     try:
         clean = clean.sort_index()
     except Exception:
-        pass
+        logger.debug("Failed to sort series index", exc_info=True)
     return clean
 
 
@@ -59,6 +62,7 @@ def MonthEndOffset(
     months: int = 3,
 ) -> pd.Series:
     """Offset series index by months and align to month end."""
+    series = series.copy()
     shifted = series.index + pd.DateOffset(months=months)
     series.index = shifted + MonthEnd(0)
     return series
@@ -69,6 +73,7 @@ def MonthsOffset(
     months: int,
 ) -> pd.Series:
     """Offset series index by specified number of months."""
+    series = series.copy()
     shifted = series.index + pd.DateOffset(months=months)
     series.index = shifted
     return series

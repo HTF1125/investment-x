@@ -1,0 +1,29 @@
+# Lightweight image for scheduled data fetching
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Run as non-root user
+RUN groupadd -r fetcher && useradd -r -g fetcher -d /app -s /sbin/nologin fetcher
+
+# Only install what fetch_data.py needs
+COPY requirements-fetch.txt .
+RUN pip install --no-cache-dir -r requirements-fetch.txt
+
+COPY ix/ ./ix/
+
+RUN chown -R fetcher:fetcher /app
+USER fetcher
+
+HEALTHCHECK --interval=300s --timeout=10s --retries=1 \
+    CMD python -c "import ix; print('ok')" || exit 1
+
+CMD ["python", "-m", "ix.scripts.fetch_data"]

@@ -494,13 +494,11 @@ export function useChartEditor({ mode, initialChartId }: UseChartEditorOptions) 
     setSuccessMsg(null);
     setPreviewError(null);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const formData = new FormData();
       formData.append('items', JSON.stringify([]));
       formData.append('theme', 'light');
       const res = await fetch(`${getDirectApiBase()}/api/custom/pdf`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
         body: formData,
       });

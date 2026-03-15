@@ -40,8 +40,8 @@ export default function TelegramFeed({ embedded }: { embedded?: boolean } = {}) 
 
   if (isError) {
     return (
-      <div className="h-full border border-rose-500/20 rounded-lg bg-rose-500/[0.04] p-8 flex flex-col items-center justify-center gap-3 text-center">
-        <WifiOff className="w-6 h-6 text-rose-400/50" />
+      <div className="h-full border border-destructive/20 rounded-lg bg-destructive/[0.04] p-8 flex flex-col items-center justify-center gap-3 text-center">
+        <WifiOff className="w-6 h-6 text-destructive/50" />
         <p className="text-sm text-muted-foreground">Unable to load Telegram feed</p>
       </div>
     );

@@ -102,8 +102,8 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
       return body?.figure ?? body;
     },
     initialData: initialFigure ?? undefined,
-    staleTime: 1000 * 60 * 5,
-    gcTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60 * 2, // 2 minutes (was 5)
+    gcTime: 1000 * 60 * 2, // 2 minutes before unmounted charts release gigabytes of memory (was 10)
     enabled: !!id,
   });
 
@@ -252,7 +252,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
               />
             ) : (
               <div role="alert" className="h-full w-full flex flex-col items-center justify-center gap-2 p-4 text-center">
-                <div className="text-xs text-rose-400 font-semibold">Chart Render Error</div>
+                <div className="text-xs text-destructive font-semibold">Chart Render Error</div>
                 <div className="text-[11px] text-muted-foreground">{plotRenderError}</div>
                 <button
                   type="button"
@@ -271,7 +271,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
       </AnimatePresence>
 
       {error && (
-        <div role="alert" className="absolute inset-0 flex items-center justify-center bg-rose-500/5 rounded-lg border border-rose-500/10 text-rose-500 text-xs font-mono">
+        <div role="alert" className="absolute inset-0 flex items-center justify-center bg-destructive/5 rounded-lg border border-destructive/10 text-destructive text-xs font-mono">
           EXECUTION_ERROR: {id}
         </div>
       )}

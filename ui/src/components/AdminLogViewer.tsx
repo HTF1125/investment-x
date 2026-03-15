@@ -27,10 +27,10 @@ const LIMITS = [100, 200, 500] as const;
 function levelTone(level: string) {
   const normalized = level.toUpperCase();
   if (normalized === 'ERROR' || normalized === 'CRITICAL') {
-    return 'border-rose-500/30 bg-rose-500/10 text-rose-300';
+    return 'border-destructive/30 bg-destructive/10 text-destructive';
   }
   if (normalized === 'WARNING') {
-    return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
+    return 'border-warning/30 bg-warning/10 text-warning';
   }
   return 'border-primary/30 bg-primary/10 text-primary';
 }
@@ -116,10 +116,10 @@ export default function AdminLogViewer() {
             <span
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold ${
                 streamState === 'live'
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  ? 'border-success/30 bg-success/10 text-success'
                   : streamState === 'error'
-                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-                    : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                    ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                    : 'border-warning/30 bg-warning/10 text-warning'
               }`}
             >
               <Waves className="w-3.5 h-3.5" />
@@ -134,8 +134,8 @@ export default function AdminLogViewer() {
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
           <StatCard label="Loaded" value={String(stats.total)} tone="neutral" />
-          <StatCard label="Errors" value={String(stats.errors)} tone="rose" />
-          <StatCard label="Warnings" value={String(stats.warnings)} tone="amber" />
+          <StatCard label="Errors" value={String(stats.errors)} tone="destructive" />
+          <StatCard label="Warnings" value={String(stats.warnings)} tone="warning" />
           <StatCard label="Services" value={String(stats.services)} tone="sky" />
         </div>
       </div>
@@ -184,7 +184,7 @@ export default function AdminLogViewer() {
           </div>
         ) : isError ? (
           <div className="py-20 text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-sm text-rose-300">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
               <AlertTriangle className="w-4 h-4" />
               {(error as Error)?.message || 'Failed to load runtime logs.'}
             </div>
@@ -232,7 +232,7 @@ export default function AdminLogViewer() {
                 </div>
 
                 {log.exception && (
-                  <pre className="mt-3 overflow-x-auto rounded-lg border border-rose-500/20 bg-rose-500/8 p-3 text-[11px] leading-relaxed text-rose-200 whitespace-pre-wrap">
+                  <pre className="mt-3 overflow-x-auto rounded-lg border border-destructive/20 bg-destructive/[0.08] p-3 text-[11px] leading-relaxed text-destructive/80 whitespace-pre-wrap">
                     {log.exception}
                   </pre>
                 )}
@@ -259,13 +259,13 @@ function StatCard({
 }: {
   label: string;
   value: string;
-  tone: 'neutral' | 'rose' | 'amber' | 'sky';
+  tone: 'neutral' | 'destructive' | 'warning' | 'sky';
 }) {
   const toneClass =
-    tone === 'rose'
-      ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-      : tone === 'amber'
-        ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+    tone === 'destructive'
+      ? 'border-destructive/30 bg-destructive/10 text-destructive'
+      : tone === 'warning'
+        ? 'border-warning/30 bg-warning/10 text-warning'
         : tone === 'sky'
           ? 'border-primary/30 bg-primary/10 text-primary'
           : 'border-border/50 bg-background/40 text-foreground';

@@ -1,13 +1,11 @@
 'use client';
 
-import { BookOpen, Shield, FileText, Zap } from 'lucide-react';
+import { BookOpen, FileText, Globe } from 'lucide-react';
 
 interface ResearchHeroCardProps {
   selectedDate: string | null;
-  riskCount: number;
-  avgScore: number | null;
   sectionCount: number;
-  takeawayCount: number;
+  translationCount: number;
 }
 
 function formatReportDate(dateStr: string): string {
@@ -25,18 +23,10 @@ function formatReportDate(dateStr: string): string {
   }
 }
 
-function scoreColorClass(score: number): string {
-  if (score >= 8) return 'text-rose-400 bg-rose-500/8 border-rose-500/20';
-  if (score >= 6) return 'text-amber-400 bg-amber-500/8 border-amber-500/20';
-  return 'text-emerald-400 bg-emerald-500/8 border-emerald-500/20';
-}
-
 export default function ResearchHeroCard({
   selectedDate,
-  riskCount,
-  avgScore,
   sectionCount,
-  takeawayCount,
+  translationCount,
 }: ResearchHeroCardProps) {
   if (!selectedDate) return null;
 
@@ -50,7 +40,7 @@ export default function ResearchHeroCard({
           </div>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-foreground truncate">
-              Macro Research Briefing
+              Macro Outlook
             </h2>
             <p className="text-[10px] font-mono text-muted-foreground/50 mt-0.5">
               {formatReportDate(selectedDate)}
@@ -60,30 +50,16 @@ export default function ResearchHeroCard({
 
         {/* Right: Stat badges */}
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          {riskCount > 0 && avgScore !== null && (
-            <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-mono font-bold tabular-nums ${scoreColorClass(avgScore)}`}
-            >
-              <Shield className="w-3 h-3" />
-              {avgScore.toFixed(1)} avg
-            </span>
-          )}
-          {riskCount > 0 && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground/50">
-              <Shield className="w-3 h-3 opacity-40" />
-              {riskCount} risks
-            </span>
-          )}
           {sectionCount > 0 && (
             <span className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground/50">
               <FileText className="w-3 h-3 opacity-40" />
               {sectionCount} sections
             </span>
           )}
-          {takeawayCount > 0 && (
+          {translationCount > 0 && (
             <span className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground/50">
-              <Zap className="w-3 h-3 opacity-40" />
-              {takeawayCount} takeaways
+              <Globe className="w-3 h-3 opacity-40" />
+              {translationCount + 1} languages
             </span>
           )}
         </div>

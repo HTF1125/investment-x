@@ -28,10 +28,16 @@ from .logs import Logs
 from .macro_outlook import MacroOutlook
 from .research_report import ResearchReport
 from .whiteboard import Whiteboard
+from .chart_workspace import ChartWorkspace
+from .chart_pack import ChartPack
 from .collector_state import CollectorState
 from .institutional_holding import InstitutionalHolding
+from .macro_regime_strategy import MacroRegimeStrategy
+from .strategy_result import StrategyResult
+from .research_source import ResearchSource
 import pandas as pd
 import threading
+import time
 
 logger = get_logger(__name__)
 
@@ -45,7 +51,8 @@ logger = get_logger(__name__)
 # directly, so the lock never blocks the event loop.
 _ts_cache: Dict[str, tuple] = {}
 _ts_cache_lock = threading.Lock()
-_TS_CACHE_MAX = 512  # max entries before eviction
+_TS_CACHE_MAX = 48  # max entries before eviction
+_TS_CACHE_TTL = 180  # 3-minute TTL in seconds
 
 
 def _cache_get(ts_id: str, updated: Optional[datetime]) -> Optional[pd.Series]:
@@ -54,7 +61,11 @@ def _cache_get(ts_id: str, updated: Optional[datetime]) -> Optional[pd.Series]:
         entry = _ts_cache.get(str(ts_id))
     if entry is None:
         return None
-    cached_updated, cached_series = entry
+    cached_updated, cached_series, cached_time = entry
+    # TTL check — expire after _TS_CACHE_TTL seconds
+    if time.monotonic() - cached_time > _TS_CACHE_TTL:
+        _cache_invalidate(ts_id)
+        return None
     if updated is not None and cached_updated == updated:
         return cached_series.copy()
     return None
@@ -68,7 +79,7 @@ def _cache_put(ts_id: str, updated: Optional[datetime], series: pd.Series) -> No
             to_remove = list(_ts_cache.keys())[: _TS_CACHE_MAX // 4]
             for k in to_remove:
                 _ts_cache.pop(k, None)
-        _ts_cache[str(ts_id)] = (updated, series.copy())
+        _ts_cache[str(ts_id)] = (updated, series.copy(), time.monotonic())
 
 
 def _cache_invalidate(ts_id: str) -> None:
@@ -94,12 +105,17 @@ __all__ = [
     "MacroOutlook",
     "ResearchReport",
     "Whiteboard",
+    "ChartWorkspace",
     "CollectorState",
     "InstitutionalHolding",
+    "MacroRegimeStrategy",
+    "StrategyResult",
+    "ResearchSource",
+    "all_models",
 ]
 
 
-def all():
+def all_models() -> list:
     """Return all model classes."""
     return [
         User,
@@ -116,8 +132,12 @@ def all():
         MacroOutlook,
         ResearchReport,
         Whiteboard,
+        ChartWorkspace,
         CollectorState,
         InstitutionalHolding,
+        MacroRegimeStrategy,
+        StrategyResult,
+        ResearchSource,
     ]
 
 
@@ -259,7 +279,8 @@ class Timeseries(Base):
                     return cached.sort_index().resample(str(frequency)).last().dropna()
                 else:
                     return cached.sort_index()
-            except Exception:
+            except Exception as exc:
+                logger.debug("Resample failed for cached %s (freq=%s): %s", code, frequency, exc)
                 return cached.sort_index()
 
         # Cache miss — load full JSONB data
@@ -275,7 +296,8 @@ class Timeseries(Base):
 
         try:
             series.index = pd.to_datetime(series.index)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Date parsing failed for %s, cleaning invalid dates: %s", code, exc)
             valid_dates = pd.to_datetime(series.index, errors="coerce")
             series = series[valid_dates.notna()]
             series.index = pd.to_datetime(series.index)
@@ -290,7 +312,8 @@ class Timeseries(Base):
                         else:
                             key = str(pd.to_datetime(k).date())
                         cleaned[key] = float(v)
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("Skipping uncleanable entry %r in %s: %s", k, code, exc)
                         continue
                 data_record.data = cleaned
                 data_record.updated = datetime.now()
@@ -307,7 +330,8 @@ class Timeseries(Base):
                 return series.resample(str(frequency)).last().dropna()
             else:
                 return series
-        except Exception:
+        except Exception as exc:
+            logger.debug("Resample failed for %s (freq=%s): %s", code, frequency, exc)
             return series
 
     @data.setter
@@ -482,11 +506,9 @@ class Timeseries(Base):
 
                 if not parent_id or str(parent_id) == str(ts_id):
                     if str(parent_id) == str(ts_id):
-                        import logging
-
-                        logger = logging.getLogger(__name__)
                         logger.warning(
-                            f"Timeseries {ts_id} has parent_id equal to self; ignoring."
+                            "Timeseries %s has parent_id equal to self; ignoring.",
+                            ts_id,
                         )
                     return None
 
@@ -495,7 +517,8 @@ class Timeseries(Base):
                     session.query(Timeseries).filter(Timeseries.id == parent_id).first()
                 )
                 return parent
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to get parent for timeseries %s: %s", getattr(self, "id", None), exc)
             return None
 
     def _detect_cycle(self, candidate_parent_id: Optional[str]) -> bool:

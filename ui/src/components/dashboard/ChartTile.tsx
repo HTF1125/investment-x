@@ -111,11 +111,11 @@ const ChartTile = React.memo(function ChartTile({
         {/* Copy */}
         <button
           onClick={handleCopy}
-          className="shrink-0 p-1 rounded-[calc(var(--radius)-2px)] opacity-0 group-hover:opacity-100 text-muted-foreground/30 hover:text-foreground hover:bg-primary/[0.06] transition-all"
+          className="shrink-0 p-1.5 rounded-[calc(var(--radius)-2px)] opacity-0 group-hover:opacity-100 text-muted-foreground/30 hover:text-foreground hover:bg-primary/[0.06] transition-all"
           title="Copy as PNG"
         >
           {copied ? (
-            <Check className="w-3 h-3 text-emerald-400" />
+            <Check className="w-3 h-3 text-success" />
           ) : (
             <Copy className="w-3 h-3" />
           )}
@@ -125,10 +125,10 @@ const ChartTile = React.memo(function ChartTile({
         {onToggleFavorite && (
           <button
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(chart.id); }}
-            className={`shrink-0 p-1 rounded-[calc(var(--radius)-2px)] transition-all ${
+            className={`shrink-0 p-1.5 rounded-[calc(var(--radius)-2px)] transition-all ${
               isFavorite
-                ? 'text-amber-400 hover:text-amber-300 opacity-100'
-                : 'opacity-0 group-hover:opacity-100 text-muted-foreground/20 hover:text-amber-400 hover:bg-amber-500/[0.06]'
+                ? 'text-warning hover:opacity-80 opacity-100'
+                : 'opacity-0 group-hover:opacity-100 text-muted-foreground/20 hover:text-warning hover:bg-warning/[0.06]'
             }`}
             title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
           >

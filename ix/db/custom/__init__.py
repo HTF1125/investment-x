@@ -323,6 +323,112 @@ from ix.db.custom.earnings_deep import (
     us_vs_world_earnings,
     earnings_composite,
 )
+from ix.db.custom.labor_market import (
+    jolts_job_openings,
+    jolts_quits_rate,
+    jolts_hires_rate,
+    jolts_openings_unemployed_ratio,
+    atlanta_fed_wage_tracker,
+    employment_cost_index,
+    employment_cost_index_yoy,
+    unit_labor_costs_yoy,
+    nonfarm_productivity_yoy,
+    u6_unemployment,
+    temp_employment,
+    temp_employment_yoy,
+    labor_market_composite,
+)
+from ix.db.custom.consumer import (
+    michigan_sentiment,
+    michigan_expectations,
+    michigan_sentiment_momentum,
+    conference_board_confidence,
+    consumer_expectations_spread,
+    retail_sales_yoy,
+    real_personal_income_ex_transfers,
+    personal_savings_rate,
+    consumer_delinquency_rate,
+    household_debt_service_ratio,
+    consumer_credit_delinquency_momentum,
+    consumer_health_composite,
+)
+from ix.db.custom.money_markets import (
+    sofr_rate,
+    sofr_fed_funds_spread,
+    commercial_paper_spread,
+    commercial_paper_spread_zscore,
+    money_market_fund_assets,
+    money_market_fund_yoy,
+    money_market_vs_equities,
+    reverse_repo_usage,
+    reverse_repo_momentum,
+    funding_stress_index,
+)
+from ix.db.custom.fiscal import (
+    federal_deficit_gdp,
+    federal_receipts_yoy,
+    federal_spending_yoy,
+    fiscal_impulse,
+    public_debt_gdp,
+    interest_payments_gdp,
+    fiscal_monetary_impulse,
+)
+from ix.db.custom.real_estate import (
+    case_shiller_yoy,
+    case_shiller_momentum,
+    existing_home_sales,
+    existing_home_sales_yoy,
+    new_home_sales,
+    nahb_housing_market_index,
+    commercial_real_estate_price,
+    mortgage_purchase_index,
+    mortgage_purchase_yoy,
+    housing_composite,
+)
+from ix.db.custom.policy_uncertainty import (
+    economic_policy_uncertainty,
+    policy_uncertainty_zscore,
+    trade_policy_uncertainty,
+    global_supply_chain_pressure,
+    supply_chain_momentum,
+    geopolitical_risk_index,
+    geopolitical_risk_zscore,
+    uncertainty_composite,
+)
+from ix.db.custom.transportation import (
+    truck_tonnage,
+    truck_tonnage_yoy,
+    rail_freight,
+    rail_freight_yoy,
+    air_passengers,
+    air_passengers_yoy,
+    vehicle_sales,
+    vehicle_sales_yoy,
+    real_economy_transport_composite,
+)
+from ix.db.custom.energy_infra import (
+    us_rig_count,
+    us_rig_count_momentum,
+    strategic_petroleum_reserve,
+    spr_change,
+    crude_inventories,
+    crude_inventories_zscore,
+    crude_inventory_change,
+    natural_gas_storage,
+    natural_gas_storage_zscore,
+    energy_supply_composite,
+)
+from ix.db.custom.global_rates import (
+    german_10y,
+    japan_10y,
+    uk_10y,
+    us_germany_spread,
+    us_japan_spread,
+    g4_yield_dispersion,
+    global_real_rate_composite,
+    embi_spread,
+    embi_spread_zscore,
+)
 
 from typing import Union
 import pandas as pd
@@ -650,6 +756,121 @@ class EarningsDeep:
     regional_divergence = staticmethod(regional_earnings_divergence)
     us_vs_world = staticmethod(us_vs_world_earnings)
     composite = staticmethod(earnings_composite)
+
+
+class LaborMarket:
+    jolts_openings = staticmethod(jolts_job_openings)
+    quits_rate = staticmethod(jolts_quits_rate)
+    hires_rate = staticmethod(jolts_hires_rate)
+    openings_unemployed = staticmethod(jolts_openings_unemployed_ratio)
+    wage_tracker = staticmethod(atlanta_fed_wage_tracker)
+    eci = staticmethod(employment_cost_index)
+    eci_yoy = staticmethod(employment_cost_index_yoy)
+    ulc_yoy = staticmethod(unit_labor_costs_yoy)
+    productivity_yoy = staticmethod(nonfarm_productivity_yoy)
+    u6 = staticmethod(u6_unemployment)
+    temp = staticmethod(temp_employment)
+    temp_yoy = staticmethod(temp_employment_yoy)
+    composite = staticmethod(labor_market_composite)
+
+
+class ConsumerHealth:
+    michigan = staticmethod(michigan_sentiment)
+    expectations = staticmethod(michigan_expectations)
+    sentiment_momentum = staticmethod(michigan_sentiment_momentum)
+    confidence = staticmethod(conference_board_confidence)
+    expectations_spread = staticmethod(consumer_expectations_spread)
+    retail_yoy = staticmethod(retail_sales_yoy)
+    real_income = staticmethod(real_personal_income_ex_transfers)
+    savings_rate = staticmethod(personal_savings_rate)
+    delinquency = staticmethod(consumer_delinquency_rate)
+    debt_service = staticmethod(household_debt_service_ratio)
+    delinquency_momentum = staticmethod(consumer_credit_delinquency_momentum)
+    composite = staticmethod(consumer_health_composite)
+
+
+class MoneyMarkets:
+    sofr = staticmethod(sofr_rate)
+    sofr_ffr_spread = staticmethod(sofr_fed_funds_spread)
+    cp_spread = staticmethod(commercial_paper_spread)
+    cp_spread_zscore = staticmethod(commercial_paper_spread_zscore)
+    mmf_assets = staticmethod(money_market_fund_assets)
+    mmf_yoy = staticmethod(money_market_fund_yoy)
+    mmf_vs_equities = staticmethod(money_market_vs_equities)
+    rrp = staticmethod(reverse_repo_usage)
+    rrp_momentum = staticmethod(reverse_repo_momentum)
+    funding_stress = staticmethod(funding_stress_index)
+
+
+class FiscalPolicy:
+    deficit_gdp = staticmethod(federal_deficit_gdp)
+    receipts_yoy = staticmethod(federal_receipts_yoy)
+    spending_yoy = staticmethod(federal_spending_yoy)
+    impulse = staticmethod(fiscal_impulse)
+    debt_gdp = staticmethod(public_debt_gdp)
+    interest_gdp = staticmethod(interest_payments_gdp)
+    fiscal_monetary = staticmethod(fiscal_monetary_impulse)
+
+
+class RealEstate:
+    case_shiller = staticmethod(case_shiller_yoy)
+    home_price_momentum = staticmethod(case_shiller_momentum)
+    existing_sales = staticmethod(existing_home_sales)
+    existing_sales_yoy = staticmethod(existing_home_sales_yoy)
+    new_sales = staticmethod(new_home_sales)
+    nahb = staticmethod(nahb_housing_market_index)
+    cre_price = staticmethod(commercial_real_estate_price)
+    purchase_apps = staticmethod(mortgage_purchase_index)
+    purchase_apps_yoy = staticmethod(mortgage_purchase_yoy)
+    composite = staticmethod(housing_composite)
+
+
+class PolicyUncertainty:
+    epu = staticmethod(economic_policy_uncertainty)
+    epu_zscore = staticmethod(policy_uncertainty_zscore)
+    trade = staticmethod(trade_policy_uncertainty)
+    supply_chain = staticmethod(global_supply_chain_pressure)
+    supply_chain_momentum = staticmethod(supply_chain_momentum)
+    gpr = staticmethod(geopolitical_risk_index)
+    gpr_zscore = staticmethod(geopolitical_risk_zscore)
+    composite = staticmethod(uncertainty_composite)
+
+
+class Transportation:
+    trucks = staticmethod(truck_tonnage)
+    trucks_yoy = staticmethod(truck_tonnage_yoy)
+    rail = staticmethod(rail_freight)
+    rail_yoy = staticmethod(rail_freight_yoy)
+    air = staticmethod(air_passengers)
+    air_yoy = staticmethod(air_passengers_yoy)
+    vehicles = staticmethod(vehicle_sales)
+    vehicles_yoy = staticmethod(vehicle_sales_yoy)
+    composite = staticmethod(real_economy_transport_composite)
+
+
+class EnergyInfra:
+    rig_count = staticmethod(us_rig_count)
+    rig_momentum = staticmethod(us_rig_count_momentum)
+    spr = staticmethod(strategic_petroleum_reserve)
+    spr_change = staticmethod(spr_change)
+    crude_inv = staticmethod(crude_inventories)
+    crude_inv_zscore = staticmethod(crude_inventories_zscore)
+    crude_inv_change = staticmethod(crude_inventory_change)
+    ng_storage = staticmethod(natural_gas_storage)
+    ng_storage_zscore = staticmethod(natural_gas_storage_zscore)
+    composite = staticmethod(energy_supply_composite)
+
+
+class GlobalRates:
+    german_10y = staticmethod(german_10y)
+    japan_10y = staticmethod(japan_10y)
+    uk_10y = staticmethod(uk_10y)
+    us_de_spread = staticmethod(us_germany_spread)
+    us_jp_spread = staticmethod(us_japan_spread)
+    g4_dispersion = staticmethod(g4_yield_dispersion)
+    global_real_rate = staticmethod(global_real_rate_composite)
+    embi = staticmethod(embi_spread)
+    embi_zscore = staticmethod(embi_spread_zscore)
 
 
 # ── CustomSeries dispatcher ─────────────────────────────────────────────────

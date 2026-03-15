@@ -1,0 +1,486 @@
+from typing import Optional, List, Dict
+import asyncio
+import json
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
+from fastapi.responses import StreamingResponse
+from ix.api.dependencies import get_current_user, is_admin_role, user_id_str
+from ix.misc import get_logger
+
+logger = get_logger(__name__)
+from ix.db.models.user import User
+from ix.db.models.task_process import TaskProcess
+from ix.db.conn import Session
+from ix.api.task_utils import (
+    ProcessStatus,
+    ProcessInfo,
+    subscribe_task_events,
+    unsubscribe_task_events,
+    start_process,
+    get_process as _get_process,
+    update_process,
+    _ensure_task_table,
+    _broadcast_task_event,
+)
+from ix.misc.task import (
+    send_data_reports,
+)
+
+router = APIRouter()
+
+
+_is_admin_user = is_admin_role
+_current_user_id = user_id_str
+
+
+def _can_access_task(task_user_id: Optional[str], current_user: User) -> bool:
+    if _is_admin_user(current_user):
+        return True
+    return bool(task_user_id and task_user_id == _current_user_id(current_user))
+
+
+# ═══════════════════════════════════════════════════════════
+# Background task wrappers — each registers in persistent task storage
+# ═══════════════════════════════════════════════════════════
+
+
+def _run_daily_update(user_id: str | None = None):
+    """Synchronous wrapper for the full daily pipeline with progress tracking."""
+    pid = start_process("Daily Data Update", user_id=user_id)
+    try:
+        from ix.db.models import Timeseries
+        from ix.misc.task import update_yahoo_data, update_fred_data, update_naver_data
+
+        with Session() as db:
+            yahoo_total = db.query(Timeseries).filter(Timeseries.source == "Yahoo").count()
+            fred_total = db.query(Timeseries).filter(Timeseries.source == "Fred").count()
+            naver_total = db.query(Timeseries).filter(Timeseries.source == "Naver").count()
+
+        total_tickers = max(1, yahoo_total + fred_total + naver_total)
+        update_process(
+            pid,
+            message=f"Starting daily update (0/{total_tickers})...",
+            progress=f"0/{total_tickers}",
+        )
+
+        def _on_ticker_progress(current: int, total: int, ts_code: str):
+            update_process(
+                pid,
+                message=f"Updating {ts_code} ({current}/{total})",
+                progress=f"{current}/{total}",
+            )
+
+        update_yahoo_data(progress_cb=_on_ticker_progress, start_index=0, total_count=total_tickers)
+        update_fred_data(progress_cb=_on_ticker_progress, start_index=yahoo_total, total_count=total_tickers)
+        update_naver_data(progress_cb=_on_ticker_progress, start_index=yahoo_total + fred_total, total_count=total_tickers)
+
+        update_process(
+            pid,
+            message=f"Refreshing charts ({total_tickers}/{total_tickers})...",
+            progress=f"{total_tickers}/{total_tickers}",
+        )
+        from ix.misc.task import refresh_all_charts
+
+        refresh_all_charts()
+
+        update_process(
+            pid,
+            status=ProcessStatus.COMPLETED,
+            message="Daily update completed.",
+            progress=f"{total_tickers}/{total_tickers}",
+        )
+    except Exception as e:
+        logger.exception("Background task failed: %s", e)
+        update_process(pid, status=ProcessStatus.FAILED, message=str(e))
+
+
+def _run_send_reports(user_id: str | None = None):
+    """Synchronous wrapper for email report sending."""
+    pid = start_process("Send Email Reports", user_id=user_id)
+    try:
+        update_process(pid, message="Loading data for reports...", progress="1/3")
+        update_process(pid, message="Building report files...", progress="2/3")
+        send_data_reports()
+        update_process(
+            pid,
+            status=ProcessStatus.COMPLETED,
+            message="Reports sent successfully.",
+            progress="3/3",
+        )
+    except Exception as e:
+        logger.exception("Background task failed: %s", e)
+        update_process(pid, status=ProcessStatus.FAILED, message=str(e))
+
+
+async def _run_telegram_scrape(user_id: str | None = None):
+    """Async wrapper for Telegram channel scraping."""
+    pid = start_process("Telegram Sync", user_id=user_id)
+    try:
+        from ix.misc.telegram import scrape_all_channels, CHANNELS_TO_SCRAPE
+
+        total_channels = max(1, len(CHANNELS_TO_SCRAPE))
+        update_process(
+            pid,
+            message="Preparing Telegram sync...",
+            progress=f"0/{total_channels}",
+        )
+
+        def _on_progress(current: int, total: int, channel: str):
+            update_process(
+                pid,
+                message=f"Syncing {channel}...",
+                progress=f"{current}/{total}",
+            )
+
+        await scrape_all_channels(progress_cb=_on_progress)
+        update_process(
+            pid,
+            status=ProcessStatus.COMPLETED,
+            message="Telegram sync completed.",
+            progress=f"{total_channels}/{total_channels}",
+        )
+    except Exception as e:
+        logger.exception("Background task failed: %s", e)
+        update_process(pid, status=ProcessStatus.FAILED, message=str(e))
+
+
+def _run_news_scraping(user_id: str | None = None):
+    """Synchronous wrapper for RSS/Reddit/GDELT news scraping with task tracking."""
+    pid = start_process("News Scraping", user_id=user_id)
+    try:
+        update_process(pid, message="Starting news crawl...", progress="0/4")
+        from ix.task.news import RSS_FEEDS, SEC_RSS_FEEDS, REDDIT_FEEDS, GDELT_QUERIES
+        from ix.task.news import fetch_rss_feed, fetch_reddit_feed, fetch_gdelt
+
+        with Session() as db:
+            total = len(RSS_FEEDS) + len(SEC_RSS_FEEDS) + len(REDDIT_FEEDS) + len(GDELT_QUERIES)
+            done = 0
+            for name, url in RSS_FEEDS.items():
+                fetch_rss_feed(name, url, db)
+                done += 1
+                update_process(pid, message=f"Fetched {name}", progress=f"{done}/{total}")
+            for name, url in SEC_RSS_FEEDS.items():
+                fetch_rss_feed(name, url, db)
+                done += 1
+                update_process(pid, message=f"Fetched {name}", progress=f"{done}/{total}")
+            for name, url in REDDIT_FEEDS.items():
+                fetch_reddit_feed(name, url, db)
+                done += 1
+                update_process(pid, message=f"Fetched {name}", progress=f"{done}/{total}")
+            for q in GDELT_QUERIES:
+                fetch_gdelt(q, db)
+                done += 1
+                update_process(pid, message=f"Fetched GDELT", progress=f"{done}/{total}")
+
+        update_process(pid, status=ProcessStatus.COMPLETED, message="News crawl completed.", progress=f"{total}/{total}")
+    except Exception as e:
+        logger.exception("Background task failed: %s", e)
+        update_process(pid, status=ProcessStatus.FAILED, message=str(e))
+
+
+def _run_refresh_charts(pid: Optional[str] = None, user_id: str | None = None):
+    """Synchronous wrapper for chart refresh."""
+    if pid is None:
+        pid = start_process("Refresh Charts", user_id=user_id)
+    try:
+        from ix.misc.task import refresh_all_charts
+
+        progress_state = {"current": 0, "total": 0}
+        update_process(pid, message="Preparing chart refresh...", progress="0/0")
+
+        def _on_progress(current: int, total: int, chart_code: str):
+            progress_state["current"] = current
+            progress_state["total"] = total
+            update_process(
+                pid,
+                message=f"Refreshing chart {chart_code}...",
+                progress=f"{current}/{total}",
+            )
+
+        refresh_all_charts(progress_cb=_on_progress)
+        final_total = progress_state["total"]
+        if final_total == 0:
+            final_progress = "0/0"
+        else:
+            final_progress = f"{final_total}/{final_total}"
+        update_process(
+            pid,
+            status=ProcessStatus.COMPLETED,
+            message="Charts refreshed.",
+            progress=final_progress,
+        )
+    except Exception as e:
+        logger.exception("Background task failed: %s", e)
+        update_process(pid, status=ProcessStatus.FAILED, message=str(e))
+
+
+# ═══════════════════════════════════════════════════════════
+# API Endpoints
+# ═══════════════════════════════════════════════════════════
+
+
+@router.get("/task/processes", response_model=List[ProcessInfo])
+def get_processes(current_user: User = Depends(get_current_user)):
+    """Get all tracked processes, sorted by start time desc (max 30)."""
+    _ensure_task_table()
+    current_uid = _current_user_id(current_user)
+    is_admin = _is_admin_user(current_user)
+    with Session() as db:
+        q = db.query(TaskProcess).order_by(TaskProcess.start_time.desc())
+        if not is_admin:
+            q = q.filter(TaskProcess.user_id == current_uid)
+        rows = q.limit(200).all()
+    merged = {
+        p.id: ProcessInfo(
+            id=p.id,
+            name=p.name,
+            status=ProcessStatus(p.status),
+            start_time=p.start_time.isoformat(),
+            end_time=p.end_time.isoformat() if p.end_time else None,
+            message=p.message,
+            progress=p.progress,
+            user_id=p.user_id,
+        )
+        for p in rows
+    }
+    procs = sorted(merged.values(), key=lambda x: x.start_time, reverse=True)
+    return procs[:30]
+
+
+@router.get("/task/stream")
+async def stream_process_events(current_user: User = Depends(get_current_user)):
+    """SSE stream for task updates. Client should refetch /task/processes on each event."""
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+    subscriber = subscribe_task_events(queue, asyncio.get_running_loop())
+
+    async def event_generator():
+        try:
+            # Initial handshake event
+            yield "event: ready\ndata: {\"ok\":true}\n\n"
+            while True:
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=20.0)
+                    yield f"event: task\ndata: {json.dumps(msg)}\n\n"
+                except asyncio.TimeoutError:
+                    # Keep-alive comment
+                    yield ": keep-alive\n\n"
+        finally:
+            unsubscribe_task_events(subscriber)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _is_task_running(name_prefix: str, user_id: str | None = None) -> bool:
+    """Check if any process with the given name prefix is currently running."""
+    _ensure_task_table()
+    with Session() as db:
+        q = db.query(TaskProcess.id).filter(
+            TaskProcess.status == ProcessStatus.RUNNING.value,
+            TaskProcess.name.like(f"{name_prefix}%"),
+        )
+        if user_id:
+            q = q.filter(TaskProcess.user_id == user_id)
+        row = q.first()
+    return row is not None
+
+
+@router.post("/task/process/start", response_model=Dict[str, str])
+def start_client_process(
+    name: str,
+    user_id: str = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Allow client to register a new process (e.g. multi-file upload)."""
+    assigned_user_id = _current_user_id(current_user)
+    if _is_admin_user(current_user) and user_id:
+        assigned_user_id = user_id
+    pid = start_process(name, assigned_user_id)
+    return {"id": pid}
+
+
+@router.patch("/task/process/{pid}")
+def update_client_process(
+    pid: str,
+    status: Optional[ProcessStatus] = None,
+    message: Optional[str] = None,
+    progress: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Allow client to update a registered process."""
+    proc = _get_process(pid)
+    if not proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+    if not _can_access_task(proc.user_id, current_user):
+        raise HTTPException(status_code=403, detail="Not allowed to update this task")
+    update_process(pid, status=status, message=message, progress=progress)
+    return {"status": "updated"}
+
+
+@router.delete("/task/process/{pid}")
+def delete_client_process(pid: str, current_user: User = Depends(get_current_user)):
+    """Delete a process from DB-backed task store."""
+    proc = _get_process(pid)
+    if not proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+    if not _can_access_task(proc.user_id, current_user):
+        raise HTTPException(status_code=403, detail="Not allowed to delete this task")
+    _ensure_task_table()
+    with Session() as db:
+        db.query(TaskProcess).filter(TaskProcess.id == pid).delete()
+    _broadcast_task_event("deleted", pid)
+    return {"status": "deleted"}
+
+
+@router.post("/task/process/{pid}/dismiss")
+def dismiss_process(pid: str, current_user: User = Depends(get_current_user)):
+    """Dismiss a task by deleting it from persistent DB storage."""
+    proc = _get_process(pid)
+    if not proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+    if not _can_access_task(proc.user_id, current_user):
+        raise HTTPException(status_code=403, detail="Not allowed to dismiss this task")
+    _ensure_task_table()
+    with Session() as db:
+        db.query(TaskProcess).filter(TaskProcess.id == pid).delete()
+    _broadcast_task_event("deleted", pid)
+    return {"status": "dismissed"}
+
+
+@router.post("/task/process/dismiss-completed")
+def dismiss_completed_processes(current_user: User = Depends(get_current_user)):
+    """Clear all completed/failed tasks from persistent store."""
+    _ensure_task_table()
+    deleted_ids: list[str] = []
+    current_uid = _current_user_id(current_user)
+    is_admin = _is_admin_user(current_user)
+    with Session() as db:
+        q = db.query(TaskProcess.id).filter(
+            TaskProcess.status.in_(
+                [ProcessStatus.COMPLETED.value, ProcessStatus.FAILED.value]
+            )
+        )
+        if not is_admin:
+            q = q.filter(TaskProcess.user_id == current_uid)
+        rows = q.all()
+        deleted_ids = [r.id for r in rows]
+        if deleted_ids:
+            db.query(TaskProcess).filter(TaskProcess.id.in_(deleted_ids)).delete(synchronize_session=False)
+
+    for pid in deleted_ids:
+        _broadcast_task_event("deleted", pid)
+    return {"status": "cleared_completed", "count": len(deleted_ids)}
+
+
+@router.post("/task/daily")
+def run_daily_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger the full daily routine (update data + refresh charts) in background."""
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("Daily Data Update", user_id=current_uid):
+        raise HTTPException(status_code=400, detail="Daily task is already running")
+
+    background_tasks.add_task(_run_daily_update, current_uid)
+    return {"message": "Daily task triggered", "status": "started"}
+
+
+@router.post("/task/report")
+def run_report_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger email report sending in background."""
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("Send Email Reports", user_id=current_uid):
+        raise HTTPException(status_code=400, detail="Report task is already running")
+
+    background_tasks.add_task(_run_send_reports, current_uid)
+    return {"message": "Report task triggered", "status": "started"}
+
+
+@router.post("/task/telegram")
+def run_telegram_scrape_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger Telegram scraping for all configured channels in background."""
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("Telegram Sync", user_id=current_uid):
+        raise HTTPException(status_code=400, detail="Telegram sync is already running")
+
+    background_tasks.add_task(_run_telegram_scrape, current_uid)
+    return {"message": "Telegram sync triggered", "status": "started"}
+
+
+@router.post("/task/news")
+def run_news_scraping_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger RSS/Reddit/GDELT news crawl in background."""
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("News Scraping", user_id=current_uid):
+        raise HTTPException(status_code=400, detail="News scraping is already running")
+
+    background_tasks.add_task(_run_news_scraping, current_uid)
+    return {"message": "News scraping triggered", "status": "started"}
+
+
+@router.post("/task/refresh-charts")
+def run_refresh_charts_task(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger a refresh of all charts in background."""
+    if not _is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    current_uid = _current_user_id(current_user)
+    if _is_task_running("Refresh Charts", user_id=current_uid):
+        raise HTTPException(status_code=400, detail="Chart refresh is already running")
+
+    # Register process immediately so clients can see it in the next poll cycle.
+    pid = start_process("Refresh Charts", user_id=current_uid)
+    background_tasks.add_task(_run_refresh_charts, pid, current_uid)
+    return {"message": "Chart refresh triggered", "status": "started", "task_id": pid}
+
+
+# Legacy endpoint for backward compat
+@router.get("/task/status")
+def get_task_status(current_user: User = Depends(get_current_user)):
+    """Legacy status check — returns running state for current user's tasks."""
+    current_uid = _current_user_id(current_user)
+    daily_running = _is_task_running("Daily Data Update", user_id=current_uid)
+    telegram_running = _is_task_running("Telegram Sync", user_id=current_uid)
+
+    # Find latest process for each to get the message
+    def latest_msg(prefix: str) -> str:
+        _ensure_task_table()
+        with Session() as db:
+            q = db.query(TaskProcess).filter(TaskProcess.name.like(f"{prefix}%"))
+            if not _is_admin_user(current_user):
+                q = q.filter(TaskProcess.user_id == current_uid)
+            latest = q.order_by(TaskProcess.start_time.desc()).first()
+            if not latest:
+                return "Idle"
+            return latest.message or "Idle"
+
+    return {
+        "daily": {
+            "running": daily_running,
+            "message": latest_msg("Daily Data Update"),
+        },
+        "telegram": {
+            "running": telegram_running,
+            "message": latest_msg("Telegram Sync"),
+        },
+    }

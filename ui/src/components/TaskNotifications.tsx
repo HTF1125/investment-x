@@ -58,8 +58,8 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                     process.status === "running"
                     ? "bg-primary/5 border-primary/20 shadow-[0_0_15px_-5px_rgba(13,148,136,0.15)]"
                     : process.status === "completed"
-                    ? "bg-emerald-500/5 border-emerald-500/10"
-                    : "bg-rose-500/5 border-rose-500/10"
+                    ? "bg-success/5 border-success/10"
+                    : "bg-destructive/5 border-destructive/10"
                 }
                 `}
             >
@@ -72,10 +72,10 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                     </div>
                 )}
                 {process.status === "completed" && (
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <CheckCircle className="w-3.5 h-3.5 text-success" />
                 )}
                 {process.status === "failed" && (
-                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                    <XCircle className="w-3.5 h-3.5 text-destructive" />
                 )}
                 </div>
                 <span className="sr-only">Status: {process.status}</span>
@@ -92,7 +92,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                             handleDismiss(process.id);
                         }}
                         aria-label={`Dismiss ${process.name}`}
-                        className="text-muted-foreground hover:text-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100 p-0.5 hover:bg-accent/10 rounded"
+                        className="text-muted-foreground hover:text-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100 p-1 hover:bg-accent/10 rounded"
                     >
                         <X className="w-2.5 h-2.5" />
                     </button>
@@ -138,7 +138,7 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
         onClick={handleClearAll}
         className="w-full group flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:bg-accent/10 rounded-md transition-all border border-transparent hover:border-border/50"
       >
-        <Trash2 className="w-2.5 h-2.5 group-hover:text-rose-400 transition-colors" />
+        <Trash2 className="w-2.5 h-2.5 group-hover:text-destructive transition-colors" />
         CLEAR COMPLETED
       </button>
     </div>
@@ -184,10 +184,10 @@ export default function TaskNotifications({ embedded = false }: { embedded?: boo
                     </span>
                 )}
                 {completedCount > 0 && (
-                    <span className="text-emerald-500">{completedCount}</span>
+                    <span className="text-success">{completedCount}</span>
                 )}
                 {failedCount > 0 && (
-                    <span className="text-rose-500">{failedCount}</span>
+                    <span className="text-destructive">{failedCount}</span>
                 )}
             </div>
         )}

@@ -118,8 +118,8 @@ export default function NewsFeed({ embedded }: { embedded?: boolean }) {
 
   if (isError) {
     return (
-      <div className="border border-rose-500/20 rounded-lg bg-rose-500/[0.04] p-8 flex flex-col items-center gap-3 text-center">
-        <WifiOff className="w-6 h-6 text-rose-400/50" />
+      <div className="border border-destructive/20 rounded-lg bg-destructive/[0.04] p-8 flex flex-col items-center gap-3 text-center">
+        <WifiOff className="w-6 h-6 text-destructive/50" />
         <p className="text-sm text-muted-foreground">Unable to load intelligence feed</p>
       </div>
     );

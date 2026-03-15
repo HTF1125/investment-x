@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -7,6 +8,8 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import plotly.graph_objects as go
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -170,7 +173,7 @@ class ChartTheme:
                     if suffix.isdigit():
                         base.append(k)
         except Exception:
-            pass
+            logger.debug("Failed to extract axis names from layout", exc_info=True)
 
         def _key(name: str) -> int:
             suffix = name[len(prefix) :]
@@ -286,7 +289,7 @@ class ChartTheme:
                             if math.isfinite(fv) and fv > 0:
                                 return True
                 except Exception:
-                    pass
+                    logger.debug("Failed to check positive data for axis", exc_info=True)
         return False
 
     def _sanitize_axes(self, fig: go.Figure) -> None:
@@ -435,38 +438,38 @@ class ChartTheme:
                     try:
                         line.color = color
                     except Exception:
-                        pass
+                        logger.debug("Cannot set line.color on %s trace", trace_type)
                 if marker is not None and not self._marker_is_array_colored(trace):
                     try:
                         marker.color = color
                     except Exception:
-                        pass
+                        logger.debug("Cannot set marker.color on %s trace", trace_type)
 
             elif trace_type in ("bar", "histogram", "waterfall", "funnel"):
                 if marker is not None and not self._marker_is_array_colored(trace):
                     try:
                         marker.color = color
                     except Exception:
-                        pass
+                        logger.debug("Cannot set marker.color on %s trace", trace_type)
 
             elif trace_type in ("box", "violin"):
                 if marker is not None:
                     try:
                         marker.color = color
                     except Exception:
-                        pass
+                        logger.debug("Cannot set marker.color on %s trace", trace_type)
                 if line is not None:
                     try:
                         line.color = color
                     except Exception:
-                        pass
+                        logger.debug("Cannot set line.color on %s trace", trace_type)
 
             elif trace_type == "area":
                 if line is not None:
                     try:
                         line.color = color
                     except Exception:
-                        pass
+                        logger.debug("Cannot set line.color on %s trace", trace_type)
 
     # ------------------------------------------------------------------ #
     # Date axis padding                                                    #

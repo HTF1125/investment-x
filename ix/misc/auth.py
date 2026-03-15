@@ -70,7 +70,7 @@ def verify_token(token: str, log_invalid: bool = True) -> Optional[dict]:
         return None
     except jwt.InvalidTokenError as e:
         if log_invalid:
-            logger.warning(f"Invalid token: {e}")
+            logger.warning("Invalid token: %s", e)
         return None
 
 
@@ -87,19 +87,19 @@ def authenticate_user(email: str, password: str):
 
         user = User.get_by_email(email)
         if not user:
-            logger.warning(f"User not found: {email}")
+            logger.warning("Authentication failed for provided credentials")
             return None
 
         if getattr(user, "disabled", False):
-            logger.warning(f"User is disabled: {email}")
+            logger.warning("Authentication failed — account disabled")
             return None
 
         if not user.verify_password(password):
-            logger.warning(f"Invalid password for user: {email}")
+            logger.warning("Authentication failed for provided credentials")
             return None
         return user
     except Exception as exc:
-        logger.exception(f"authenticate_user error: {exc}")
+        logger.exception("authenticate_user error: %s", exc)
         return None
 
 
@@ -122,7 +122,7 @@ def get_current_user(token: str):
             return None
         return user
     except Exception as exc:
-        logger.exception(f"get_current_user error: {exc}")
+        logger.exception("get_current_user error: %s", exc)
         return None
 
 

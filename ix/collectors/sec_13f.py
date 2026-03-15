@@ -222,12 +222,12 @@ class SEC13FCollector(BaseCollector):
                             try:
                                 holding["value"] = int(text)
                             except ValueError:
-                                pass
+                                self.logger.debug("Non-numeric value field: %s", text)
                         elif "sshprnamt" in tag:
                             try:
                                 holding["shares"] = int(text)
                             except ValueError:
-                                pass
+                                self.logger.debug("Non-numeric shares field: %s", text)
                         elif "sshprnamttype" in tag:
                             holding["class"] = text
                         elif "putcall" in tag:

@@ -178,13 +178,11 @@ export function useDashboardActions(opts: {
     if (exporting) return;
     setExporting(true);
     try {
-      const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('items', JSON.stringify([]));
       formData.append('theme', 'light');
       const res = await fetch(`${getDirectApiBase()}/api/custom/pdf`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
         body: formData,
       });
@@ -203,13 +201,11 @@ export function useDashboardActions(opts: {
     if (exportingHtml) return;
     setExportingHtml(true);
     try {
-      const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('items', JSON.stringify([]));
       formData.append('theme', 'light');
       const res = await fetch(`${getDirectApiBase()}/api/custom/html`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
         body: formData,
       });

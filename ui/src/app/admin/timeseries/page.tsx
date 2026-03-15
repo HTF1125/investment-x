@@ -35,13 +35,13 @@ export default function AdminTimeseriesPage() {
         {!isAdmin ? (
           <div className="flex flex-col items-center justify-center min-h-[80vh] text-muted-foreground px-4">
             <div className="max-w-md w-full rounded-lg border border-border/50 bg-background p-10 text-center">
-              <ShieldAlert className="w-16 h-16 mb-5 text-rose-500/70 mx-auto" />
+              <ShieldAlert className="w-16 h-16 mb-5 text-destructive/70 mx-auto" />
               <h2 className="text-xl font-semibold text-foreground mb-2">Access Denied</h2>
               <p className="text-sm text-muted-foreground mb-6">
                 This page is restricted to administrators only. Please contact your system administrator if you believe you should have access.
               </p>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-rose-500/10 border border-rose-500/30 text-xs text-rose-400">
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+                <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
                 Unauthorized Access Attempt
               </div>
             </div>
@@ -86,7 +86,7 @@ export default function AdminTimeseriesPage() {
             topBarRight={
               <>
                 <div className="px-2 py-1 rounded-md border border-border/50 text-[10px] text-muted-foreground inline-flex items-center gap-1.5">
-                  <Activity className="w-3 h-3 text-emerald-400" />
+                  <Activity className="w-3 h-3 text-success" />
                   <span>Online</span>
                 </div>
                 <div className="px-2 py-1 rounded-md border border-border/50 text-[10px] text-muted-foreground inline-flex items-center gap-1.5">

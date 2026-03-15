@@ -66,7 +66,7 @@ export default function PreviewPanel({
           />
         ) : plotRenderError ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-            <div className="text-xs font-semibold text-rose-400">Chart Render Error</div>
+            <div className="text-xs font-semibold text-destructive">Chart Render Error</div>
             <div className="text-[11px] text-muted-foreground">
               {plotRenderError}
             </div>

@@ -768,7 +768,39 @@ class Strategy(ABC):
         return (excess.mean() * 252) / (downside * np.sqrt(252))
 
     def stats(self) -> pd.DataFrame:
-        """Generate performance statistics table."""
+        """Generate performance statistics table.
+
+        If the strategy was loaded from DB (via ``load()``), uses the
+        stored ``_loaded_performance`` for accurate metrics rather than
+        recomputing from subsampled curves.
+        """
+        perf = getattr(self, "_loaded_performance", None)
+        if perf is not None:
+            # Use stored ground-truth metrics
+            bm = perf.get("benchmark", {})
+            formatted = {
+                "Strategy": {
+                    "Total Return": f"{perf.get('total_return', 0):.2%}",
+                    "CAGR": f"{perf.get('cagr', 0):.2%}",
+                    "Volatility": f"{perf.get('vol', 0):.2%}",
+                    "Sharpe": f"{perf.get('sharpe', 0):.2f}",
+                    "Sortino": f"{perf.get('sortino', 0):.2f}",
+                    "Max DD": f"{perf.get('max_dd', 0):.2%}",
+                    "Win Rate": f"{perf.get('win_rate', 0):.2%}",
+                    "Alpha": f"{perf.get('alpha', 0):.2%}",
+                    "IR": f"{perf.get('ir', 0):.2f}",
+                },
+                "Benchmark": {
+                    "Total Return": f"{bm.get('total_return', 0):.2%}",
+                    "CAGR": f"{bm.get('cagr', 0):.2%}",
+                    "Volatility": f"{bm.get('vol', 0):.2%}",
+                    "Sharpe": f"{bm.get('sharpe', 0):.2f}",
+                    "Sortino": f"{bm.get('sortino', 0):.2f}",
+                    "Max DD": f"{bm.get('max_dd', 0):.2%}",
+                },
+            }
+            return pd.DataFrame(formatted)
+
         strategy_metrics = self.calculate_metrics(self.nav)
         benchmark_metrics = self.calculate_metrics(self.benchmark)
 
@@ -964,4 +996,337 @@ class Strategy(ABC):
         fig.update_xaxes(title_text="Date", row=4, col=1)
 
         return fig
+
+    # ------------------------------------------------------------------
+    # Persistence: save() / load() via StrategyResult
+    # ------------------------------------------------------------------
+
+    def get_params(self) -> Dict[str, Any]:
+        """Return parameter dict for fingerprinting.
+
+        Subclasses should override to declare all configurable parameters.
+        The dict must be JSON-serializable.
+        """
+        return {}
+
+    @staticmethod
+    def _subsample(
+        dates: List[str], values: List, max_pts: int = 800
+    ) -> Tuple[List[str], List]:
+        """Thin time series to at most *max_pts* points, keeping first/last."""
+        n = len(dates)
+        if n <= max_pts:
+            return dates, values
+        step = max(1, n // max_pts)
+        idx = list(range(0, n, step))
+        if idx[-1] != n - 1:
+            idx.append(n - 1)
+        return [dates[i] for i in idx], [values[i] for i in idx]
+
+    @staticmethod
+    def _safe_float(v) -> Optional[float]:
+        """Convert to float, returning None for NaN/Inf."""
+        if v is None:
+            return None
+        try:
+            f = float(v)
+            return None if (pd.isna(f) or np.isinf(f)) else round(f, 6)
+        except (TypeError, ValueError):
+            return None
+
+    def _serialize_backtest(self) -> Dict[str, Any]:
+        """Serialize NAV, benchmark, and weights into a JSON-safe dict."""
+        sf = self._safe_float
+        dates_raw = [d.strftime("%Y-%m-%d") for d in self.dates]
+        nav_raw = [sf(v) for v in self.nav.values]
+        bm_raw = [sf(v) for v in self.benchmark.values]
+
+        # Subsample curves
+        s_dates, s_nav = self._subsample(dates_raw, nav_raw)
+        _, s_bm = self._subsample(dates_raw, bm_raw)
+
+        # Drawdown
+        dd = (self.nav / self.nav.cummax()) - 1
+        dd_raw = [sf(v) for v in dd.values]
+        dd_dates, dd_vals = self._subsample(dates_raw, dd_raw)
+
+        # Weights history (subsample)
+        wh = self.weights_history
+        wh_dict: Dict[str, Any] = {}
+        if not wh.empty:
+            wh_dates = [d.strftime("%Y-%m-%d") for d in wh.index]
+            wh_sub_dates, _ = self._subsample(wh_dates, wh_dates)
+            wh_idx = [wh_dates.index(d) for d in wh_sub_dates]
+            wh_dict["dates"] = wh_sub_dates
+            for col in wh.columns:
+                vals = [sf(wh[col].iloc[i]) for i in wh_idx]
+                wh_dict[col] = vals
+
+        # Turnover
+        turnovers = self.book.get("turnover", [])
+        to_raw = [sf(v) for v in turnovers]
+        to_dates, to_vals = self._subsample(dates_raw, to_raw)
+
+        return {
+            "cumulative": {"dates": s_dates, "nav": s_nav, "benchmark": s_bm},
+            "drawdown": {"dates": dd_dates, "values": dd_vals},
+            "weights": wh_dict,
+            "turnover": {"dates": to_dates, "values": to_vals},
+        }
+
+    def _build_performance(self) -> Dict[str, Any]:
+        """Build standardized performance dict from backtest results."""
+        sf = self._safe_float
+        strat_m = self.calculate_metrics(self.nav)
+        bench_m = self.calculate_metrics(self.benchmark)
+
+        # Alpha & tracking error
+        strat_ret = self.nav.pct_change().dropna()
+        bench_ret = self.benchmark.pct_change().dropna()
+        excess = strat_ret - bench_ret
+        te = float(excess.std() * np.sqrt(252)) if len(excess) > 1 else 0.0
+        ir = float(excess.mean() * 252 / te) if te > 1e-8 else 0.0
+
+        return {
+            "total_return": sf(strat_m["Total Return"]),
+            "cagr": sf(strat_m["CAGR"]),
+            "vol": sf(strat_m["Volatility"]),
+            "sharpe": sf(strat_m["Sharpe"]),
+            "sortino": sf(strat_m["Sortino"]),
+            "max_dd": sf(strat_m["Max Drawdown"]),
+            "win_rate": sf(strat_m["Win Rate"]),
+            "alpha": sf(strat_m["CAGR"] - bench_m["CAGR"]),
+            "ir": sf(ir),
+            "te": sf(te),
+            "period_start": self.dates[0].strftime("%Y-%m") if len(self.dates) > 0 else None,
+            "period_end": self.dates[-1].strftime("%Y-%m") if len(self.dates) > 0 else None,
+            "benchmark": {
+                "total_return": sf(bench_m["Total Return"]),
+                "cagr": sf(bench_m["CAGR"]),
+                "vol": sf(bench_m["Volatility"]),
+                "sharpe": sf(bench_m["Sharpe"]),
+                "sortino": sf(bench_m["Sortino"]),
+                "max_dd": sf(bench_m["Max Drawdown"]),
+            },
+        }
+
+    def save(self, **extra) -> "Strategy":
+        """Persist backtest results to the ``strategy_result`` table.
+
+        Parameters
+        ----------
+        **extra
+            Optional overrides for ``signals`` and ``meta`` JSONB columns.
+            Subclasses can pass strategy-specific data here.
+
+        Returns
+        -------
+        Strategy
+            ``self``, for chaining: ``strat.backtest().save()``.
+        """
+        from datetime import datetime, timezone
+
+        from ix.db.conn import Session
+        from ix.db.models.strategy_result import StrategyResult, compute_fingerprint
+
+        params = self.get_params()
+        fingerprint = compute_fingerprint(self.__class__.__name__, params)
+        performance = self._build_performance()
+        backtest_blob = self._serialize_backtest()
+
+        with Session() as session:
+            existing = (
+                session.query(StrategyResult)
+                .filter_by(fingerprint=fingerprint)
+                .first()
+            )
+            if existing:
+                existing.computed_at = datetime.now(timezone.utc)
+                existing.performance = performance
+                existing.parameters = params
+                existing.backtest = backtest_blob
+                existing.signals = extra.get("signals", existing.signals)
+                existing.meta = extra.get("meta", existing.meta)
+            else:
+                session.add(
+                    StrategyResult(
+                        fingerprint=fingerprint,
+                        strategy_type=self.__class__.__name__,
+                        computed_at=datetime.now(timezone.utc),
+                        performance=performance,
+                        parameters=params,
+                        backtest=backtest_blob,
+                        signals=extra.get("signals"),
+                        meta=extra.get("meta"),
+                    )
+                )
+
+        logger.info(f"Saved {fingerprint}")
+        return self
+
+    @classmethod
+    def load(cls, **params) -> "Strategy":
+        """Load a previously saved strategy from the DB.
+
+        Parameters
+        ----------
+        **params
+            Keyword arguments that match the parameter dict used when
+            saving.  If an exact fingerprint match is not found, falls
+            back to the latest result for this strategy type whose
+            ``parameters->>'index_name'`` matches (if provided).
+
+        Returns
+        -------
+        Strategy
+            Instance with ``book`` populated from stored data so that
+            ``.stats()`` and ``.plot()`` work immediately.
+
+        Raises
+        ------
+        KeyError
+            If no matching result is found in the DB.
+        """
+        from ix.db.conn import Session
+        from ix.db.models.strategy_result import StrategyResult, compute_fingerprint
+
+        fingerprint = compute_fingerprint(cls.__name__, params)
+
+        with Session() as session:
+            row = (
+                session.query(StrategyResult)
+                .filter_by(fingerprint=fingerprint)
+                .first()
+            )
+
+            # Fallback: match by strategy_type + index_name (latest)
+            if row is None and "index_name" in params:
+                from sqlalchemy import desc, text
+
+                row = (
+                    session.query(StrategyResult)
+                    .filter(
+                        StrategyResult.strategy_type == cls.__name__,
+                        StrategyResult.parameters["index_name"].astext
+                        == params["index_name"],
+                    )
+                    .order_by(desc(StrategyResult.computed_at))
+                    .first()
+                )
+
+            if row is None:
+                raise KeyError(
+                    f"No StrategyResult found for {cls.__name__} "
+                    f"with params {params}"
+                )
+
+            # Reconstruct strategy instance
+            instance = cls.__new__(cls)
+
+            # Minimal init — set essential attributes without full __init__
+            instance.verbose = False
+            instance.risk_manager = RiskManager()
+            instance.impact_model = None
+            instance._tca = None
+            instance.portfolio = Portfolio()
+            instance.pending_allocation = None
+            instance.last_target_weights = pd.Series(dtype=float)
+            instance.pxs = pd.DataFrame()
+            instance.trade_dates = []
+
+            # Restore universe from stored params or class default
+            stored_params = row.parameters or {}
+            if hasattr(cls, "universe") and cls.universe:
+                instance.universe = cls._normalize_universe_static(cls.universe)
+            else:
+                instance.universe = {"default": {"code": "default", "weight": 1.0}}
+            instance._bm_assets = None
+
+            # Restore book from stored backtest blob
+            bt = row.backtest or {}
+            cumulative = bt.get("cumulative", {})
+            dates_str = cumulative.get("dates", [])
+            nav_vals = cumulative.get("nav", [])
+            bm_vals = cumulative.get("benchmark", [])
+
+            dates_idx = pd.to_datetime(dates_str) if dates_str else pd.DatetimeIndex([])
+
+            instance.book = {
+                "date": list(dates_idx),
+                "portfolio_value": [v if v is not None else 0.0 for v in nav_vals],
+                "cash": [0.0] * len(dates_idx),
+                "positions": [{}] * len(dates_idx),
+                "weights": [{}] * len(dates_idx),
+                "target_weights": [{}] * len(dates_idx),
+                "benchmark_value": [v if v is not None else 0.0 for v in bm_vals],
+                "turnover": [0.0] * len(dates_idx),
+                "transaction_costs": [0.0] * len(dates_idx),
+            }
+
+            # Restore weights if available
+            weights_blob = bt.get("weights", {})
+            if weights_blob and "dates" in weights_blob:
+                w_dates = pd.to_datetime(weights_blob["dates"])
+                w_cols = [k for k in weights_blob if k != "dates"]
+                if w_cols:
+                    # Build weights dicts for each date in the main dates list
+                    w_df = pd.DataFrame(
+                        {c: weights_blob[c] for c in w_cols}, index=w_dates
+                    )
+                    # Reindex to match the main dates
+                    w_df = w_df.reindex(dates_idx, method="ffill").fillna(0.0)
+                    instance.book["weights"] = [
+                        row_data.to_dict() for _, row_data in w_df.iterrows()
+                    ]
+
+            # Restore turnover if available
+            turnover_blob = bt.get("turnover", {})
+            if turnover_blob and "dates" in turnover_blob:
+                to_series = pd.Series(
+                    turnover_blob["values"],
+                    index=pd.to_datetime(turnover_blob["dates"]),
+                )
+                to_series = to_series.reindex(dates_idx, fill_value=0.0)
+                instance.book["turnover"] = list(to_series.values)
+
+            if dates_idx.size > 0:
+                instance.d = dates_idx[-1]
+            else:
+                instance.d = pd.Timestamp.now()
+
+            # Store loaded metadata for access
+            instance._loaded_performance = row.performance
+            instance._loaded_signals = row.signals
+            instance._loaded_meta = row.meta
+            instance._loaded_params = stored_params
+            instance._fingerprint = row.fingerprint
+
+            logger.info(f"Loaded {row.fingerprint}")
+            return instance
+
+    @staticmethod
+    def _normalize_universe_static(
+        universe: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Static version of _normalize_universe for use in load()."""
+        from copy import deepcopy
+
+        out: Dict[str, Dict[str, Any]] = {}
+        for name, meta in deepcopy(universe).items():
+            if isinstance(meta, dict):
+                meta_dict = dict(meta)
+            else:
+                meta_dict = {"code": meta}
+            out[name] = {
+                "code": meta_dict.get("code", name),
+                "weight": meta_dict.get("weight"),
+            }
+        weights = [v["weight"] for v in out.values()]
+        if any(w is None for w in weights) or (sum(w or 0 for w in weights) == 0):
+            if out:
+                equal = 1.0 / len(out)
+                for v in out.values():
+                    v["weight"] = equal
+        return out
+
 

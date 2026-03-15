@@ -59,4 +59,43 @@ export interface BacktestData {
   binary_strategy?: ComponentBT;
 }
 
-export type Tab = 'overview' | 'regime' | 'liquidity' | 'tactical';
+export type Tab = 'strategy' | 'factors' | 'signal' | 'cross-market' | 'robustness' | 'methodology';
+
+// ─── Walk-Forward Strategy Types ────────────────────────────────────────────
+
+export interface StrategyResult {
+  ann_return: number; sharpe: number; max_dd: number; vol: number;
+  ir: number; te: number; hit_rate: number; avg_eq_wt: number; alpha: number;
+  period_start: string; period_end: string;
+  cumulative: { dates: string[]; strategy: number[]; benchmark: number[]; index: number[] };
+  eq_weight: { dates: string[]; values: number[] };
+  drawdown: { dates: string[]; values: number[] };
+  rolling_excess: { dates: string[]; values: number[] };
+  yearly_alpha: Record<string, number>;
+}
+
+export interface RegimeHistoryEntry {
+  date: string; regime: string; growth_pctile: number;
+  inflation_pctile: number; eq_weight: number;
+}
+
+export interface RegimeStrategyBacktest {
+  parameters: Record<string, any>;
+  cat_counts: Record<string, number>;
+  benchmark: { ann_return: number; sharpe: number; max_dd: number; vol: number };
+  strategies: Record<string, StrategyResult>;
+  regime_history: RegimeHistoryEntry[];
+}
+
+export interface FactorCategory {
+  n_rebalances: number;
+  n_unique_indicators: number;
+  frequency: { indicator: string; count: number; pct: number }[];
+  latest_selection: { date: string; indicators: { name: string; ic: number }[] };
+  ic_heatmap: { dates: string[]; indicators: string[]; values: number[][] };
+}
+
+export interface CurrentSignalData {
+  category_signals: Record<string, { eq_weight: number; label: string; date: string; regime?: string; growth_pctile?: number; inflation_pctile?: number }>;
+  factor_selections: Record<string, { name: string; ic: number }[]>;
+}

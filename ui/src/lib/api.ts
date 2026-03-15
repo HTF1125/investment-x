@@ -1,5 +1,5 @@
 /**
- * Shared fetch wrapper that auto-injects the auth token.
+ * Shared fetch wrapper with credentials: 'include' for HttpOnly cookie auth.
  * Centralizes header management and error handling for all API calls.
  */
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -80,14 +80,9 @@ export async function apiFetch(
     signal: upstreamSignal,
     ...requestInit
   } = options;
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const method = String(requestInit.method || "GET").toUpperCase();
 
   const headers = new Headers(requestInit.headers);
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
 
   const { signal, cleanup, didTimeout } = createRequestSignal(
     timeoutMs,
@@ -116,12 +111,8 @@ export async function apiFetch(
 
   // Global handler for 401 Unauthorized (Session Expired)
   if (res.status === 401 && !skipAuthRedirect && typeof window !== "undefined") {
-    // Only dispatch if we thought we were logged in
-    if (localStorage.getItem("token")) {
-      console.warn("Session expired — dispatching session-expired event");
-      localStorage.removeItem("token");
-      window.dispatchEvent(new CustomEvent("ix:session-expired"));
-    }
+    console.warn("Session expired — dispatching session-expired event");
+    window.dispatchEvent(new CustomEvent("ix:session-expired"));
   }
 
   return res;

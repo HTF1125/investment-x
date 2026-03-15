@@ -1,54 +1,19 @@
-import DashboardContainer from '@/components/DashboardContainer';
-import { cookies } from 'next/headers';
-import { Suspense } from 'react';
-import type { Metadata } from 'next';
+'use client';
 
-export const metadata: Metadata = { title: 'Dashboard | Investment-X' };
-export const dynamic = process.env.NEXT_BUILD_MODE === 'export' ? 'auto' : 'force-dynamic';
+import AppShell from '@/components/AppShell';
+import Scorecards from '@/components/dashboard/Scorecards';
+import { useEffect } from 'react';
 
-export default async function Home() {
-  // 🚀 For static export mode, we skip SSR to allow prerendering
-  // This must be a clean return without calling any dynamic functions like cookies()
-  if (process.env.NEXT_BUILD_MODE === 'export') {
-    return (
-      <Suspense fallback={null}>
-        <DashboardContainer />
-      </Suspense>
-    );
-  }
-
-  // --- Dynamic SSR Logic (Only for non-export builds) ---
-  let token = null;
-  let initialData = null;
-
-  try {
-    // Dynamic access to cookies forces dynamic rendering in dev/prod-ssr
-    const cookieStore = await cookies();
-    token = cookieStore.get('access_token')?.value;
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-    const apiBase = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-    const res = await fetch(`${apiBase}/api/v1/dashboard/summary?include_figures=false`, {
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      cache: 'no-store',
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-
-    if (res.ok) {
-        initialData = await res.json();
-    }
-  } catch (err: any) {
-    // Silent fail for SSR fetch - the client-side useQuery will handle the fallback
-    console.warn('[SSR] Dashboard pre-fetch skipped or failed');
-  }
+export default function Home() {
+  useEffect(() => {
+    document.title = 'Dashboard | Investment-X';
+  }, []);
 
   return (
-    <Suspense fallback={null}>
-      <DashboardContainer initialData={initialData} />
-    </Suspense>
+    <AppShell hideFooter>
+      <div className="h-[calc(100vh-48px)] flex flex-col bg-background">
+        <Scorecards />
+      </div>
+    </AppShell>
   );
 }
