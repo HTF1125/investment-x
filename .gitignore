@@ -213,7 +213,7 @@ test_yf_*.py
 qqq_data.json
 qqq_out.txt
 macro_predictor.py
-macro_regime_strategy.py
+/macro_regime_strategy.py
 
 # Scripts directory
 scripts/
