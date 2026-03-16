@@ -13,10 +13,11 @@ import { MethodologyTab } from '@/components/macro';
 import { CrossMarketTab } from '@/components/macro';
 import { RobustnessTab } from '@/components/macro';
 import { SignalTab } from '@/components/macro';
+import { RegimeStrategyRegimeTab } from '@/components/macro';
 import type { Tab, RegimeStrategyBacktest, FactorCategory, CurrentSignalData, SummaryIndex } from '@/components/macro/types';
 
 const STATIC_TABS = new Set<Tab>(['methodology', 'cross-market', 'robustness']);
-const DATA_TABS = new Set<Tab>(['strategy', 'factors', 'signal']);
+const DATA_TABS = new Set<Tab>(['strategy', 'factors', 'regime', 'signal']);
 
 export default function MacroPage() {
   useEffect(() => { document.title = 'Macro Regime Strategy | Investment-X'; }, []);
@@ -41,7 +42,7 @@ export default function MacroPage() {
     queryFn: () => apiFetchJson<{ index_name: string; computed_at: string; backtest: RegimeStrategyBacktest }>(
       `/api/macro/regime-strategy/backtest?index=${encodeURIComponent(strategyIndex)}`
     ),
-    enabled: (activeTab === 'strategy' || activeTab === 'factors') && !!strategyIndex,
+    enabled: (activeTab === 'strategy' || activeTab === 'factors' || activeTab === 'regime') && !!strategyIndex,
     staleTime: 120_000,
   });
 
@@ -150,6 +151,9 @@ export default function MacroPage() {
           <>
             {activeTab === 'strategy' && (
               <StrategyTab backtest={backtest} isLoading={backtestQuery.isLoading} target={strategyIndex} />
+            )}
+            {activeTab === 'regime' && (
+              <RegimeStrategyRegimeTab backtest={backtest} isLoading={backtestQuery.isLoading} target={strategyIndex} />
             )}
             {activeTab === 'factors' && (
               <StrategyFactorsTab

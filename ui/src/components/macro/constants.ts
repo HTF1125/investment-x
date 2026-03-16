@@ -15,10 +15,15 @@ export const TACTICAL_COLORS: Record<string, string> = {
 
 export const REGIME_ORDER = ['Goldilocks', 'Reflation', 'Stagflation', 'Deflation'];
 
+export const REGIME_SIGNAL_COLORS: Record<string, string> = {
+  'Risk-On': '#3fb950', 'Neutral': '#d29922', 'Risk-Off': '#f85149',
+};
+
 export const TABS: { key: Tab; label: string }[] = [
   { key: 'methodology', label: 'Methodology' },
   { key: 'strategy', label: 'Backtest' },
   { key: 'factors', label: 'Factors' },
+  { key: 'regime', label: 'Regime' },
   { key: 'cross-market', label: 'Cross-Market' },
   { key: 'robustness', label: 'Robustness' },
   { key: 'signal', label: 'Current Signal' },

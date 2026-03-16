@@ -59,7 +59,7 @@ export interface BacktestData {
   binary_strategy?: ComponentBT;
 }
 
-export type Tab = 'strategy' | 'factors' | 'signal' | 'cross-market' | 'robustness' | 'methodology';
+export type Tab = 'strategy' | 'factors' | 'regime' | 'signal' | 'cross-market' | 'robustness' | 'methodology';
 
 // ─── Walk-Forward Strategy Types ────────────────────────────────────────────
 

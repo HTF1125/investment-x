@@ -8,10 +8,6 @@ import { STRAT_COLORS, STRAT_ORDER, XAXIS_DATE, YAXIS_BASE, CHART_M } from './co
 import { fmt, fmtPct, themed } from './helpers';
 import { LoadingSpinner, SectionTitle, ChartBox, StatsRow } from './SharedComponents';
 
-const REGIME_COLORS_MAP: Record<string, string> = {
-  'Risk-On': '#3fb950', 'Neutral': '#d29922', 'Risk-Off': '#f85149',
-};
-
 export default function StrategyTab({ backtest, isLoading, target }: {
   backtest: RegimeStrategyBacktest | null; isLoading: boolean; target: string;
 }) {
@@ -185,46 +181,6 @@ export default function StrategyTab({ backtest, isLoading, target }: {
     return { years, rows };
   }, [stratKeys, strategies]);
 
-  // ── Regime history chart ──
-  const regimeHistory = backtest?.regime_history ?? [];
-  const regimeHistoryChart = useMemo(() => {
-    if (!regimeHistory.length) return null;
-    const dates = regimeHistory.map(r => r.date);
-    const regimes = Array.from(new Set(regimeHistory.map(r => r.regime)));
-    const traces: any[] = regimes.map(regime => {
-      const y = regimeHistory.map(r => r.regime === regime ? 1 : null);
-      return {
-        type: 'bar', x: dates, y, name: regime,
-        marker: { color: REGIME_COLORS_MAP[regime] ?? '#888' },
-        hovertemplate: `${regime}<br>%{x}<extra></extra>`,
-      };
-    });
-
-    const fig: PlotlyFigure = {
-      data: traces,
-      layout: {
-        barmode: 'stack',
-        yaxis: { ...YAXIS_BASE, showticklabels: false, showline: false, showgrid: false },
-        xaxis: XAXIS_DATE,
-        hovermode: 'x unified',
-        legend: { orientation: 'h', y: 1.08, font: { size: 9 } },
-        margin: CHART_M,
-        bargap: 0,
-      },
-    };
-    return themed(fig, theme);
-  }, [regimeHistory, theme]);
-
-  const regimeCounts = useMemo(() => {
-    if (!regimeHistory.length) return [];
-    const counts: Record<string, number> = {};
-    regimeHistory.forEach(r => { counts[r.regime] = (counts[r.regime] ?? 0) + 1; });
-    const total = regimeHistory.length;
-    return Object.entries(counts).map(([regime, count]) => ({
-      regime, count, pct: (count / total) * 100,
-    }));
-  }, [regimeHistory]);
-
   if (isLoading) return <LoadingSpinner label="Loading strategy backtest" />;
   if (!backtest) return null;
 
@@ -367,59 +323,6 @@ export default function StrategyTab({ backtest, isLoading, target }: {
         </div>
       )}
 
-      {/* Regime history */}
-      {regimeHistory.length > 0 && (
-        <div className="space-y-3">
-          <div className="panel-card p-2">
-            <SectionTitle info="Historical regime classification from the walk-forward strategy engine.">Regime History</SectionTitle>
-            <ChartBox chart={regimeHistoryChart} height={200} />
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-            {regimeCounts.map(rc => (
-              <div key={rc.regime} className="panel-card px-2 py-1.5">
-                <div className="stat-label">{rc.regime}</div>
-                <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">
-                  <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style={{ backgroundColor: REGIME_COLORS_MAP[rc.regime] ?? '#888' }} />
-                  {rc.count} <span className="text-[10px] text-muted-foreground">({fmt(rc.pct, 0)}%)</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Recent 12 readings */}
-          <div className="panel-card px-3 py-2">
-            <SectionTitle info="Most recent 12 regime readings with growth/inflation percentiles and equity weight.">Recent Readings</SectionTitle>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px]">
-                <thead>
-                  <tr className="border-b border-border/40">
-                    <th className="text-left py-1 pr-3 text-[9px] font-mono uppercase text-muted-foreground/50">Date</th>
-                    <th className="text-left py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Regime</th>
-                    <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Growth %ile</th>
-                    <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Infl %ile</th>
-                    <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Eq Wt</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {regimeHistory.slice(-12).reverse().map(r => (
-                    <tr key={r.date} className="border-b border-border/20">
-                      <td className="py-1 pr-3 font-mono tabular-nums text-[11px] text-foreground">{r.date}</td>
-                      <td className="py-1 px-1 text-[11px] text-foreground">
-                        <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ backgroundColor: REGIME_COLORS_MAP[r.regime] ?? '#888' }} />
-                        {r.regime}
-                      </td>
-                      <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{fmt(r.growth_pctile * 100, 0)}%</td>
-                      <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{fmt(r.inflation_pctile * 100, 0)}%</td>
-                      <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{fmt(r.eq_weight * 100, 0)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

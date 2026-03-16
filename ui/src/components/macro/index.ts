@@ -8,6 +8,7 @@ export { default as MethodologyTab } from './MethodologyTab';
 export { default as CrossMarketTab } from './CrossMarketTab';
 export { default as RobustnessTab } from './RobustnessTab';
 export { default as SignalTab } from './SignalTab';
+export { default as RegimeStrategyRegimeTab } from './RegimeStrategyRegimeTab';
 export { default as ComponentBacktest } from './ComponentBacktest';
 export { default as IndicatorWaterfall } from './IndicatorWaterfall';
 export { LoadingSpinner, ErrorBox, InfoTooltip, RegimeProbBar, SectionTitle, ChartBox, StatsRow } from './SharedComponents';
