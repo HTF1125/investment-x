@@ -12,7 +12,8 @@ import { StrategyFactorsTab } from '@/components/macro';
 import { MethodologyTab } from '@/components/macro';
 import { CrossMarketTab } from '@/components/macro';
 import { RobustnessTab } from '@/components/macro';
-import type { Tab, RegimeStrategyBacktest, FactorCategory, CurrentSignalData } from '@/components/macro/types';
+import { SignalTab } from '@/components/macro';
+import type { Tab, RegimeStrategyBacktest, FactorCategory, CurrentSignalData, SummaryIndex } from '@/components/macro/types';
 
 const STATIC_TABS = new Set<Tab>(['methodology', 'cross-market', 'robustness']);
 const DATA_TABS = new Set<Tab>(['strategy', 'factors', 'signal']);
@@ -23,6 +24,7 @@ export default function MacroPage() {
   const { theme } = useTheme();
   const [activeTab, setActiveTab] = useState<Tab>('strategy');
   const [strategyIndex, setStrategyIndex] = useState<string>('ACWI');
+  const [signalIndex, setSignalIndex] = useState<string>('ACWI');
 
   const isStatic = STATIC_TABS.has(activeTab);
   const needsData = DATA_TABS.has(activeTab);
@@ -39,7 +41,7 @@ export default function MacroPage() {
     queryFn: () => apiFetchJson<{ index_name: string; computed_at: string; backtest: RegimeStrategyBacktest }>(
       `/api/macro/regime-strategy/backtest?index=${encodeURIComponent(strategyIndex)}`
     ),
-    enabled: needsData && !!strategyIndex,
+    enabled: (activeTab === 'strategy' || activeTab === 'factors') && !!strategyIndex,
     staleTime: 120_000,
   });
 
@@ -48,7 +50,7 @@ export default function MacroPage() {
     queryFn: () => apiFetchJson<{ index_name: string; computed_at: string; factors: Record<string, FactorCategory> }>(
       `/api/macro/regime-strategy/factors?index=${encodeURIComponent(strategyIndex)}`
     ),
-    enabled: (activeTab === 'factors' || activeTab === 'signal') && !!strategyIndex,
+    enabled: activeTab === 'factors' && !!strategyIndex,
     staleTime: 120_000,
   });
 
@@ -57,13 +59,33 @@ export default function MacroPage() {
     queryFn: () => apiFetchJson<{ current_signal: CurrentSignalData }>(
       `/api/macro/regime-strategy/signal?index=${encodeURIComponent(strategyIndex)}`
     ),
-    enabled: (activeTab === 'factors' || activeTab === 'signal') && !!strategyIndex,
+    enabled: activeTab === 'factors' && !!strategyIndex,
+    staleTime: 120_000,
+  });
+
+  // Signal tab: summary for all indices + detail for selected
+  const summaryQuery = useQuery({
+    queryKey: ['regime-strategy-summary'],
+    queryFn: () => apiFetchJson<{ indices: SummaryIndex[] }>('/api/macro/regime-strategy/summary'),
+    enabled: activeTab === 'signal',
+    staleTime: 120_000,
+  });
+
+  const signalDetailQuery = useQuery({
+    queryKey: ['regime-strategy-signal', signalIndex],
+    queryFn: () => apiFetchJson<{ current_signal: CurrentSignalData }>(
+      `/api/macro/regime-strategy/signal?index=${encodeURIComponent(signalIndex)}`
+    ),
+    enabled: activeTab === 'signal' && !!signalIndex,
     staleTime: 120_000,
   });
 
   const backtest = backtestQuery.data?.backtest ?? null;
   const factors = factorsQuery.data?.factors ?? null;
   const signal = signalQuery.data?.current_signal ?? null;
+
+  // Hide index selector on signal tab (it has its own card-based selection)
+  const showIndexSelector = !isStatic && activeTab !== 'signal';
 
   return (
     <AppShell>
@@ -72,8 +94,8 @@ export default function MacroPage() {
         {/* Tab bar: selector | tabs | timestamp */}
         <div className="border-b border-border/25 mb-3">
           <div className="flex items-center gap-3 -mb-px">
-            {/* Index selector (hidden on static tabs) */}
-            {!isStatic && (
+            {/* Index selector (hidden on static tabs and signal tab) */}
+            {showIndexSelector && (
               <select
                 value={strategyIndex}
                 onChange={(e) => setStrategyIndex(e.target.value)}
@@ -98,7 +120,7 @@ export default function MacroPage() {
 
             {/* Timestamp */}
             <div className="flex items-center gap-2 shrink-0 pb-2">
-              {backtestQuery.data?.computed_at && (
+              {backtestQuery.data?.computed_at && activeTab !== 'signal' && (
                 <span className="text-[9px] font-mono text-muted-foreground/40">
                   {new Date(backtestQuery.data.computed_at).toLocaleString()}
                 </span>
@@ -114,6 +136,14 @@ export default function MacroPage() {
             {activeTab === 'cross-market' && <CrossMarketTab />}
             {activeTab === 'robustness' && <RobustnessTab />}
           </>
+        ) : activeTab === 'signal' ? (
+          <SignalTab
+            summary={summaryQuery.data?.indices ?? null}
+            signal={signalDetailQuery.data?.current_signal ?? null}
+            signalLoading={signalDetailQuery.isLoading}
+            selectedIndex={signalIndex}
+            onSelectIndex={setSignalIndex}
+          />
         ) : needsData && backtestQuery.isLoading ? (
           <LoadingSpinner label="Loading strategy data" />
         ) : (
@@ -122,14 +152,6 @@ export default function MacroPage() {
               <StrategyTab backtest={backtest} isLoading={backtestQuery.isLoading} target={strategyIndex} />
             )}
             {activeTab === 'factors' && (
-              <StrategyFactorsTab
-                factors={factors}
-                signal={signal}
-                isLoading={factorsQuery.isLoading || signalQuery.isLoading}
-                target={strategyIndex}
-              />
-            )}
-            {activeTab === 'signal' && (
               <StrategyFactorsTab
                 factors={factors}
                 signal={signal}

@@ -99,3 +99,20 @@ export interface CurrentSignalData {
   category_signals: Record<string, { eq_weight: number; label: string; date: string; regime?: string; growth_pctile?: number; inflation_pctile?: number }>;
   factor_selections: Record<string, { name: string; ic: number }[]>;
 }
+
+// ─── Summary (all-indices overview) ──────────────────────────────────────────
+
+export interface SummaryIndex {
+  index_name: string;
+  computed_at: string;
+  eq_weight: number | null;
+  label: string;
+  regime: string;
+  growth_pctile: number | null;
+  inflation_pctile: number | null;
+  category_signals: Record<string, { eq_weight: number; label: string; date: string }>;
+  sharpe: number | null;
+  alpha: number | null;
+  max_dd: number | null;
+  ann_return: number | null;
+}

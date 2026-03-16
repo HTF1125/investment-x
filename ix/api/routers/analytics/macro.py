@@ -8,7 +8,7 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ix.api.dependencies import get_current_user, get_current_admin_user
+from ix.api.dependencies import get_current_admin_user, get_optional_user
 from ix.api.rate_limit import limiter as _limiter
 from ix.db.conn import Session as SessionCtx
 from ix.db.models.macro_outlook import MacroOutlook
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 @router.get("/macro/targets")
 @_limiter.limit("60/minute")
-def list_targets(request: Request, _user=Depends(get_current_user)):
+def list_targets(request: Request, _user=Depends(get_optional_user)):
     """List all available target indices for macro outlook."""
     targets = []
     for name, idx in TARGET_INDICES.items():
@@ -39,7 +39,7 @@ def list_targets(request: Request, _user=Depends(get_current_user)):
 
 
 @router.get("/macro/outlook")
-def get_outlook(target: str = "S&P 500", _user=Depends(get_current_user)):
+def get_outlook(target: str = "S&P 500", _user=Depends(get_optional_user)):
     """Return the snapshot JSON for a target index.
 
     The snapshot contains current regime, probabilities, indicator readings,
@@ -64,7 +64,7 @@ def get_outlook(target: str = "S&P 500", _user=Depends(get_current_user)):
 
 
 @router.get("/macro/timeseries")
-def get_timeseries(target: str = "S&P 500", _user=Depends(get_current_user)):
+def get_timeseries(target: str = "S&P 500", _user=Depends(get_optional_user)):
     """Return the time series JSON for a target index.
 
     Contains historical composites (growth, inflation, liquidity, tactical),
@@ -89,7 +89,7 @@ def get_timeseries(target: str = "S&P 500", _user=Depends(get_current_user)):
 
 
 @router.get("/macro/backtest")
-def get_backtest(target: str = "S&P 500", _user=Depends(get_current_user)):
+def get_backtest(target: str = "S&P 500", _user=Depends(get_optional_user)):
     """Return the backtest JSON for a target index.
 
     Contains equity curves (strategy, benchmark, 100% index), allocation
@@ -115,7 +115,7 @@ def get_backtest(target: str = "S&P 500", _user=Depends(get_current_user)):
 
 @router.get("/macro/stress-test")
 @_limiter.limit("10/minute")
-def get_stress_test(request: Request, target: str = "KOSPI", _user=Depends(get_current_user)):
+def get_stress_test(request: Request, target: str = "KOSPI", _user=Depends(get_optional_user)):
     """Compute stress test analysis for a target index.
 
     Auto-detects historical crash events, computes forward returns at
@@ -186,7 +186,7 @@ def refresh_outlook(
 
 @router.get("/macro/regime-strategy/indices")
 @_limiter.limit("30/minute")
-def list_regime_strategy_indices(request: Request, _user=Depends(get_current_user)):
+def list_regime_strategy_indices(request: Request, _user=Depends(get_optional_user)):
     """List indices with precomputed regime strategy data."""
     with SessionCtx() as session:
         rows = session.query(MacroRegimeStrategy.index_name).all()
@@ -195,7 +195,7 @@ def list_regime_strategy_indices(request: Request, _user=Depends(get_current_use
 
 @router.get("/macro/regime-strategy/backtest")
 @_limiter.limit("30/minute")
-def get_regime_strategy_backtest(request: Request, index: str = "ACWI", _user=Depends(get_current_user)):
+def get_regime_strategy_backtest(request: Request, index: str = "ACWI", _user=Depends(get_optional_user)):
     """Return precomputed walk-forward backtest results for a single index."""
     with SessionCtx() as session:
         row = (
@@ -214,7 +214,7 @@ def get_regime_strategy_backtest(request: Request, index: str = "ACWI", _user=De
 
 @router.get("/macro/regime-strategy/factors")
 @_limiter.limit("30/minute")
-def get_regime_strategy_factors(request: Request, index: str = "ACWI", _user=Depends(get_current_user)):
+def get_regime_strategy_factors(request: Request, index: str = "ACWI", _user=Depends(get_optional_user)):
     """Return factor selection history for a single index."""
     with SessionCtx() as session:
         row = (
@@ -233,7 +233,7 @@ def get_regime_strategy_factors(request: Request, index: str = "ACWI", _user=Dep
 
 @router.get("/macro/regime-strategy/signal")
 @_limiter.limit("30/minute")
-def get_regime_strategy_signal(request: Request, index: str = "ACWI", _user=Depends(get_current_user)):
+def get_regime_strategy_signal(request: Request, index: str = "ACWI", _user=Depends(get_optional_user)):
     """Return current signal readings for a single index."""
     with SessionCtx() as session:
         row = (
@@ -252,7 +252,7 @@ def get_regime_strategy_signal(request: Request, index: str = "ACWI", _user=Depe
 
 @router.get("/macro/regime-strategy/summary")
 @_limiter.limit("30/minute")
-def get_regime_strategy_summary(request: Request, _user=Depends(get_current_user)):
+def get_regime_strategy_summary(request: Request, _user=Depends(get_optional_user)):
     """Compact summary of all indices -- for dashboard widget."""
     with SessionCtx() as session:
         rows = session.query(MacroRegimeStrategy).all()
@@ -265,6 +265,11 @@ def get_regime_strategy_summary(request: Request, _user=Depends(get_current_user
             # Pick the Blended or first available signal for headline
             headline = cat_sigs.get("Blended") or cat_sigs.get("Growth") or {}
             regime_sig = cat_sigs.get("Regime", {})
+            # Extract backtest performance from Blended strategy
+            bt = row.backtest or {}
+            strats = bt.get("strategies", {})
+            blended = strats.get("Blended") or next(iter(strats.values()), {})
+
             indices.append({
                 "index_name": row.index_name,
                 "computed_at": row.computed_at.isoformat(),
@@ -274,6 +279,10 @@ def get_regime_strategy_summary(request: Request, _user=Depends(get_current_user
                 "growth_pctile": regime_sig.get("growth_pctile"),
                 "inflation_pctile": regime_sig.get("inflation_pctile"),
                 "category_signals": cat_sigs,
+                "sharpe": blended.get("sharpe"),
+                "alpha": blended.get("alpha"),
+                "max_dd": blended.get("max_dd"),
+                "ann_return": blended.get("ann_return"),
             })
         return {"indices": indices}
 
