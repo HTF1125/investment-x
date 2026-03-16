@@ -65,7 +65,7 @@ export default function TelegramFeed({ embedded }: { embedded?: boolean } = {}) 
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No recent Telegram messages.</div>
         ) : (
-          messages.map((msg) => (
+          messages.slice(0, 80).map((msg) => (
             <article key={msg.id} className="px-3 py-2 hover:bg-primary/[0.04] transition-colors">
               <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground/70 mb-1.5">
                 <span className="truncate uppercase tracking-wider">{msg.channel_name.replace('t.me/', '')}</span>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
 import { Newspaper, Clock, WifiOff, Sparkles, ChevronDown, Check, Filter } from 'lucide-react';
@@ -91,17 +91,21 @@ export default function NewsFeed({ embedded }: { embedded?: boolean }) {
     }
   };
 
-  const rows = data
-    .map((item) => ({ ...item, __themes: detectThemes(item) }))
-    .filter((item) => {
-      if (allSelected) return true;
-      return item.__themes.some((t) => selectedThemes.includes(t));
-    })
-    .sort((a, b) => {
-      const ad = new Date(a.published_at || a.discovered_at).getTime();
-      const bd = new Date(b.published_at || b.discovered_at).getTime();
-      return bd - ad;
-    });
+  const rows = useMemo(
+    () =>
+      data
+        .map((item) => ({ ...item, __themes: detectThemes(item) }))
+        .filter((item) => {
+          if (allSelected) return true;
+          return item.__themes.some((t) => selectedThemes.includes(t));
+        })
+        .sort((a, b) => {
+          const ad = new Date(a.published_at || a.discovered_at).getTime();
+          const bd = new Date(b.published_at || b.discovered_at).getTime();
+          return bd - ad;
+        }),
+    [data, selectedThemes, allSelected]
+  );
 
   useEffect(() => {
     setSelectedThemes(allThemes);
@@ -204,7 +208,7 @@ export default function NewsFeed({ embedded }: { embedded?: boolean }) {
 
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
         <div className="px-2 py-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-          {rows.slice(0, 120).map((item) => {
+          {rows.slice(0, 40).map((item) => {
             const dt = item.published_at || item.discovered_at;
             return (
               <article

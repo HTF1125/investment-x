@@ -22,16 +22,20 @@ def _update_source_data(source_name, fetcher, progress_cb=None, start_index: int
 
     from ix.db.conn import Session
 
+    from sqlalchemy.orm import load_only
+
     with Session() as session:
         timeseries_list = (
-            session.query(Timeseries).filter(Timeseries.source == source_name).all()
+            session.query(Timeseries)
+            .options(load_only(Timeseries.id, Timeseries.code, Timeseries.source_code))
+            .filter(Timeseries.source == source_name)
+            .all()
         )
 
-        ts_data_list = []
-        for ts in timeseries_list:
-            ts_data_list.append(
-                {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
-            )
+        ts_data_list = [
+            {"id": ts.id, "code": ts.code, "source_code": ts.source_code}
+            for ts in timeseries_list
+        ]
 
         for idx, ts_data in enumerate(ts_data_list, start=1):
             ts_id = ts_data["id"]
@@ -111,47 +115,42 @@ def send_data_reports():
     datas = {}
     ts_list = []
 
-    # Use a separate scope or careful management to avoid keeping objects alive
+    # Process timeseries in chunks to avoid loading all JSONB payloads at once.
+    CHUNK = 50
     with Session() as session:
-        # Fetch only metadata first if possible, or just iterate.
-        # Loading all Timeseries objects is usually okay (metadata is small),
-        # but the relationships (data_record) and large JSONB are the issue.
-        timeseries_list = session.query(Timeseries).all()
+        total_count = session.query(Timeseries).count()
 
-        for ts in timeseries_list:
-            ts_code = ts.code
+        for offset in range(0, total_count, CHUNK):
+            chunk = session.query(Timeseries).offset(offset).limit(CHUNK).all()
 
-            # Access the data relationship
-            # We assume data is loaded on access if not eager loading
-            data_record = ts._get_or_create_data_record(session)
-            column_data = data_record.data if data_record and data_record.data else {}
+            for ts in chunk:
+                ts_code = ts.code
 
-            # Convert JSON dict to pandas Series immediately and release dict memory
-            if column_data and len(column_data) > 0:
-                data_dict = column_data if isinstance(column_data, dict) else {}
-                data = pd.Series(data_dict)
+                data_record = ts._get_or_create_data_record(session)
+                column_data = data_record.data if data_record and data_record.data else {}
 
-                # Free the large dict from memory as soon as possible
-                del column_data
+                if column_data and len(column_data) > 0:
+                    data_dict = column_data if isinstance(column_data, dict) else {}
+                    data = pd.Series(data_dict)
 
-                if not data.empty:
-                    # Convert string dates to datetime index
-                    data.index = pd.to_datetime(data.index, errors="coerce")
-                    data = data.dropna().sort_index()
+                    del column_data
 
                     if not data.empty:
-                        # 1. Store last price
-                        datas[ts_code] = data.iloc[-1]
+                        data.index = pd.to_datetime(data.index, errors="coerce")
+                        data = data.dropna().sort_index()
 
-                        # 2. Store truncated series for history
-                        # We limit to last 1000 items to save memory,
-                        # which is sufficient for the final report (last 500 business days).
-                        data_truncated = data.iloc[-1000:]
-                        data_truncated.name = ts_code
-                        ts_list.append(data_truncated)
+                        if not data.empty:
+                            datas[ts_code] = data.iloc[-1]
 
-            # Hint to GC that big objects can be freed
-            del data_record
+                            data_truncated = data.iloc[-1000:]
+                            data_truncated.name = ts_code
+                            ts_list.append(data_truncated)
+
+                del data_record
+
+            # Release ORM objects from identity map after each chunk
+            session.expire_all()
+            gc.collect()
 
     # Force garbage collection to clear any lingering objects from the loop
     gc.collect()

@@ -1132,10 +1132,11 @@ def get_favorite_timeseries_data(
     ensure_connection()
 
     try:
-        # Query all favorite timeseries with data_record eagerly loaded
+        # Query favorite timeseries metadata only — data_record loaded lazily
+        # per item via _get_or_create_data_record() to avoid a single massive
+        # JOIN that pulls all JSONB payloads into memory at once.
         favorite_timeseries = (
             db.query(Timeseries)
-            .options(joinedload(Timeseries.data_record))
             .filter(Timeseries.favorite == True)
             .all()
         )
