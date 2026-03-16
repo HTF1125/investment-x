@@ -1,7 +1,10 @@
 """Walk-forward backtest engine for macro regime strategy.
 
-Pure computation -- no Streamlit, no plotting. All indicator directions
-are determined by empirical IC sign (no theory-based sign control).
+Pure computation -- no Streamlit, no plotting.  Composites are built
+from raw z-scores (no IC-sign direction flip).  Category-level
+direction is handled at the allocation stage: categories where a
+*high* composite is bearish for returns (e.g. Inflation) have their
+percentile inverted before scoring.
 """
 
 from __future__ import annotations
@@ -34,6 +37,10 @@ REGIME_ALLOC = {
     "Deflation": 0.30,
     "Stagflation": 0.10,
 }
+
+# Categories where a *high* composite is bearish for equity returns.
+# Their percentile is inverted (1 − p) before allocation scoring.
+CATEGORY_BEARISH = {"Inflation"}
 
 
 def _soft_score(pctile: float, low: float = 0.35, high: float = 0.65) -> float:
@@ -70,10 +77,14 @@ def _wf_category_backtest(
     vix_threshold: float = 0.0,
     drawdown_threshold: float = 0.0,
     drawdown_lookback: int = 52,
+    # Direction
+    bearish: bool = False,
 ) -> Tuple[Dict | None, list]:
     """Walk-forward backtest for a single category.
 
-    All indicator directions determined by empirical IC sign.
+    Composites are raw z-score averages (no IC-sign direction flip).
+    If *bearish* is True (e.g. Inflation category), the composite
+    percentile is inverted before allocation scoring.
     """
     min_start = lookback_weeks + 52
     if len(all_dates) < min_start + 52 or not category_indicators:
@@ -133,11 +144,8 @@ def _wf_category_backtest(
         if not selected:
             continue
 
-        # Direction from empirical IC sign only
-        parts = {}
-        for ind_name, ic_val in selected:
-            direction = np.sign(ic_val)
-            parts[ind_name] = category_indicators[ind_name] * direction
+        # Raw z-score composite (no IC-sign direction flip)
+        parts = {ind_name: category_indicators[ind_name] for ind_name, _ in selected}
 
         comp_df = pd.DataFrame(parts).loc[:t].dropna()
         if comp_df.empty:
@@ -150,6 +158,9 @@ def _wf_category_backtest(
         if len(trail) < 52:
             continue
         pctile = sp_stats.percentileofscore(trail.iloc[:-1].values, trail.iloc[-1]) / 100.0
+        # For bearish categories (e.g. Inflation), invert so high composite → low allocation
+        if bearish:
+            pctile = 1.0 - pctile
         macro_score = _soft_score(max(0.0, min(1.0, pctile)), soft_lo, soft_hi)
 
         # Trend overlay
@@ -255,12 +266,9 @@ def _wf_regime_backtest(
                 break
         if not selected:
             return None, []
-        parts = {}
-        wts_local = {}
-        for n, ic in selected:
-            direction = np.sign(ic)
-            parts[n] = indicators[n] * direction
-            wts_local[n] = abs(ic) if weight_method == "IC-Weighted" else 1.0
+        # Raw z-score composite (no IC-sign direction flip)
+        parts = {n: indicators[n] for n, _ in selected}
+        wts_local = {n: 1.0 for n, _ in selected}
         comp_df = pd.DataFrame(parts).loc[:t].dropna()
         if comp_df.empty:
             return None, selected
@@ -297,10 +305,10 @@ def _wf_regime_backtest(
         g_pctile = sp_stats.percentileofscore(g_trail.iloc[:-1].values, g_trail.iloc[-1]) / 100.0
         i_pctile = sp_stats.percentileofscore(i_trail.iloc[:-1].values, i_trail.iloc[-1]) / 100.0
 
+        # Composites are raw z-scores: high growth composite = strong growth,
+        # high inflation composite = high inflation.  No inversion needed.
         g_up = g_pctile > 0.50
-        # Inflation composite direction is empirical IC sign, so high
-        # pctile = bullish composite. Invert so i_up means rising inflation.
-        i_up = i_pctile < 0.50
+        i_up = i_pctile > 0.50
 
         if g_up and not i_up:
             regime = "Goldilocks"
@@ -481,7 +489,9 @@ def run_full_wf_pipeline(
 ) -> Dict:
     """Complete walk-forward pipeline.
 
-    All indicator directions determined by empirical IC sign.
+    Composites use raw z-score averages (no IC-sign direction flip).
+    Bearish categories (e.g. Inflation) have their percentile inverted
+    at the allocation stage.
     When optimized=True, uses trend overlay, soft scoring, blended
     4-category signal, circuit breakers.
 
@@ -589,6 +599,7 @@ def run_full_wf_pipeline(
             pool, cat_fwd, idx_ret, all_dates,
             lookback_weeks, top_n, corr_max, rebal_weeks, weight_method,
             **v3_kwargs,
+            bearish=(cat_name in CATEGORY_BEARISH),
         )
         if res is not None:
             wf_results[cat_name] = res

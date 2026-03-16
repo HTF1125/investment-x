@@ -80,7 +80,7 @@ export default function MethodologyTab() {
         </p>
         <ol className="text-[12px] text-muted-foreground leading-relaxed mb-3 list-decimal list-inside space-y-1">
           <li><span className="text-foreground font-medium">Trend signal:</span> Is price above 40-week SMA?</li>
-          <li><span className="text-foreground font-medium">Macro composite:</span> Is IC-weighted composite above trailing median?</li>
+          <li><span className="text-foreground font-medium">Macro composite:</span> Is factor composite above trailing median?</li>
         </ol>
         <table className="w-full text-[11px] font-mono">
           <thead>
@@ -153,7 +153,7 @@ export default function MethodologyTab() {
           <li><span className="text-foreground font-medium">Rank by |IC|:</span> Strongest predictors first.</li>
           <li><span className="text-foreground font-medium">Correlation filter (rho = 0.60):</span> Skip indicators too correlated with already-selected ones.</li>
           <li><span className="text-foreground font-medium">Select top 10:</span> First 10 surviving indicators.</li>
-          <li><span className="text-foreground font-medium">Build composite:</span> Equal-weight into a single signal per category.</li>
+          <li><span className="text-foreground font-medium">Build composite:</span> Equal-weight raw z-scores into a single signal per category.</li>
           <li><span className="text-foreground font-medium">Blend categories:</span> Equal-weight across Growth, Inflation, Liquidity, Tactical.</li>
           <li><span className="text-foreground font-medium">Circuit breakers:</span> Override to risk-off if VIX &gt; 35 or index drops &gt;10% from 52-week high.</li>
           <li><span className="text-foreground font-medium">Hold:</span> Maintain equity weight until next 8-week rebalance. Deduct 10bps transaction cost per trade.</li>
@@ -174,7 +174,6 @@ export default function MethodologyTab() {
         <div className="panel-card p-4 border-rose-500/20">
           <SectionTitle>What NOT to Do</SectionTitle>
           <ul className="text-[11px] text-muted-foreground space-y-1.5">
-            <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">-</span>Do NOT let data override economic logic blindly</li>
             <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">-</span>Do NOT include Global M2 -- zero IC, pure noise</li>
             <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">-</span>Do NOT use continuous allocation tilts -- caps alpha at &lt;1%/yr</li>
             <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">-</span>Do NOT judge by weekly hit rate (~55%) -- alpha concentrates in rare bear avoidance</li>
@@ -183,7 +182,7 @@ export default function MethodologyTab() {
         <div className="panel-card p-4 border-emerald-500/20">
           <SectionTitle>What Works</SectionTitle>
           <ul className="text-[11px] text-muted-foreground space-y-1.5">
-            <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Theory-constrained signs (rising growth = bullish, rising inflation = bearish)</li>
+            <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Raw z-score composites — no IC-sign direction flipping</li>
             <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Equal-weighting across indicators AND categories (no in-sample optimization)</li>
             <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Correlation filter (0.60) essential -- prevents loading correlated variants</li>
             <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Per-category horizons (Growth 6m, Inflation 3m, Liquidity 3m, Tactical 2m)</li>
@@ -193,28 +192,32 @@ export default function MethodologyTab() {
         </div>
       </div>
 
-      {/* Theory Signs */}
+      {/* Composite Direction */}
       <div className="panel-card p-4">
-        <SectionTitle>Theory-Constrained Sign Assignment</SectionTitle>
+        <SectionTitle>Composite Direction</SectionTitle>
+        <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
+          Composites are built from <span className="text-foreground font-medium">raw z-score averages</span> — no IC-sign flipping.
+          Each composite directly reflects its economic axis (e.g. high inflation composite = high inflation).
+          For allocation, categories where a high reading is bearish have their percentile inverted:
+        </p>
         <table className="w-full text-[11px] font-mono">
           <thead>
             <tr className="border-b border-border/20">
               <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Category</th>
-              <th className="text-center py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Sign</th>
+              <th className="text-center py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Direction</th>
               <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Logic</th>
             </tr>
           </thead>
           <tbody>
             {[
-              { cat: 'Growth', sign: '+1', logic: 'Rising economic activity = bullish for equities', color: GREEN },
-              { cat: 'Inflation', sign: '-1', logic: 'Rising inflation = margin compression, tighter policy = bearish', color: ORANGE },
-              { cat: 'Liquidity', sign: '+1', logic: 'More liquidity = bullish (except tightening measures)', color: ACCENT },
-              { cat: 'Tactical (vol/fear)', sign: '-1', logic: 'High VIX, wide spreads, high put/call = bearish', color: PURPLE },
-              { cat: 'Tactical (breadth)', sign: '+1', logic: 'Broad momentum, risk appetite = bullish', color: PURPLE },
+              { cat: 'Growth', dir: 'Direct', logic: 'High composite = strong growth = bullish', color: GREEN },
+              { cat: 'Inflation', dir: 'Inverted', logic: 'High composite = high inflation = bearish → percentile inverted for allocation', color: ORANGE },
+              { cat: 'Liquidity', dir: 'Direct', logic: 'High composite = ample liquidity = bullish', color: ACCENT },
+              { cat: 'Tactical', dir: 'Direct', logic: 'Mixed signals selected by predictive power (|IC| ranking)', color: PURPLE },
             ].map(r => (
               <tr key={r.cat} className="border-b border-border/10">
                 <td className="py-1.5 font-medium" style={{ color: r.color }}>{r.cat}</td>
-                <td className="text-center py-1.5 text-foreground font-semibold">{r.sign}</td>
+                <td className="text-center py-1.5 text-foreground font-semibold">{r.dir}</td>
                 <td className="py-1.5 text-muted-foreground">{r.logic}</td>
               </tr>
             ))}
