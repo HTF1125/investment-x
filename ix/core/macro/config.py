@@ -127,6 +127,12 @@ TARGET_INDICES = {
         fci_fn=FinancialConditionsKR,
         has_sectors=True,
     ),
+    "Gold": TargetIndex(
+        "Gold",
+        "IAU US EQUITY:PX_LAST",
+        "global",
+        currency="DXY INDEX:PX_LAST",
+    ),
 }
 
 

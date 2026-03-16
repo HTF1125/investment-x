@@ -30,6 +30,7 @@ INDEX_MAP = {
     "FTSE 100": "UKX Index:PX_LAST",
     "MSCI EM": "MXEF Index:PX_LAST",
     "Nasdaq 100": "NDX Index:PX_LAST",
+    "Gold": "IAU US EQUITY:PX_LAST",
 }
 
 INDEX_NAMES = list(INDEX_MAP.keys())
@@ -39,6 +40,7 @@ YF_FALLBACK = {
     "Nikkei 225": "^N225", "KOSPI": "^KS11", "Hang Seng": "^HSI",
     "Shanghai Comp": "000001.SS", "Stoxx 50": "^STOXX50E",
     "FTSE 100": "^FTSE", "MSCI EM": "EEM", "Nasdaq 100": "^NDX",
+    "Gold": "IAU",
 }
 
 # ---------------------------------------------------------------------------

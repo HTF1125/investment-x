@@ -20,13 +20,11 @@ export const REGIME_SIGNAL_COLORS: Record<string, string> = {
 };
 
 export const TABS: { key: Tab; label: string }[] = [
+  { key: 'overview', label: 'Overview' },
   { key: 'methodology', label: 'Methodology' },
   { key: 'strategy', label: 'Backtest' },
   { key: 'factors', label: 'Factors' },
   { key: 'regime', label: 'Regime' },
-  { key: 'cross-market', label: 'Cross-Market' },
-  { key: 'robustness', label: 'Robustness' },
-  { key: 'signal', label: 'Current Signal' },
 ];
 
 export const STRAT_COLORS: Record<string, string> = {
@@ -36,7 +34,7 @@ export const STRAT_COLORS: Record<string, string> = {
 
 export const STRAT_ORDER = ['Growth', 'Inflation', 'Liquidity', 'Tactical', 'Regime', 'Blended'];
 
-export const PLOTLY_CONFIG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d' as const, 'select2d' as const] };
+export const PLOTLY_CONFIG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d' as const, 'select2d' as const], scrollZoom: false };
 
 export const CHART_M = { l: 52, r: 16, t: 28, b: 40 };
 export const CHART_M_HBAR = { l: 140, r: 16, t: 28, b: 40 };

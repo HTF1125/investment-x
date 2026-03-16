@@ -70,7 +70,7 @@ export default function StrategyTab({ backtest, isLoading, target }: {
       data: traces,
       layout: {
         yaxis: { ...YAXIS_BASE, title: 'Cumulative Return', tickformat: '.0%', titlefont: { size: 10 } },
-        xaxis: XAXIS_DATE,
+        xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } },
         hovermode: 'x unified',
         legend: { orientation: 'h', y: 1.08, font: { size: 9 } },
         margin: CHART_M,
@@ -96,7 +96,7 @@ export default function StrategyTab({ backtest, isLoading, target }: {
       data: traces,
       layout: {
         yaxis: { ...YAXIS_BASE, title: 'Equity Weight (%)', range: [0, 100], titlefont: { size: 10 } },
-        xaxis: XAXIS_DATE,
+        xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } },
         hovermode: 'x unified',
         legend: { orientation: 'h', y: 1.08, font: { size: 9 } },
         margin: CHART_M,
@@ -128,7 +128,7 @@ export default function StrategyTab({ backtest, isLoading, target }: {
       data: traces,
       layout: {
         yaxis: { ...YAXIS_BASE, title: 'Drawdown (%)', titlefont: { size: 10 } },
-        xaxis: XAXIS_DATE,
+        xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } },
         hovermode: 'x unified',
         legend: { orientation: 'h', y: 1.08, font: { size: 9 } },
         margin: CHART_M,
@@ -154,7 +154,7 @@ export default function StrategyTab({ backtest, isLoading, target }: {
       data: traces,
       layout: {
         yaxis: { ...YAXIS_BASE, title: 'Rolling 1Y Excess (%)', titlefont: { size: 10 } },
-        xaxis: XAXIS_DATE,
+        xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } },
         hovermode: 'x unified',
         legend: { orientation: 'h', y: 1.08, font: { size: 9 } },
         margin: CHART_M,

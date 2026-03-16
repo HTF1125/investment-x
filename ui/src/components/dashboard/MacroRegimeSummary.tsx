@@ -425,7 +425,7 @@ export default function MacroRegimeSummary() {
   }
 
   return (
-    <div className="space-y-3 mt-4">
+    <div className="space-y-3">
       <RegimePulse indices={data.indices} />
       <RegimeTable indices={data.indices} />
     </div>

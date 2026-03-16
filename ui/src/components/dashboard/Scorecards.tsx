@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
 import { Loader2, AlertTriangle, Clock, TrendingUp, TrendingDown, ChevronUp, ChevronDown } from 'lucide-react';
+import MacroRegimeSummary from './MacroRegimeSummary';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -400,7 +401,8 @@ export default function Scorecards() {
   }
 
   return (
-    <div className="p-2 sm:p-3 lg:p-4 space-y-3">
+    <div className="p-2 sm:p-3 lg:p-4 space-y-3 overflow-y-auto">
+      <MacroRegimeSummary />
       <MarketPulse categories={data.categories} updatedAt={dataUpdatedAt} />
       {data.categories.map(cat => (
         <CategoryTable key={cat.name} cat={cat} />

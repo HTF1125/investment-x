@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { PLOTLY_CONFIG, CHART_M, REGIME_ORDER, REGIME_COLORS } from './constants';
 import { fmtPct } from './helpers';
 import type { PlotlyFigure } from '@/lib/chartTheme';
+import type { SummaryIndex } from './types';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -109,5 +110,110 @@ export function StatsRow({ label, color, values }: { label: string; color?: stri
         <td key={i} className="text-right py-1 px-1.5 font-mono tabular-nums text-[11px] text-foreground">{v}</td>
       ))}
     </tr>
+  );
+}
+
+// ─── Signal / Overview Components ─────────────────────────────────────────────
+
+const SIGNAL_COLORS: Record<string, { border: string; bg: string; text: string }> = {
+  'Risk-On': { border: 'border-success/60', bg: 'bg-success/8', text: 'text-success' },
+  'Neutral': { border: 'border-warning/60', bg: 'bg-warning/8', text: 'text-warning' },
+  'Risk-Off': { border: 'border-destructive/60', bg: 'bg-destructive/8', text: 'text-destructive' },
+};
+
+function labelColor(label: string) {
+  return SIGNAL_COLORS[label] ?? SIGNAL_COLORS['Neutral'];
+}
+
+export function RegimeCard({ idx }: { idx: SummaryIndex }) {
+  const colors = labelColor(idx.label);
+  return (
+    <div className={`panel-card px-3 py-2.5 text-left ${colors.border}`}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-semibold text-foreground">{idx.index_name}</span>
+        <span className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded ${colors.bg} ${colors.text}`}>
+          {idx.label}
+        </span>
+      </div>
+      <div className="flex items-baseline gap-3">
+        <span className="text-[18px] font-mono font-bold text-foreground tabular-nums">
+          {idx.eq_weight != null ? `${(idx.eq_weight * 100).toFixed(0)}%` : '—'}
+        </span>
+        {idx.alpha != null && (
+          <span className={`text-[11px] font-mono tabular-nums ${idx.alpha >= 0 ? 'text-success' : 'text-destructive'}`}>
+            {idx.alpha >= 0 ? '+' : ''}{(idx.alpha * 100).toFixed(1)}% α
+          </span>
+        )}
+      </div>
+      <div className="flex items-center justify-between mt-1">
+        <div className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: REGIME_COLORS[idx.regime] ?? '#888' }} />
+          <span className="text-[9px] font-mono text-muted-foreground/50">{idx.regime}</span>
+        </div>
+        {idx.sharpe != null && (
+          <span className="text-[9px] font-mono text-muted-foreground/50">
+            Sharpe {idx.sharpe.toFixed(2)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function PerformanceTable({ indices }: { indices: SummaryIndex[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="border-b border-border/30">
+            {['Index', 'Regime', 'Signal', 'Alloc', 'Sharpe', 'Alpha', 'Max DD', 'Return'].map((h) => (
+              <th key={h} className="py-1.5 px-2 text-left font-semibold text-muted-foreground/60 text-[10px] uppercase tracking-wider">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {indices.map((idx) => {
+            const colors = labelColor(idx.label);
+            return (
+              <tr key={idx.index_name} className="border-b border-border/15 hover:bg-card/50">
+                <td className="py-1.5 px-2 font-medium text-foreground">{idx.index_name}</td>
+                <td className="py-1.5 px-2">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: REGIME_COLORS[idx.regime] ?? '#888' }} />
+                    <span className="text-[10px] font-mono text-foreground">{idx.regime}</span>
+                  </span>
+                </td>
+                <td className="py-1.5 px-2">
+                  <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${colors.bg} ${colors.text}`}>
+                    {idx.label}
+                  </span>
+                </td>
+                <td className="py-1.5 px-2 font-mono tabular-nums text-foreground">
+                  {idx.eq_weight != null ? `${(idx.eq_weight * 100).toFixed(0)}%` : '—'}
+                </td>
+                <td className="py-1.5 px-2 font-mono tabular-nums text-foreground">
+                  {idx.sharpe != null ? idx.sharpe.toFixed(2) : '—'}
+                </td>
+                <td className={`py-1.5 px-2 font-mono tabular-nums ${
+                  idx.alpha != null && idx.alpha >= 0 ? 'text-success' : 'text-destructive'
+                }`}>
+                  {idx.alpha != null ? `${idx.alpha >= 0 ? '+' : ''}${(idx.alpha * 100).toFixed(1)}%` : '—'}
+                </td>
+                <td className="py-1.5 px-2 font-mono tabular-nums text-destructive">
+                  {idx.max_dd != null ? `${(idx.max_dd * 100).toFixed(1)}%` : '—'}
+                </td>
+                <td className={`py-1.5 px-2 font-mono tabular-nums ${
+                  idx.ann_return != null && idx.ann_return >= 0 ? 'text-success' : 'text-destructive'
+                }`}>
+                  {idx.ann_return != null ? `${(idx.ann_return * 100).toFixed(1)}%` : '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

@@ -7,28 +7,32 @@ import { apiFetchJson } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 import { LoadingSpinner } from '@/components/macro/SharedComponents';
 import { TABS } from '@/components/macro/constants';
+import { OverviewTab } from '@/components/macro';
 import { StrategyTab } from '@/components/macro';
 import { StrategyFactorsTab } from '@/components/macro';
 import { MethodologyTab } from '@/components/macro';
-import { CrossMarketTab } from '@/components/macro';
-import { RobustnessTab } from '@/components/macro';
-import { SignalTab } from '@/components/macro';
 import { RegimeStrategyRegimeTab } from '@/components/macro';
-import type { Tab, RegimeStrategyBacktest, FactorCategory, CurrentSignalData, SummaryIndex } from '@/components/macro/types';
+import type { Tab, RegimeStrategyBacktest, FactorCategory, CurrentSignalData, SummaryIndex, Snapshot, TimeseriesData } from '@/components/macro/types';
 
-const STATIC_TABS = new Set<Tab>(['methodology', 'cross-market', 'robustness']);
-const DATA_TABS = new Set<Tab>(['strategy', 'factors', 'regime', 'signal']);
+const STATIC_TABS = new Set<Tab>(['methodology', 'overview']);
+const DATA_TABS = new Set<Tab>(['strategy', 'factors', 'regime']);
+
+// Map new regime-strategy index names → old outlook target names
+const OUTLOOK_NAME_MAP: Record<string, string> = {
+  'ACWI': 'MSCI ACWI',
+  'Stoxx 50': 'Euro Stoxx 50',
+  'Shanghai Comp': 'Shanghai Composite',
+};
 
 export default function MacroPage() {
   useEffect(() => { document.title = 'Macro Regime Strategy | Investment-X'; }, []);
 
   const { theme } = useTheme();
-  const [activeTab, setActiveTab] = useState<Tab>('strategy');
+  const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [strategyIndex, setStrategyIndex] = useState<string>('ACWI');
-  const [signalIndex, setSignalIndex] = useState<string>('ACWI');
 
-  const isStatic = STATIC_TABS.has(activeTab);
   const needsData = DATA_TABS.has(activeTab);
+  const showIndexSelector = DATA_TABS.has(activeTab);
 
   // ── Queries ──
   const indicesQuery = useQuery({
@@ -64,29 +68,34 @@ export default function MacroPage() {
     staleTime: 120_000,
   });
 
-  // Signal tab: summary for all indices + detail for selected
+  // Overview: summary for all indices
   const summaryQuery = useQuery({
     queryKey: ['regime-strategy-summary'],
     queryFn: () => apiFetchJson<{ indices: SummaryIndex[] }>('/api/macro/regime-strategy/summary'),
-    enabled: activeTab === 'signal',
+    enabled: activeTab === 'overview',
     staleTime: 120_000,
   });
 
-  const signalDetailQuery = useQuery({
-    queryKey: ['regime-strategy-signal', signalIndex],
-    queryFn: () => apiFetchJson<{ current_signal: CurrentSignalData }>(
-      `/api/macro/regime-strategy/signal?index=${encodeURIComponent(signalIndex)}`
-    ),
-    enabled: activeTab === 'signal' && !!signalIndex,
+  // Regime tab: outlook probability data from old macro system
+  const outlookTarget = OUTLOOK_NAME_MAP[strategyIndex] ?? strategyIndex;
+
+  const outlookQuery = useQuery({
+    queryKey: ['macro-outlook', outlookTarget],
+    queryFn: () => apiFetchJson<{ snapshot: Snapshot }>(`/api/macro/outlook?target=${encodeURIComponent(outlookTarget)}`),
+    enabled: activeTab === 'regime' && !!strategyIndex,
+    staleTime: 120_000,
+  });
+
+  const timeseriesQuery = useQuery({
+    queryKey: ['macro-timeseries', outlookTarget],
+    queryFn: () => apiFetchJson<{ timeseries: TimeseriesData }>(`/api/macro/timeseries?target=${encodeURIComponent(outlookTarget)}`),
+    enabled: activeTab === 'regime' && !!strategyIndex,
     staleTime: 120_000,
   });
 
   const backtest = backtestQuery.data?.backtest ?? null;
   const factors = factorsQuery.data?.factors ?? null;
   const signal = signalQuery.data?.current_signal ?? null;
-
-  // Hide index selector on signal tab (it has its own card-based selection)
-  const showIndexSelector = !isStatic && activeTab !== 'signal';
 
   return (
     <AppShell>
@@ -95,7 +104,7 @@ export default function MacroPage() {
         {/* Tab bar: selector | tabs | timestamp */}
         <div className="border-b border-border/25 mb-3">
           <div className="flex items-center gap-3 -mb-px">
-            {/* Index selector (hidden on static tabs and signal tab) */}
+            {/* Index selector (only on data tabs) */}
             {showIndexSelector && (
               <select
                 value={strategyIndex}
@@ -121,7 +130,7 @@ export default function MacroPage() {
 
             {/* Timestamp */}
             <div className="flex items-center gap-2 shrink-0 pb-2">
-              {backtestQuery.data?.computed_at && activeTab !== 'signal' && (
+              {backtestQuery.data?.computed_at && needsData && (
                 <span className="text-[9px] font-mono text-muted-foreground/40">
                   {new Date(backtestQuery.data.computed_at).toLocaleString()}
                 </span>
@@ -131,20 +140,10 @@ export default function MacroPage() {
         </div>
 
         {/* Tab content */}
-        {isStatic ? (
-          <>
-            {activeTab === 'methodology' && <MethodologyTab />}
-            {activeTab === 'cross-market' && <CrossMarketTab />}
-            {activeTab === 'robustness' && <RobustnessTab />}
-          </>
-        ) : activeTab === 'signal' ? (
-          <SignalTab
-            summary={summaryQuery.data?.indices ?? null}
-            signal={signalDetailQuery.data?.current_signal ?? null}
-            signalLoading={signalDetailQuery.isLoading}
-            selectedIndex={signalIndex}
-            onSelectIndex={setSignalIndex}
-          />
+        {activeTab === 'overview' ? (
+          <OverviewTab summary={summaryQuery.data?.indices ?? null} />
+        ) : activeTab === 'methodology' ? (
+          <MethodologyTab />
         ) : needsData && backtestQuery.isLoading ? (
           <LoadingSpinner label="Loading strategy data" />
         ) : (
@@ -153,7 +152,12 @@ export default function MacroPage() {
               <StrategyTab backtest={backtest} isLoading={backtestQuery.isLoading} target={strategyIndex} />
             )}
             {activeTab === 'regime' && (
-              <RegimeStrategyRegimeTab backtest={backtest} isLoading={backtestQuery.isLoading} target={strategyIndex} />
+              <RegimeStrategyRegimeTab
+                backtest={backtest} isLoading={backtestQuery.isLoading} target={strategyIndex}
+                snapshot={outlookQuery.data?.snapshot ?? null}
+                timeseries={timeseriesQuery.data?.timeseries ?? null}
+                tsLoading={timeseriesQuery.isLoading}
+              />
             )}
             {activeTab === 'factors' && (
               <StrategyFactorsTab

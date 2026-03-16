@@ -306,7 +306,7 @@ export function applyChartTheme(
   })();
 
   cleaned.layout.hovermode = isScatterLayout ? 'closest' : 'x unified';
-  cleaned.layout.dragmode = 'pan';
+  cleaned.layout.dragmode = false;
   cleaned.layout.hoverdistance = 20;
   cleaned.layout.spikedistance = -1;
 

@@ -3,13 +3,13 @@
 import { useMemo } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import type { PlotlyFigure } from '@/lib/chartTheme';
-import type { RegimeStrategyBacktest, RegimeHistoryEntry } from './types';
+import type { RegimeStrategyBacktest, RegimeHistoryEntry, Snapshot, TimeseriesData } from './types';
 import {
-  REGIME_COLORS,
+  REGIME_COLORS, REGIME_ORDER,
   XAXIS_DATE, YAXIS_BASE, CHART_M, CHART_M_HBAR,
 } from './constants';
 import { fmt, themed } from './helpers';
-import { LoadingSpinner, SectionTitle, ChartBox, StatsRow } from './SharedComponents';
+import { LoadingSpinner, RegimeProbBar, SectionTitle, ChartBox, StatsRow } from './SharedComponents';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -42,8 +42,9 @@ function computeDurations(history: RegimeHistoryEntry[]): DurationStat[] {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export default function RegimeStrategyRegimeTab({ backtest, isLoading, target }: {
+export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, snapshot, timeseries, tsLoading }: {
   backtest: RegimeStrategyBacktest | null; isLoading: boolean; target: string;
+  snapshot: Snapshot | null; timeseries: TimeseriesData | null; tsLoading: boolean;
 }) {
   const { theme } = useTheme();
   const regimeHistory = backtest?.regime_history ?? [];
@@ -137,7 +138,7 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target }:
       layout: {
         barmode: 'stack',
         yaxis: { ...YAXIS_BASE, showticklabels: false, showline: false, showgrid: false },
-        xaxis: XAXIS_DATE,
+        xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } },
         hovermode: 'x unified',
         legend: { orientation: 'h', y: 1.08, font: { size: 9 } },
         margin: CHART_M, bargap: 0,
@@ -200,6 +201,50 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target }:
     }).sort((a, b) => b.count - a.count);
   }, [regimeHistory]);
 
+  // ── Bayesian probability charts (from outlook system) ──
+
+  const regimeProbsChart = useMemo(() => {
+    if (!timeseries) return null;
+    const fig: PlotlyFigure = {
+      data: REGIME_ORDER.map(r => ({
+        type: 'scatter' as const, x: timeseries.dates, y: timeseries.regime_probs[r],
+        name: r, mode: 'lines' as const, stackgroup: 'one',
+        line: { color: REGIME_COLORS[r], width: 0 }, fillcolor: REGIME_COLORS[r],
+        hovertemplate: `${r}: %{y:.1%}<extra></extra>`,
+      })),
+      layout: { yaxis: { ...YAXIS_BASE, tickformat: '.0%', range: [0, 1], title: 'Probability', titlefont: { size: 10 } }, xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } }, hovermode: 'x unified', legend: { orientation: 'h', y: 1.08, font: { size: 9 } }, margin: CHART_M },
+    };
+    return themed(fig, theme);
+  }, [timeseries, theme]);
+
+  const compositeChart = useMemo(() => {
+    if (!timeseries) return null;
+    const fig: PlotlyFigure = {
+      data: [
+        { type: 'scatter', x: timeseries.dates, y: timeseries.growth, name: 'Growth', mode: 'lines', line: { color: '#3fb950', width: 2 } },
+        { type: 'scatter', x: timeseries.dates, y: timeseries.inflation, name: 'Inflation', mode: 'lines', line: { color: '#f85149', width: 2 } },
+      ],
+      layout: { yaxis: { ...YAXIS_BASE, title: 'Z-Score', titlefont: { size: 10 } }, xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } }, hovermode: 'x unified', legend: { orientation: 'h', y: 1.08, font: { size: 9 } }, margin: CHART_M },
+    };
+    return themed(fig, theme);
+  }, [timeseries, theme]);
+
+  const transitionChart = useMemo(() => {
+    const tm = snapshot?.transition_matrix;
+    if (!tm) return null;
+    const fig: PlotlyFigure = {
+      data: [{
+        type: 'heatmap' as const, z: tm.values, x: tm.labels, y: tm.labels,
+        colorscale: [[0, 'rgba(148,163,184,0.05)'], [0.5, 'rgba(148,163,184,0.4)'], [1, 'rgba(148,163,184,0.9)']],
+        text: tm.values.map(row => row.map(v => `${(v * 100).toFixed(0)}%`)),
+        texttemplate: '%{text}', textfont: { size: 11 },
+        hovertemplate: '%{y}→%{x}: %{z:.1%}<extra></extra>', showscale: false,
+      }],
+      layout: { xaxis: { title: 'To', type: 'category', side: 'bottom', titlefont: { size: 10 }, showticklabels: true }, yaxis: { title: 'From', type: 'category', autorange: 'reversed', titlefont: { size: 10 }, showticklabels: true }, margin: { l: 80, r: 12, t: 12, b: 44 } },
+    };
+    return themed(fig, theme);
+  }, [snapshot, theme]);
+
   if (isLoading) return <LoadingSpinner label="Loading regime data" />;
   if (!backtest) return null;
 
@@ -237,6 +282,58 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target }:
           <div>
             <div className="stat-label">As Of</div>
             <div className="text-[11px] font-mono text-muted-foreground mt-0.5">{current.date}</div>
+          </div>
+        </div>
+      )}
+
+      {/* 1b. Regime Probability Bar (Bayesian) */}
+      {snapshot && (
+        <div className="panel-card px-3 py-2">
+          <SectionTitle info="Softmax-based regime probabilities from the macro outlook model. Four probabilities sum to 100%.">Regime Probabilities</SectionTitle>
+          <RegimeProbBar probs={snapshot.current.regime_probs} />
+        </div>
+      )}
+
+      {/* 1c. Regime Probs Over Time + Growth/Inflation Composites */}
+      {(timeseries || tsLoading) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="panel-card p-2">
+            <SectionTitle info="Stacked area chart of regime probabilities over time. Shows how the dominant regime shifts.">Probability History</SectionTitle>
+            {tsLoading ? <LoadingSpinner /> : <ChartBox chart={regimeProbsChart} height={240} />}
+          </div>
+          <div className="panel-card p-2">
+            <SectionTitle info="Growth and inflation composite z-scores — the two axes that determine the macro regime quadrant.">Growth × Inflation Composites</SectionTitle>
+            {tsLoading ? <LoadingSpinner /> : <ChartBox chart={compositeChart} height={240} />}
+          </div>
+        </div>
+      )}
+
+      {/* 1d. Transition Matrix + Forward Returns */}
+      {snapshot && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="panel-card p-2">
+            <SectionTitle info="Empirical regime transition probabilities. Each row shows the probability of transitioning from one regime to another in a given week.">Transition Matrix</SectionTitle>
+            <ChartBox chart={transitionChart} height={220} />
+          </div>
+          <div className="panel-card px-3 py-2">
+            <SectionTitle info="Historical 13-week forward returns by dominant regime. Mean, median, volatility, Sharpe, hit rate, and sample size.">Forward Returns by Regime</SectionTitle>
+            <table className="w-full text-[11px]">
+              <thead><tr className="border-b border-border/40">
+                <th className="text-left py-1 pr-2 text-[9px] font-mono uppercase text-muted-foreground/50">Regime</th>
+                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Mean</th>
+                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Med</th>
+                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Vol</th>
+                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Sharpe</th>
+                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">%Pos</th>
+                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">N</th>
+              </tr></thead>
+              <tbody>
+                {snapshot.regime_stats.map(s => (
+                  <StatsRow key={s.regime} label={s.regime} color={REGIME_COLORS[s.regime]}
+                    values={[`${fmt(s.mean_fwd_ret, 1)}%`, `${fmt(s.median_fwd_ret, 1)}%`, `${fmt(s.std, 1)}%`, fmt(s.sharpe), `${fmt(s.pct_positive, 0)}%`, s.n]} />
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

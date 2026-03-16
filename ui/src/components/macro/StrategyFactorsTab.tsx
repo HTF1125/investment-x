@@ -73,8 +73,8 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
         hovertemplate: '%{y}<br>%{x}: %{z:.4f}<extra></extra>',
       }],
       layout: {
-        xaxis: { type: 'date', showticklabels: true, showline: true, linewidth: 1, side: 'bottom' },
-        yaxis: { ...YAXIS_BASE, autorange: 'reversed', showgrid: false },
+        xaxis: { type: 'date', showticklabels: true, showline: true, linewidth: 1, side: 'bottom', title: 'Date', titlefont: { size: 10 } },
+        yaxis: { ...YAXIS_BASE, autorange: 'reversed', showgrid: false, title: 'Indicator', titlefont: { size: 10 } },
         margin: { l: 160, r: 60, t: 12, b: 40 },
       },
     };
