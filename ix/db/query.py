@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Optional
 
 import pandas as pd
@@ -8,6 +9,10 @@ from sqlalchemy.orm import Session as SessionType
 
 from ix.db.models import Timeseries
 from ix.misc.date import today
+
+# TTL cache for crawler results: {source_code: (timestamp, pd.Series)}
+_crawler_cache: dict[str, tuple[float, pd.Series]] = {}
+_CRAWLER_CACHE_TTL = 900  # 15 minutes
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +107,14 @@ def Series(
         _LIVE_SOURCES = {"Yahoo", "Fred", "Naver"}
 
         def _fetch_from_crawler(source: str, source_code: str) -> pd.Series:
-            """Fetch data directly from web crawler, bypassing DB."""
+            """Fetch data from web crawler with 15-min TTL cache."""
+            # Check cache first
+            cached = _crawler_cache.get(source_code)
+            if cached and (time.time() - cached[0]) < _CRAWLER_CACHE_TTL:
+                result = cached[1].copy()
+                result.name = code
+                return result
+
             from ix.misc.crawler import get_yahoo_data, get_fred_data, get_naver_data
             ticker, field = source_code.rsplit(":", 1)
             try:
@@ -118,6 +130,7 @@ def Series(
                     return pd.Series(dtype=float)
                 result = df[field].dropna()
                 result.index = pd.to_datetime(result.index)
+                _crawler_cache[source_code] = (time.time(), result.copy())
                 result.name = code
                 logger.info("Fetched %s from %s crawler", source_code, source)
                 return result

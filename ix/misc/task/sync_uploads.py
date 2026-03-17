@@ -17,19 +17,22 @@ def sync_uploads_from_r2():
 
     try:
         storage = Boto()
-        pending = [
-            k for k in storage.list_prefix("uploads/")
-            if not k.startswith("uploads/processed/")
-        ]
+        pending = storage.list_prefix("uploads/")
     except Exception as e:
         logger.error("R2 sync: failed to list uploads: %s", e)
         return
+
+    # Exclude processed and failed
+    pending = [k for k in pending if not k.startswith("uploads/processed/") and not k.startswith("uploads/failed/")]
 
     if not pending:
         return  # Nothing to do — silent
 
     logger.info("R2 sync: found %d pending file(s)", len(pending))
     ensure_connection()
+
+    # Track retry counts: filename -> attempt count (stored in metadata)
+    _MAX_RETRIES = 3
 
     for key in sorted(pending):
         try:
@@ -87,6 +90,25 @@ def sync_uploads_from_r2():
 
         except Exception as e:
             logger.exception("R2 sync: failed to process %s: %s", key, e)
+            # Track retries via a simple counter file in R2
+            retry_key = key + ".retries"
+            try:
+                import json as _json
+                retry_data = storage.get_json(retry_key)
+                count = retry_data.get("count", 0) + 1 if retry_data else 1
+            except Exception:
+                count = 1
+            if count >= _MAX_RETRIES:
+                failed_key = key.replace("uploads/", "uploads/failed/", 1)
+                storage.rename_file(key, failed_key)
+                try:
+                    storage.s3.delete_object(Bucket=storage.bucket_name, Key=retry_key)
+                except Exception:
+                    pass
+                logger.error("R2 sync: moved %s to failed/ after %d attempts", key, count)
+            else:
+                storage.save_json({"count": count, "last_error": str(e)}, retry_key)
+                logger.warning("R2 sync: %s attempt %d/%d failed", key, count, _MAX_RETRIES)
 
 
 def _merge_to_db(df: pd.DataFrame, db, Timeseries) -> dict:

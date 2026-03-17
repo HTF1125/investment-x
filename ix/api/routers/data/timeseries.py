@@ -1842,7 +1842,7 @@ def upload_data(
     request: Request,
     payload: TimeseriesDataUpload,
     db: SessionType = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(get_current_admin_user),
 ):
     """
     POST /api/upload_data - Upload timeseries data.
@@ -1897,7 +1897,7 @@ def upload_data_columnar(
     request: Request,
     payload: TimeseriesColumnarUpload,
     db: SessionType = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(get_current_admin_user),
 ):
     """
     POST /api/upload_data_columnar - Upload timeseries data.
