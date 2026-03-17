@@ -221,7 +221,7 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
           <NavLink href="/intel">Intel</NavLink>
           <NavLink href="/macro">Macro</NavLink>
           <NavLink href="/whiteboard">Whiteboard</NavLink>
-          <NavLink href="/downloads">Downloads</NavLink>
+          <NavLink href="/downloads">Data Tools</NavLink>
           {isRealAdmin && !viewAsUser && (
             <NavLink href="/admin/timeseries">System</NavLink>
           )}
@@ -298,7 +298,7 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
             <MobileNavLink href="/intel">Intel</MobileNavLink>
             <MobileNavLink href="/macro">Macro</MobileNavLink>
             <MobileNavLink href="/whiteboard">Whiteboard</MobileNavLink>
-            <MobileNavLink href="/downloads">Downloads</MobileNavLink>
+            <MobileNavLink href="/downloads">Data Tools</MobileNavLink>
             {isRealAdmin && !viewAsUser && (
               <MobileNavLink href="/admin/timeseries">System</MobileNavLink>
             )}

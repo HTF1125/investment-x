@@ -32,17 +32,17 @@ logger = get_logger(__name__)
 class MacroRegimeStrategy(Strategy):
     """Binary macro regime strategy for a single target index.
 
-    Runs the walk-forward IC-weighted pipeline from ``ix.core.macro``,
-    producing a weekly equity allocation (10%–100%) vs cash.  The
-    ``Strategy`` base class handles portfolio simulation, transaction
-    costs, and performance reporting.
+    Runs the walk-forward pipeline from ``ix.core.macro``, using the
+    binary Growth×Inflation regime signal (90/70/30/10 allocation)
+    for the primary equity weight.  The ``Strategy`` base class handles
+    portfolio simulation, transaction costs, and performance reporting.
 
     Parameters
     ----------
     index_name : str
         Key into ``INDEX_MAP`` (e.g. ``"ACWI"``, ``"S&P 500"``).
     **pipeline_kwargs
-        Overrides for ``OPTIMIZED_PARAMS`` (lookback_years, top_n, etc.).
+        Overrides for ``OPTIMIZED_PARAMS`` (lookback_years, rebal_weeks, etc.).
     """
 
     frequency: str = "W-FRI"
@@ -92,22 +92,28 @@ class MacroRegimeStrategy(Strategy):
 
         self._pipeline_result = result
 
-        # Extract eq_weight from the Blended backtest result
-        blended = result.get("wf_results", {}).get("Blended")
-        if blended is not None and "bt_df" in blended:
-            self._eq_weights = blended["bt_df"]["eq_weight"].copy()
+        # Prefer Regime (binary switching) — research shows real alpha
+        # comes from drawdown avoidance, not continuous tilts.
+        regime = result.get("wf_results", {}).get("Regime")
+        if regime is not None and "bt_df" in regime:
+            self._eq_weights = regime["bt_df"]["eq_weight"].copy()
         else:
-            # Fallback: try to build from category weight series
-            wf_histories = result.get("wf_histories", {})
-            for cat in ("Growth", "Liquidity", "Tactical", "Inflation"):
-                hist = wf_histories.get(cat, [])
-                if hist:
-                    dates = [h["date"] for h in hist]
-                    weights = [h["eq_weight"] for h in hist]
-                    self._eq_weights = pd.Series(
-                        weights, index=pd.DatetimeIndex(dates)
-                    )
-                    break
+            # Fallback: Blended continuous signal
+            blended = result.get("wf_results", {}).get("Blended")
+            if blended is not None and "bt_df" in blended:
+                self._eq_weights = blended["bt_df"]["eq_weight"].copy()
+            else:
+                # Last resort: first available category
+                wf_histories = result.get("wf_histories", {})
+                for cat in ("Growth", "Liquidity", "Tactical", "Inflation"):
+                    hist = wf_histories.get(cat, [])
+                    if hist:
+                        dates = [h["date"] for h in hist]
+                        weights = [h["eq_weight"] for h in hist]
+                        self._eq_weights = pd.Series(
+                            weights, index=pd.DatetimeIndex(dates)
+                        )
+                        break
 
         if self._eq_weights is None:
             logger.warning(

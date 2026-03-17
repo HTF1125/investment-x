@@ -45,7 +45,9 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background relative overflow-hidden">
+      <div className="auth-grid-bg" />
+      <div className="auth-vignette" />
 
       <div className="w-full max-w-md relative z-10">
         <button

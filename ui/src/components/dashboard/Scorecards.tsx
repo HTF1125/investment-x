@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
 import { Loader2, AlertTriangle, Clock, TrendingUp, TrendingDown, ChevronUp, ChevronDown } from 'lucide-react';
 import MacroRegimeSummary from './MacroRegimeSummary';
+import { useCountUp } from '@/hooks/useCountUp';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -139,29 +140,35 @@ function MarketPulse({ categories, updatedAt }: { categories: ScorecardCategory[
 
   const ts = new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+  const animGainers = useCountUp(stats.gainers);
+  const animLosers = useCountUp(stats.losers);
+  const animAvg = useCountUp(stats.avg1D);
+  const animBest = useCountUp(stats.bestVal === -Infinity ? 0 : stats.bestVal);
+  const animWorst = useCountUp(stats.worstVal === Infinity ? 0 : stats.worstVal);
+
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-3 py-2 border-b border-border/15 bg-card/50">
+    <div className="animate-fade-in stagger-2 flex flex-wrap items-center gap-x-6 gap-y-1 px-3 py-2 border-b border-border/15 bg-card/50">
       <span className="stat-label">Market Pulse</span>
       <span className="font-mono text-[12px] tabular-nums">
-        <span className="text-green-500">{stats.gainers}</span>
+        <span className="text-green-500">{Math.round(animGainers)}</span>
         <span className="text-muted-foreground/40 mx-0.5">/</span>
-        <span className="text-red-500">{stats.losers}</span>
+        <span className="text-red-500">{Math.round(animLosers)}</span>
       </span>
       <span className="font-mono text-[12px] tabular-nums">
         <span className="stat-label mr-1">Avg</span>
         <span className={stats.avg1D >= 0 ? 'text-green-500' : 'text-red-500'}>
-          {stats.avg1D > 0 ? '+' : ''}{stats.avg1D.toFixed(2)}%
+          {animAvg > 0 ? '+' : ''}{animAvg.toFixed(2)}%
         </span>
       </span>
       <span className="font-mono text-[12px] tabular-nums inline-flex items-center gap-1">
         <TrendingUp className="w-3 h-3 text-green-500" />
         <span className="text-foreground/80">{stats.bestAsset}</span>
-        <span className="text-green-500">+{stats.bestVal.toFixed(1)}</span>
+        <span className="text-green-500">+{animBest.toFixed(1)}</span>
       </span>
       <span className="font-mono text-[12px] tabular-nums inline-flex items-center gap-1">
         <TrendingDown className="w-3 h-3 text-red-500" />
         <span className="text-foreground/80">{stats.worstAsset}</span>
-        <span className="text-red-500">{stats.worstVal.toFixed(1)}</span>
+        <span className="text-red-500">{animWorst.toFixed(1)}</span>
       </span>
       {Object.entries(stats.quadrants).map(([q, n]) => {
         const s = Q[q];
@@ -404,8 +411,10 @@ export default function Scorecards() {
     <div className="p-2 sm:p-3 lg:p-4 space-y-3 overflow-y-auto">
       <MacroRegimeSummary />
       <MarketPulse categories={data.categories} updatedAt={dataUpdatedAt} />
-      {data.categories.map(cat => (
-        <CategoryTable key={cat.name} cat={cat} />
+      {data.categories.map((cat, i) => (
+        <div key={cat.name} className={`animate-fade-in stagger-${Math.min(i + 3, 10)}`}>
+          <CategoryTable cat={cat} />
+        </div>
       ))}
     </div>
   );

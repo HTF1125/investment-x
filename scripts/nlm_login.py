@@ -24,11 +24,12 @@ def main():
             ignore_default_args=["--enable-automation"],
         )
 
-        # List all open pages
-        for i, pg in enumerate(context.pages):
-            print(f"  Page {i}: {pg.url}")
+        page = context.pages[0] if context.pages else context.new_page()
+        page.goto("https://notebooklm.google.com/")
+        print(f"Navigated to: {page.url}")
+        print("Log in if needed, then come back here.\n")
 
-        # input("\nPress ENTER to save cookies and close browser... ")
+        input("Press ENTER to save cookies and close browser... ")
 
         context.storage_state(path=str(storage_path))
         context.close()

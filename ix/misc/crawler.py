@@ -1,9 +1,15 @@
 from typing import Optional, List
+import threading
 import pandas as pd
 from ix.misc.terminal import get_logger
 from ix.misc.date import tomorrow
 
 logger = get_logger(__name__)
+
+# yfinance uses shared global state and is not thread-safe.
+# Serialize all yf.download calls to prevent concurrent calls from
+# returning corrupted/swapped data.
+_yf_lock = threading.Lock()
 
 
 def _get_pandas_datareader():
@@ -28,15 +34,16 @@ def get_yahoo_data(
     try:
         import yfinance as yf
 
-        data = yf.download(
-            tickers=code,
-            start=start,
-            end=end,
-            progress=progress,
-            actions=actions,
-            auto_adjust=False,
-            multi_level_index=False,
-        )
+        with _yf_lock:
+            data = yf.download(
+                tickers=code,
+                start=start,
+                end=end,
+                progress=progress,
+                actions=actions,
+                auto_adjust=False,
+                multi_level_index=False,
+            )
         if data is None:
             raise ValueError(f"yfinance returned None for ticker {code}")
         return data

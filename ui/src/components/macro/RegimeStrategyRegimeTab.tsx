@@ -40,6 +40,19 @@ function computeDurations(history: RegimeHistoryEntry[]): DurationStat[] {
   }));
 }
 
+// Derive regime probabilities from growth/inflation percentiles.
+// P(quadrant) = P(growth side) * P(inflation side), using the raw percentiles.
+function regimeProbs(gp: number, ip: number): Record<string, number> {
+  const gUp = gp, gDn = 1 - gp;
+  const iUp = ip, iDn = 1 - ip;
+  return {
+    Goldilocks: gUp * iDn,
+    Reflation: gUp * iUp,
+    Stagflation: gDn * iUp,
+    Deflation: gDn * iDn,
+  };
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, snapshot, timeseries, tsLoading }: {
@@ -49,6 +62,12 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, s
   const { theme } = useTheme();
   const regimeHistory = backtest?.regime_history ?? [];
   const current = regimeHistory.length ? regimeHistory[regimeHistory.length - 1] : null;
+
+  // Compute regime probs from the strategy's own percentiles (not the Bayesian model)
+  const currentRegimeProbs = useMemo(() => {
+    if (!current) return null;
+    return regimeProbs(current.growth_pctile, current.inflation_pctile);
+  }, [current]);
 
   // ── Quadrant scatter ──
   const quadrantChart = useMemo(() => {
@@ -201,13 +220,21 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, s
     }).sort((a, b) => b.count - a.count);
   }, [regimeHistory]);
 
-  // ── Bayesian probability charts (from outlook system) ──
+  // ── Probability charts derived from strategy's own regime history ──
 
   const regimeProbsChart = useMemo(() => {
-    if (!timeseries) return null;
+    if (!regimeHistory.length) return null;
+    // Compute regime probs at each rebalance from the strategy's own percentiles
+    const dates = regimeHistory.map(r => r.date);
+    const probsByRegime: Record<string, number[]> = {};
+    REGIME_ORDER.forEach(r => { probsByRegime[r] = []; });
+    regimeHistory.forEach(r => {
+      const probs = regimeProbs(r.growth_pctile, r.inflation_pctile);
+      REGIME_ORDER.forEach(regime => { probsByRegime[regime].push(probs[regime]); });
+    });
     const fig: PlotlyFigure = {
       data: REGIME_ORDER.map(r => ({
-        type: 'scatter' as const, x: timeseries.dates, y: timeseries.regime_probs[r],
+        type: 'scatter' as const, x: dates, y: probsByRegime[r],
         name: r, mode: 'lines' as const, stackgroup: 'one',
         line: { color: REGIME_COLORS[r], width: 0 }, fillcolor: REGIME_COLORS[r],
         hovertemplate: `${r}: %{y:.1%}<extra></extra>`,
@@ -215,19 +242,25 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, s
       layout: { yaxis: { ...YAXIS_BASE, tickformat: '.0%', range: [0, 1], title: 'Probability', titlefont: { size: 10 } }, xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } }, hovermode: 'x unified', legend: { orientation: 'h', y: 1.08, font: { size: 9 } }, margin: CHART_M },
     };
     return themed(fig, theme);
-  }, [timeseries, theme]);
+  }, [regimeHistory, theme]);
 
   const compositeChart = useMemo(() => {
-    if (!timeseries) return null;
+    if (!regimeHistory.length) return null;
+    const dates = regimeHistory.map(r => r.date);
     const fig: PlotlyFigure = {
       data: [
-        { type: 'scatter', x: timeseries.dates, y: timeseries.growth, name: 'Growth', mode: 'lines', line: { color: '#3fb950', width: 2 } },
-        { type: 'scatter', x: timeseries.dates, y: timeseries.inflation, name: 'Inflation', mode: 'lines', line: { color: '#f85149', width: 2 } },
+        { type: 'scatter', x: dates, y: regimeHistory.map(r => r.growth_pctile), name: 'Growth %ile', mode: 'lines', line: { color: '#3fb950', width: 2 } },
+        { type: 'scatter', x: dates, y: regimeHistory.map(r => r.inflation_pctile), name: 'Inflation %ile', mode: 'lines', line: { color: '#f85149', width: 2 } },
       ],
-      layout: { yaxis: { ...YAXIS_BASE, title: 'Z-Score', titlefont: { size: 10 } }, xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } }, hovermode: 'x unified', legend: { orientation: 'h', y: 1.08, font: { size: 9 } }, margin: CHART_M },
+      layout: {
+        yaxis: { ...YAXIS_BASE, title: 'Percentile', titlefont: { size: 10 }, tickformat: '.0%', range: [0, 1] },
+        xaxis: { ...XAXIS_DATE, title: 'Date', titlefont: { size: 10 } },
+        hovermode: 'x unified', legend: { orientation: 'h', y: 1.08, font: { size: 9 } }, margin: CHART_M,
+        shapes: [{ type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: 0.5, y1: 0.5, line: { color: '#a1a1aa', width: 1, dash: 'dash' } }],
+      },
     };
     return themed(fig, theme);
-  }, [timeseries, theme]);
+  }, [regimeHistory, theme]);
 
   const transitionChart = useMemo(() => {
     const tm = snapshot?.transition_matrix;
@@ -286,11 +319,11 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, s
         </div>
       )}
 
-      {/* 1b. Regime Probability Bar (Bayesian) */}
-      {snapshot && (
+      {/* 1b. Regime Probability Bar (from strategy percentiles) */}
+      {currentRegimeProbs && (
         <div className="panel-card px-3 py-2">
-          <SectionTitle info="Softmax-based regime probabilities from the macro outlook model. Four probabilities sum to 100%.">Regime Probabilities</SectionTitle>
-          <RegimeProbBar probs={snapshot.current.regime_probs} />
+          <SectionTitle info="Regime probabilities derived from the strategy's growth and inflation percentiles. P(quadrant) = P(growth side) × P(inflation side).">Regime Probabilities</SectionTitle>
+          <RegimeProbBar probs={currentRegimeProbs} />
         </div>
       )}
 

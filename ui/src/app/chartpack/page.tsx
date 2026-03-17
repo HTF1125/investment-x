@@ -281,7 +281,7 @@ function PackChartGrid({
   // Individual code executions for code-based charts (can't batch these)
   const codeQueries = useQueries({
     queries: codeChartIndices.map((i) => ({
-      queryKey: ['pack-chart-code', pack.charts[i].code, refreshKey],
+      queryKey: ['pack-chart-code', i, pack.charts[i].code, refreshKey],
       queryFn: () => apiFetchJson<Record<string, any>>('/api/timeseries.exec', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: pack.charts[i].code }),
@@ -310,7 +310,8 @@ function PackChartGrid({
       // Pre-rendered figure — no data needed
       if (chart.figure || chart.chart_id) return { rawData: undefined, isLoading: false };
       if (chart.code?.trim()) {
-        return { rawData: codeDataMap.get(i), isLoading: !codeDataMap.has(i) || (codeDataMap.get(i) === undefined && codeQueries[codeChartIndices.indexOf(i)]?.isLoading) };
+        const rd = codeDataMap.get(i);
+        return { rawData: rd, isLoading: !codeDataMap.has(i) || (rd === undefined && codeQueries[codeChartIndices.indexOf(i)]?.isLoading) };
       }
       // Extract this chart's columns from the batch
       if (!batchData) return { rawData: undefined, isLoading: batchLoading };

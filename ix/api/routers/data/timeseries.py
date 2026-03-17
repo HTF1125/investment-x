@@ -11,7 +11,6 @@ from fastapi import (
     status,
     UploadFile,
     File,
-    BackgroundTasks,
 )
 from fastapi.responses import Response, StreamingResponse, FileResponse
 from typing import Optional, List, Dict, Any
@@ -359,10 +358,10 @@ def get_timeseries_sources(
 # __C__ is replaced with the actual column letter (B, C, D, ...) per timeseries.
 _DOWNLOAD_FORMULA_TEMPLATE = (
     """=IF(__C__6="FactSet",IF(ISNUMBER(SEARCH(__C__3, "FDS_ECON_DATA; FDS_COM_DATA",1)),"""
-    """FDSC("","","PSETCAL(SEVENDAY);"&__C__3&"('" & __C__2 & "'," & $D$1+2 & "," & $C$1 & ", D, NONE, NONE)"),\n"""
-    """FDSC("","","PSETCAL(SEVENDAY);NO_REPEAT_F(SPEC_ID_DATA('" & __C__2 & ":" & __C__3 & "','" & $D$1+2 & "','" & $C$1 & "', D, NONE, NONE,2))")),\n"""
-    """IF(__C__6="Bloomberg",BDH(__C__2,__C__3,$C$1,$D$1+2,"SORT", "TRUE","DTS", "FALSE","DAYS", "C","FILL", "B"),\n"""
-    """IF(__C__6="Infomax",IMDH(__C__5,__C__2&"",__C__3,$C$1,$D$1,9999,"Per=일,sort=D,real=false,Bizday=12,Quote=종가,ROUND=9,Pos=20,Orient=V,Title="&__C__7&",DtFmt=1,TmFmt=1,unit=true"),\n"""
+    """FDSC("","","PSETCAL(SEVENDAY);"&__C__3&"('" & __C__2 & "'," & $C$1+2 & "," & $B$1 & ", D, NONE, NONE)"),\n"""
+    """FDSC("","","PSETCAL(SEVENDAY);NO_REPEAT_F(SPEC_ID_DATA('" & __C__2 & ":" & __C__3 & "','" & $C$1+2 & "','" & $B$1 & "', D, NONE, NONE,2))")),\n"""
+    """IF(__C__6="Bloomberg",BDH(__C__2,__C__3,$B$1,$C$1+2,"SORT", "TRUE","DTS", "FALSE","DAYS", "C","FILL", "B"),\n"""
+    """IF(__C__6="Infomax",IMDH(__C__5,__C__2&"",__C__3,$B$1,$C$1,9999,"Per=일,sort=D,real=false,Bizday=12,Quote=종가,ROUND=9,Pos=20,Orient=V,Title="&__C__7&",DtFmt=1,TmFmt=1,unit=true"),\n"""
     """NA())))"""
 )
 
@@ -390,14 +389,14 @@ def download_template(
     """
     import io
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Border, Side
+    from openpyxl.styles import Font
 
     ensure_connection()
 
     # Date range
     end_dt = pd.to_datetime(end_date) if end_date else pd.Timestamp.now()
     start_dt = (
-        pd.to_datetime(start_date) if start_date else end_dt - pd.DateOffset(years=2)
+        pd.to_datetime(start_date) if start_date else end_dt - pd.DateOffset(years=1)
     )
     start_str = start_dt.strftime("%Y-%m-%d")
     end_str = end_dt.strftime("%Y-%m-%d")
@@ -422,38 +421,28 @@ def download_template(
     wb = Workbook()
     wb.remove(wb.active)
 
-    # Styles
-    # User requested: black background and black text.
+    # Styles — white background, black text
     header_font = Font(name="Consolas", size=9, color="000000")
     value_font = Font(name="Consolas", size=9, color="000000")
     code_font = Font(name="Consolas", size=9, color="000000", bold=True)
     formula_font = Font(name="Consolas", size=8, color="000000", italic=True)
     date_font = Font(name="Consolas", size=9, color="000000")
-    black_fill = PatternFill(
-        start_color="000000", end_color="000000", fill_type="solid"
-    )
 
-    # Generate dates: start from end_date + 2, descending to start_date
+    # Date range extent (for formula row count)
     date_top = end_dt + pd.DateOffset(days=2)
-    dates = pd.date_range(start=start_dt, end=date_top, freq="D").sort_values(
-        ascending=False
-    )
 
     for sheet_source, ts_list in grouped.items():
         ws = wb.create_sheet(title=(sheet_source or "Unknown")[:31])
 
-        # Row 1: Header info
+        # Row 1: Header info — matches Sample.xlsx layout (A1=source, B1=start, C1=end)
         ws.cell(row=1, column=1, value=sheet_source).font = Font(
-            name="Consolas", size=10, color="00BFFF", bold=True
+            name="Consolas", size=10, color="0000FF", bold=True
         )
-        ws.cell(row=1, column=1).fill = black_fill
-        # C1 / D1 as real dates with date formatting
-        ws.cell(row=1, column=3, value=start_dt.to_pydatetime()).font = value_font
-        ws.cell(row=1, column=3).number_format = "yyyy-mm-dd"
-        ws.cell(row=1, column=3).fill = black_fill
-        ws.cell(row=1, column=4, value=end_dt.to_pydatetime()).font = value_font
-        ws.cell(row=1, column=4).number_format = "yyyy-mm-dd"
-        ws.cell(row=1, column=4).fill = black_fill
+        # B1 = start date, C1 = end date
+        ws.cell(row=1, column=2, value=start_dt.to_pydatetime()).font = value_font
+        ws.cell(row=1, column=2).number_format = "mm-dd-yy"
+        ws.cell(row=1, column=3, value=end_dt.to_pydatetime()).font = value_font
+        ws.cell(row=1, column=3).number_format = "mm-dd-yy"
 
         # Metadata row labels (col A)
         row_labels = {
@@ -468,7 +457,6 @@ def download_template(
         for r, label in row_labels.items():
             cell = ws.cell(row=r, column=1, value=label)
             cell.font = header_font
-            cell.fill = black_fill
 
         # Fill columns B+ with timeseries metadata
         for col_idx, ts in enumerate(ts_list, start=2):
@@ -477,20 +465,25 @@ def download_template(
             ticker = parts[0] if len(parts) > 0 else ""
             field = parts[1] if len(parts) > 1 else ""
 
-            ws.cell(row=2, column=col_idx, value=ticker).font = value_font
-            ws.cell(row=2, column=col_idx).fill = black_fill
-            ws.cell(row=3, column=col_idx, value=field).font = value_font
-            ws.cell(row=3, column=col_idx).fill = black_fill
-            ws.cell(row=4, column=col_idx, value=sc).font = value_font
-            ws.cell(row=4, column=col_idx).fill = black_fill
+            c = ws.cell(row=2, column=col_idx, value=ticker)
+            c.font = value_font
+            c.number_format = '@'
+            c.data_type = 's'  # Force string — preserves leading zeros like "001"
+            c = ws.cell(row=3, column=col_idx, value=field)
+            c.font = value_font
+            c.number_format = '@'
+            c.data_type = 's'
+            c = ws.cell(row=4, column=col_idx, value=sc)
+            c.font = value_font
+            c.number_format = '@'
+            c.data_type = 's'
             ws.cell(row=5, column=col_idx, value=ts.asset_class or "").font = value_font
-            ws.cell(row=5, column=col_idx).fill = black_fill
             ws.cell(row=6, column=col_idx, value=ts.source or "").font = value_font
-            ws.cell(row=6, column=col_idx).fill = black_fill
             ws.cell(row=7, column=col_idx, value=ts.name or "").font = value_font
-            ws.cell(row=7, column=col_idx).fill = black_fill
-            ws.cell(row=8, column=col_idx, value=ts.code or "").font = code_font
-            ws.cell(row=8, column=col_idx).fill = black_fill
+            c = ws.cell(row=8, column=col_idx, value=ts.code or "")
+            c.font = code_font
+            c.number_format = '@'
+            c.data_type = 's'
 
             # Universal formula — column letter swapped via template
             from openpyxl.utils import get_column_letter
@@ -498,21 +491,18 @@ def download_template(
             col = get_column_letter(col_idx)
             formula_text = _DOWNLOAD_FORMULA_TEMPLATE.replace("__C__", col)
 
-            # Keep as normal Excel formula (no array-brace rendering).
             ws.cell(row=9, column=col_idx, value=formula_text).font = formula_font
-            ws.cell(row=9, column=col_idx).fill = black_fill
 
-        # Date column (A9+) — descending from end_date + 2
-        for i, d in enumerate(dates):
-            ws.cell(row=9 + i, column=1, value=d.strftime("%Y-%m-%d")).font = date_font
-            ws.cell(row=9 + i, column=1).fill = black_fill
-
-        # Force black fill across the full used template area.
-        max_row = 8 + len(dates)
-        max_col = len(ts_list) + 1
-        for r in range(1, max_row + 1):
-            for c in range(1, max_col + 1):
-                ws.cell(row=r, column=c).fill = black_fill
+        # Date column (A9+) — descending from end_date+2 toward start_date
+        num_date_rows = (date_top - start_dt).days + 1
+        # A9 = C1+2 (most recent), then A10 = A9-1, A11 = A10-1, etc.
+        c = ws.cell(row=9, column=1, value="=C1+2")
+        c.font = date_font
+        c.number_format = "mm-dd-yy"
+        for i in range(1, num_date_rows):
+            c = ws.cell(row=9 + i, column=1, value=f"=A{9 + i - 1}-1")
+            c.font = date_font
+            c.number_format = "mm-dd-yy"
 
         # Column widths
         ws.column_dimensions["A"].width = 16
@@ -535,16 +525,18 @@ def download_template(
 
 
 @router.post("/timeseries/upload_template_data")
+@_limiter.limit("10/minute")
 async def upload_template_data(
-    background_tasks: BackgroundTasks,
+    request: Request,
     file: UploadFile = File(...),
-    db: SessionType = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user),
+    _current_user: User = Depends(get_current_admin_user),
 ):
-    """Upload Excel file with timeseries data in the background."""
-    from ix.api.task_utils import start_process
+    """Upload filled Excel template. Same behaviour as upload_data_columnar:
+    Server → saves to R2.  Local → merges into local DB + cloud DB.
+    """
+    import asyncio
 
-    # Validate file type before reading
+    # Validate file type
     allowed_types = {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/vnd.ms-excel",
@@ -554,168 +546,146 @@ async def upload_template_data(
         raise HTTPException(status_code=400, detail="File must be an Excel spreadsheet (.xlsx)")
 
     contents = await file.read()
-
-    # Validate file size (50MB limit)
     if len(contents) > 50 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File exceeds 50MB size limit")
-    pid = start_process(
-        f"Timeseries Upload: {file.filename}",
-        user_id=str(getattr(current_user, "id", "") or ""),
-    )
 
-    background_tasks.add_task(_run_upload_background_task, pid, contents)
-
-    return {"message": "Process started in background.", "task_id": pid}
+    # Run blocking work (openpyxl + DB) in threadpool — fresh session inside thread
+    result = await asyncio.to_thread(_process_template_upload, contents)
+    return result
 
 
-def _run_upload_background_task(pid: str, contents: bytes):
-    """Actual worker for timeseries data upload."""
+def _process_template_upload(contents: bytes):
+    """Blocking worker: parse Excel template and merge into DB (same as upload_data_columnar)."""
     import io
     import math
-    import pandas as pd
-    from datetime import datetime, date
+    import time as _time
+    from datetime import datetime as _dt, date as _date
     from openpyxl import load_workbook
-    from ix.db.models import Timeseries, TimeseriesData
-    from ix.db.conn import Session
-    from ix.api.task_utils import update_process, ProcessStatus
+    from ix.db.boto import Boto
+    from ix.misc.settings import Settings
 
-    logger.info("[Task:%s] Starting background timeseries upload.", pid)
+    _t0 = _time.time()
+    logger.info("Template upload: parsing %d bytes...", len(contents))
     try:
-        with Session() as db:
-            logger.info("[Task:%s] Parsing workbook contents...", pid)
-            update_process(pid, message="Parsing Excel file...")
-            try:
-                wb = load_workbook(io.BytesIO(contents), data_only=True)
-            except Exception as e:
-                logger.error("[Task:%s] Failed to load workbook: %s", pid, e)
-                update_process(
-                    pid,
-                    status=ProcessStatus.FAILED,
-                    message=f"Invalid Excel format: {str(e)}",
-                )
-                return
-
-            # Fetch mappings and prepare
-            ts_map = {
-                ts.code: ts.id for ts in db.query(Timeseries.code, Timeseries.id).all()
-            }
-            logger.info(
-                "[Task:%s] Loaded mapping for %d timeseries codes.", pid, len(ts_map)
-            )
-            updated_count = 0
-            total_points = 0
-            sheets = wb.sheetnames
-
-            for s_idx, sheet_name in enumerate(sheets):
-                ws = wb[sheet_name]
-                sheet_progress = f"{s_idx + 1}/{len(sheets)}"
-                logger.info(
-                    "[Task:%s] Processing sheet: %s (%s)", pid, sheet_name, sheet_progress
-                )
-
-                total_cols = ws.max_column - 1
-                for col_idx in range(2, ws.max_column + 1):
-                    col_num = col_idx - 1
-                    code_cell = ws.cell(row=8, column=col_idx).value
-
-                    if not code_cell:
-                        continue
-
-                    ts_code = str(code_cell).strip()
-                    ts_id = ts_map.get(ts_code)
-
-                    # Log every column to show activity
-                    logger.info(
-                        "[Task:%s]   Scanning '%s' (Col %d/%d)", pid, ts_code, col_num, total_cols
-                    )
-                    update_process(
-                        pid,
-                        message=f"Processing {sheet_name}: '{ts_code}' ({col_num}/{total_cols})",
-                        progress=sheet_progress,
-                    )
-
-                    if not ts_id:
-                        logger.warning(
-                            "[Task:%s] Code '%s' not found in database. Skipping.", pid, ts_code
-                        )
-                        continue
-
-                    # Fetch/Create data record
-                    ts_data = (
-                        db.query(TimeseriesData)
-                        .filter(TimeseriesData.timeseries_id == ts_id)
-                        .first()
-                    )
-                    if not ts_data:
-                        ts_data = TimeseriesData(timeseries_id=ts_id, data={})
-                        db.add(ts_data)
-                        db.flush()
-
-                    current_data = dict(ts_data.data) if ts_data.data else {}
-                    has_changes = False
-                    col_points = 0
-
-                    # Iterate rows
-                    for row_idx in range(9, ws.max_row + 1):
-                        date_cell = ws.cell(row=row_idx, column=1).value
-                        val_cell = ws.cell(row=row_idx, column=col_idx).value
-
-                        if val_cell is None:
-                            continue
-
-                        date_str = None
-                        if isinstance(date_cell, (datetime, date)):
-                            date_str = date_cell.strftime("%Y-%m-%d")
-                        elif isinstance(date_cell, str):
-                            try:
-                                date_str = pd.to_datetime(date_cell).strftime(
-                                    "%Y-%m-%d"
-                                )
-                            except Exception:
-                                pass
-
-                        if not date_str:
-                            continue
-
-                        try:
-                            val = float(val_cell)
-                            if math.isnan(val):
-                                continue
-                        except Exception:
-                            continue
-
-                        current_data[date_str] = val
-                        has_changes = True
-                        col_points += 1
-
-                    if has_changes:
-                        logger.info(
-                            "[Task:%s] Updated %s: +%d points", pid, ts_code, col_points
-                        )
-                        ts_data.data = current_data
-                        if hasattr(ts_data, "updated"):
-                            ts_data.updated = datetime.now()
-                        updated_count += 1
-                        total_points += col_points
-                        db.flush()
-                    else:
-                        logger.info("[Task:%s] No new data for %s", pid, ts_code)
-
-            db.commit()
-            final_msg = f"Completed: {updated_count} series, {total_points} pts."
-            logger.info("[Task:%s] %s", pid, final_msg)
-            update_process(
-                pid,
-                status=ProcessStatus.COMPLETED,
-                message=final_msg,
-                progress=f"{len(sheets)}/{len(sheets)}",
-            )
-
+        wb = load_workbook(io.BytesIO(contents), data_only=True, read_only=True)
     except Exception as e:
-        logger.exception("[Task:%s] Critical runtime error: %s", pid, e)
-        update_process(
-            pid, status=ProcessStatus.FAILED, message=f"Runtime error: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid Excel format: {e}")
+    logger.info("Template upload: workbook loaded in %.1fs", _time.time() - _t0)
+
+    all_records: dict = {}  # {code: {date_str: value}}
+    for ws in wb.worksheets:
+        row_num = 0
+        codes_by_col_idx: dict = {}  # {0-based col index: code}
+        for row in ws.iter_rows(values_only=True):
+            row_num += 1
+            if row_num < 8:
+                continue
+            if row_num == 8:
+                # Row 8 = codes (skip col A at index 0)
+                for ci, val in enumerate(row):
+                    if ci > 0 and val:
+                        codes_by_col_idx[ci] = str(val).strip()
+                continue
+            # Rows 9+ = data
+            if not row or not codes_by_col_idx:
+                continue
+            date_cell = row[0]
+            if date_cell is None:
+                continue
+            date_str = None
+            if isinstance(date_cell, (_dt, _date)):
+                date_str = date_cell.strftime("%Y-%m-%d")
+            elif isinstance(date_cell, (int, float)):
+                try:
+                    date_str = pd.to_datetime(date_cell, unit="D", origin="1899-12-30").strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+            elif isinstance(date_cell, str):
+                try:
+                    date_str = pd.to_datetime(date_cell).strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+            if not date_str:
+                continue
+            for ci, code in codes_by_col_idx.items():
+                if ci < len(row) and row[ci] is not None:
+                    try:
+                        val = float(row[ci])
+                        if math.isnan(val):
+                            continue
+                    except Exception:
+                        continue
+                    if code not in all_records:
+                        all_records[code] = {}
+                    all_records[code][date_str] = val
+    wb.close()
+    logger.info("Template upload: parsed %d codes in %.1fs", len(all_records), _time.time() - _t0)
+
+    if not all_records:
+        raise HTTPException(status_code=400, detail="No data found in uploaded file.")
+
+    # Build columnar format
+    all_dates = sorted({d for rec in all_records.values() for d in rec})
+    columns = {}
+    for code, rec in all_records.items():
+        columns[code] = [rec.get(d) for d in all_dates]
+
+    num_dates = len(all_dates)
+    num_cols = len(columns)
+    codes = sorted(columns.keys())
+
+    # Server: save to R2
+    if Settings.is_server:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"uploads/{timestamp}_col_{num_cols}x{num_dates}.json"
+        try:
+            Boto().save_json(
+                {"format": "columnar", "dates": all_dates, "columns": columns},
+                filename,
+            )
+        except Exception as e:
+            logger.exception("Failed to upload to R2: %s", e)
+            raise HTTPException(status_code=500, detail="Failed to save to storage")
+        return {
+            "message": f"Saved {num_dates} dates × {num_cols} columns to storage.",
+            "file": filename,
+            "codes": codes,
+        }
+
+    # Local: merge into local DB + cloud DB (fresh session for thread safety)
+    ensure_connection()
+    dates_index = pd.to_datetime(all_dates, errors="coerce")
+    df = pd.DataFrame(columns, index=dates_index)
+    df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
+    if df.empty:
+        raise HTTPException(status_code=400, detail="No valid records after cleaning.")
+
+    logger.info("Template upload: merging %d codes into local DB...", len(df.columns))
+    _t1 = _time.time()
+    with Session() as local_db:
+        result = _merge_columnar_to_db(df, local_db)
+    logger.info("Template upload: local DB merge done in %.1fs (%d updated)", _time.time() - _t1, len(result["updated"]))
+    response = {
+        "message": f"Merged {result['points']} points for {len(result['updated'])} codes.",
+        "db_updated": result["updated"],
+        "db_points_merged": result["points"],
+    }
+    if result["not_found"]:
+        response["warning"] = f"Codes not found in database: {result['not_found']}"
+
+    # Cloud sync in background thread — don't block the response
+    import threading
+    def _bg_cloud_sync(df_copy, resp_copy):
+        try:
+            _sync_to_cloud(df_copy, resp_copy)
+            logger.info("Template upload: cloud sync done in background (%.1fs total)", _time.time() - _t0)
+        except Exception as e:
+            logger.exception("Template upload: cloud sync failed: %s", e)
+    threading.Thread(target=_bg_cloud_sync, args=(df.copy(), {}), daemon=True).start()
+    response["cloud_status"] = "syncing in background"
+
+    logger.info("Template upload: returning response after %.1fs", _time.time() - _t0)
+    return response
 
 
 @router.post("/timeseries")
@@ -1762,19 +1732,45 @@ def download_market_file(
 def _merge_columnar_to_db(df: pd.DataFrame, db: SessionType) -> dict:
     """Merge a date-indexed DataFrame (columns=codes) into the database.
     Returns {"updated": [...], "not_found": [...], "points": int}.
+    Uses batch loading to minimize DB queries.
     """
-    updated_codes = []
-    not_found_codes = []
-    total_points = 0
+    from ix.db.models import TimeseriesData
 
-    for code in df.columns:
-        ts = db.query(Timeseries).filter(Timeseries.code == code).first()
+    codes_list = list(df.columns)
+    if not codes_list:
+        return {"updated": [], "not_found": [], "points": 0}
+
+    # Batch-load all matching Timeseries in one query
+    all_ts = db.query(Timeseries).filter(Timeseries.code.in_(codes_list)).all()
+    ts_by_code = {ts.code: ts for ts in all_ts}
+    found_codes = set(ts_by_code.keys())
+    not_found_codes = [c for c in codes_list if c not in found_codes]
+
+    if not ts_by_code:
+        return {"updated": [], "not_found": not_found_codes, "points": 0}
+
+    # Batch-load all data records in one query
+    ts_ids = [ts.id for ts in all_ts]
+    all_data = db.query(TimeseriesData).filter(TimeseriesData.timeseries_id.in_(ts_ids)).all()
+    data_by_ts_id = {dr.timeseries_id: dr for dr in all_data}
+
+    updated_codes = []
+    total_points = 0
+    now = datetime.now()
+
+    for code in codes_list:
+        ts = ts_by_code.get(code)
         if ts is None:
-            not_found_codes.append(code)
             continue
 
-        data_record = ts._get_or_create_data_record(db)
-        column_data = data_record.data if data_record and data_record.data else {}
+        # Get or create data record (no extra query — already loaded)
+        data_record = data_by_ts_id.get(ts.id)
+        if data_record is None:
+            data_record = TimeseriesData(timeseries_id=ts.id, data={})
+            db.add(data_record)
+            data_by_ts_id[ts.id] = data_record
+
+        column_data = data_record.data if data_record.data else {}
 
         if column_data and isinstance(column_data, dict):
             existing_data = pd.Series(column_data)
@@ -1798,11 +1794,11 @@ def _merge_columnar_to_db(df: pd.DataFrame, db: SessionType) -> dict:
             data_dict[date_str] = float(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else None
 
         data_record.data = data_dict
-        data_record.updated = datetime.now()
+        data_record.updated = now
         ts.start = combined.index.min().date() if len(combined) > 0 else None
         ts.end = combined.index.max().date() if len(combined) > 0 else None
         ts.num_data = len(combined)
-        ts.updated = datetime.now()
+        ts.updated = now
 
         total_points += len(new_series)
         updated_codes.append(code)
@@ -1962,11 +1958,18 @@ def sync_uploads_from_r2(
     if Settings.is_server:
         raise HTTPException(status_code=400, detail="Sync is only available on local env.")
 
-    ensure_connection()
-    storage = Boto()
-    pending = storage.list_prefix("uploads/")
-    # Exclude already-processed files
-    pending = [k for k in pending if not k.startswith("uploads/processed/")]
+    try:
+        ensure_connection()
+        storage = Boto()
+        pending = storage.list_prefix("uploads/")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"R2/DB initialization failed: {e}")
+
+    # Exclude processed, failed, and retry-counter metadata files
+    pending = [k for k in pending if
+        not k.startswith("uploads/processed/")
+        and not k.startswith("uploads/failed/")
+        and not k.endswith(".retries")]
 
     if not pending:
         return {"message": "No pending uploads.", "processed": 0}

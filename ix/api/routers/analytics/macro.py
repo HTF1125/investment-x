@@ -292,6 +292,14 @@ def refresh_regime_strategy(
     index: str = "ACWI", _user=Depends(get_current_admin_user)
 ):
     """Admin-only: trigger background recompute for a single index."""
+    from ix.core.macro.wf_backtest import INDEX_MAP
+
+    if index not in INDEX_MAP:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown index '{index}'. Available: {list(INDEX_MAP.keys())}",
+        )
+
     def _worker(idx: str):
         try:
             from ix.core.macro.wf_compute import compute_and_save

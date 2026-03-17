@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
 import { Loader2, AlertTriangle, ChevronUp, ChevronDown } from 'lucide-react';
+import { useCountUp } from '@/hooks/useCountUp';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -129,8 +130,10 @@ function RegimePulse({ indices }: { indices: RegimeIndex[] }) {
 
   const regimeColor = REGIME_COLORS[stats.dominantRegime] ?? 'rgb(var(--muted-foreground))';
 
+  const animAvgEq = useCountUp(stats.avgEq * 100);
+
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-3 py-2 border-b border-border/15 bg-card/50">
+    <div className="animate-fade-in stagger-1 flex flex-wrap items-center gap-x-6 gap-y-1 px-3 py-2 border-b border-border/15 bg-card/50">
       <span className="stat-label">Macro Regime</span>
       <span className="font-mono text-[12px] tabular-nums">
         <span className="text-green-500">{stats.riskOn}</span>
@@ -142,15 +145,15 @@ function RegimePulse({ indices }: { indices: RegimeIndex[] }) {
       <span className="font-mono text-[12px] tabular-nums">
         <span className="stat-label mr-1">Avg Eq.Wt</span>
         <span className={stats.avgEq >= 0.5 ? 'text-green-500' : 'text-red-500'}>
-          {(stats.avgEq * 100).toFixed(0)}%
+          {animAvgEq.toFixed(0)}%
         </span>
       </span>
       <span className="font-mono text-[12px] tabular-nums inline-flex items-center gap-1.5">
         <span
-          className="w-2 h-2 rounded-full"
+          className="w-2 h-2 rounded-full transition-colors duration-500"
           style={{ backgroundColor: regimeColor }}
         />
-        <span style={{ color: regimeColor }} className="font-semibold">
+        <span style={{ color: regimeColor }} className="font-semibold transition-colors duration-500">
           {stats.dominantRegime}
         </span>
       </span>
@@ -320,7 +323,7 @@ function RegimeTable({ indices }: { indices: RegimeIndex[] }) {
 
                     {/* Signal */}
                     <td className="text-right px-1 py-[4px]">
-                      <span className={`font-mono text-[11px] tabular-nums font-semibold ${signalCls}`}>
+                      <span className={`font-mono text-[11px] tabular-nums font-semibold transition-colors duration-500 ${signalCls}`}>
                         {idx.label}
                       </span>
                     </td>
@@ -329,10 +332,10 @@ function RegimeTable({ indices }: { indices: RegimeIndex[] }) {
                     <td className="text-right px-1 py-[4px] border-l border-border/15">
                       <span className="inline-flex items-center justify-end gap-1 font-mono text-[11px] tabular-nums">
                         <span
-                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                          className="w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-500"
                           style={{ backgroundColor: regimeColor }}
                         />
-                        <span style={{ color: regimeColor }}>{idx.regime}</span>
+                        <span className="transition-colors duration-500" style={{ color: regimeColor }}>{idx.regime}</span>
                       </span>
                     </td>
 
@@ -427,7 +430,9 @@ export default function MacroRegimeSummary() {
   return (
     <div className="space-y-3">
       <RegimePulse indices={data.indices} />
-      <RegimeTable indices={data.indices} />
+      <div className="animate-fade-in stagger-2">
+        <RegimeTable indices={data.indices} />
+      </div>
     </div>
   );
 }

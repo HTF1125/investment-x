@@ -145,8 +145,10 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
-      <Suspense fallback={<div className="text-foreground animate-pulse text-sm">Loading...</div>}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background relative overflow-hidden">
+      <div className="auth-grid-bg" />
+      <div className="auth-vignette" />
+      <Suspense fallback={<div className="text-foreground animate-pulse text-sm relative z-10">Loading...</div>}>
         <LoginForm />
       </Suspense>
     </div>

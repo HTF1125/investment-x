@@ -165,7 +165,7 @@ def load_all_indicators(
         except Exception:
             return name, None
 
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=16) as executor:
         futures = {}
         meta = {}
         for name, fn, cat, desc, inv in registry:

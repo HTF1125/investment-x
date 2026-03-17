@@ -258,7 +258,7 @@ function PackChartGrid({
   // Individual code executions for code-based charts (can't batch these)
   const codeQueries = useQueries({
     queries: codeChartIndices.map((i) => ({
-      queryKey: ['pack-chart-code', pack.charts[i].code, refreshKey],
+      queryKey: ['pack-chart-code', i, pack.charts[i].code, refreshKey],
       queryFn: () => apiFetchJson<Record<string, any>>('/api/timeseries.exec', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: pack.charts[i].code }),

@@ -298,23 +298,19 @@ save_to_db = _save_to_legacy_db
 
 OPTIMIZED_PARAMS = dict(
     lookback_years=5,
-    top_n=10,
-    corr_max=0.60,
-    rebal_weeks=8,
+    rebal_weeks=4,              # Grid search optimal: 4w rebalancing
     horizon_key="6m",
-    weight_method="Equal-Weighted",
-    optimized=True,
     sma_window=30,
     macro_trend_split=(0.6, 0.4),
-    alloc_range=(0.10, 1.00),
+    alloc_range=(0.10, 0.90),
     soft_zone=(0.25, 0.75),
     blend_weights=None,
     use_category_horizons=True,
     apply_publication_lags=True,
-    vix_threshold=0.0,
-    drawdown_threshold=0.0,
     benchmark_weight=0.50,
     txcost_bps=10,
+    composite_mode="ic_weighted",  # Pre-flipped z-scores + IC-weighted composites
+    universe_path="reports/macro/v2_universe.json",
 )
 
 

@@ -194,26 +194,32 @@
            transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
-  /* ── Staggered fade-in animation ───────────────────────────────────── */
-
-  .animate-fade-in {
-    animation: fadeIn 0.35s ease-out forwards;
-    opacity: 0;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .animate-fade-in {
-      animation: none;
-      opacity: 1;
-    }
-  }
-
-  .stagger-1 { animation-delay: 0.04s; }
-  .stagger-2 { animation-delay: 0.08s; }
-  .stagger-3 { animation-delay: 0.12s; }
-  .stagger-4 { animation-delay: 0.16s; }
-  .stagger-5 { animation-delay: 0.2s; }
 }
+
+/* ── Staggered fade-in animation ───────────────────────────────────── */
+
+.animate-fade-in {
+  animation: fadeIn 0.35s ease-out forwards;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+.stagger-1 { animation-delay: 0.04s; }
+.stagger-2 { animation-delay: 0.08s; }
+.stagger-3 { animation-delay: 0.12s; }
+.stagger-4 { animation-delay: 0.16s; }
+.stagger-5 { animation-delay: 0.2s; }
+.stagger-6 { animation-delay: 0.24s; }
+.stagger-7 { animation-delay: 0.28s; }
+.stagger-8 { animation-delay: 0.32s; }
+.stagger-9 { animation-delay: 0.36s; }
+.stagger-10 { animation-delay: 0.4s; }
 
 /* ── Animations ────────────────────────────────────────────────────────── */
 
@@ -229,6 +235,44 @@
 @keyframes pulse-subtle {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* ── Auth animated background ─────────────────────────────────────────── */
+
+.auth-grid-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.3;
+  background-image:
+    radial-gradient(circle, rgb(var(--muted-foreground) / 0.4) 1px, transparent 1px);
+  background-size: 32px 32px;
+  animation: gridDrift 45s linear infinite;
+}
+
+.auth-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 30%, rgb(var(--background)) 80%);
+}
+
+html.light .auth-grid-bg {
+  opacity: 0.15;
+}
+
+@keyframes gridDrift {
+  from { background-position: 0 0; }
+  to { background-position: 32px 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-grid-bg { animation: none; }
+}
+
+@media (max-width: 768px) {
+  .auth-grid-bg { display: none; }
+  .auth-vignette { display: none; }
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────── */
