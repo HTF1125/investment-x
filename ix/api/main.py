@@ -90,6 +90,19 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
         misfire_grace_time=3600,
     )
+
+    # Local only: poll R2 for pending uploads every 5 minutes
+    from ix.misc.settings import Settings
+    if not Settings.is_server:
+        from ix.misc.task.sync_uploads import sync_uploads_from_r2
+        scheduler.add_job(
+            sync_uploads_from_r2,
+            "interval", minutes=5,
+            id="sync_r2_uploads",
+            replace_existing=True,
+        )
+        logger.info("Scheduled R2 upload sync (every 5 min)")
+
     scheduler.start()
     logger.info(f"Scheduler started with {len(scheduler.get_jobs())} job(s)")
 
