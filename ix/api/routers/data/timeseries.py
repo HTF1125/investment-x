@@ -1846,7 +1846,8 @@ def upload_data(
 ):
     """
     POST /api/upload_data - Upload timeseries data.
-    Always saves JSON to R2. On local env, also merges into the database.
+    Server: saves JSON to R2.
+    Local: merges directly into local DB + cloud DB (no R2).
     """
     from ix.db.boto import Boto
     from ix.misc.settings import Settings
@@ -1857,48 +1858,36 @@ def upload_data(
     records = [{"date": d.date, "code": d.code, "value": d.value} for d in payload.data]
     codes = sorted(set(d.code for d in payload.data))
 
-    # Save to R2
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"uploads/{timestamp}_row_{len(records)}rec.json"
-    try:
-        Boto().save_json({"format": "row", "records": records}, filename)
-    except Exception as e:
-        logger.exception("Failed to upload data to R2: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to save to storage")
-
-    response = {
-        "message": f"Saved {len(records)} records to storage.",
-        "file": filename,
-        "codes": codes,
-        "records_count": len(records),
-    }
-
-    # Local env: merge into local DB + sync to cloud DB
-    if not Settings.is_server:
+    # Server: save to R2 only
+    if Settings.is_server:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"uploads/{timestamp}_row_{len(records)}rec.json"
         try:
-            ensure_connection()
-            df = pd.DataFrame(records)
-            df["value"] = pd.to_numeric(df["value"], errors="coerce")
-            df["date"] = pd.to_datetime(df["date"], errors="coerce")
-            df = df.dropna(subset=["value", "date", "code"])
-            if not df.empty:
-                pivoted = df.pivot(index="date", columns="code", values="value").sort_index()
-                pivoted = pivoted.dropna(how="all", axis=1).dropna(how="all", axis=0)
-                pivoted.index = pd.to_datetime(pivoted.index)
-
-                result = _merge_columnar_to_db(pivoted, db)
-                response["db_updated"] = result["updated"]
-                response["db_points_merged"] = result["points"]
-                if result["not_found"]:
-                    response["warning"] = f"Codes not found in database: {result['not_found']}"
-                logger.info("Local DB: merged %d codes", len(result["updated"]))
-
-                # Sync to cloud DB
-                _sync_to_cloud(pivoted, response)
+            Boto().save_json({"format": "row", "records": records}, filename)
         except Exception as e:
-            logger.exception("Local DB merge failed (R2 upload succeeded): %s", e)
-            response["db_warning"] = f"R2 saved but DB merge failed: {str(e)}"
+            logger.exception("Failed to upload data to R2: %s", e)
+            raise HTTPException(status_code=500, detail="Failed to save to storage")
+        return {"message": f"Saved {len(records)} records to storage.", "file": filename, "codes": codes}
 
+    # Local: merge into local DB + cloud DB
+    ensure_connection()
+    df = pd.DataFrame(records)
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["value", "date", "code"])
+    if df.empty:
+        raise HTTPException(status_code=400, detail="No valid records after cleaning.")
+
+    pivoted = df.pivot(index="date", columns="code", values="value").sort_index()
+    pivoted = pivoted.dropna(how="all", axis=1).dropna(how="all", axis=0)
+    pivoted.index = pd.to_datetime(pivoted.index)
+
+    result = _merge_columnar_to_db(pivoted, db)
+    response = {"message": f"Merged {result['points']} points for {len(result['updated'])} codes.", "db_updated": result["updated"], "db_points_merged": result["points"]}
+    if result["not_found"]:
+        response["warning"] = f"Codes not found in database: {result['not_found']}"
+
+    _sync_to_cloud(pivoted, response)
     return response
 
 
@@ -1912,7 +1901,8 @@ def upload_data_columnar(
 ):
     """
     POST /api/upload_data_columnar - Upload timeseries data.
-    Always saves JSON to R2. On local env, also merges into the database.
+    Server: saves JSON to R2.
+    Local: merges directly into local DB + cloud DB (no R2).
     """
     from ix.db.boto import Boto
     from ix.misc.settings import Settings
@@ -1924,45 +1914,112 @@ def upload_data_columnar(
     num_cols = len(payload.columns)
     codes = sorted(payload.columns.keys())
 
-    # Save to R2
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"uploads/{timestamp}_col_{num_cols}x{num_dates}.json"
-    try:
-        Boto().save_json(
-            {"format": "columnar", "dates": payload.dates, "columns": payload.columns},
-            filename,
-        )
-    except Exception as e:
-        logger.exception("Failed to upload columnar data to R2: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to save to storage")
-
-    response = {
-        "message": f"Saved {num_dates} dates × {num_cols} columns to storage.",
-        "file": filename,
-        "codes": codes,
-        "dates_count": num_dates,
-        "columns_count": num_cols,
-    }
-
-    # Local env: merge into local DB + sync to cloud DB
-    if not Settings.is_server:
+    # Server: save to R2 only
+    if Settings.is_server:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"uploads/{timestamp}_col_{num_cols}x{num_dates}.json"
         try:
-            ensure_connection()
-            dates_index = pd.to_datetime(payload.dates, errors="coerce")
-            df = pd.DataFrame(payload.columns, index=dates_index)
-            df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
-            if not df.empty:
-                result = _merge_columnar_to_db(df, db)
-                response["db_updated"] = result["updated"]
-                response["db_points_merged"] = result["points"]
-                if result["not_found"]:
-                    response["warning"] = f"Codes not found in database: {result['not_found']}"
-                logger.info("Local DB: merged %d codes (%d points)", len(result["updated"]), result["points"])
-
-                # Sync to cloud DB
-                _sync_to_cloud(df, response)
+            Boto().save_json(
+                {"format": "columnar", "dates": payload.dates, "columns": payload.columns},
+                filename,
+            )
         except Exception as e:
-            logger.exception("Local DB merge failed (R2 upload succeeded): %s", e)
-            response["db_warning"] = f"R2 saved but DB merge failed: {str(e)}"
+            logger.exception("Failed to upload columnar data to R2: %s", e)
+            raise HTTPException(status_code=500, detail="Failed to save to storage")
+        return {"message": f"Saved {num_dates} dates × {num_cols} columns to storage.", "file": filename, "codes": codes}
 
+    # Local: merge into local DB + cloud DB
+    ensure_connection()
+    dates_index = pd.to_datetime(payload.dates, errors="coerce")
+    df = pd.DataFrame(payload.columns, index=dates_index)
+    df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
+    if df.empty:
+        raise HTTPException(status_code=400, detail="No valid records after cleaning.")
+
+    result = _merge_columnar_to_db(df, db)
+    response = {"message": f"Merged {result['points']} points for {len(result['updated'])} codes.", "db_updated": result["updated"], "db_points_merged": result["points"]}
+    if result["not_found"]:
+        response["warning"] = f"Codes not found in database: {result['not_found']}"
+
+    _sync_to_cloud(df, response)
     return response
+
+
+@router.post("/sync_uploads")
+@_limiter.limit("10/minute")
+def sync_uploads_from_r2(
+    request: Request,
+    db: SessionType = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    """
+    POST /api/sync_uploads - (Local only) Process pending R2 upload files
+    into local DB + cloud DB, then move them to uploads/processed/.
+    """
+    from ix.db.boto import Boto
+    from ix.misc.settings import Settings
+
+    if Settings.is_server:
+        raise HTTPException(status_code=400, detail="Sync is only available on local env.")
+
+    ensure_connection()
+    storage = Boto()
+    pending = storage.list_prefix("uploads/")
+    # Exclude already-processed files
+    pending = [k for k in pending if not k.startswith("uploads/processed/")]
+
+    if not pending:
+        return {"message": "No pending uploads.", "processed": 0}
+
+    results = []
+    for key in sorted(pending):
+        try:
+            data = storage.get_json(key)
+            if not data:
+                logger.warning("Empty or invalid JSON: %s", key)
+                continue
+
+            fmt = data.get("format", "")
+            if fmt == "columnar":
+                dates_index = pd.to_datetime(data["dates"], errors="coerce")
+                df = pd.DataFrame(data["columns"], index=dates_index)
+            elif fmt == "row":
+                records = data.get("records", [])
+                raw = pd.DataFrame(records)
+                raw["value"] = pd.to_numeric(raw["value"], errors="coerce")
+                raw["date"] = pd.to_datetime(raw["date"], errors="coerce")
+                raw = raw.dropna(subset=["value", "date", "code"])
+                df = raw.pivot(index="date", columns="code", values="value").sort_index()
+                df.index = pd.to_datetime(df.index)
+            else:
+                logger.warning("Unknown format in %s: %s", key, fmt)
+                continue
+
+            df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
+            if df.empty:
+                logger.info("No data after cleaning in %s", key)
+                storage.rename_file(key, key.replace("uploads/", "uploads/processed/", 1))
+                continue
+
+            # Merge into local DB
+            result = _merge_columnar_to_db(df, db)
+            logger.info("Synced %s: %d codes, %d points", key, len(result["updated"]), result["points"])
+
+            # Sync to cloud DB
+            file_response = {}
+            _sync_to_cloud(df, file_response)
+
+            # Move to processed
+            storage.rename_file(key, key.replace("uploads/", "uploads/processed/", 1))
+
+            results.append({
+                "file": key,
+                "codes": result["updated"],
+                "points": result["points"],
+                "cloud": file_response.get("cloud_updated", []),
+            })
+        except Exception as e:
+            logger.exception("Failed to process %s: %s", key, e)
+            results.append({"file": key, "error": str(e)})
+
+    return {"message": f"Processed {len(results)} file(s).", "processed": len(results), "details": results}

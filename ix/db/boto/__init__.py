@@ -36,6 +36,35 @@ class Boto:
             logger.exception("Error uploading JSON %s: %s", filename, e)
             return False
 
+    def get_json(self, filename: str) -> dict:
+        """Download and parse a JSON object from R2."""
+        try:
+            response = self.s3.get_object(Bucket=self.bucket_name, Key=filename)
+            return json.loads(response["Body"].read().decode("utf-8"))
+        except Exception as e:
+            logger.exception("Error reading JSON %s: %s", filename, e)
+            return {}
+
+    def list_prefix(self, prefix: str) -> list:
+        """List all keys under a prefix."""
+        try:
+            keys = []
+            resp = self.s3.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix)
+            while True:
+                if "Contents" in resp:
+                    keys.extend(f["Key"] for f in resp["Contents"])
+                if resp.get("IsTruncated"):
+                    resp = self.s3.list_objects_v2(
+                        Bucket=self.bucket_name, Prefix=prefix,
+                        ContinuationToken=resp["NextContinuationToken"],
+                    )
+                else:
+                    break
+            return keys
+        except Exception as e:
+            logger.exception("Error listing prefix %s: %s", prefix, e)
+            return []
+
     def save_pdf(self, pdf_content: bytes, filename: str) -> bool:
         try:
             # Upload the PDF to Cloudflare R2
