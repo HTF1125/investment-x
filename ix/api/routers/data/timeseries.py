@@ -13,7 +13,7 @@ from fastapi import (
     File,
     BackgroundTasks,
 )
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse, FileResponse
 from typing import Optional, List, Dict, Any
 from collections import OrderedDict
 import json
@@ -1737,137 +1737,169 @@ async def exec_code_block(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==============================================================================
+# Market.xlsm Download
+# ==============================================================================
+import pathlib as _pathlib
+
+_MARKET_FILE = _pathlib.Path(__file__).resolve().parents[4] / "Market.xlsm"
+
+
+@router.get("/download/market")
+def download_market_file(
+    _current_user: User = Depends(get_current_user),
+):
+    """Download Market.xlsm Excel macro workbook."""
+    if not _MARKET_FILE.is_file():
+        raise HTTPException(status_code=404, detail="Market.xlsm not found on server")
+    return FileResponse(
+        path=str(_MARKET_FILE),
+        media_type="application/vnd.ms-excel.sheet.macroEnabled.12",
+        filename="Market.xlsm",
+    )
+
+
+def _merge_columnar_to_db(df: pd.DataFrame, db: SessionType) -> dict:
+    """Merge a date-indexed DataFrame (columns=codes) into the database.
+    Returns {"updated": [...], "not_found": [...], "points": int}.
+    """
+    updated_codes = []
+    not_found_codes = []
+    total_points = 0
+
+    for code in df.columns:
+        ts = db.query(Timeseries).filter(Timeseries.code == code).first()
+        if ts is None:
+            not_found_codes.append(code)
+            continue
+
+        data_record = ts._get_or_create_data_record(db)
+        column_data = data_record.data if data_record and data_record.data else {}
+
+        if column_data and isinstance(column_data, dict):
+            existing_data = pd.Series(column_data)
+            if not existing_data.empty:
+                existing_data.index = pd.to_datetime(existing_data.index, errors="coerce")
+                existing_data = existing_data.dropna()
+        else:
+            existing_data = pd.Series(dtype=float)
+
+        new_series = df[code].dropna()
+
+        if not existing_data.empty:
+            combined = pd.concat([existing_data, new_series], axis=0)
+            combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+        else:
+            combined = new_series.sort_index()
+
+        data_dict = {}
+        for k, v in combined.to_dict().items():
+            date_str = str(k.date()) if hasattr(k, "date") else str(pd.to_datetime(k).date()) if not isinstance(k, str) else k
+            data_dict[date_str] = float(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else None
+
+        data_record.data = data_dict
+        data_record.updated = datetime.now()
+        ts.start = combined.index.min().date() if len(combined) > 0 else None
+        ts.end = combined.index.max().date() if len(combined) > 0 else None
+        ts.num_data = len(combined)
+        ts.updated = datetime.now()
+
+        total_points += len(new_series)
+        updated_codes.append(code)
+
+    db.commit()
+    return {"updated": updated_codes, "not_found": not_found_codes, "points": total_points}
+
+
+def _sync_to_cloud(df: pd.DataFrame, response: dict) -> None:
+    """Sync a DataFrame to the cloud (Railway) database. Non-fatal on failure."""
+    from ix.db.conn import cloud_session
+
+    try:
+        with cloud_session() as cloud_db:
+            if cloud_db is None:
+                return
+            cloud_result = _merge_columnar_to_db(df, cloud_db)
+            response["cloud_updated"] = cloud_result["updated"]
+            response["cloud_points_merged"] = cloud_result["points"]
+            if cloud_result["not_found"]:
+                response.setdefault("warning", "")
+                if response["warning"]:
+                    response["warning"] += "; "
+                response["warning"] += f"Cloud DB codes not found: {cloud_result['not_found']}"
+            logger.info(
+                "Cloud DB: synced %d codes (%d points)",
+                len(cloud_result["updated"]), cloud_result["points"],
+            )
+    except Exception as e:
+        logger.exception("Cloud DB sync failed: %s", e)
+        response["cloud_warning"] = f"Cloud sync failed: {str(e)}"
+
+
 @router.post("/upload_data")
 @_limiter.limit("10/minute")
 def upload_data(
     request: Request,
     payload: TimeseriesDataUpload,
     db: SessionType = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
 ):
     """
-    POST /api/upload_data - Upload timeseries data in bulk (updates existing data).
+    POST /api/upload_data - Upload timeseries data.
+    Always saves JSON to R2. On local env, also merges into the database.
     """
+    from ix.db.boto import Boto
+    from ix.misc.settings import Settings
+
+    if not payload.data:
+        raise HTTPException(status_code=400, detail="No data provided")
+
+    records = [{"date": d.date, "code": d.code, "value": d.value} for d in payload.data]
+    codes = sorted(set(d.code for d in payload.data))
+
+    # Save to R2
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"uploads/{timestamp}_row_{len(records)}rec.json"
     try:
-        ensure_connection()
-
-        # Convert to DataFrame
-        df = pd.DataFrame(
-            [{"date": d.date, "code": d.code, "value": d.value} for d in payload.data]
-        )
-
-        if df.empty:
-            raise HTTPException(status_code=400, detail="No data provided")
-
-        # Clean the data
-        df["value"] = pd.to_numeric(df["value"], errors="coerce")
-        df = df.dropna(subset=["value"])
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        df = df.dropna(subset=["date", "code"])
-
-        if df.empty:
-            raise HTTPException(
-                status_code=400, detail="No valid records to upload after cleaning."
-            )
-
-        # Pivot the DataFrame
-        pivoted = (
-            df.pivot(index="date", columns="code", values="value")
-            .sort_index()
-            .dropna(how="all", axis=1)
-            .dropna(how="all", axis=0)
-        )
-        pivoted.index = pd.to_datetime(pivoted.index)
-
-        # Update each timeseries in the database
-        updated_codes = []
-        not_found_codes = []
-        for code in pivoted.columns:
-            ts = db.query(Timeseries).filter(Timeseries.code == code).first()
-            if ts is None:
-                not_found_codes.append(code)
-                continue
-
-            # Get existing data to merge with new data
-            data_record = ts._get_or_create_data_record(db)
-            column_data = data_record.data if data_record and data_record.data else {}
-            if column_data and len(column_data) > 0:
-                data_dict = column_data if isinstance(column_data, dict) else {}
-                existing_data = pd.Series(data_dict)
-                if not existing_data.empty:
-                    existing_data.index = pd.to_datetime(
-                        existing_data.index, errors="coerce"
-                    )
-                    existing_data = existing_data.dropna()
-            else:
-                existing_data = pd.Series(dtype=float)
-
-            # Store new data as a Series
-            new_series = pivoted[code].dropna()
-
-            if not existing_data.empty:
-                combined_data = pd.concat([existing_data, new_series], axis=0)
-                combined_data = combined_data[
-                    ~combined_data.index.duplicated(keep="last")
-                ]
-                combined_data = combined_data.sort_index()
-            else:
-                combined_data = new_series
-
-            # Convert combined_data to dict format with date strings for JSONB storage
-            data_dict = {}
-            for k, v in combined_data.to_dict().items():
-                if hasattr(k, "date"):
-                    date_str = str(k.date())
-                elif isinstance(k, str):
-                    date_str = k
-                else:
-                    date_str = str(pd.to_datetime(k).date())
-                data_dict[date_str] = (
-                    float(v)
-                    if v is not None and not (isinstance(v, float) and pd.isna(v))
-                    else None
-                )
-
-            # Update the timeseries data
-            data_record.data = data_dict
-            data_record.updated = datetime.now()
-            ts.start = (
-                combined_data.index.min().date()
-                if len(combined_data.index) > 0
-                else None
-            )
-            ts.end = (
-                combined_data.index.max().date()
-                if len(combined_data.index) > 0
-                else None
-            )
-            ts.num_data = len(combined_data)
-            ts.updated = datetime.now()
-
-            db.commit()
-            logger.info(
-                "Updated %s: merged %d new points with %d existing points",
-                code, len(new_series), len(existing_data) if not existing_data.empty else 0,
-            )
-            updated_codes.append(code)
-
-        response = {
-            "message": f"Successfully received {len(payload.data)} records.",
-            "updated_codes": updated_codes,
-            "records_processed": len(df),
-        }
-
-        if not_found_codes:
-            response["warning"] = f"Codes not found in database: {not_found_codes}"
-            logger.warning("Codes not found: %s", not_found_codes)
-
-        return response
-
+        Boto().save_json({"format": "row", "records": records}, filename)
     except Exception as e:
-        logger.exception("Failed to process data upload")
-        raise HTTPException(
-            status_code=500, detail="Failed to process data upload"
-        )
+        logger.exception("Failed to upload data to R2: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save to storage")
+
+    response = {
+        "message": f"Saved {len(records)} records to storage.",
+        "file": filename,
+        "codes": codes,
+        "records_count": len(records),
+    }
+
+    # Local env: merge into local DB + sync to cloud DB
+    if not Settings.is_server:
+        try:
+            ensure_connection()
+            df = pd.DataFrame(records)
+            df["value"] = pd.to_numeric(df["value"], errors="coerce")
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            df = df.dropna(subset=["value", "date", "code"])
+            if not df.empty:
+                pivoted = df.pivot(index="date", columns="code", values="value").sort_index()
+                pivoted = pivoted.dropna(how="all", axis=1).dropna(how="all", axis=0)
+                pivoted.index = pd.to_datetime(pivoted.index)
+
+                result = _merge_columnar_to_db(pivoted, db)
+                response["db_updated"] = result["updated"]
+                response["db_points_merged"] = result["points"]
+                if result["not_found"]:
+                    response["warning"] = f"Codes not found in database: {result['not_found']}"
+                logger.info("Local DB: merged %d codes", len(result["updated"]))
+
+                # Sync to cloud DB
+                _sync_to_cloud(pivoted, response)
+        except Exception as e:
+            logger.exception("Local DB merge failed (R2 upload succeeded): %s", e)
+            response["db_warning"] = f"R2 saved but DB merge failed: {str(e)}"
+
+    return response
 
 
 @router.post("/upload_data_columnar")
@@ -1876,144 +1908,61 @@ def upload_data_columnar(
     request: Request,
     payload: TimeseriesColumnarUpload,
     db: SessionType = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
 ):
     """
-    POST /api/upload_data_columnar - Upload timeseries data in efficient columnar format.
+    POST /api/upload_data_columnar - Upload timeseries data.
+    Always saves JSON to R2. On local env, also merges into the database.
+    """
+    from ix.db.boto import Boto
+    from ix.misc.settings import Settings
 
-    This endpoint is optimized for large dataset uploads. Instead of sending
-    individual {date, code, value} objects, send data in columnar format:
+    if not payload.dates or not payload.columns:
+        raise HTTPException(status_code=400, detail="No data provided")
 
-    {
-        "dates": ["2024-01-01", "2024-01-02", ...],
-        "columns": {
-            "CODE1": [1.23, 4.56, null, ...],
-            "CODE2": [7.89, 0.12, null, ...]
-        }
+    num_dates = len(payload.dates)
+    num_cols = len(payload.columns)
+    codes = sorted(payload.columns.keys())
+
+    # Save to R2
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"uploads/{timestamp}_col_{num_cols}x{num_dates}.json"
+    try:
+        Boto().save_json(
+            {"format": "columnar", "dates": payload.dates, "columns": payload.columns},
+            filename,
+        )
+    except Exception as e:
+        logger.exception("Failed to upload columnar data to R2: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save to storage")
+
+    response = {
+        "message": f"Saved {num_dates} dates × {num_cols} columns to storage.",
+        "file": filename,
+        "codes": codes,
+        "dates_count": num_dates,
+        "columns_count": num_cols,
     }
 
-    This reduces payload size by 80-90% compared to the row-by-row format.
-    """
-    try:
-        ensure_connection()
-
-        # Validate input
-        if not payload.dates or not payload.columns:
-            raise HTTPException(status_code=400, detail="No data provided")
-
-        # Direct DataFrame construction from columnar format (no pivot needed!)
+    # Local env: merge into local DB + sync to cloud DB
+    if not Settings.is_server:
         try:
+            ensure_connection()
             dates_index = pd.to_datetime(payload.dates, errors="coerce")
             df = pd.DataFrame(payload.columns, index=dates_index)
+            df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
+            if not df.empty:
+                result = _merge_columnar_to_db(df, db)
+                response["db_updated"] = result["updated"]
+                response["db_points_merged"] = result["points"]
+                if result["not_found"]:
+                    response["warning"] = f"Codes not found in database: {result['not_found']}"
+                logger.info("Local DB: merged %d codes (%d points)", len(result["updated"]), result["points"])
+
+                # Sync to cloud DB
+                _sync_to_cloud(df, response)
         except Exception as e:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid data format: {str(e)}"
-            )
+            logger.exception("Local DB merge failed (R2 upload succeeded): %s", e)
+            response["db_warning"] = f"R2 saved but DB merge failed: {str(e)}"
 
-        # Drop rows where all values are null and columns where all values are null
-        df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
-
-        if df.empty:
-            raise HTTPException(
-                status_code=400, detail="No valid records to upload after cleaning."
-            )
-
-        # Track results
-        updated_codes = []
-        not_found_codes = []
-        total_points_merged = 0
-
-        # Process each column (timeseries code)
-        for code in df.columns:
-            ts = db.query(Timeseries).filter(Timeseries.code == code).first()
-            if ts is None:
-                not_found_codes.append(code)
-                continue
-
-            # Get existing data
-            data_record = ts._get_or_create_data_record(db)
-            column_data = data_record.data if data_record and data_record.data else {}
-
-            if column_data and isinstance(column_data, dict):
-                existing_data = pd.Series(column_data)
-                if not existing_data.empty:
-                    existing_data.index = pd.to_datetime(
-                        existing_data.index, errors="coerce"
-                    )
-                    existing_data = existing_data.dropna()
-            else:
-                existing_data = pd.Series(dtype=float)
-
-            # Get new data for this code
-            new_series = df[code].dropna()
-
-            # Merge new with existing (new values override)
-            if not existing_data.empty:
-                combined_data = pd.concat([existing_data, new_series], axis=0)
-                combined_data = combined_data[
-                    ~combined_data.index.duplicated(keep="last")
-                ]
-                combined_data = combined_data.sort_index()
-            else:
-                combined_data = new_series.sort_index()
-
-            # Convert to JSONB-friendly dict format
-            data_dict = {}
-            for k, v in combined_data.to_dict().items():
-                if hasattr(k, "date"):
-                    date_str = str(k.date())
-                elif isinstance(k, str):
-                    date_str = k
-                else:
-                    date_str = str(pd.to_datetime(k).date())
-                data_dict[date_str] = (
-                    float(v)
-                    if v is not None and not (isinstance(v, float) and pd.isna(v))
-                    else None
-                )
-
-            # Update timeseries record
-            data_record.data = data_dict
-            data_record.updated = datetime.now()
-            ts.start = (
-                combined_data.index.min().date()
-                if len(combined_data.index) > 0
-                else None
-            )
-            ts.end = (
-                combined_data.index.max().date()
-                if len(combined_data.index) > 0
-                else None
-            )
-            ts.num_data = len(combined_data)
-            ts.updated = datetime.now()
-
-            total_points_merged += len(new_series)
-            updated_codes.append(code)
-
-        # Single commit for all codes (much faster than per-code commits)
-        db.commit()
-
-        logger.info(
-            "Columnar upload: updated %d codes with %d total data points",
-            len(updated_codes), total_points_merged,
-        )
-
-        response = {
-            "message": f"Successfully processed {len(payload.dates)} dates × {len(payload.columns)} columns.",
-            "updated_codes": updated_codes,
-            "total_points_merged": total_points_merged,
-        }
-
-        if not_found_codes:
-            response["warning"] = f"Codes not found in database: {not_found_codes}"
-            logger.warning("Codes not found: %s", not_found_codes)
-
-        return response
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Failed to process columnar data upload")
-        raise HTTPException(
-            status_code=500, detail="Failed to process data upload"
-        )
+    return response

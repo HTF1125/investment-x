@@ -13,7 +13,7 @@ def init_db():
 
     # Create tables
     logger.info("Creating tables...")
-    Base.metadata.create_all(bind=conn.engine)
+    Base.metadata.create_all(bind=conn.engine, checkfirst=True)
     logger.info("Tables created.")
 
 

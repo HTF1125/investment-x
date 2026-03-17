@@ -22,6 +22,8 @@ def _require_env(name: str) -> str:
 class Settings:
     db_url: str = _require_env("DB_URL")
     db_name: str = os.getenv("DB_NAME", "")
+    is_server: bool = bool(os.getenv("RAILWAY_ENVIRONMENT", ""))
+    cloud_db_url: str = os.getenv("CLOUD_DB_URL", "")
     public_api_url: str = os.getenv("API_BASE_URL", "")
     r2_access_id: str = os.getenv("R2_ACCESS_ID", "")
     r2_access_key: str = os.getenv("R2_ACCESS_KEY", "")

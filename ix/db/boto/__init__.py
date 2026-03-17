@@ -1,4 +1,5 @@
 import io
+import json
 import boto3
 from typing import List
 from ix.misc.settings import Settings
@@ -18,6 +19,22 @@ class Boto:
             verify=True,
         )
         self.bucket_name = Settings.r2_bucket_name
+
+    def save_json(self, data: dict, filename: str) -> bool:
+        """Upload a JSON object to R2."""
+        try:
+            body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
+            self.s3.upload_fileobj(
+                io.BytesIO(body),
+                self.bucket_name,
+                filename,
+                ExtraArgs={"ContentType": "application/json"},
+            )
+            logger.info("Uploaded JSON to object storage: %s (%d bytes)", filename, len(body))
+            return True
+        except Exception as e:
+            logger.exception("Error uploading JSON %s: %s", filename, e)
+            return False
 
     def save_pdf(self, pdf_content: bytes, filename: str) -> bool:
         try:

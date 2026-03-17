@@ -86,8 +86,8 @@ class Connection:
                 self.engine = create_engine(
                     db_url,
                     poolclass=QueuePool,
-                    pool_size=3,
-                    max_overflow=5,
+                    pool_size=10,
+                    max_overflow=10,
                     pool_pre_ping=True,  # Verify connections before using them
                     pool_recycle=3600,  # Recycle connections after 1 hour
                     echo=False,  # Set to True for SQL query logging
@@ -268,6 +268,40 @@ def ensure_connection():
     if not conn.is_connected():
         return conn.connect()
     return True
+
+
+@contextmanager
+def cloud_session():
+    """One-off session to the cloud (Railway) database for syncing.
+    Only works when CLOUD_DB_URL is set. Yields a session or None."""
+    from ix.misc.settings import Settings
+
+    cloud_url = Settings.cloud_db_url
+    if not cloud_url:
+        yield None
+        return
+
+    # Ensure psycopg2 driver
+    parsed = urlparse(cloud_url)
+    if parsed.scheme == "postgresql":
+        cloud_url = urlunparse(parsed._replace(scheme="postgresql+psycopg2"))
+
+    engine = create_engine(
+        cloud_url,
+        pool_pre_ping=True,
+        connect_args={"connect_timeout": 10},
+    )
+    factory = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
+    session = factory()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+        engine.dispose()
 
 
 # Don't initialize connection on module import - let it be lazy

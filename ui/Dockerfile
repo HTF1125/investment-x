@@ -24,18 +24,14 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Create non-root user
-RUN groupadd --gid 1000 appuser && \
-    useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
-
-# Copy only what's needed to run
-COPY --from=builder --chown=appuser:appuser /app/package*.json ./
-COPY --from=builder --chown=appuser:appuser /app/.next ./.next
-COPY --from=builder --chown=appuser:appuser /app/public ./public
-COPY --from=builder --chown=appuser:appuser /app/node_modules ./node_modules
+# Copy only what's needed to run (use node user from base image)
+COPY --from=builder --chown=node:node /app/package*.json ./
+COPY --from=builder --chown=node:node /app/.next ./.next
+COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 
 # Switch to non-root user
-USER appuser
+USER node
 
 # Expose the application port
 EXPOSE 3000
