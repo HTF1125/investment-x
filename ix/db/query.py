@@ -101,18 +101,39 @@ def Series(
 
         _LIVE_SOURCES = {"Yahoo", "Fred", "Naver"}
 
-        def _refresh_if_live(ts_obj: Timeseries, db_session) -> None:
-            """Fetch fresh data from web source if applicable."""
-            src = str(ts_obj.source or "")
-            if src not in _LIVE_SOURCES or not ts_obj.source_code:
-                return
+        def _fetch_from_crawler(source: str, source_code: str) -> pd.Series:
+            """Fetch data directly from web crawler, bypassing DB."""
+            from ix.misc.crawler import get_yahoo_data, get_fred_data, get_naver_data
+            ticker, field = source_code.rsplit(":", 1)
             try:
-                ts_obj.update_data()
-                db_session.commit()
-                logger.info("Refreshed %s from %s", ts_obj.code, src)
+                if source == "Yahoo":
+                    df = get_yahoo_data(ticker)
+                elif source == "Fred":
+                    df = get_fred_data(ticker)
+                elif source == "Naver":
+                    df = get_naver_data(ticker)
+                else:
+                    return pd.Series(dtype=float)
+                if df.empty or field not in df.columns:
+                    return pd.Series(dtype=float)
+                result = df[field].dropna()
+                result.index = pd.to_datetime(result.index)
+                logger.info("Fetched %s from %s crawler", source_code, source)
+                return result
             except Exception as exc:
-                db_session.rollback()
-                logger.warning("Failed to refresh %s from %s: %s", ts_obj.code, src, exc)
+                logger.warning("Crawler fetch failed for %s (%s): %s", source_code, source, exc)
+                return pd.Series(dtype=float)
+
+        def _update_db_in_background(ts_id: str, crawled_data: pd.Series) -> None:
+            """Update DB with crawled data in a separate session (non-blocking)."""
+            try:
+                with Session() as db:
+                    ts = db.query(Timeseries).filter(Timeseries.id == ts_id).first()
+                    if ts:
+                        ts.data = crawled_data
+                        db.commit()
+            except Exception as exc:
+                logger.warning("Background DB update failed for %s: %s", ts_id, exc)
 
         def _extract(ts_obj: Timeseries) -> pd.Series:
             nonlocal ts_start, ts_currency, ts_scale
@@ -125,30 +146,43 @@ def Series(
                 ts_scale = 1
             return ts_obj.data.copy()
 
+        def _lookup_ts(db_session):
+            """Look up timeseries metadata. For live sources, fetch from crawler."""
+            nonlocal ts_start, ts_currency, ts_scale
+            ts = db_session.query(Timeseries).filter(Timeseries.code == code).first()
+            if not ts:
+                return None, pd.Series(dtype=float)
+            src = str(ts.source or "")
+            if src in _LIVE_SOURCES and ts.source_code:
+                # Fetch from crawler, not DB
+                ts_currency = (ts.currency or "").upper()
+                try:
+                    ts_scale = int(ts.scale or 1)
+                except Exception:
+                    ts_scale = 1
+                crawled = _fetch_from_crawler(src, ts.source_code)
+                if not crawled.empty:
+                    ts_start = crawled.index.min().date()
+                    _update_db_in_background(str(ts.id), crawled)
+                    return ts, crawled
+                # Fallback to DB if crawler fails
+            return ts, _extract(ts)
+
         found = False
         if session:
-            ts = session.query(Timeseries).filter(Timeseries.code == code).first()
-            if ts:
-                _refresh_if_live(ts, session)
-                s = _extract(ts)
-                found = True
+            ts, s = _lookup_ts(session)
+            found = ts is not None
         else:
             from ix.db.conn import custom_chart_session
 
             ctx_session = custom_chart_session.get()
             if ctx_session:
-                ts = ctx_session.query(Timeseries).filter(Timeseries.code == code).first()
-                if ts:
-                    _refresh_if_live(ts, ctx_session)
-                    s = _extract(ts)
-                    found = True
+                ts, s = _lookup_ts(ctx_session)
+                found = ts is not None
             else:
                 with Session() as session_local:
-                    ts = session_local.query(Timeseries).filter(Timeseries.code == code).first()
-                    if ts:
-                        _refresh_if_live(ts, session_local)
-                        s = _extract(ts)
-                        found = True
+                    ts, s = _lookup_ts(session_local)
+                    found = ts is not None
 
         if not found:
             return pd.Series(name=code)
