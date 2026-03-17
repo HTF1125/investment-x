@@ -99,6 +99,21 @@ def Series(
         ts_scale = 1
         s = pd.Series(name=code, dtype=float)
 
+        _LIVE_SOURCES = {"Yahoo", "Fred", "Naver"}
+
+        def _refresh_if_live(ts_obj: Timeseries, db_session) -> None:
+            """Fetch fresh data from web source if applicable."""
+            src = str(ts_obj.source or "")
+            if src not in _LIVE_SOURCES or not ts_obj.source_code:
+                return
+            try:
+                ts_obj.update_data()
+                db_session.commit()
+                logger.info("Refreshed %s from %s", ts_obj.code, src)
+            except Exception as exc:
+                db_session.rollback()
+                logger.warning("Failed to refresh %s from %s: %s", ts_obj.code, src, exc)
+
         def _extract(ts_obj: Timeseries) -> pd.Series:
             nonlocal ts_start, ts_currency, ts_scale
             ts_start = ts_obj.start
@@ -114,6 +129,7 @@ def Series(
         if session:
             ts = session.query(Timeseries).filter(Timeseries.code == code).first()
             if ts:
+                _refresh_if_live(ts, session)
                 s = _extract(ts)
                 found = True
         else:
@@ -123,12 +139,14 @@ def Series(
             if ctx_session:
                 ts = ctx_session.query(Timeseries).filter(Timeseries.code == code).first()
                 if ts:
+                    _refresh_if_live(ts, ctx_session)
                     s = _extract(ts)
                     found = True
             else:
                 with Session() as session_local:
                     ts = session_local.query(Timeseries).filter(Timeseries.code == code).first()
                     if ts:
+                        _refresh_if_live(ts, session_local)
                         s = _extract(ts)
                         found = True
 
