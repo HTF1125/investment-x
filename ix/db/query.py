@@ -118,6 +118,7 @@ def Series(
                     return pd.Series(dtype=float)
                 result = df[field].dropna()
                 result.index = pd.to_datetime(result.index)
+                result.name = code
                 logger.info("Fetched %s from %s crawler", source_code, source)
                 return result
             except Exception as exc:
