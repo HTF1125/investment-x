@@ -50,16 +50,10 @@ class Connection:
 
                 # Get database URL from settings
                 settings = Settings()
-                # Prioritize standard cloud env var DATABASE_URL, then DB_URL
-                db_url = (
-                    os.environ.get("DATABASE_URL")
-                    or os.environ.get("DB_URL")
-                    or settings.db_url
-                )
-
+                db_url = settings.db_url
                 if not db_url:
                     raise ValueError(
-                        "DATABASE_URL or DB_URL environment variable is not set"
+                        "DB_URL environment variable is not set"
                     )
 
                 # Convert MongoDB URL format to PostgreSQL if needed
@@ -93,6 +87,7 @@ class Connection:
                     echo=False,  # Set to True for SQL query logging
                     connect_args={
                         "connect_timeout": 10,
+                        "options": "-c statement_timeout=30000",
                         "keepalives": 1,
                         "keepalives_idle": 30,
                         "keepalives_interval": 10,
@@ -268,40 +263,6 @@ def ensure_connection():
     if not conn.is_connected():
         return conn.connect()
     return True
-
-
-@contextmanager
-def cloud_session():
-    """One-off session to the cloud (Railway) database for syncing.
-    Only works when CLOUD_DB_URL is set. Yields a session or None."""
-    from ix.misc.settings import Settings
-
-    cloud_url = Settings.cloud_db_url
-    if not cloud_url:
-        yield None
-        return
-
-    # Ensure psycopg2 driver
-    parsed = urlparse(cloud_url)
-    if parsed.scheme == "postgresql":
-        cloud_url = urlunparse(parsed._replace(scheme="postgresql+psycopg2"))
-
-    engine = create_engine(
-        cloud_url,
-        pool_pre_ping=True,
-        connect_args={"connect_timeout": 10},
-    )
-    factory = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    session = factory()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-        engine.dispose()
 
 
 # Don't initialize connection on module import - let it be lazy

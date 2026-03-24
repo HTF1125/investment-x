@@ -1,85 +1,21 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { apiFetchJson } from '@/lib/api';
-import { Loader2, AlertTriangle, Clock, TrendingUp, TrendingDown, ChevronUp, ChevronDown } from 'lucide-react';
-import MacroRegimeSummary from './MacroRegimeSummary';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, apiFetchJson } from '@/lib/api';
+import { Loader2, AlertTriangle, Clock, TrendingUp, TrendingDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Radio, Volume2, VolumeX } from 'lucide-react';
+
 import { useCountUp } from '@/hooks/useCountUp';
-
-// ── Types ───────────────────────────────────────────────────────────────────
-
-interface RRGMetric {
-  momentum: number | null;
-  strength: number | null;
-  quadrant: string | null;
-}
-
-interface ScorecardAsset {
-  name: string;
-  level: number | null;
-  returns: Record<string, number | null>;
-  dynamic: RRGMetric;
-  tactical: RRGMetric;
-}
-
-interface ScorecardCategory {
-  name: string;
-  benchmark: string;
-  assets: ScorecardAsset[];
-}
-
-interface ScorecardsResponse {
-  categories: ScorecardCategory[];
-}
-
-const RETURN_COLS = ['1D', '1W', '1M', '3M', '6M', '1Y', '3Y', 'MTD', 'YTD'] as const;
-
-// ── Heatmap ─────────────────────────────────────────────────────────────────
-
-const COL_SCALE: Record<string, number> = {
-  '1D': 2.5, '1W': 4, '1M': 7, '3M': 12, '6M': 20,
-  '1Y': 35, '3Y': 50, 'MTD': 7, 'YTD': 20,
-};
-
-function heatBg(v: number | null, col: string): string {
-  if (!v) return 'transparent';
-  const t = Math.min(Math.abs(v) / (COL_SCALE[col] ?? 10), 1);
-  const a = 0.06 + Math.sqrt(t) * 0.25;
-  return v > 0 ? `rgba(34,197,94,${a})` : `rgba(239,68,68,${a})`;
-}
-
-function valCls(v: number | null): string {
-  if (v === null || v === undefined) return 'text-muted-foreground/40';
-  if (v > 0) return 'text-green-500';
-  if (v < 0) return 'text-red-500';
-  return 'text-muted-foreground/40';
-}
-
-function fmtLevel(v: number | null): string {
-  if (v === null) return '\u2014';
-  if (v >= 10000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  if (v >= 100) return v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  if (v >= 10) return v.toFixed(2);
-  return v.toFixed(4);
-}
-
-function fmtRet(v: number | null): string {
-  if (v === null || v === undefined) return '\u2014';
-  const s = v > 0 ? '+' : '';
-  return `${s}${v.toFixed(1)}`;
-}
+import {
+  type RRGMetric, type ScorecardAsset, type ScorecardCategory, type ScorecardsResponse,
+  type SortCol, type SortDir,
+  RETURN_COLS, MOBILE_HIDDEN_COLS, COL_SCALE, Q, QUADRANT_ORDER, TH,
+  heatBg, valCls, fmtLevel, fmtRet, getSortVal,
+} from './heatmap-utils';
 
 // ── Phase badge ─────────────────────────────────────────────────────────────
 
-const Q: Record<string, { dot: string; tx: string; short: string }> = {
-  Leading:   { dot: 'bg-green-500',  tx: 'text-green-500',  short: 'LEAD' },
-  Improving: { dot: 'bg-blue-500',   tx: 'text-blue-500',   short: 'IMPR' },
-  Weakening: { dot: 'bg-amber-500',  tx: 'text-amber-500',  short: 'WEAK' },
-  Lagging:   { dot: 'bg-red-500',    tx: 'text-red-500',    short: 'LAGG' },
-};
-
-function Phase({ rrg, label }: { rrg: RRGMetric; label: string }) {
+const Phase = React.memo(function Phase({ rrg, label }: { rrg: RRGMetric; label: string }) {
   if (!rrg.quadrant) return <span className="text-muted-foreground/40 text-[8px]">&mdash;</span>;
   const s = Q[rrg.quadrant] ?? { dot: 'bg-muted', tx: 'text-muted-foreground/40', short: '?' };
   return (
@@ -91,30 +27,67 @@ function Phase({ rrg, label }: { rrg: RRGMetric; label: string }) {
       {s.short}
     </span>
   );
+});
+
+// ── Sort icon (module-level for stable identity) ───────────────────────────
+
+function SortIcon({ col, sortCol, sortDir }: { col: SortCol; sortCol: SortCol; sortDir: SortDir }) {
+  if (sortCol !== col) return null;
+  return sortDir === 'asc'
+    ? <ChevronUp className="inline w-2.5 h-2.5 ml-0.5 -mt-px" />
+    : <ChevronDown className="inline w-2.5 h-2.5 ml-0.5 -mt-px" />;
 }
 
-// ── Shared header cell class ────────────────────────────────────────────────
+// ── Skeleton loader ─────────────────────────────────────────────────────────
 
-const TH = 'text-right px-1 py-[5px] text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/50 whitespace-nowrap';
+function SkeletonRow({ cols }: { cols: number }) {
+  return (
+    <tr className="border-t border-border/10">
+      {Array.from({ length: cols }).map((_, i) => (
+        <td key={i} className="px-1.5 py-[5px]">
+          <div className="h-2.5 bg-foreground/[0.04] rounded animate-pulse" style={{ width: i === 0 ? '60%' : '70%' }} />
+        </td>
+      ))}
+    </tr>
+  );
+}
 
-// ── Sort columns ────────────────────────────────────────────────────────────
-
-type SortCol = 'name' | 'level' | typeof RETURN_COLS[number] | 'dynamic' | 'tactical';
-type SortDir = 'asc' | 'desc';
-
-const QUADRANT_ORDER: Record<string, number> = { Leading: 4, Improving: 3, Weakening: 2, Lagging: 1 };
-
-function getSortVal(a: ScorecardAsset, col: SortCol): number | string {
-  if (col === 'name') return a.name;
-  if (col === 'level') return a.level ?? -Infinity;
-  if (col === 'dynamic') return QUADRANT_ORDER[a.dynamic.quadrant ?? ''] ?? 0;
-  if (col === 'tactical') return QUADRANT_ORDER[a.tactical.quadrant ?? ''] ?? 0;
-  return a.returns[col] ?? -Infinity;
+function ScorecardSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[1, 2, 3].map(n => (
+        <div key={n} className="dashboard-section" style={{ animationDelay: `${n * 80}ms` }}>
+          <div className="px-3 py-2 border-b border-border/15">
+            <div className="h-3 w-28 bg-foreground/[0.05] rounded animate-pulse" />
+          </div>
+          <table className="w-full">
+            <tbody>
+              {Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} cols={8} />)}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ── Market Pulse ────────────────────────────────────────────────────────────
 
-function MarketPulse({ categories, updatedAt }: { categories: ScorecardCategory[]; updatedAt: number }) {
+function MarketPulseHeader({
+  categories,
+  updatedAt,
+  refreshing,
+  onRefresh,
+  open,
+  onToggle,
+}: {
+  categories: ScorecardCategory[];
+  updatedAt: number;
+  refreshing: boolean;
+  onRefresh: () => void;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const stats = useMemo(() => {
     const all = categories.flatMap(c => c.assets);
     let gainers = 0, losers = 0, sum1D = 0, count1D = 0;
@@ -147,49 +120,147 @@ function MarketPulse({ categories, updatedAt }: { categories: ScorecardCategory[
   const animWorst = useCountUp(stats.worstVal === Infinity ? 0 : stats.worstVal);
 
   return (
-    <div className="animate-fade-in stagger-2 flex flex-wrap items-center gap-x-6 gap-y-1 px-3 py-2 border-b border-border/15 bg-card/50">
-      <span className="stat-label">Market Pulse</span>
-      <span className="font-mono text-[12px] tabular-nums">
-        <span className="text-green-500">{Math.round(animGainers)}</span>
-        <span className="text-muted-foreground/40 mx-0.5">/</span>
-        <span className="text-red-500">{Math.round(animLosers)}</span>
+    <div
+      className={`animate-fade-in stagger-2 section-header${open ? ' open' : ''}`}
+      onClick={onToggle}
+    >
+      <ChevronDown className={`w-3 h-3 text-muted-foreground/40 flex-shrink-0 transition-transform duration-200${open ? '' : ' -rotate-90'}`} />
+      <span className="section-title">Market Pulse</span>
+
+      {/* Gainers / Losers */}
+      <span className="font-mono text-[11px] tabular-nums">
+        <span className="text-success font-semibold">{Math.round(animGainers)}</span>
+        <span className="text-muted-foreground/30 mx-0.5">/</span>
+        <span className="text-destructive font-semibold">{Math.round(animLosers)}</span>
       </span>
-      <span className="font-mono text-[12px] tabular-nums">
-        <span className="stat-label mr-1">Avg</span>
-        <span className={stats.avg1D >= 0 ? 'text-green-500' : 'text-red-500'}>
+
+      {/* Avg */}
+      <span className="font-mono text-[11px] tabular-nums">
+        <span className="stat-label mr-1">Avg 1D</span>
+        <span className={`font-semibold ${stats.avg1D >= 0 ? 'text-success' : 'text-destructive'}`}>
           {animAvg > 0 ? '+' : ''}{animAvg.toFixed(2)}%
         </span>
       </span>
-      <span className="font-mono text-[12px] tabular-nums inline-flex items-center gap-1">
-        <TrendingUp className="w-3 h-3 text-green-500" />
-        <span className="text-foreground/80">{stats.bestAsset}</span>
-        <span className="text-green-500">+{animBest.toFixed(1)}</span>
+
+      {/* Divider */}
+      <span className="hidden sm:block w-px h-3 bg-border/30" />
+
+      {/* Best */}
+      <span className="hidden sm:inline-flex font-mono text-[11px] tabular-nums items-center gap-1">
+        <TrendingUp className="w-3 h-3 text-success/80" />
+        <span className="text-foreground/60">{stats.bestAsset}</span>
+        <span className="text-success font-semibold">+{animBest.toFixed(1)}</span>
       </span>
-      <span className="font-mono text-[12px] tabular-nums inline-flex items-center gap-1">
-        <TrendingDown className="w-3 h-3 text-red-500" />
-        <span className="text-foreground/80">{stats.worstAsset}</span>
-        <span className="text-red-500">{animWorst.toFixed(1)}</span>
+
+      {/* Worst */}
+      <span className="hidden sm:inline-flex font-mono text-[11px] tabular-nums items-center gap-1">
+        <TrendingDown className="w-3 h-3 text-destructive/80" />
+        <span className="text-foreground/60">{stats.worstAsset}</span>
+        <span className="text-destructive font-semibold">{animWorst.toFixed(1)}</span>
       </span>
-      {Object.entries(stats.quadrants).map(([q, n]) => {
-        const s = Q[q];
-        return s ? (
-          <span key={q} className={`font-mono text-[12px] tabular-nums ${s.tx}`}>
-            {s.short} {n}
-          </span>
-        ) : null;
-      })}
-      <span className="ml-auto inline-flex items-center gap-1 text-muted-foreground/40 font-mono text-[10px]">
-        <Clock className="w-3 h-3" />
-        {ts}
+
+      {/* Divider */}
+      <span className="hidden lg:block w-px h-3 bg-border/30" />
+
+      {/* RRG Quadrant counts */}
+      <span className="hidden lg:inline-flex items-center gap-2">
+        {Object.entries(stats.quadrants).map(([q, n]) => {
+          const s = Q[q];
+          return s ? (
+            <span key={q} className={`font-mono text-[10px] tabular-nums font-semibold ${s.tx}`}>
+              {s.short}&thinsp;{n}
+            </span>
+          ) : null;
+        })}
+      </span>
+
+      {/* Right: timestamp + refresh */}
+      <span className="ml-auto inline-flex items-center gap-2">
+        <span className="inline-flex items-center gap-1 text-muted-foreground/35 font-mono text-[10px]">
+          <Clock className="w-2.5 h-2.5" />
+          {ts}
+        </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onRefresh(); }}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[calc(var(--radius)-2px)] text-[9px] font-mono uppercase tracking-wider text-muted-foreground/40 hover:text-foreground hover:bg-primary/[0.06] hover:border-primary/20 border border-transparent transition-all disabled:opacity-30"
+          title="Clear cache and refresh all data"
+        >
+          <RefreshCw className={`w-2.5 h-2.5 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
       </span>
     </div>
   );
 }
 
+// ── Memoised asset row ──────────────────────────────────────────────────────
+
+const AssetRow = React.memo(function AssetRow({ asset: a, odd }: { asset: ScorecardAsset; odd: boolean }) {
+  const d1 = a.returns['1D'];
+
+  const heatCells = useMemo(() =>
+    RETURN_COLS.slice(1).map(col => {
+      const v = a.returns[col];
+      return { col, bg: heatBg(v, col), cls: valCls(v), text: fmtRet(v) };
+    }),
+    [a.returns],
+  );
+
+  const d1Bg = useMemo(() => heatBg(d1, '1D'), [d1]);
+  const d1Cls = useMemo(() => valCls(d1), [d1]);
+
+  return (
+    <tr
+      className={`border-t border-border/[0.07] hover:bg-primary/[0.035] transition-colors duration-100 ${
+        odd ? 'bg-foreground/[0.014]' : ''
+      }`}
+    >
+      <td className="px-2 py-[3px] text-[10px] font-medium text-foreground/85 whitespace-nowrap sticky left-0 z-10" style={{ backgroundColor: 'rgb(var(--card))' }}>
+        {odd && (
+          <span className="absolute inset-0 bg-foreground/[0.014] pointer-events-none" />
+        )}
+        <span className="relative">{a.name}</span>
+      </td>
+      <td className="text-right px-1.5 py-[3px] font-mono text-[10px] tabular-nums text-foreground/65">
+        {fmtLevel(a.level)}
+      </td>
+      <td
+        className="text-right px-1.5 py-[3px] border-l border-border/10"
+        style={{ backgroundColor: d1Bg, minWidth: '42px' }}
+      >
+        <span className={`font-mono text-[10px] tabular-nums font-semibold ${d1Cls}`}>
+          {d1 != null ? (
+            <>
+              <span className="text-[8px]">{d1 > 0 ? '\u25b2' : d1 < 0 ? '\u25bc' : ''}</span>
+              {Math.abs(d1).toFixed(1)}
+            </>
+          ) : '\u2014'}
+        </span>
+      </td>
+      {heatCells.map(({ col, bg, cls, text }) => (
+        <td
+          key={col}
+          className={`text-right px-1.5 py-[3px]${MOBILE_HIDDEN_COLS.has(col) ? ' hidden sm:table-cell' : ''}`}
+          style={{ backgroundColor: bg }}
+        >
+          <span className={`font-mono text-[10px] tabular-nums ${cls}`}>
+            {text}
+          </span>
+        </td>
+      ))}
+      <td className="text-center px-0.5 py-[3px] border-l border-border/10 hidden sm:table-cell">
+        <Phase rrg={a.dynamic} label="Dynamic" />
+      </td>
+      <td className="text-center px-0.5 py-[3px] hidden sm:table-cell">
+        <Phase rrg={a.tactical} label="Tactical" />
+      </td>
+    </tr>
+  );
+});
+
 // ── Category table ──────────────────────────────────────────────────────────
 
-function CategoryTable({ cat }: { cat: ScorecardCategory }) {
-  const [open, setOpen] = useState(true);
+const CategorySection = React.memo(function CategorySection({ cat }: { cat: ScorecardCategory }) {
   const [sortCol, setSortCol] = useState<SortCol>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -230,192 +301,235 @@ function CategoryTable({ cat }: { cat: ScorecardCategory }) {
     return { gainers, losers, avg: count ? sum / count : 0 };
   }, [cat.assets]);
 
-  const SortIcon = ({ col }: { col: SortCol }) => {
-    if (sortCol !== col) return null;
-    return sortDir === 'asc'
-      ? <ChevronUp className="inline w-2 h-2 ml-0.5" />
-      : <ChevronDown className="inline w-2 h-2 ml-0.5" />;
-  };
-
   return (
     <div>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-0.5 py-1 group"
-      >
-        <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-foreground/90 group-hover:text-foreground transition-colors">
-          {cat.name}
-        </span>
-        <span className="text-[8px] font-mono text-muted-foreground/40">
-          {cat.assets.length} &middot; vs {cat.benchmark}
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-[9px] font-mono">
-          <span className="text-green-500">{catStats.gainers}&#8593;</span>
-          <span className="text-red-500">{catStats.losers}&#8595;</span>
-          <span className={catStats.avg >= 0 ? 'text-green-500/70' : 'text-red-500/70'}>
-            avg {catStats.avg > 0 ? '+' : ''}{catStats.avg.toFixed(1)}%
-          </span>
-        </span>
+      {/* Sub-section divider header */}
+      <div className="subsection-header border-t border-border/[0.08] bg-foreground/[0.015]">
+        <span className="subsection-title">{cat.name}</span>
         <div className="flex-1 h-px bg-border/20" />
-        <span className="text-[8px] text-muted-foreground/40 font-mono">
-          {open ? '\u25be' : '\u25b8'}
+        <span className="hidden sm:inline-flex items-center gap-2 font-mono text-[9px]">
+          {cat.as_of && (
+            <span className="text-muted-foreground/30 border border-border/20 rounded px-1 py-px text-[8px]">
+              {cat.as_of}
+            </span>
+          )}
+          <span className="text-success font-semibold">{catStats.gainers}<span className="text-[7px] ml-px">&#8593;</span></span>
+          <span className="text-destructive font-semibold">{catStats.losers}<span className="text-[7px] ml-px">&#8595;</span></span>
+          <span className={`font-semibold ${catStats.avg >= 0 ? 'text-success' : 'text-destructive'}`}>
+            {catStats.avg > 0 ? '+' : ''}{catStats.avg.toFixed(1)}%
+          </span>
+          <span className="text-muted-foreground/30 text-[8px]">vs {cat.benchmark}</span>
         </span>
-      </button>
+      </div>
 
-      {open && (
-        <div className="overflow-x-auto rounded-[3px] border border-border/25 bg-card">
-          <table className="w-full border-collapse">
-            <thead className="sticky top-0 z-20">
-              <tr className="bg-card border-b border-border/15">
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead className="sticky top-0 z-20">
+            <tr className="bg-foreground/[0.025]">
+              <th
+                className="text-left px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60 sticky left-0 bg-card z-10 min-w-[70px] cursor-pointer select-none"
+                onClick={() => handleSort('name')}
+                style={{ backgroundColor: 'rgb(var(--card))' }}
+              >
+                Asset<SortIcon sortCol={sortCol} sortDir={sortDir} col="name" />
+              </th>
+              <th
+                className={`${TH} min-w-[52px] cursor-pointer select-none py-1`}
+                onClick={() => handleSort('level')}
+              >
+                Last<SortIcon sortCol={sortCol} sortDir={sortDir} col="level" />
+              </th>
+              <th
+                className={`${TH} min-w-[42px] border-l border-border/15 cursor-pointer select-none py-1`}
+                onClick={() => handleSort('1D')}
+              >
+                1D<SortIcon sortCol={sortCol} sortDir={sortDir} col="1D" />
+              </th>
+              {RETURN_COLS.slice(1).map(p => (
                 <th
-                  className="text-left px-2 py-[5px] text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/50 sticky left-0 bg-card z-10 min-w-[80px] cursor-pointer select-none"
-                  onClick={() => handleSort('name')}
+                  key={p}
+                  className={`${TH} min-w-[36px] cursor-pointer select-none py-1${MOBILE_HIDDEN_COLS.has(p) ? ' hidden sm:table-cell' : ''}`}
+                  onClick={() => handleSort(p)}
                 >
-                  Name<SortIcon col="name" />
+                  {p}<SortIcon sortCol={sortCol} sortDir={sortDir} col={p} />
                 </th>
-                <th
-                  className={`${TH} min-w-[56px] cursor-pointer select-none`}
-                  onClick={() => handleSort('level')}
-                >
-                  Last<SortIcon col="level" />
-                </th>
-                <th
-                  className={`${TH} min-w-[44px] border-l border-border/15 cursor-pointer select-none`}
-                  onClick={() => handleSort('1D')}
-                >
-                  &Delta;<SortIcon col="1D" />
-                </th>
-                {RETURN_COLS.slice(1).map(p => (
-                  <th
-                    key={p}
-                    className={`${TH} min-w-[38px] cursor-pointer select-none`}
-                    onClick={() => handleSort(p)}
-                  >
-                    {p}<SortIcon col={p} />
-                  </th>
-                ))}
-                <th
-                  className="text-center px-1 py-[5px] text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/50 border-l border-border/15 min-w-[36px] cursor-pointer select-none hidden sm:table-cell"
-                  onClick={() => handleSort('dynamic')}
-                >
-                  D<SortIcon col="dynamic" />
-                </th>
-                <th
-                  className="text-center px-1 py-[5px] text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/50 min-w-[36px] cursor-pointer select-none hidden sm:table-cell"
-                  onClick={() => handleSort('tactical')}
-                >
-                  T<SortIcon col="tactical" />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedAssets.map((a, i) => {
-                const d1 = a.returns['1D'];
-                return (
-                  <tr
-                    key={a.name}
-                    className={`border-t border-border/10 hover:bg-foreground/[0.03] transition-colors ${
-                      i % 2 === 0 ? '' : 'bg-foreground/[0.015]'
-                    }`}
-                  >
-                    {/* Name */}
-                    <td className="px-2 py-[4px] text-[11px] font-medium text-foreground/90 whitespace-nowrap sticky left-0 bg-card z-10">
-                      {i % 2 !== 0 && (
-                        <span className="absolute inset-0 bg-foreground/[0.015] pointer-events-none" />
-                      )}
-                      <span className="relative">{a.name}</span>
-                    </td>
+              ))}
+              <th
+                className="text-center px-1 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60 border-l border-border/15 min-w-[34px] cursor-pointer select-none hidden sm:table-cell"
+                onClick={() => handleSort('dynamic')}
+                title="Dynamic RRG quadrant"
+              >
+                DYN<SortIcon sortCol={sortCol} sortDir={sortDir} col="dynamic" />
+              </th>
+              <th
+                className="text-center px-1 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60 min-w-[34px] cursor-pointer select-none hidden sm:table-cell"
+                onClick={() => handleSort('tactical')}
+                title="Tactical RRG quadrant"
+              >
+                TAC<SortIcon sortCol={sortCol} sortDir={sortDir} col="tactical" />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedAssets.map((a, i) => (
+              <AssetRow key={a.name} asset={a} odd={i % 2 !== 0} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+});
 
-                    {/* Level */}
-                    <td className="text-right px-1 py-[4px] font-mono text-[11px] tabular-nums text-foreground/80">
-                      {fmtLevel(a.level)}
-                    </td>
+// ── Intel Pulse Header ──────────────────────────────────────────────────────
 
-                    {/* 1D change with arrow */}
-                    <td
-                      className="text-right px-1 py-[4px] border-l border-border/15"
-                      style={{ backgroundColor: heatBg(d1, '1D'), minWidth: '44px' }}
-                    >
-                      <span className={`font-mono text-[11px] tabular-nums font-semibold ${valCls(d1)}`}>
-                        {d1 != null ? (
-                          <>
-                            <span className="text-[9px]">{d1 > 0 ? '\u25b2' : d1 < 0 ? '\u25bc' : ''}</span>
-                            {Math.abs(d1).toFixed(1)}
-                          </>
-                        ) : '\u2014'}
-                      </span>
-                    </td>
+interface IntelDateInfo {
+  selectedDate: string | null;
+  hasPrev: boolean;
+  hasNext: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  isPlaying: boolean;
+  onToggleTTS: () => void;
+}
 
-                    {/* Remaining return columns */}
-                    {RETURN_COLS.slice(1).map(col => {
-                      const v = a.returns[col];
-                      return (
-                        <td
-                          key={col}
-                          className="text-right px-1 py-[4px]"
-                          style={{ backgroundColor: heatBg(v, col) }}
-                        >
-                          <span className={`font-mono text-[11px] tabular-nums ${valCls(v)}`}>
-                            {fmtRet(v)}
-                          </span>
-                        </td>
-                      );
-                    })}
+function formatCompactDate(dateStr: string): string {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
 
-                    {/* RRG */}
-                    <td className="text-center px-0.5 py-[4px] border-l border-border/15 hidden sm:table-cell">
-                      <Phase rrg={a.dynamic} label="Dynamic" />
-                    </td>
-                    <td className="text-center px-0.5 py-[4px] hidden sm:table-cell">
-                      <Phase rrg={a.tactical} label="Tactical" />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+function IntelPulseHeader({ open, onToggle, dateInfo }: { open: boolean; onToggle: () => void; dateInfo: IntelDateInfo | null }) {
+  return (
+    <div
+      className={`animate-fade-in stagger-1 section-header${open ? ' open' : ''}`}
+      onClick={onToggle}
+    >
+      <ChevronDown className={`w-3 h-3 text-muted-foreground/40 flex-shrink-0 transition-transform duration-200${open ? '' : ' -rotate-90'}`} />
+      <Radio className="w-3 h-3 text-primary/70 flex-shrink-0" />
+      <span className="section-title">Intel</span>
+
+      {/* Date display */}
+      {dateInfo?.selectedDate && (
+        <span className="font-mono text-[10px] text-muted-foreground/50 tabular-nums">
+          {formatCompactDate(dateInfo.selectedDate)}
+        </span>
       )}
+
+      {/* Right: nav + TTS */}
+      <span className="ml-auto inline-flex items-center gap-1">
+        {dateInfo && (
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); dateInfo.onPrev(); }}
+              disabled={!dateInfo.hasPrev}
+              className="flex items-center justify-center w-5 h-5 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Previous report"
+            >
+              <ChevronLeft className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); dateInfo.onNext(); }}
+              disabled={!dateInfo.hasNext}
+              className="flex items-center justify-center w-5 h-5 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Next report"
+            >
+              <ChevronRight className="w-3 h-3" />
+            </button>
+            <span className="w-px h-3 bg-border/25 mx-0.5" />
+            <button
+              onClick={(e) => { e.stopPropagation(); dateInfo.onToggleTTS(); }}
+              className={`flex items-center justify-center w-5 h-5 rounded transition-colors ${
+                dateInfo.isPlaying
+                  ? 'text-primary bg-primary/10'
+                  : 'text-muted-foreground/50 hover:text-foreground'
+              }`}
+              aria-label={dateInfo.isPlaying ? 'Stop reading' : 'Read aloud'}
+            >
+              {dateInfo.isPlaying ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+            </button>
+          </>
+        )}
+      </span>
     </div>
   );
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-export default function Scorecards() {
+export default function Scorecards({ intelSlot }: { intelSlot?: React.ReactNode } = {}) {
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const [intelOpen, setIntelOpen] = useState(true);
+  const [pulseOpen, setPulseOpen] = useState(true);
+  const [intelDateInfo, setIntelDateInfo] = useState<IntelDateInfo | null>(null);
+
   const { data, isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['scorecards'],
     queryFn: () => apiFetchJson<ScorecardsResponse>('/api/v1/scorecards'),
     staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
     refetchOnWindowFocus: false,
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/40" />
-      </div>
-    );
-  }
-
-  if (isError || !data?.categories) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-2">
-        <AlertTriangle className="w-4 h-4 text-muted-foreground/40" />
-        <span className="text-xs text-muted-foreground/40">Failed to load scorecards</span>
-      </div>
-    );
-  }
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const freshData = await apiFetchJson<ScorecardsResponse>('/api/v1/scorecards/refresh', { method: 'POST' });
+      queryClient.setQueryData(['scorecards'], freshData);
+    } catch {
+      await queryClient.refetchQueries({ queryKey: ['scorecards'] });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, queryClient]);
 
   return (
     <div className="p-2 sm:p-3 lg:p-4 space-y-3 overflow-y-auto">
-      <MacroRegimeSummary />
-      <MarketPulse categories={data.categories} updatedAt={dataUpdatedAt} />
-      {data.categories.map((cat, i) => (
-        <div key={cat.name} className={`animate-fade-in stagger-${Math.min(i + 3, 10)}`}>
-          <CategoryTable cat={cat} />
+      {/* ── Section 1: Intel Briefing (renders independently) ──────────── */}
+      {intelSlot && (
+        <div className="dashboard-section overflow-hidden flex flex-col">
+          <IntelPulseHeader
+            open={intelOpen}
+            onToggle={() => setIntelOpen(o => !o)}
+            dateInfo={intelDateInfo}
+          />
+          {intelOpen && (
+            <div className="h-[240px] sm:h-[328px] animate-fade-in stagger-2 overflow-hidden flex flex-col">
+              {React.cloneElement(intelSlot as React.ReactElement, {
+                hideHeader: true,
+                onDateInfo: setIntelDateInfo,
+              })}
+            </div>
+          )}
         </div>
-      ))}
+      )}
+
+      {/* ── Section 2: Market Pulse (temporarily disabled) ────────────── */}
+      {/*
+      <div className="dashboard-section">
+        <MarketPulseHeader
+          categories={data.categories}
+          updatedAt={dataUpdatedAt}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          open={pulseOpen}
+          onToggle={() => setPulseOpen(o => !o)}
+        />
+
+        {pulseOpen && data.categories.map((cat, i) => (
+          <div key={cat.name} className={`animate-fade-in stagger-${Math.min(i + 1, 10)}`}>
+            <CategorySection cat={cat} />
+          </div>
+        ))}
+      </div>
+      */}
     </div>
   );
 }

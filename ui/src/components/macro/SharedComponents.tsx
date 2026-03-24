@@ -2,6 +2,8 @@
 
 import { Loader2, AlertCircle, Info } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { useTheme } from '@/context/ThemeContext';
+import { THEME_TOKENS } from '@/lib/chartTheme';
 import { PLOTLY_CONFIG, CHART_M, REGIME_ORDER, REGIME_COLORS } from './constants';
 import { fmtPct } from './helpers';
 import type { PlotlyFigure } from '@/lib/chartTheme';
@@ -42,7 +44,7 @@ export function InfoTooltip({ text }: { text: string }) {
   return (
     <span className="relative inline-flex group/tip ml-1 cursor-help align-middle">
       <Info className="w-3 h-3 text-muted-foreground/30 group-hover/tip:text-muted-foreground/60 transition-colors" />
-      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 text-[10px] leading-relaxed text-foreground bg-background border border-border/50 rounded-lg shadow-lg opacity-0 group-hover/tip:opacity-100 transition-opacity pointer-events-none w-[240px] z-50">
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 text-[10px] leading-relaxed text-foreground bg-background border border-border/50 rounded-[var(--radius)] shadow-lg opacity-0 group-hover/tip:opacity-100 transition-opacity pointer-events-none w-[240px] z-50">
         {text}
       </span>
     </span>
@@ -50,15 +52,18 @@ export function InfoTooltip({ text }: { text: string }) {
 }
 
 export function RegimeProbBar({ probs }: { probs: Record<string, number> }) {
+  const { theme } = useTheme();
+  const darkText = THEME_TOKENS[theme].text;
+  const lightText = theme === 'light' ? 'rgb(255,255,255)' : 'rgb(255,255,255)';
   return (
     <div className="w-full">
-      <div className="flex rounded-lg overflow-hidden h-5 border border-border/40">
+      <div className="flex rounded-[var(--radius)] overflow-hidden h-5 border border-border/40">
         {REGIME_ORDER.map((r) => {
           const pct = (probs[r] ?? 0) * 100;
           if (pct < 1) return null;
           return (
             <div key={r} className="flex items-center justify-center text-[9px] font-mono font-semibold transition-all duration-500"
-              style={{ width: `${pct}%`, backgroundColor: REGIME_COLORS[r], color: r === 'Deflation' ? '#1a1a2e' : '#fff', minWidth: pct > 5 ? undefined : 0 }}
+              style={{ width: `${pct}%`, backgroundColor: REGIME_COLORS[r], color: r === 'Deflation' ? darkText : lightText, minWidth: pct > 5 ? undefined : 0 }}
               title={`${r}: ${pct.toFixed(1)}%`}>
               {pct >= 10 ? `${pct.toFixed(0)}%` : ''}
             </div>
@@ -80,7 +85,7 @@ export function RegimeProbBar({ probs }: { probs: Record<string, number> }) {
 
 export function SectionTitle({ children, info }: { children: React.ReactNode; info?: string }) {
   return (
-    <h3 className="text-[12px] font-semibold text-foreground mb-2 flex items-center">
+    <h3 className="section-title mb-2 flex items-center">
       {children}
       {info && <InfoTooltip text={info} />}
     </h3>
@@ -101,7 +106,7 @@ export function ChartBox({ chart, height = 240 }: { chart: PlotlyFigure | null; 
 /** Compact stats table row. */
 export function StatsRow({ label, color, values }: { label: string; color?: string; values: (string | number | React.ReactNode)[] }) {
   return (
-    <tr className="border-b border-border/20">
+    <tr className="border-t border-border/[0.08] hover:bg-primary/[0.04] transition-colors duration-100">
       <td className="py-1 pr-3 font-medium text-foreground text-[11px] whitespace-nowrap">
         {color && <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style={{ backgroundColor: color }} />}
         {label}
@@ -163,13 +168,11 @@ export function RegimeCard({ idx }: { idx: SummaryIndex }) {
 export function PerformanceTable({ indices }: { indices: SummaryIndex[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-[11px]">
+      <table className="data-table text-[11px]">
         <thead>
-          <tr className="border-b border-border/30">
+          <tr>
             {['Index', 'Regime', 'Signal', 'Alloc', 'Sharpe', 'Alpha', 'Max DD', 'Return'].map((h) => (
-              <th key={h} className="py-1.5 px-2 text-left font-semibold text-muted-foreground/60 text-[10px] uppercase tracking-wider">
-                {h}
-              </th>
+              <th key={h} className="text-left">{h}</th>
             ))}
           </tr>
         </thead>
@@ -177,34 +180,34 @@ export function PerformanceTable({ indices }: { indices: SummaryIndex[] }) {
           {indices.map((idx) => {
             const colors = labelColor(idx.label);
             return (
-              <tr key={idx.index_name} className="border-b border-border/15 hover:bg-card/50">
+              <tr key={idx.index_name}>
                 <td className="py-1.5 px-2 font-medium text-foreground">{idx.index_name}</td>
                 <td className="py-1.5 px-2">
                   <span className="inline-flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: REGIME_COLORS[idx.regime] ?? '#888' }} />
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: REGIME_COLORS[idx.regime] ?? '#888' }} />
                     <span className="text-[10px] font-mono text-foreground">{idx.regime}</span>
                   </span>
                 </td>
                 <td className="py-1.5 px-2">
-                  <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${colors.bg} ${colors.text}`}>
+                  <span className={`signal-pill ${colors.bg} ${colors.text} border ${colors.border}`}>
                     {idx.label}
                   </span>
                 </td>
-                <td className="py-1.5 px-2 font-mono tabular-nums text-foreground">
+                <td className="py-1.5 px-2 font-mono tabular-nums text-foreground text-right">
                   {idx.eq_weight != null ? `${(idx.eq_weight * 100).toFixed(0)}%` : '—'}
                 </td>
-                <td className="py-1.5 px-2 font-mono tabular-nums text-foreground">
+                <td className="py-1.5 px-2 font-mono tabular-nums text-foreground text-right">
                   {idx.sharpe != null ? idx.sharpe.toFixed(2) : '—'}
                 </td>
-                <td className={`py-1.5 px-2 font-mono tabular-nums ${
+                <td className={`py-1.5 px-2 font-mono tabular-nums text-right ${
                   idx.alpha != null && idx.alpha >= 0 ? 'text-success' : 'text-destructive'
                 }`}>
                   {idx.alpha != null ? `${idx.alpha >= 0 ? '+' : ''}${(idx.alpha * 100).toFixed(1)}%` : '—'}
                 </td>
-                <td className="py-1.5 px-2 font-mono tabular-nums text-destructive">
+                <td className="py-1.5 px-2 font-mono tabular-nums text-destructive text-right">
                   {idx.max_dd != null ? `${(idx.max_dd * 100).toFixed(1)}%` : '—'}
                 </td>
-                <td className={`py-1.5 px-2 font-mono tabular-nums ${
+                <td className={`py-1.5 px-2 font-mono tabular-nums text-right ${
                   idx.ann_return != null && idx.ann_return >= 0 ? 'text-success' : 'text-destructive'
                 }`}>
                   {idx.ann_return != null ? `${(idx.ann_return * 100).toFixed(1)}%` : '—'}

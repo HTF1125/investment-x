@@ -2,15 +2,16 @@
 
 import dynamic from 'next/dynamic';
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
-import AppShell from '@/components/AppShell';
-import NavigatorShell from '@/components/NavigatorShell';
+import AppShell from '@/components/layout/AppShell';
+import NavigatorShell from '@/components/layout/NavigatorShell';
 import { BarChart3, Loader2, TrendingUp, GitBranch, Shield, Sigma } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
-import { useDebounce } from '@/lib/hooks/useDebounce';
-import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
-import { ChartErrorBoundary } from '@/components/ChartErrorBoundary';
+import { applyChartTheme } from '@/lib/chartTheme';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useResponsiveSidebar } from '@/hooks/useResponsiveSidebar';
+import { ChartErrorBoundary } from '@/components/shared/ChartErrorBoundary';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -46,12 +47,12 @@ function ControlInput({ label, value, onChange, placeholder, type = 'text', min,
   const { theme } = useTheme();
   return (
     <div className="space-y-1">
-      <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">{label}</label>
+      <label className="stat-label block">{label}</label>
       <input
         type={type} value={value} placeholder={placeholder}
         min={min} max={max} step={step}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-border/50 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 text-foreground transition-all placeholder:text-muted-foreground/40"
+        className="w-full border border-border/50 rounded-[var(--radius)] px-2.5 h-7 text-[12px] focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 text-foreground transition-all placeholder:text-muted-foreground/35"
         style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
       />
     </div>
@@ -65,10 +66,10 @@ function ControlSelect({ label, value, onChange, options }: {
   const { theme } = useTheme();
   return (
     <div className="space-y-1">
-      <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">{label}</label>
+      <label className="stat-label block">{label}</label>
       <select
         value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-border/50 rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 text-foreground cursor-pointer transition-all"
+        className="w-full border border-border/50 rounded-[var(--radius)] px-2.5 h-7 text-[12px] focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 text-foreground cursor-pointer transition-all"
         style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -79,9 +80,9 @@ function ControlSelect({ label, value, onChange, options }: {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pt-5 pb-2 flex items-center gap-2">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/40">{children}</span>
-      <div className="h-px flex-1 bg-gradient-to-r from-border/50 to-transparent" />
+    <div className="pt-4 pb-1.5 flex items-center gap-2">
+      <span className="stat-label">{children}</span>
+      <div className="h-px flex-1 bg-border/30" />
     </div>
   );
 }
@@ -237,35 +238,7 @@ export default function QuantPage() {
   // ── Theme the figure ──
   const themedFig = useMemo(() => {
     if (!figData) return null;
-    const cloned = structuredClone(figData);
-    const fg = isLight ? '#020617' : '#dbeafe';
-    const grid = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(148,163,184,0.06)';
-
-    cloned.layout = {
-      ...cloned.layout,
-      paper_bgcolor: 'rgba(0,0,0,0)',
-      plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { ...(cloned.layout?.font || {}), color: fg, family: 'Inter, sans-serif' },
-      hoverlabel: {
-        bgcolor: isLight ? 'rgba(255,255,255,0.98)' : 'rgba(15,23,42,0.98)',
-        bordercolor: isLight ? 'rgba(15,23,42,0.1)' : 'rgba(148,163,184,0.2)',
-        font: { color: fg, family: 'Inter, sans-serif', size: 12 },
-      },
-    };
-
-    // Theme all axes
-    for (const key of Object.keys(cloned.layout)) {
-      if (key.startsWith('xaxis') || key.startsWith('yaxis')) {
-        cloned.layout[key] = {
-          ...cloned.layout[key],
-          gridcolor: grid,
-          zerolinecolor: grid,
-          linecolor: isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)',
-          tickfont: { ...(cloned.layout[key]?.tickfont || {}), color: fg, size: 10 },
-        };
-      }
-    }
-    return cloned;
+    return applyChartTheme(figData, isLight ? 'light' : 'dark', { transparentBackground: true });
   }, [figData, isLight]);
 
   // ── Plot resize ──
@@ -290,18 +263,18 @@ export default function QuantPage() {
 
   const sidebarContent = useMemo(() => {
     return (
-      <div className="flex flex-col h-full overflow-y-auto custom-scrollbar px-3 pb-4">
+      <div className="flex flex-col h-full overflow-y-auto px-3 pb-6">
         {/* Tab selector */}
-        <SectionLabel>Analysis</SectionLabel>
+        <SectionLabel>Analysis Type</SectionLabel>
         <div className="grid grid-cols-2 gap-1">
           {TABS.map(t => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-[var(--radius)] text-[11px] font-semibold transition-all ${
                 activeTab === t.key
-                  ? 'bg-primary/10 text-primary border border-primary/30'
-                  : 'text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 border border-transparent'
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] border border-border/30'
               }`}
             >
               {t.icon}
@@ -314,15 +287,15 @@ export default function QuantPage() {
         {activeTab === 'correlation' && (
           <>
             <SectionLabel>Mode</SectionLabel>
-            <div className="flex gap-1">
+            <div className="flex p-0.5 bg-background border border-border/40 rounded-[var(--radius)]">
               {(['matrix', 'rolling'] as const).map(m => (
                 <button
                   key={m}
                   onClick={() => setCorrMode(m)}
-                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                  className={`flex-1 h-6 rounded text-[10px] font-bold tracking-wider transition-all ${
                     corrMode === m
-                      ? 'bg-primary/10 text-primary border border-primary/30'
-                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 border border-transparent'
+                      ? 'bg-foreground text-background shadow-sm'
+                      : 'text-muted-foreground/60 hover:text-foreground'
                   }`}
                 >
                   {m === 'matrix' ? 'Matrix' : 'Rolling'}
@@ -359,15 +332,15 @@ export default function QuantPage() {
         {activeTab === 'regression' && (
           <>
             <SectionLabel>Mode</SectionLabel>
-            <div className="flex gap-1">
+            <div className="flex p-0.5 bg-background border border-border/40 rounded-[var(--radius)]">
               {(['ols', 'rolling-beta'] as const).map(m => (
                 <button
                   key={m}
                   onClick={() => setRegMode(m)}
-                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                  className={`flex-1 h-6 rounded text-[10px] font-bold tracking-wider transition-all ${
                     regMode === m
-                      ? 'bg-primary/10 text-primary border border-primary/30'
-                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 border border-transparent'
+                      ? 'bg-foreground text-background shadow-sm'
+                      : 'text-muted-foreground/60 hover:text-foreground'
                   }`}
                 >
                   {m === 'ols' ? 'OLS' : 'Rolling β'}
@@ -403,15 +376,15 @@ export default function QuantPage() {
         {activeTab === 'var' && (
           <>
             <SectionLabel>Mode</SectionLabel>
-            <div className="flex gap-1">
+            <div className="flex p-0.5 bg-background border border-border/40 rounded-[var(--radius)]">
               {(['snapshot', 'rolling'] as const).map(m => (
                 <button
                   key={m}
                   onClick={() => setVarMode(m)}
-                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                  className={`flex-1 h-6 rounded text-[10px] font-bold tracking-wider transition-all ${
                     varMode === m
-                      ? 'bg-primary/10 text-primary border border-primary/30'
-                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 border border-transparent'
+                      ? 'bg-foreground text-background shadow-sm'
+                      : 'text-muted-foreground/60 hover:text-foreground'
                   }`}
                 >
                   {m === 'snapshot' ? 'Snapshot' : 'Rolling'}
@@ -451,18 +424,23 @@ export default function QuantPage() {
         sidebarContent={sidebarContent}
         sidebarOpenWidthClassName="w-[220px]"
         topBarLeft={
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] font-semibold text-foreground/90">{activeLabel}</span>
-            {isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary/40" />}
+          <div className="flex items-center gap-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-foreground/80">{activeLabel}</span>
+            {isFetching && (
+              <div className="flex items-center gap-1.5">
+                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                <span className="text-[10px] font-mono text-primary/70 tracking-wider">Loading...</span>
+              </div>
+            )}
           </div>
         }
       >
         <div ref={plotContainerRef} className="h-full w-full">
           {isLoading ? (
             <div className="h-full flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3">
-                <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
-                <span className="text-[11px] text-muted-foreground/50 tracking-widest uppercase">Loading Analysis</span>
+              <div className="flex flex-col items-center gap-2.5">
+                <Loader2 className="w-5 h-5 animate-spin text-primary/50" />
+                <span className="stat-label">Running analysis...</span>
               </div>
             </div>
           ) : themedFig ? (
@@ -479,9 +457,14 @@ export default function QuantPage() {
             </ChartErrorBoundary>
           ) : (
             <div className="h-full flex items-center justify-center">
-              <div className="text-center space-y-2">
-                <BarChart3 className="w-8 h-8 text-muted-foreground/20 mx-auto" />
-                <p className="text-[12px] text-muted-foreground/40">Configure parameters in the sidebar to run analysis</p>
+              <div className="text-center space-y-3">
+                <div className="w-10 h-10 rounded-[var(--radius)] bg-foreground/[0.04] flex items-center justify-center mx-auto border border-border/30">
+                  <BarChart3 className="w-5 h-5 text-muted-foreground/30" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[12px] font-medium text-foreground/50">No analysis selected</p>
+                  <p className="stat-label">Configure parameters in the sidebar</p>
+                </div>
               </div>
             </div>
           )}

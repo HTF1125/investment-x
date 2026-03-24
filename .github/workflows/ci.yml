@@ -87,4 +87,4 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -f Dockerfile.combined -t investment-x:ci-test .
+        run: docker build -t investment-x:ci-test .

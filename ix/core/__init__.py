@@ -4,7 +4,7 @@ from .technical import *  # noqa: F401,F403
 from .performance import *  # noqa: F401,F403
 from .quantitative.statistics import *  # noqa: F401,F403
 from .quantitative.preprocessing import *  # noqa: F401,F403
-
+from .quantitative import find_similar_patterns
 from .backtesting import *  # noqa: F401,F403
 
 # Re-export for backward compat

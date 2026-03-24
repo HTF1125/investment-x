@@ -17,7 +17,7 @@
     --secondary: 16 18 28;
     --secondary-foreground: 205 215 230;
     --muted: 16 18 28;
-    --muted-foreground: 100 110 135;
+    --muted-foreground: 140 148 175;
     --accent: 99 130 255;
     --accent-foreground: 255 255 255;
     --destructive: 245 80 80;
@@ -26,8 +26,8 @@
     --success-foreground: 255 255 255;
     --warning: 210 153 34;
     --warning-foreground: 255 255 255;
-    --border: 30 35 55;
-    --input: 30 35 55;
+    --border: 45 50 72;
+    --input: 45 50 72;
     --ring: 99 130 255;
 
     --radius: 0.5rem;
@@ -54,7 +54,7 @@
     --secondary: 242 241 238;
     --secondary-foreground: 18 20 28;
     --muted: 242 241 238;
-    --muted-foreground: 95 92 85;
+    --muted-foreground: 70 68 62;
     --accent: 50 80 210;
     --accent-foreground: 255 255 255;
     --destructive: 220 55 55;
@@ -63,8 +63,8 @@
     --success-foreground: 255 255 255;
     --warning: 154 103 0;
     --warning-foreground: 255 255 255;
-    --border: 210 208 200;
-    --input: 210 208 200;
+    --border: 195 192 182;
+    --input: 195 192 182;
     --ring: 50 80 210;
 
     --glass-bg: rgba(255, 255, 255, 0.8);
@@ -111,7 +111,7 @@
   /* ── Typographic utilities ─────────────────────────────────────────── */
 
   .stat-label {
-    @apply text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/50;
+    @apply text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground;
   }
 
   .page-title {
@@ -146,7 +146,7 @@
   /* ── Toolbar button — compact action trigger ───────────────────────── */
 
   .btn-toolbar {
-    @apply h-7 px-2.5 rounded-[var(--radius)] border border-border/40 text-[11px] font-medium
+    @apply h-8 px-2.5 rounded-[var(--radius)] border border-border/40 text-[11px] font-medium
            text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] hover:border-primary/25
            focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background
            inline-flex items-center gap-1.5
@@ -156,7 +156,7 @@
   /* ── Icon button — square action button ────────────────────────────── */
 
   .btn-icon {
-    @apply flex items-center justify-center w-7 h-7 rounded-[var(--radius)]
+    @apply flex items-center justify-center w-8 h-8 rounded-[var(--radius)]
            text-muted-foreground hover:text-primary hover:bg-primary/10
            focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background
            active:scale-95 transition-all duration-150;
@@ -192,6 +192,63 @@
            hover:bg-destructive/10 hover:border-destructive/40
            focus:outline-none focus:ring-2 focus:ring-destructive/25 focus:ring-offset-1 focus:ring-offset-background
            transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  /* ── Section containers ─────────────────────────────────────────────── */
+
+  .dashboard-section {
+    @apply rounded-[var(--radius)] border border-border/30 bg-card shadow-sm;
+  }
+
+  .section-header {
+    @apply flex items-center gap-2 px-3 py-2 border-b border-border/20
+           bg-foreground/[0.02] select-none overflow-x-hidden;
+  }
+
+  .section-title {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground;
+  }
+
+  /* ── Form controls ──────────────────────────────────────────────────── */
+
+  .form-label {
+    @apply text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground pl-0.5;
+  }
+
+  .form-input {
+    @apply w-full px-3 h-9 bg-background border border-border/50 rounded-[var(--radius)]
+           text-[13px] text-foreground
+           focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/25
+           transition-all duration-150
+           placeholder:text-muted-foreground/50 hover:border-border/70;
+  }
+
+  /* ── Data table cells ───────────────────────────────────────────────── */
+
+  .table-cell-data {
+    @apply font-mono text-[10px] tabular-nums text-foreground/80;
+  }
+
+  .table-cell-positive {
+    @apply font-mono text-[10px] tabular-nums text-success font-semibold;
+  }
+
+  .table-cell-negative {
+    @apply font-mono text-[10px] tabular-nums text-destructive font-semibold;
+  }
+
+  .table-cell-neutral {
+    @apply font-mono text-[10px] tabular-nums text-muted-foreground;
+  }
+
+  /* ── Sub-section dividers (within dashboard-section) ────────────────── */
+
+  .subsection-header {
+    @apply flex items-center gap-2 px-3 py-1.5 text-[9px];
+  }
+
+  .subsection-title {
+    @apply text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground whitespace-nowrap;
   }
 
 }

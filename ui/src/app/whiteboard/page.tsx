@@ -4,8 +4,8 @@ import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchJson } from '@/lib/api';
-import AppShell from '@/components/AppShell';
-import ExcalidrawEditor from '@/components/ExcalidrawEditor';
+import AppShell from '@/components/layout/AppShell';
+import ExcalidrawEditor from '@/components/whiteboard/ExcalidrawEditor';
 import {
   Plus, ArrowLeft, Loader2, Trash2, PenTool, Clock, LayoutTemplate,
 } from 'lucide-react';
@@ -100,25 +100,26 @@ function WhiteboardGallery() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+        <div className="flex flex-col items-center gap-2.5">
+          <Loader2 className="w-4 h-4 text-primary/50 animate-spin" />
+          <span className="stat-label">Loading diagrams...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-[1440px] mx-auto px-4 sm:px-5 py-6">
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[15px] font-semibold text-foreground">Whiteboard</h1>
-          <p className="text-[11px] text-muted-foreground/50 mt-0.5">
-            {boards.length} diagram{boards.length !== 1 ? 's' : ''}
-          </p>
+          <h1 className="page-title">Whiteboard</h1>
+          <p className="stat-label mt-1">{boards.length} diagram{boards.length !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => createMut.mutate()}
           disabled={createMut.isPending}
-          className="h-8 px-3 bg-foreground text-background rounded-[var(--radius)] text-[11px] font-semibold inline-flex items-center gap-1.5 hover:opacity-90 transition-opacity disabled:opacity-50"
+          className="btn-primary"
         >
           {createMut.isPending ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -131,29 +132,29 @@ function WhiteboardGallery() {
 
       {/* Empty state */}
       {boards.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-64 text-center">
-          <PenTool className="w-8 h-8 text-muted-foreground/20 mb-3" />
-          <p className="text-[12px] text-muted-foreground/50">No diagrams yet</p>
-          <p className="text-[11px] text-muted-foreground/30 mt-1 mb-4">
-            Create a blank canvas or start from a pre-built template
-          </p>
-          <div className="flex gap-2">
+        <div className="py-16 text-center">
+          <div className="w-12 h-12 rounded-[var(--radius)] border border-border/30 bg-foreground/[0.03] flex items-center justify-center mx-auto mb-4">
+            <PenTool className="w-5 h-5 text-muted-foreground/25" />
+          </div>
+          <p className="text-[13px] font-medium text-foreground/50 mb-1">No diagrams yet</p>
+          <p className="text-[11px] text-muted-foreground/35 mb-6">Start blank or use a pre-built template</p>
+          <div className="flex justify-center gap-2">
             <button
               onClick={() => createFromTemplateMut.mutate({ title: 'Investment Thesis Framework', scene_data: WELCOME_TEMPLATE })}
               disabled={createFromTemplateMut.isPending}
-              className="h-8 px-3.5 rounded-[var(--radius)] border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
+              className="btn-secondary"
             >
               {createFromTemplateMut.isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <LayoutTemplate className="w-3.5 h-3.5" />
               )}
-              Thesis Template
+              Thesis Framework
             </button>
             <button
               onClick={() => createFromTemplateMut.mutate({ title: 'Macro Research Pipeline', scene_data: MACRO_RESEARCH_TEMPLATE })}
               disabled={createFromTemplateMut.isPending}
-              className="h-8 px-3.5 rounded-[var(--radius)] border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
+              className="btn-secondary"
             >
               {createFromTemplateMut.isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -167,57 +168,57 @@ function WhiteboardGallery() {
       )}
 
       {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {boards.map((board) => (
-          <div
-            key={board.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => router.push(`/whiteboard?id=${board.id}`)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/whiteboard?id=${board.id}`); } }}
-            className="group rounded-[var(--radius)] border border-border/30 bg-card hover:border-border/60 transition-all duration-150 cursor-pointer overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-          >
-            {/* Thumbnail */}
-            <div className="aspect-[16/10] bg-background/50 flex items-center justify-center overflow-hidden">
-              {board.thumbnail ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`data:image/png;base64,${board.thumbnail}`}
-                  alt={board.title}
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-2 px-4">
-                  <PenTool className="w-5 h-5 text-muted-foreground/20" />
-                  <span className="text-[10px] font-mono text-muted-foreground/25 text-center leading-tight truncate max-w-full">
-                    {board.title}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Info */}
-            <div className="px-3 py-2.5 border-t border-border/20 flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-medium text-foreground truncate">
-                  {board.title}
-                </p>
-                <p className="text-[10px] text-muted-foreground/40 flex items-center gap-1 mt-0.5">
-                  <Clock className="w-2.5 h-2.5" />
-                  {timeAgo(board.updated_at)}
-                </p>
+      {boards.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {boards.map((board) => (
+            <div
+              key={board.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => router.push(`/whiteboard?id=${board.id}`)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/whiteboard?id=${board.id}`); } }}
+              className="group panel-card hover:border-border/60 hover:shadow-md transition-all duration-150 cursor-pointer overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+            >
+              {/* Thumbnail */}
+              <div className="aspect-[16/9] bg-background flex items-center justify-center overflow-hidden border-b border-border/20">
+                {board.thumbnail ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`data:image/png;base64,${board.thumbnail}`}
+                    alt={board.title}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 text-center px-6">
+                    <PenTool className="w-4 h-4 text-muted-foreground/15" />
+                    <span className="stat-label truncate max-w-full">{board.title}</span>
+                  </div>
+                )}
               </div>
-              <button
-                onClick={(e) => handleDelete(e, board.id)}
-                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[var(--radius)] text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-all"
-                title="Delete"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+
+              {/* Info */}
+              <div className="px-3 py-2 flex items-center justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-medium text-foreground truncate leading-tight">
+                    {board.title}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/40 flex items-center gap-1 mt-0.5 font-mono">
+                    <Clock className="w-2.5 h-2.5" />
+                    {timeAgo(board.updated_at)}
+                  </p>
+                </div>
+                <button
+                  onClick={(e) => handleDelete(e, board.id)}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[var(--radius)] text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-all ml-2 shrink-0"
+                  title="Delete"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -352,11 +353,12 @@ function WhiteboardEditorView({ whiteboardId }: { whiteboardId: string }) {
   if (error || !wb) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <p className="text-[12px] text-muted-foreground/50">Diagram not found</p>
+        <p className="text-[12px] text-muted-foreground/50 font-medium">Diagram not found</p>
         <button
           onClick={() => router.push('/whiteboard')}
-          className="text-[11px] text-primary hover:underline"
+          className="btn-secondary h-7 px-3 text-[11px]"
         >
+          <ArrowLeft className="w-3 h-3" />
           Back to gallery
         </button>
       </div>
@@ -366,7 +368,7 @@ function WhiteboardEditorView({ whiteboardId }: { whiteboardId: string }) {
   return (
     <div className="flex flex-col h-full">
       {/* Header bar */}
-      <div className="h-10 shrink-0 border-b border-border/20 bg-background/80 backdrop-blur-sm flex items-center gap-3 px-3">
+      <div className="h-10 shrink-0 border-b border-border/20 bg-card flex items-center gap-2 px-2">
         <button
           onClick={() => router.push('/whiteboard')}
           className="btn-icon shrink-0"
@@ -375,6 +377,8 @@ function WhiteboardEditorView({ whiteboardId }: { whiteboardId: string }) {
           <ArrowLeft className="w-3.5 h-3.5" />
         </button>
 
+        <div className="w-px h-4 bg-border/30" />
+
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -382,17 +386,17 @@ function WhiteboardEditorView({ whiteboardId }: { whiteboardId: string }) {
           onKeyDown={(e) => {
             if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           }}
-          className="flex-1 min-w-0 text-[12px] font-medium text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/30"
+          className="flex-1 min-w-0 text-[12px] font-semibold text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/25 hover:text-foreground"
           placeholder="Untitled"
         />
 
         <span
-          className={`text-[9px] font-mono uppercase tracking-wider shrink-0 ${
+          className={`text-[9px] font-mono uppercase tracking-[0.12em] shrink-0 px-1.5 py-0.5 rounded ${
             saveStatus === 'saved'
               ? 'text-muted-foreground/30'
               : saveStatus === 'saving'
-                ? 'text-primary/60'
-                : 'text-warning/60'
+                ? 'text-primary/70 bg-primary/[0.06]'
+                : 'text-warning/70 bg-warning/[0.06]'
           }`}
         >
           {saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : 'Unsaved'}

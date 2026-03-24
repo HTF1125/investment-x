@@ -2,8 +2,8 @@
 
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import CustomChartEditor from '@/components/CustomChartEditor';
-import AppShell from '@/components/AppShell';
+import CustomChartEditor from '@/components/chart-editor';
+import AppShell from '@/components/layout/AppShell';
 import { Loader2 } from 'lucide-react';
 
 function StudioContent() {

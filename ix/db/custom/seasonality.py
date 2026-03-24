@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ix.core.transforms import daily_ffill
+
 
 def _prepare_pivot(series: pd.Series, exclude_years=None, rebase: bool = False) -> pd.DataFrame:
-    s = series.resample("D").last().ffill()
+    s = daily_ffill(series)
     s.index = pd.to_datetime(s.index)
     df = s.dropna().to_frame(name="value")
     df["year"] = df.index.year

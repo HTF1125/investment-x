@@ -3,11 +3,13 @@
 import numpy as np
 import pandas as pd
 
+from ix.core.transforms import daily_ffill
+
 
 
 def get_period_performances(pxs):
 
-    pxs = pxs.resample("D").last().ffill()
+    pxs = daily_ffill(pxs)
 
     # Determine the as-of date
     asofdate = pxs.index[-1]

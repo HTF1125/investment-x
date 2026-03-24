@@ -13,8 +13,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 from fastapi import APIRouter, Depends, HTTPException, Query
+from starlette.requests import Request
 
 from ix.api.dependencies import get_current_user
+from ix.api.rate_limit import limiter as _limiter
 from plotly.subplots import make_subplots
 from scipy.cluster.hierarchy import dendrogram
 
@@ -62,7 +64,9 @@ def _short_name(code: str) -> str:
 # ── Correlation ──────────────────────────────────────────────────────────────
 
 @router.get("/quant/correlation/matrix")
+@_limiter.limit("20/minute")
 def quant_correlation_matrix(
+    request: Request,
     codes: str = Query(..., description="Comma-separated series codes"),
     window: Optional[int] = Query(None, ge=20, description="Trailing window (observations)"),
     method: str = Query("pearson", description="pearson | spearman | kendall"),
@@ -138,7 +142,9 @@ def quant_correlation_matrix(
 
 
 @router.get("/quant/correlation/rolling")
+@_limiter.limit("20/minute")
 def quant_rolling_correlation(
+    request: Request,
     code1: str = Query(...),
     code2: str = Query(...),
     window: int = Query(60, ge=10, le=504),
@@ -185,7 +191,9 @@ def quant_rolling_correlation(
 # ── Regression ───────────────────────────────────────────────────────────────
 
 @router.get("/quant/regression/ols")
+@_limiter.limit("20/minute")
 def quant_ols_regression(
+    request: Request,
     y: str = Query(..., description="Dependent series code"),
     x: str = Query(..., description="Comma-separated factor codes"),
     _user=Depends(get_current_user),
@@ -279,7 +287,9 @@ def quant_ols_regression(
 
 
 @router.get("/quant/regression/rolling-beta")
+@_limiter.limit("20/minute")
 def quant_rolling_beta(
+    request: Request,
     y: str = Query(...),
     x: str = Query(...),
     window: int = Query(60, ge=10, le=504),
@@ -328,7 +338,9 @@ def quant_rolling_beta(
 # ── PCA ──────────────────────────────────────────────────────────────────────
 
 @router.get("/quant/pca")
+@_limiter.limit("20/minute")
 def quant_pca(
+    request: Request,
     codes: str = Query(..., description="Comma-separated series codes"),
     n_components: int = Query(3, ge=1, le=10),
     _user=Depends(get_current_user),
@@ -410,7 +422,9 @@ def quant_pca(
 # ── VaR ──────────────────────────────────────────────────────────────────────
 
 @router.get("/quant/var")
+@_limiter.limit("20/minute")
 def quant_var(
+    request: Request,
     code: str = Query(...),
     confidence: float = Query(0.95, ge=0.9, le=0.999),
     window: Optional[int] = Query(None, ge=20),
@@ -471,7 +485,9 @@ def quant_var(
 
 
 @router.get("/quant/var/rolling")
+@_limiter.limit("20/minute")
 def quant_rolling_var(
+    request: Request,
     code: str = Query(...),
     confidence: float = Query(0.95, ge=0.9, le=0.999),
     window: int = Query(252, ge=20, le=756),

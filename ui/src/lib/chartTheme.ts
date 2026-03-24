@@ -52,6 +52,33 @@ interface ApplyChartThemeOptions {
 }
 
 const DATE_TICK_FORMAT = '%Y-%m-%d';
+/**
+ * Semantic chart colors that match CSS vars for each theme.
+ * Use for Plotly trace colors that carry meaning (positive/negative/neutral).
+ */
+export const CHART_SEMANTIC: Record<UiTheme, {
+  success: string;
+  destructive: string;
+  warning: string;
+  neutral: string;
+  primary: string;
+}> = {
+  dark: {
+    success: 'rgb(63,185,80)',      // --success dark
+    destructive: 'rgb(245,80,80)',   // --destructive dark
+    warning: 'rgb(210,153,34)',      // --warning dark
+    neutral: 'rgb(100,110,135)',     // --muted-foreground dark
+    primary: 'rgb(99,130,255)',      // --primary dark
+  },
+  light: {
+    success: 'rgb(26,127,55)',       // --success light
+    destructive: 'rgb(220,55,55)',   // --destructive light
+    warning: 'rgb(154,103,0)',       // --warning light
+    neutral: 'rgb(95,92,85)',        // --muted-foreground light
+    primary: 'rgb(50,80,210)',       // --primary light
+  },
+};
+
 const AXIS_KEY_REGEX = /^(x|y)axis(\d*)$/;
 
 /**
@@ -71,7 +98,7 @@ export const COLORWAY = [
   '#06b6d4', // Teal
 ];
 
-const THEME_TOKENS: Record<UiTheme, {
+export const THEME_TOKENS: Record<UiTheme, {
   text: string;
   textSecondary: string;
   grid: string;

@@ -22,7 +22,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 // Import after mocks are set up
-import AuthGuard from '../AuthGuard'
+import AuthGuard from '../auth/AuthGuard'
 
 // ── Setup / Teardown ──
 

@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { setApiSessionActive } from '@/lib/api';
 
 // Types
 export interface User {
@@ -70,9 +71,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const res = await fetch('/api/auth/me', {
-          credentials: 'include',
-        });
+        let res = await fetch('/api/auth/me', { credentials: 'include' });
+
+        // If token expired, try silent refresh (accepts tokens expired < 7 days)
+        if (res.status === 401) {
+          const refreshRes = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (refreshRes.ok) {
+            await refreshRes.json(); // consume body; new cookie set by server
+            res = await fetch('/api/auth/me', { credentials: 'include' });
+          }
+        }
 
         if (res.ok) {
           const userData = await res.json();
@@ -91,6 +102,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initAuth();
   }, [normalizeUser]);
+
+  // Keep module-level session flag in sync so apiFetch only fires session-expired for authed users
+  useEffect(() => { setApiSessionActive(!!user); }, [user]);
+
+  // Proactive token refresh — silently renew every 30 min while logged in
+  useEffect(() => {
+    if (!user) return;
+    const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+    const refresh = async () => {
+      try {
+        const res = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (!res.ok) return; // will be caught by session-expired handler on next real request
+        await res.json(); // consume body; new cookie is set by server
+      } catch {
+        // silent — network errors are transient
+      }
+    };
+    const id = setInterval(refresh, REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [user]);
 
   // Listen for 401 session-expired events dispatched by apiFetch
   useEffect(() => {

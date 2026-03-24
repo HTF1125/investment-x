@@ -2,16 +2,19 @@
 
 import { useMemo } from 'react';
 import { useTheme } from '@/context/ThemeContext';
-import type { PlotlyFigure } from '@/lib/chartTheme';
+import { CHART_SEMANTIC, type PlotlyFigure } from '@/lib/chartTheme';
 import { REGIME_COLORS, CHART_M, YAXIS_BASE } from './constants';
 import { themed } from './helpers';
 import { SectionTitle, ChartBox } from './SharedComponents';
 
-const GREEN = '#3fb950', RED = '#f85149', ORANGE = '#f0883e',
-      ACCENT = '#58a6ff', PURPLE = '#bc8cff', MUTED = '#8b949e';
-
 export default function MethodologyTab() {
   const { theme } = useTheme();
+  const GREEN = CHART_SEMANTIC[theme].success;
+  const RED = CHART_SEMANTIC[theme].destructive;
+  const ORANGE = CHART_SEMANTIC[theme].warning;
+  const ACCENT = CHART_SEMANTIC[theme].primary;
+  const PURPLE = CHART_SEMANTIC[theme].primary;
+  const MUTED = CHART_SEMANTIC[theme].neutral;
 
   const quadrantChart = useMemo((): PlotlyFigure => {
     const fig: PlotlyFigure = {
@@ -36,7 +39,7 @@ export default function MethodologyTab() {
   }, [theme]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Investment Problem */}
       <div className="panel-card p-4">
         <SectionTitle>The Investment Problem</SectionTitle>
@@ -49,16 +52,16 @@ export default function MethodologyTab() {
           The core insight: <span className="text-foreground font-semibold">binary regime switching</span> dramatically
           outperforms continuous allocation tilting.
         </p>
-        <table className="w-full text-[11px] font-mono">
+        <table className="data-table text-[11px] font-mono">
           <thead>
-            <tr className="border-b border-border/20">
-              <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Approach</th>
-              <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Mechanism</th>
-              <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Typical Alpha</th>
+            <tr>
+              <th className="text-left">Approach</th>
+              <th className="text-left">Mechanism</th>
+              <th className="text-right">Typical Alpha</th>
             </tr>
           </thead>
           <tbody>
-            <tr className="border-b border-border/10">
+            <tr>
               <td className="py-1.5 text-muted-foreground">Continuous tilts</td>
               <td className="py-1.5 text-muted-foreground">+/-20% around 50%</td>
               <td className="text-right py-1.5 text-muted-foreground">~0.5%/yr</td>
@@ -66,7 +69,7 @@ export default function MethodologyTab() {
             <tr>
               <td className="py-1.5 text-foreground font-medium">Binary regime switching</td>
               <td className="py-1.5 text-foreground">90%/50%/10% equity</td>
-              <td className="text-right py-1.5 text-emerald-500 font-semibold">~3-5%/yr</td>
+              <td className="text-right py-1.5 text-success font-semibold">~3-5%/yr</td>
             </tr>
           </tbody>
         </table>
@@ -82,33 +85,33 @@ export default function MethodologyTab() {
           <li><span className="text-foreground font-medium">Trend signal:</span> Is price above 40-week SMA?</li>
           <li><span className="text-foreground font-medium">Macro composite:</span> Is factor composite above trailing median?</li>
         </ol>
-        <table className="w-full text-[11px] font-mono">
+        <table className="data-table text-[11px] font-mono">
           <thead>
-            <tr className="border-b border-border/20">
-              <th className="text-center py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Trend</th>
-              <th className="text-center py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Macro</th>
-              <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Classification</th>
-              <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Equity Wt</th>
+            <tr>
+              <th className="text-center">Trend</th>
+              <th className="text-center">Macro</th>
+              <th className="text-left">Classification</th>
+              <th className="text-right">Equity Wt</th>
             </tr>
           </thead>
           <tbody>
-            <tr className="border-b border-border/10">
-              <td className="text-center py-1.5 text-emerald-500">Bullish</td>
-              <td className="text-center py-1.5 text-emerald-500">Bullish</td>
+            <tr>
+              <td className="text-center py-1.5 text-success">Bullish</td>
+              <td className="text-center py-1.5 text-success">Bullish</td>
               <td className="py-1.5 text-foreground font-medium">Full Risk-On</td>
-              <td className="text-right py-1.5 text-emerald-500 font-semibold">90%</td>
+              <td className="text-right py-1.5 text-success font-semibold">90%</td>
             </tr>
-            <tr className="border-b border-border/10">
+            <tr>
               <td className="text-center py-1.5 text-muted-foreground">Mixed</td>
               <td className="text-center py-1.5 text-muted-foreground">Mixed</td>
               <td className="py-1.5 text-foreground font-medium">Neutral</td>
               <td className="text-right py-1.5 text-muted-foreground font-semibold">50%</td>
             </tr>
             <tr>
-              <td className="text-center py-1.5 text-rose-500">Bearish</td>
-              <td className="text-center py-1.5 text-rose-500">Bearish</td>
+              <td className="text-center py-1.5 text-destructive">Bearish</td>
+              <td className="text-center py-1.5 text-destructive">Bearish</td>
               <td className="py-1.5 text-foreground font-medium">Full Risk-Off</td>
-              <td className="text-right py-1.5 text-rose-500 font-semibold">10%</td>
+              <td className="text-right py-1.5 text-destructive font-semibold">10%</td>
             </tr>
           </tbody>
         </table>
@@ -118,27 +121,27 @@ export default function MethodologyTab() {
       {/* Factor Categories */}
       <div className="panel-card p-4">
         <SectionTitle>Factor Categories</SectionTitle>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[
             { name: 'Growth', color: GREEN, items: ['PMI diffusion (manufacturing & services)', 'OECD Composite Leading Indicators', 'ISM new orders, NO-Inventory spread', 'CESI breadth & momentum', 'Asian exports, global trade', 'Earnings revision ratios', 'Housing, confidence, labor'], theory: 'Growth acceleration leads equity returns by 3-6 months.' },
             { name: 'Inflation', color: ORANGE, items: ['CPI/PCE components & momentum', 'Breakeven inflation rates', 'Inflation surprise indices (Citi)', 'Wage growth (average hourly earnings)', 'Commodity prices (CRB, oil, metals)'], theory: 'Rising inflation forces tightening, compresses multiples, erodes real earnings.' },
             { name: 'Liquidity', color: ACCENT, items: ['Central bank balance sheets (Fed, ECB, BOJ, PBOC)', 'M2 money supply (US, China)', 'Credit impulse & bank lending', 'Financial Conditions Indices', 'Yield curve shape (2s10s, 3m10y)', 'Monetary policy expectations'], theory: 'Expanding liquidity lowers discount rates and eases financial conditions.' },
             { name: 'Tactical', color: PURPLE, items: ['Volatility structure (VIX, RVX, GVZ)', 'Credit spreads (HY/IG ratio)', 'Positioning (CFTC net specs)', 'Sector rotation (breadth, dispersion)', 'Cross-asset signals (risk on/off)', 'Put/call ratios'], theory: 'Many are contrarian -- high VIX and wide spreads predict higher forward returns.' },
           ].map(cat => (
-            <div key={cat.name} className="border border-border/20 rounded-[var(--radius)] p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                <span className="text-[12px] font-semibold text-foreground">{cat.name}</span>
+            <div key={cat.name} className="border border-border/30 rounded-[var(--radius)] p-3">
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground/80">{cat.name}</span>
               </div>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5 mb-2">
+              <ul className="text-[11px] text-muted-foreground space-y-0.5 mb-2.5">
                 {cat.items.map(item => (
                   <li key={item} className="flex items-start gap-1.5">
-                    <span className="text-muted-foreground/30 mt-0.5">-</span>
+                    <span className="text-border/60 mt-0.5 shrink-0">–</span>
                     {item}
                   </li>
                 ))}
               </ul>
-              <p className="text-[10px] text-muted-foreground/60 italic">{cat.theory}</p>
+              <p className="text-[10px] text-muted-foreground/55 font-mono border-t border-border/20 pt-2 mt-2">{cat.theory}</p>
             </div>
           ))}
         </div>
@@ -147,16 +150,23 @@ export default function MethodologyTab() {
       {/* Factor Selection Process */}
       <div className="panel-card p-4">
         <SectionTitle>Factor Selection Process</SectionTitle>
-        <ol className="text-[12px] text-muted-foreground leading-relaxed space-y-2 list-decimal list-inside">
-          <li><span className="text-foreground font-medium">Apply publication lags:</span> Shift each indicator by its known publication delay (1-12 weeks) to eliminate look-ahead bias.</li>
-          <li><span className="text-foreground font-medium">Compute trailing IC:</span> Spearman rank correlation between z-score and per-category forward returns (Growth 26w, Inflation 13w, Liquidity 13w, Tactical 8w) using ONLY prior 5 years.</li>
-          <li><span className="text-foreground font-medium">Rank by |IC|:</span> Strongest predictors first.</li>
-          <li><span className="text-foreground font-medium">Correlation filter (rho = 0.60):</span> Skip indicators too correlated with already-selected ones.</li>
-          <li><span className="text-foreground font-medium">Select top 10:</span> First 10 surviving indicators.</li>
-          <li><span className="text-foreground font-medium">Build composite:</span> Equal-weight raw z-scores into a single signal per category.</li>
-          <li><span className="text-foreground font-medium">Blend categories:</span> Equal-weight across Growth, Inflation, Liquidity, Tactical.</li>
-          <li><span className="text-foreground font-medium">Circuit breakers:</span> Override to risk-off if VIX &gt; 35 or index drops &gt;10% from 52-week high.</li>
-          <li><span className="text-foreground font-medium">Hold:</span> Maintain equity weight until next 8-week rebalance. Deduct 10bps transaction cost per trade.</li>
+        <ol className="text-[12px] text-muted-foreground leading-relaxed space-y-2">
+          {[
+            ['Apply publication lags', 'Shift each indicator by its known publication delay (1-12 weeks) to eliminate look-ahead bias.'],
+            ['Compute trailing IC', 'Spearman rank correlation between z-score and per-category forward returns (Growth 26w, Inflation 13w, Liquidity 13w, Tactical 8w) using ONLY prior 5 years.'],
+            ['Rank by |IC|', 'Strongest predictors first.'],
+            ['Correlation filter (rho = 0.60)', 'Skip indicators too correlated with already-selected ones.'],
+            ['Select top 10', 'First 10 surviving indicators.'],
+            ['Build composite', 'Equal-weight raw z-scores into a single signal per category.'],
+            ['Blend categories', 'Equal-weight across Growth, Inflation, Liquidity, Tactical.'],
+            ['Circuit breakers', 'Override to risk-off if VIX > 35 or index drops >10% from 52-week high.'],
+            ['Hold', 'Maintain equity weight until next 8-week rebalance. Deduct 10bps transaction cost per trade.'],
+          ].map(([label, desc], i) => (
+            <li key={i} className="flex gap-3">
+              <span className="stat-label shrink-0 mt-0.5 w-4 text-right">{i + 1}.</span>
+              <span><span className="text-foreground font-medium">{label}:</span> {desc}</span>
+            </li>
+          ))}
         </ol>
       </div>
 
@@ -171,23 +181,37 @@ export default function MethodologyTab() {
 
       {/* Critical Lessons */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="panel-card p-4 border-rose-500/20">
+        <div className="panel-card p-4 border-destructive/25">
           <SectionTitle>What NOT to Do</SectionTitle>
           <ul className="text-[11px] text-muted-foreground space-y-1.5">
-            <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">-</span>Do NOT include Global M2 -- zero IC, pure noise</li>
-            <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">-</span>Do NOT use continuous allocation tilts -- caps alpha at &lt;1%/yr</li>
-            <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">-</span>Do NOT judge by weekly hit rate (~55%) -- alpha concentrates in rare bear avoidance</li>
+            {[
+              'Do NOT include Global M2 — zero IC, pure noise',
+              'Do NOT use continuous allocation tilts — caps alpha at <1%/yr',
+              'Do NOT judge by weekly hit rate (~55%) — alpha concentrates in rare bear avoidance',
+            ].map((item, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="text-destructive/70 mt-0.5 shrink-0">–</span>
+                {item}
+              </li>
+            ))}
           </ul>
         </div>
-        <div className="panel-card p-4 border-emerald-500/20">
+        <div className="panel-card p-4 border-success/25">
           <SectionTitle>What Works</SectionTitle>
           <ul className="text-[11px] text-muted-foreground space-y-1.5">
-            <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Raw z-score composites — no IC-sign direction flipping</li>
-            <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Equal-weighting across indicators AND categories (no in-sample optimization)</li>
-            <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Correlation filter (0.60) essential -- prevents loading correlated variants</li>
-            <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Per-category horizons (Growth 6m, Inflation 3m, Liquidity 3m, Tactical 2m)</li>
-            <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>VIX circuit breaker (&gt;35) and drawdown override (&gt;10%) for tail risk protection</li>
-            <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">-</span>Allocation capped at 10-100% (no leverage) -- alpha is from avoidance, not amplification</li>
+            {[
+              'Raw z-score composites — no IC-sign direction flipping',
+              'Equal-weighting across indicators AND categories (no in-sample optimization)',
+              'Correlation filter (0.60) essential — prevents loading correlated variants',
+              'Per-category horizons (Growth 6m, Inflation 3m, Liquidity 3m, Tactical 2m)',
+              'VIX circuit breaker (>35) and drawdown override (>10%) for tail risk protection',
+              'Allocation capped at 10-100% (no leverage) — alpha is from avoidance, not amplification',
+            ].map((item, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="text-success/70 mt-0.5 shrink-0">–</span>
+                {item}
+              </li>
+            ))}
           </ul>
         </div>
       </div>
@@ -200,12 +224,12 @@ export default function MethodologyTab() {
           Each composite directly reflects its economic axis (e.g. high inflation composite = high inflation).
           For allocation, categories where a high reading is bearish have their percentile inverted:
         </p>
-        <table className="w-full text-[11px] font-mono">
+        <table className="data-table text-[11px] font-mono">
           <thead>
-            <tr className="border-b border-border/20">
-              <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Category</th>
-              <th className="text-center py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Direction</th>
-              <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Logic</th>
+            <tr>
+              <th className="text-left">Category</th>
+              <th className="text-center">Direction</th>
+              <th className="text-left">Logic</th>
             </tr>
           </thead>
           <tbody>
@@ -215,9 +239,9 @@ export default function MethodologyTab() {
               { cat: 'Liquidity', dir: 'Direct', logic: 'High composite = ample liquidity = bullish', color: ACCENT },
               { cat: 'Tactical', dir: 'Direct', logic: 'Mixed signals selected by predictive power (|IC| ranking)', color: PURPLE },
             ].map(r => (
-              <tr key={r.cat} className="border-b border-border/10">
-                <td className="py-1.5 font-medium" style={{ color: r.color }}>{r.cat}</td>
-                <td className="text-center py-1.5 text-foreground font-semibold">{r.dir}</td>
+              <tr key={r.cat}>
+                <td className="py-1.5 font-semibold" style={{ color: r.color }}>{r.cat}</td>
+                <td className="text-center py-1.5 text-foreground">{r.dir}</td>
                 <td className="py-1.5 text-muted-foreground">{r.logic}</td>
               </tr>
             ))}

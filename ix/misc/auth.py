@@ -74,6 +74,42 @@ def verify_token(token: str, log_invalid: bool = True) -> Optional[dict]:
         return None
 
 
+# Max age (seconds) for which an expired token can still be refreshed (7 days)
+_REFRESH_GRACE_SECONDS = 7 * 24 * 60 * 60
+
+
+def verify_token_allow_expired(
+    token: str, grace_seconds: int = _REFRESH_GRACE_SECONDS
+) -> Optional[dict]:
+    """
+    Decode a JWT token, accepting recently-expired tokens within *grace_seconds*.
+    Returns the payload dict on success, or None if the token is invalid or
+    expired beyond the grace window.
+    """
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        # Decode without verification to inspect the exp claim
+        try:
+            payload = jwt.decode(
+                token, SECRET_KEY, algorithms=[ALGORITHM],
+                options={"verify_exp": False},
+            )
+            exp = payload.get("exp")
+            if exp is None:
+                return None
+            elapsed = datetime.now(timezone.utc).timestamp() - exp
+            if elapsed <= grace_seconds:
+                return payload
+            logger.warning("Token expired beyond grace window (%.0fs ago)", elapsed)
+            return None
+        except jwt.InvalidTokenError:
+            return None
+    except jwt.InvalidTokenError as e:
+        logger.warning("Invalid token for refresh: %s", e)
+        return None
+
+
 def authenticate_user(email: str, password: str):
     """
     Authenticate a user with email and password against the SQL database.

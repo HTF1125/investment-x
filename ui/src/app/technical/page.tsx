@@ -2,9 +2,9 @@
 
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import AppShell from '@/components/AppShell';
-import Modal from '@/components/Modal';
-import NavigatorShell from '@/components/NavigatorShell';
+import AppShell from '@/components/layout/AppShell';
+import Modal from '@/components/shared/Modal';
+import NavigatorShell from '@/components/layout/NavigatorShell';
 import {
   Activity, Loader2, BrainCircuit, BarChart2, Settings2, Plus, X, Search, ChevronRight, Minimize2, Maximize2,
   ChevronUp, ChevronDown, FileText, Presentation as PresentationIcon
@@ -12,11 +12,11 @@ import {
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetchJson, apiFetch } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
-import { useDebounce } from '@/lib/hooks/useDebounce';
-import { useResponsiveSidebar } from '@/lib/hooks/useResponsiveSidebar';
-import { useNativeInputStyle } from '@/lib/hooks/useNativeInputStyle';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useResponsiveSidebar } from '@/hooks/useResponsiveSidebar';
+import { useNativeInputStyle } from '@/hooks/useNativeInputStyle';
 import ReactMarkdown from 'react-markdown';
-import { ChartErrorBoundary } from '@/components/ChartErrorBoundary';
+import { ChartErrorBoundary } from '@/components/shared/ChartErrorBoundary';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,

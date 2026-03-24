@@ -12,8 +12,10 @@ import numpy as np
 import pandas as pd
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends
+from starlette.requests import Request
 
-from ix.api.dependencies import get_current_user
+from ix.api.dependencies import get_optional_user
+from ix.api.rate_limit import limiter as _limiter
 
 from ix import Series
 
@@ -344,7 +346,8 @@ def _series_to_xy(rebased: dict[str, pd.Series]) -> dict[str, dict]:
 # Route
 # ---------------------------------------------------------------------------
 @router.get("/wartime/data")
-def get_wartime_data(_user=Depends(get_current_user)) -> dict[str, Any]:
+@_limiter.limit("10/minute")
+def get_wartime_data(request: Request, _user=Depends(get_optional_user)) -> dict[str, Any]:
     spx_raw, gold_raw, oil_raw, krw_raw, kospi_raw = _load_prices()
 
     spx_rebased   = build_rebased(spx_raw)

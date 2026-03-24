@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.responses import JSONResponse, FileResponse, ORJSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import text
@@ -60,9 +60,25 @@ def _run_startup_migrations() -> None:
                 "ALTER TABLE research_report ADD COLUMN IF NOT EXISTS slide_deck BYTEA"
             ))
 
-            # Chart packs: is_published column
+            # Research report: naive timestamps → timezone-aware (interpret existing as UTC)
+            db.execute(text(
+                "ALTER TABLE research_report "
+                "ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'"
+            ))
+            db.execute(text(
+                "ALTER TABLE research_report "
+                "ALTER COLUMN updated_at TYPE TIMESTAMPTZ USING updated_at AT TIME ZONE 'UTC'"
+            ))
+
+            # Chart packs columns
             db.execute(text(
                 "ALTER TABLE chart_packs ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT false"
+            ))
+            db.execute(text(
+                "ALTER TABLE chart_packs ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false"
+            ))
+            db.execute(text(
+                "ALTER TABLE chart_packs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP"
             ))
 
         logger.info("Startup migrations completed.")
@@ -91,17 +107,26 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=3600,
     )
 
-    # Local only: poll R2 for pending uploads every 5 minutes
-    from ix.misc.settings import Settings
-    if not Settings.is_server:
-        from ix.misc.task.sync_uploads import sync_uploads_from_r2
-        scheduler.add_job(
-            sync_uploads_from_r2,
-            "interval", minutes=5,
-            id="sync_r2_uploads",
-            replace_existing=True,
-        )
-        logger.info("Scheduled R2 upload sync (every 5 min)")
+    # Send data reports daily at 07:00 KST (22:00 UTC)
+    from ix.misc.task import send_data_reports
+    scheduler.add_job(
+        send_data_reports,
+        "cron", hour=22, minute=0,
+        id="send_data_reports",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # Compute VOMO screener daily at 23:00 UTC
+    from ix.api.routers.analytics.screener import compute_screener
+    scheduler.add_job(
+        compute_screener,
+        "cron", hour=23, minute=0,
+        id="vomo_screener",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
 
     scheduler.start()
     logger.info(f"Scheduler started with {len(scheduler.get_jobs())} job(s)")
@@ -120,6 +145,7 @@ app = FastAPI(
     description="API for Investment-X dashboard and data management",
     version="1.0.0",
     lifespan=lifespan,
+    default_response_class=ORJSONResponse,
 )
 
 logger.info("FastAPI app created successfully")
@@ -134,7 +160,19 @@ app.state.limiter = limiter
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=429,
-        content={"error": "Rate limit exceeded", "detail": str(exc.detail)},
+        content={"detail": str(exc.detail), "code": "RATE_LIMITED"},
+    )
+
+
+# Standardized error response for AppError hierarchy
+from ix.api.exceptions import AppError  # noqa: E402
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(request: Request, exc: AppError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "code": exc.code},
     )
 
 
@@ -161,7 +199,8 @@ async def security_headers_middleware(request: Request, call_next):
     """Add security headers to all responses."""
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
+    if not request.url.path.startswith("/api/research/library/view/"):
+        response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
@@ -312,13 +351,15 @@ try:
         technical_router,
         macro_router,
         wartime_router,
+        screener_router,
     )
     from ix.api.routers.research import (
         news_router,
         insights_router,
         scorecards_router,
+        tts_router,
+        library_router,
     )
-    from ix.api.routers.tasks import task_router
     from ix.api.routers.risk import risk_router
 
     logger.info("Importing routers...")
@@ -347,14 +388,15 @@ try:
     app.include_router(technical_router, prefix="/api", tags=["Technical"])
     app.include_router(macro_router, prefix="/api", tags=["Macro"])
     app.include_router(wartime_router, prefix="/api", tags=["Wartime"])
+    app.include_router(screener_router, prefix="/api", tags=["Screener"])
 
     # Research & News
     app.include_router(news_router, prefix="/api", tags=["News"])
     app.include_router(insights_router, prefix="/api", tags=["Insights"])
     app.include_router(scorecards_router, prefix="/api/v1", tags=["Scorecards"])
+    app.include_router(tts_router, prefix="/api", tags=["TTS"])
+    app.include_router(library_router, prefix="/api", tags=["Research Library"])
 
-    # Tasks & Risk
-    app.include_router(task_router, prefix="/api", tags=["Tasks"])
     app.include_router(risk_router, prefix="/api", tags=["Risk"])
 
     logger.info("Routers registered successfully")

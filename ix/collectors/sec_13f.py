@@ -99,7 +99,7 @@ class SEC13FCollector(BaseCollector):
 
             count = 0
             for i, form in enumerate(forms):
-                if form != "13-F-HR":
+                if form not in ("13F-HR", "13-F-HR"):
                     continue
 
                 accession = accessions[i].replace("-", "")

@@ -1,6 +1,6 @@
 """
-Polls R2 for pending upload files and merges them into local + cloud DB.
-Runs as a scheduled job on local env only.
+Polls R2 for pending upload files and merges them into local DB.
+Runs as a scheduled job.
 """
 import pandas as pd
 from ix.misc import get_logger
@@ -9,9 +9,9 @@ logger = get_logger(__name__)
 
 
 def sync_uploads_from_r2():
-    """Process all pending R2 upload files into local + cloud DB."""
+    """Process all pending R2 upload files into local DB."""
     from ix.db.boto import Boto
-    from ix.db.conn import ensure_connection, Session, cloud_session
+    from ix.db.conn import ensure_connection, Session
     from ix.db.models import Timeseries
     from datetime import datetime
 
@@ -69,21 +69,9 @@ def sync_uploads_from_r2():
             with Session() as db:
                 result = _merge_to_db(df, db, Timeseries)
                 logger.info(
-                    "R2 sync [local]: %s -> %d codes, %d points",
+                    "R2 sync: %s -> %d codes, %d points",
                     key, len(result["updated"]), result["points"],
                 )
-
-            # Merge into cloud DB
-            try:
-                with cloud_session() as cloud_db:
-                    if cloud_db is not None:
-                        cloud_result = _merge_to_db(df, cloud_db, Timeseries)
-                        logger.info(
-                            "R2 sync [cloud]: %s -> %d codes, %d points",
-                            key, len(cloud_result["updated"]), cloud_result["points"],
-                        )
-            except Exception as e:
-                logger.exception("R2 sync: cloud DB failed for %s: %s", key, e)
 
             # Move to processed
             storage.rename_file(key, key.replace("uploads/", "uploads/processed/", 1))

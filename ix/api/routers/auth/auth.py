@@ -14,6 +14,7 @@ from ix.misc.auth import (
     authenticate_user,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_user_token,
+    verify_token_allow_expired,
 )
 from ix.db.models.user import User
 from ix.misc import get_logger
@@ -169,15 +170,31 @@ def get_current_user_info(
 
 @router.post("/auth/refresh", response_model=Token)
 @_limiter.limit("10/minute")
-def refresh_token(
-    request: Request, response: Response, current_user: User = Depends(get_current_user)
-):
+def refresh_token(request: Request, response: Response):
     """
     Refresh access token and update cookie.
+    Accepts recently-expired tokens (within 7 days) so sessions can be
+    silently renewed without forcing a re-login.
     """
+    # Extract token from header or cookie
+    auth = request.headers.get("authorization", "")
+    token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer") else None
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    payload = verify_token_allow_expired(token)
+    if not payload or not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="Token invalid or expired beyond refresh window")
+
+    user = User.get_by_email(payload["sub"])
+    if not user or getattr(user, "disabled", False):
+        raise HTTPException(status_code=401, detail="User not found or disabled")
+
     access_token = create_user_token(
-        str(current_user.email),
-        role=current_user.effective_role,
+        str(user.email),
+        role=user.effective_role,
     )
     set_auth_cookie(response, access_token)
     return {"access_token": access_token, "token_type": "bearer"}

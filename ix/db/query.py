@@ -13,8 +13,30 @@ from ix.misc.date import today
 # TTL cache for crawler results: {source_code: (timestamp, pd.Series)}
 _crawler_cache: dict[str, tuple[float, pd.Series]] = {}
 _CRAWLER_CACHE_TTL = 900  # 15 minutes
+_CRAWLER_CACHE_MAX = 64  # max entries before eviction
+
+# TTL cache for Series() results: {cache_key_tuple: (timestamp, pd.Series)}
+_series_cache: dict[tuple, tuple[float, pd.Series]] = {}
+_SERIES_CACHE_TTL = 300  # 5 minutes
+_SERIES_CACHE_MAX = 128  # max entries before eviction
 
 logger = logging.getLogger(__name__)
+
+
+def clear_series_cache(code: str | None = None) -> None:
+    """Clear Series() result cache and optionally the crawler cache.
+
+    If *code* is given, only entries whose key contains that code are removed.
+    Otherwise the entire cache (including the crawler cache) is cleared.
+    """
+    if code is None:
+        _series_cache.clear()
+        _crawler_cache.clear()
+    else:
+        code_upper = code.upper()
+        keys_to_remove = [k for k in _series_cache if k[0].startswith(code_upper)]
+        for k in keys_to_remove:
+            _series_cache.pop(k, None)
 
 # Re-export transforms so legacy custom chart code using
 # `from ix.db.query import ...` continues to work.
@@ -32,6 +54,7 @@ from ix.core.transforms import (  # noqa: F401
     Rebase,
     Resample,
     StandardScalar,
+    daily_ffill,
 )
 from ix.core.quantitative.statistics import Cycle  # noqa: F401
 
@@ -84,9 +107,26 @@ def Series(
     Alias:
       If code contains '=', e.g. 'NAME=REAL_CODE', return REAL_CODE with name 'NAME'.
     """
+    # Check Series-level cache (skip when caller passes an explicit session)
+    cache_key = (code, freq, ccy, scale, _skip_fx)
+    if session is None:
+        cached = _series_cache.get(cache_key)
+        if cached and (time.time() - cached[0]) < _SERIES_CACHE_TTL:
+            result = cached[1].copy()
+            if name:
+                result.name = name
+            return result
+
     try:
-        # Alias handling: if code contains '=', treat as NAME=REAL_CODE
-        if "=" in code and ":" not in code.split("=", 1)[0]:
+        # Alias handling: NAME=TICKER ASSETCLASS:FIELD
+        # Only trigger when right side is a full Bloomberg-style code (contains space).
+        # This avoids misdetecting futures tickers like ES=F:PX_LAST.
+        if "=" in code:
+            _left, _right = code.split("=", 1)
+            _is_alias = ":" not in _left and ":" in _right and " " in _right
+        else:
+            _is_alias = False
+        if _is_alias:
             alias_name, real_code = code.split("=", maxsplit=1)
             s = Series(code=real_code, freq=freq, ccy=ccy, scale=scale, session=session, _skip_fx=_skip_fx, strict=strict).sort_index()
             s.name = alias_name.upper()
@@ -130,6 +170,11 @@ def Series(
                     return pd.Series(dtype=float)
                 result = df[field].dropna()
                 result.index = pd.to_datetime(result.index)
+                if len(_crawler_cache) >= _CRAWLER_CACHE_MAX:
+                    # Evict oldest 25%
+                    to_remove = list(_crawler_cache.keys())[: _CRAWLER_CACHE_MAX // 4]
+                    for k in to_remove:
+                        _crawler_cache.pop(k, None)
                 _crawler_cache[source_code] = (time.time(), result.copy())
                 result.name = code
                 logger.info("Fetched %s from %s crawler", source_code, source)
@@ -139,13 +184,26 @@ def Series(
                 return pd.Series(dtype=float)
 
         def _update_db_in_background(ts_id: str, crawled_data: pd.Series) -> None:
-            """Update DB with crawled data in a separate session (non-blocking)."""
+            """Replace DB data with crawled data (reset + write) in a separate session."""
+            if crawled_data.empty:
+                return
             try:
+                from ix.db.models import TimeseriesData
+
                 with Session() as db:
                     ts = db.query(Timeseries).filter(Timeseries.id == ts_id).first()
-                    if ts:
-                        ts.data = crawled_data
-                        db.commit()
+                    if not ts:
+                        return
+                    # Clear existing data so the setter writes fresh instead of merging
+                    data_record = (
+                        db.query(TimeseriesData)
+                        .filter(TimeseriesData.timeseries_id == ts.id)
+                        .first()
+                    )
+                    if data_record:
+                        data_record.data = {}
+                    ts.data = crawled_data
+                    db.commit()
             except Exception as exc:
                 logger.warning("Background DB update failed for %s: %s", ts_id, exc)
 
@@ -216,7 +274,7 @@ def Series(
                 # Forward-fill daily series first to ensure target frequency dates get values
                 # This ensures month-end dates (e.g., 2025-10-31) get the value from the last
                 # available day in the month (e.g., 2025-10-30)
-                s = s.resample("D").last().ffill()
+                s = daily_ffill(s)
                 idx = pd.date_range(start_dt, end_dt, freq=freq)
                 # Resample to target frequency using last observation in each bin
                 s = s.reindex(idx)
@@ -284,7 +342,16 @@ def Series(
         if name:
             s.name = name
 
-        return s.copy()
+        # Cache the result (before name override, use canonical key)
+        if session is None:
+            if len(_series_cache) >= _SERIES_CACHE_MAX:
+                # Evict oldest 25%
+                to_remove = list(_series_cache.keys())[: _SERIES_CACHE_MAX // 4]
+                for k in to_remove:
+                    _series_cache.pop(k, None)
+            _series_cache[cache_key] = (time.time(), s.copy())
+
+        return s
     except Exception as e:
         logger.exception("Error loading series %s: %s", code, e)
         if strict or session is not None:

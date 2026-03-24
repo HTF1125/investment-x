@@ -35,6 +35,7 @@ from .institutional_holding import InstitutionalHolding
 from .macro_regime_strategy import MacroRegimeStrategy
 from .strategy_result import StrategyResult
 from .research_source import ResearchSource
+from .api_cache import ApiCache
 import pandas as pd
 import threading
 import time
@@ -111,6 +112,7 @@ __all__ = [
     "MacroRegimeStrategy",
     "StrategyResult",
     "ResearchSource",
+    "ApiCache",
     "all_models",
 ]
 
@@ -138,6 +140,7 @@ def all_models() -> list:
         MacroRegimeStrategy,
         StrategyResult,
         ResearchSource,
+        ApiCache,
     ]
 
 
@@ -168,7 +171,7 @@ class Timeseries(Base):
     scale = Column(Integer, default=1)
     currency = Column(String, nullable=True)
     country = Column(String, nullable=True)
-    parent_id = Column(UUID(as_uuid=False), ForeignKey("timeseries.id"), nullable=True)
+    parent_id = Column(UUID(as_uuid=False), ForeignKey("timeseries.id"), nullable=True, index=True)
     remark = Column(Text, default="")
     favorite = Column(Boolean, default=False, nullable=False)
     latest_value = Column(Float, nullable=True)
@@ -252,16 +255,9 @@ class Timeseries(Base):
         """Core logic for fetching and processing timeseries data from a session."""
         import pandas as pd
 
-        # Reload the object to ensure it's attached to the current session
-        ts = session.query(Timeseries).filter(Timeseries.id == self.id).first()
-        if ts is None:
-            return pd.Series(
-                name=self.code if hasattr(self, "code") else "", dtype=float
-            )
-
-        code = ts.code
-        frequency = ts.frequency
-        ts_id = str(ts.id)
+        code = self.code
+        frequency = self.frequency
+        ts_id = str(self.id)
 
         # Check cache: query only the updated timestamp (no JSONB load)
         data_record_ref = (
@@ -284,7 +280,9 @@ class Timeseries(Base):
                 return cached.sort_index()
 
         # Cache miss — load full JSONB data
-        data_record = ts._get_or_create_data_record(session)
+        # Ensure self is associated with this session for relationship access
+        merged = session.merge(self, load=False)
+        data_record = merged._get_or_create_data_record(session)
         column_data = data_record.data if data_record and data_record.data else {}
 
         if not column_data or len(column_data) == 0:
@@ -303,7 +301,7 @@ class Timeseries(Base):
             series.index = pd.to_datetime(series.index)
             # Update the stored data if we found corrupted dates
             if len(series) > 0:
-                data_record = ts._get_or_create_data_record(session)
+                data_record = merged._get_or_create_data_record(session)
                 cleaned = {}
                 for k, v in series.to_dict().items():
                     try:
@@ -418,6 +416,10 @@ class Timeseries(Base):
 
         # Invalidate cache for this series (and parent if exists)
         _cache_invalidate(str(ts.id))
+
+        # Also invalidate the Series()-level result cache for this code
+        from ix.db.query import clear_series_cache
+        clear_series_cache(ts.code)
 
         # Feed to parent if exists
         self._feed_to_parent_with_session(data, session)
@@ -752,3 +754,18 @@ class Insights(Base):
     pdf_content = Column(LargeBinary, nullable=True)
     hash = Column(String, nullable=True)
     created = Column(DateTime, default=func.now(), nullable=False)
+
+
+class ResearchFile(Base):
+    """Uploaded research PDFs stored in the database."""
+
+    __tablename__ = "research_files"
+
+    id = Column(
+        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    filename = Column(String(512), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    uploaded_by = Column(String(256), nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)

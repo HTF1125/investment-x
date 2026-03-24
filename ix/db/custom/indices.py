@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ix.core.transforms import daily_ffill
+
 
 LOCAL_INDICES_CODES = {
     "SP500": "SPX Index:PX_LAST",
@@ -32,7 +34,7 @@ def local_indices_performance() -> pd.DataFrame:
         series_list.append(ts)
 
     datas = pd.concat(series_list, axis=1)
-    datas = datas.resample("D").last().ffill()
+    datas = daily_ffill(datas)
 
     today = datas.index[-1]
     start_year = pd.Timestamp(year=today.year, month=1, day=1)

@@ -3,8 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import AppShell from '@/components/AppShell';
-import { ChartErrorBoundary } from '@/components/ChartErrorBoundary';
+import AppShell from '@/components/layout/AppShell';
+import { ChartErrorBoundary } from '@/components/shared/ChartErrorBoundary';
 import { apiFetchJson } from '@/lib/api';
 import { getApiCode, buildChartFigure } from '@/lib/buildChartFigure';
 import { applyChartTheme } from '@/lib/chartTheme';
@@ -306,7 +306,7 @@ function PackChartGrid({
           <LineChart className="w-10 h-10 mx-auto text-muted-foreground/10 mb-3" />
           <p className="text-[13px] font-medium text-muted-foreground/40">No charts in this pack</p>
           <button
-            onClick={() => router.push(`/charts?addToPack=${pack.id}`)}
+            onClick={() => router.push(`/chartpack?chartpack=${pack.id}`)}
             className="mt-3 h-7 px-3 inline-flex items-center gap-1.5 rounded-[var(--radius)] text-[11px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
           >
             <Plus className="w-3 h-3" /> Add Chart
@@ -504,7 +504,7 @@ export default function ChartPacksPage() {
                 <span className="hidden sm:inline">Refresh</span>
               </button>
               <button
-                onClick={() => router.push(`/charts?addToPack=${activePack.id}`)}
+                onClick={() => router.push(`/chartpack?chartpack=${activePack.id}`)}
                 className="h-7 px-2.5 flex items-center gap-1.5 rounded-[var(--radius)] text-[10px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
               >
                 <Plus className="w-3 h-3" /> Add Chart

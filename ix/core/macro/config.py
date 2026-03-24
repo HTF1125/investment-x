@@ -17,7 +17,7 @@ from typing import Optional
 
 import numpy as np
 
-from ix.db.custom import FinancialConditionsKR, FinancialConditionsIndexUS
+from ix.core.indicators import FinancialConditionsKR, FinancialConditionsIndexUS
 
 
 # ==============================================================================
@@ -170,4 +170,54 @@ LIQUIDITY_PHASE_BIAS = {
     "Summer": +0.10,  # Peak liquidity -- risk-on
     "Fall": -0.05,  # Decelerating -- caution
     "Winter": -0.10,  # Trough -- defensive
+}
+
+
+# ==============================================================================
+# VAMS INDEX UNIVERSE (for momentum regime dashboard)
+# ==============================================================================
+
+INDEX_MAP: dict[str, str] = {
+    "S&P 500":       "ES=F:PX_LAST",
+    "Nasdaq 100":    "NQ=F:PX_LAST",
+    "DAX":           "DAX Index:PX_LAST",
+    "Nikkei 225":    "NKY Index:PX_LAST",
+    "KOSPI":         "KOSPI Index:PX_LAST",
+    "Dollar":        "DXY Index:PX_LAST",
+    "Gold":          "GC1 COMDTY:PX_LAST",
+    "Silver":        "SI1 COMDTY:PX_LAST",
+    "Treasury 20Y":  "TLT US EQUITY:PX_LAST",
+}
+
+YF_FALLBACK: dict[str, str] = {
+    "S&P 500": "^GSPC", "Nasdaq 100": "^NDX", "DAX": "^GDAXI",
+    "Nikkei 225": "^N225", "KOSPI": "^KS11",
+    "Dollar": "DX-Y.NYB", "Gold": "GC=F", "Silver": "SI=F",
+    "Treasury 20Y": "TLT",
+}
+
+CROSS_ASSET_TICKERS: dict[str, tuple[str, str]] = {
+    "SPY": ("SPY US EQUITY:PX_LAST", "SPY"),
+    "TLT": ("TLT US EQUITY:PX_LAST", "TLT"),
+    "HYG": ("HYG US EQUITY:PX_LAST", "HYG"),
+    "LQD": ("LQD US EQUITY:PX_LAST", "LQD"),
+    "DBC": ("DBC US EQUITY:PX_LAST", "DBC"),
+    "GLD": ("GLD US EQUITY:PX_LAST", "GLD"),
+    "EEM": ("EEM US EQUITY:PX_LAST", "EEM"),
+    "UUP": ("UUP US EQUITY:PX_LAST", "UUP"),
+}
+
+VAMS_PARAMS: dict = {
+    "short_window": 4,
+    "medium_window": 13,
+    "daily_short_window": 20,
+    "daily_medium_window": 65,
+}
+
+VAMS_ALLOCATION: dict[int, dict[str, float]] = {
+     2: {"equities": 1.00, "cash": 0.00},
+     1: {"equities": 0.80, "cash": 0.20},
+     0: {"equities": 0.50, "cash": 0.50},
+    -1: {"equities": 0.20, "cash": 0.80},
+    -2: {"equities": 0.05, "cash": 0.95},
 }

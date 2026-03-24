@@ -5,7 +5,7 @@ from ix.misc.crawler import get_yahoo_data
 from ix.misc.crawler import get_fred_data
 from ix.misc.crawler import get_naver_data
 from ix.db.models import Timeseries
-from ix.db.custom.macro import macro_data
+from ix.core.indicators.macro import macro_data
 
 
 logger = get_logger(__name__)
@@ -104,56 +104,46 @@ def send_data_reports():
     Send both price data and timeseries reports as separate Excel attachments in one email.
     """
     import io
-    import gc
     import pandas as pd
 
     from ix.misc.email import EmailSender
     from ix.db.conn import Session
     from ix.db.models import Timeseries
+    from ix.db.query import Series as FetchSeries, MultiSeries
+    from sqlalchemy.orm import load_only
+    from sqlalchemy import or_
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # Prepare both price data and timeseries data in a single loop
-    datas = {}
-    ts_list = []
-
-    # Process timeseries in chunks to avoid loading all JSONB payloads at once.
-    CHUNK = 50
+    # Get all timeseries codes, excluding FRED-sourced series
     with Session() as session:
-        total_count = session.query(Timeseries).count()
+        codes = [
+            ts.code for ts in
+            session.query(Timeseries)
+            .options(load_only(Timeseries.code))
+            .filter(or_(Timeseries.source != "Fred", Timeseries.source.is_(None)))
+            .all()
+        ]
 
-        for offset in range(0, total_count, CHUNK):
-            chunk = session.query(Timeseries).offset(offset).limit(CHUNK).all()
+    # Fetch all series in parallel (I/O-bound: DB + web crawlers)
+    def _fetch_one(code):
+        s = FetchSeries(code)
+        if not s.empty:
+            return s.iloc[-1], s.iloc[-500:].copy()
+        return None, None
 
-            for ts in chunk:
-                ts_code = ts.code
-
-                data_record = ts._get_or_create_data_record(session)
-                column_data = data_record.data if data_record and data_record.data else {}
-
-                if column_data and len(column_data) > 0:
-                    data_dict = column_data if isinstance(column_data, dict) else {}
-                    data = pd.Series(data_dict)
-
-                    del column_data
-
-                    if not data.empty:
-                        data.index = pd.to_datetime(data.index, errors="coerce")
-                        data = data.dropna().sort_index()
-
-                        if not data.empty:
-                            datas[ts_code] = data.iloc[-1]
-
-                            data_truncated = data.iloc[-1000:]
-                            data_truncated.name = ts_code
-                            ts_list.append(data_truncated)
-
-                del data_record
-
-            # Release ORM objects from identity map after each chunk
-            session.expire_all()
-            gc.collect()
-
-    # Force garbage collection to clear any lingering objects from the loop
-    gc.collect()
+    datas = {}
+    ts_dict = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(_fetch_one, c): c for c in codes}
+        for fut in as_completed(futures):
+            code = futures[fut]
+            try:
+                last_val, truncated = fut.result(timeout=30)
+                if last_val is not None:
+                    datas[code] = last_val
+                    ts_dict[code] = truncated
+            except Exception:
+                logger.warning("Failed to fetch %s for report", code)
 
     datas = pd.Series(datas)
     datas.index.name = "Code"
@@ -162,14 +152,10 @@ def send_data_reports():
     # Load macro data (cached or computed)
     macro_df = macro_data()
     macro_df.index.name = "Date"
-    macro_df.name = "Value"
 
-    if ts_list:
-        timeseries_data = pd.concat(ts_list, axis=1)
-        timeseries_data = timeseries_data.sort_index()
-        timeseries_data = timeseries_data.resample("B").last()
-        timeseries_data = timeseries_data.iloc[-500:]
-        timeseries_data.index.name = "Date"
+    if ts_dict:
+        timeseries_data = MultiSeries(ts_dict)
+        timeseries_data = timeseries_data.resample("B").last().iloc[-500:]
     else:
         timeseries_data = pd.DataFrame()
 
@@ -184,12 +170,6 @@ def send_data_reports():
         timeseries_data.to_excel(writer, sheet_name="Data")
         macro_df.to_excel(writer, sheet_name="Macro")
     timeseries_buffer.seek(0)
-
-    # Release large dataframes
-    del ts_list
-    del timeseries_data
-    del macro_df
-    gc.collect()
 
     # Fetch recipients from database
     recipients = []

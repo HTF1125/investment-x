@@ -18,5 +18,5 @@ class ResearchReport(Base):
     slide_deck = deferred(Column(LargeBinary))
     audio = deferred(Column(LargeBinary))
     sources = Column(JSONB, default=dict)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

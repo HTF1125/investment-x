@@ -49,11 +49,11 @@ export default function RegisterPage() {
       <div className="auth-grid-bg" />
       <div className="auth-vignette" />
 
-      <div className="w-full max-w-md relative z-10">
+      <div className="w-full max-w-[400px] relative z-10">
         <button
           type="button"
           onClick={() => router.back()}
-          className="absolute -top-12 right-0 p-1.5 rounded-[var(--radius)] text-muted-foreground/30 hover:text-primary hover:bg-primary/10 transition-all"
+          className="absolute -top-12 right-0 p-1.5 rounded-[var(--radius)] text-muted-foreground/25 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-all"
           title="Go back"
           aria-label="Go back"
         >
@@ -61,68 +61,72 @@ export default function RegisterPage() {
         </button>
 
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-foreground tracking-tight leading-tight">Request access</h1>
-          <p className="text-muted-foreground/50 text-sm mt-2">Join the research network</p>
+          <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-primary/70 mb-3">Investment-X</div>
+          <h1 className="text-[2.25rem] font-bold text-foreground tracking-[-0.03em] leading-[1.1]">Request access</h1>
+          <p className="text-muted-foreground/50 text-[13px] mt-2.5 tracking-wide">Join the macro research network</p>
         </div>
 
         {error && (
-          <div role="alert" aria-live="polite" className="mb-6 p-3 bg-destructive/5 border border-destructive/15 rounded-[var(--radius)] text-destructive text-sm flex items-center gap-2.5">
+          <div role="alert" aria-live="polite" className="mb-6 px-3.5 py-3 bg-destructive/[0.06] border border-destructive/20 rounded-[var(--radius)] text-destructive text-[12px] flex items-center gap-2.5">
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground/50 pl-0.5">First Name</label>
+              <label className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/40 pl-0.5">First Name</label>
               <div className="relative group">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/30 group-focus-within:text-primary transition-colors" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/25 group-focus-within:text-primary/70 transition-colors" />
                 <input
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-card/50 border border-border/50 rounded-[var(--radius)] text-sm text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/25"
+                  className="w-full pl-9 pr-4 py-3 bg-card border border-border/40 rounded-[var(--radius)] text-[13px] text-foreground focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/20 hover:border-border/60"
                   placeholder="Jane"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground/50 pl-0.5">Last Name</label>
-              <input
-                type="text"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-4 py-2.5 bg-card/50 border border-border/50 rounded-[var(--radius)] text-sm text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/25"
-                placeholder="Doe"
-              />
+              <label className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/40 pl-0.5">Last Name</label>
+              <div className="relative group">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/25 group-focus-within:text-primary/70 transition-colors" />
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="w-full pl-9 pr-4 py-3 bg-card border border-border/40 rounded-[var(--radius)] text-[13px] text-foreground focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/20 hover:border-border/60"
+                  placeholder="Doe"
+                />
+              </div>
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground/50 pl-0.5">Work Email</label>
+            <label className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/40 pl-0.5">Work Email</label>
             <div className="relative group">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/30 group-focus-within:text-primary transition-colors" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/25 group-focus-within:text-primary/70 transition-colors" />
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-card/50 border border-border/50 rounded-[var(--radius)] text-sm text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/25"
+                className="w-full pl-9 pr-4 py-3 bg-card border border-border/40 rounded-[var(--radius)] text-[13px] text-foreground focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/20 hover:border-border/60"
                 placeholder="analyst@firm.com"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground/50 pl-0.5">Password</label>
+            <label className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/40 pl-0.5">Password</label>
             <div className="relative group">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/30 group-focus-within:text-primary transition-colors" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/25 group-focus-within:text-primary/70 transition-colors" />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-card/50 border border-border/50 rounded-[var(--radius)] text-sm text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/25"
+                className="w-full pl-9 pr-4 py-3 bg-card border border-border/40 rounded-[var(--radius)] text-[13px] text-foreground focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/20 hover:border-border/60"
                 placeholder="Min. 8 characters"
               />
             </div>
@@ -131,23 +135,23 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-3 py-2.5 px-4 bg-primary text-primary-foreground rounded-[var(--radius)] font-semibold text-sm transition-all hover:opacity-90 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed group active:scale-[0.99]"
+            className="w-full mt-2 py-3 px-4 bg-foreground text-background rounded-[var(--radius)] font-semibold text-[12px] uppercase tracking-[0.08em] transition-all hover:opacity-85 active:opacity-75 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed group active:scale-[0.99]"
           >
             {loading ? (
-              <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
             ) : (
               <>
-                Create Account
+                Request Access
                 <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
               </>
             )}
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-border/15 text-center text-xs text-muted-foreground/40">
+        <div className="mt-8 pt-6 border-t border-border/15 text-center text-[11px] text-muted-foreground/35 tracking-wide">
           Already have credentials?{' '}
-          <Link href="/login" className="text-primary hover:text-primary/80 font-semibold transition-colors underline underline-offset-2">
-            Login here
+          <Link href="/login" className="text-muted-foreground/60 hover:text-foreground font-semibold transition-colors underline underline-offset-2 decoration-border/40">
+            Sign in here
           </Link>
         </div>
       </div>

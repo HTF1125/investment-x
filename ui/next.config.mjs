@@ -4,10 +4,13 @@ import { resolve } from 'path';
 const nextConfig = {
   transpilePackages: ['@excalidraw/excalidraw'],
   webpack(config, { isServer }) {
-    // Point react-plotly.js (which imports plotly.js/dist/plotly) to the
-    // much smaller plotly.js-dist-min bundle to avoid shipping both.
+    // Point react-plotly.js to finance bundle (cartesian + candlestick/ohlc, ~1.5MB).
     config.resolve.alias['plotly.js/dist/plotly'] = resolve(
-      'node_modules/plotly.js-dist-min/plotly.min.js'
+      'node_modules/plotly.js-finance-dist-min/plotly-finance.min.js'
+    );
+    // Also alias direct imports of plotly.js-dist-min used for resize/export
+    config.resolve.alias['plotly.js-dist-min'] = resolve(
+      'node_modules/plotly.js-finance-dist-min'
     );
 
     // pdfjs-dist uses DOMMatrix and other browser APIs that break SSR.

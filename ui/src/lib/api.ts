@@ -4,6 +4,13 @@
  */
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 
+/**
+ * Module-level flag so the 401 → session-expired event only fires when
+ * the user actually had an active session (set by AuthContext on login/init).
+ */
+let apiSessionActive = false;
+export function setApiSessionActive(active: boolean) { apiSessionActive = active; }
+
 export interface ApiRequestOptions extends RequestInit {
   timeoutMs?: number;
   skipAuthRedirect?: boolean;
@@ -110,7 +117,8 @@ export async function apiFetch(
   cleanup();
 
   // Global handler for 401 Unauthorized (Session Expired)
-  if (res.status === 401 && !skipAuthRedirect && typeof window !== "undefined") {
+  // Only fire if user previously had a session — avoid triggering for unauthenticated visitors
+  if (res.status === 401 && !skipAuthRedirect && typeof window !== "undefined" && apiSessionActive) {
     console.warn("Session expired — dispatching session-expired event");
     window.dispatchEvent(new CustomEvent("ix:session-expired"));
   }

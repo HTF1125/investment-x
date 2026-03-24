@@ -3,7 +3,7 @@ from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ix.db.conn import get_session
 from ix.db.models.chart_pack import ChartPack
@@ -83,7 +83,7 @@ def list_packs(
             ChartPack.created_at, ChartPack.updated_at,
             sa_func.jsonb_array_length(ChartPack.charts).label("chart_count"),
         )
-        .filter(ChartPack.user_id == str(user.id))
+        .filter(ChartPack.user_id == str(user.id), ChartPack.is_deleted == False)
         .order_by(ChartPack.updated_at.desc())
         .all()
     )
@@ -116,7 +116,7 @@ def list_published_packs(
             User.first_name, User.last_name,
         )
         .join(User, User.id == ChartPack.user_id)
-        .filter(ChartPack.is_published == True)
+        .filter(ChartPack.is_published == True, ChartPack.is_deleted == False)
         .order_by(ChartPack.updated_at.desc())
         .all()
     )
@@ -172,7 +172,7 @@ def get_pack(
     db: Session = Depends(get_session),
 ):
     pack = db.query(ChartPack).filter(ChartPack.id == pack_id).first()
-    if not pack:
+    if not pack or pack.is_deleted:
         raise HTTPException(status_code=404, detail="Chart pack not found")
     # Allow access if user owns the pack or it's published
     is_owner = user and str(user.id) == str(pack.user_id)
@@ -187,7 +187,7 @@ def get_pack(
         user_id=str(pack.user_id),
         name=pack.name,
         description=pack.description,
-        charts=pack.charts or [],
+        charts=pack.active_charts,
         is_published=pack.is_published or False,
         creator_name=creator_name,
         created_at=pack.created_at,
@@ -209,7 +209,7 @@ def update_pack(
         .filter(ChartPack.id == pack_id, ChartPack.user_id == str(user.id))
         .first()
     )
-    if not pack:
+    if not pack or pack.is_deleted:
         raise HTTPException(status_code=404, detail="Chart pack not found")
     if payload.name is not None:
         pack.name = payload.name
@@ -226,7 +226,7 @@ def update_pack(
         user_id=str(pack.user_id),
         name=pack.name,
         description=pack.description,
-        charts=pack.charts or [],
+        charts=pack.active_charts,
         is_published=pack.is_published or False,
         created_at=pack.created_at,
         updated_at=pack.updated_at,
@@ -248,7 +248,7 @@ def add_chart_to_pack(
         .filter(ChartPack.id == pack_id, ChartPack.user_id == str(user.id))
         .first()
     )
-    if not pack:
+    if not pack or pack.is_deleted:
         raise HTTPException(status_code=404, detail="Chart pack not found")
     charts = list(pack.charts or [])
     charts.append(payload.chart)
@@ -260,7 +260,7 @@ def add_chart_to_pack(
         user_id=str(pack.user_id),
         name=pack.name,
         description=pack.description,
-        charts=pack.charts or [],
+        charts=pack.active_charts,
         is_published=pack.is_published or False,
         created_at=pack.created_at,
         updated_at=pack.updated_at,
@@ -280,8 +280,9 @@ def delete_pack(
         .filter(ChartPack.id == pack_id, ChartPack.user_id == str(user.id))
         .first()
     )
-    if not pack:
+    if not pack or pack.is_deleted:
         raise HTTPException(status_code=404, detail="Chart pack not found")
-    db.delete(pack)
+    pack.is_deleted = True
+    pack.deleted_at = datetime.now(timezone.utc)
     db.flush()
     return {"ok": True}

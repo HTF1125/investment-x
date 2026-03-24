@@ -6,10 +6,10 @@ from ix.misc.date import tomorrow
 
 logger = get_logger(__name__)
 
-# yfinance uses shared global state and is not thread-safe.
-# Serialize all yf.download calls to prevent concurrent calls from
-# returning corrupted/swapped data.
-_yf_lock = threading.Lock()
+# yfinance uses shared global state and is not fully thread-safe.
+# Use a semaphore to allow limited concurrency (different tickers can
+# download in parallel) while preventing excessive concurrent requests.
+_yf_semaphore = threading.Semaphore(3)
 
 
 def _get_pandas_datareader():
@@ -34,7 +34,7 @@ def get_yahoo_data(
     try:
         import yfinance as yf
 
-        with _yf_lock:
+        with _yf_semaphore:
             data = yf.download(
                 tickers=code,
                 start=start,
@@ -65,23 +65,13 @@ def get_fred_data(
     if pdr is None:
         raise ImportError("pandas_datareader is required for FRED data")
 
-    # Short timeout to gracefully skip if St. Louis Fed is blocked by Korean ISPs
-    timeout = min(timeout, 10)
-
     for attempt in range(retries + 1):
         try:
-            import requests
-
-            session = requests.Session()
-            session.headers.update(
-                {"User-Agent": "Mozilla/5.0 (Investment-X Research)"}
-            )
             reader = pdr.fred.FredReader(
                 symbols=ticker,
                 start=start,
                 end=end,
             )
-            reader.session = session
             reader.timeout = timeout
             data = reader.read()
             if not data.empty:

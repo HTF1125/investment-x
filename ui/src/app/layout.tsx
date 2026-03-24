@@ -3,10 +3,10 @@ import { Inter, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
-import { TaskProvider } from '@/components/TaskProvider';
+
 import QueryProvider from '@/providers/QueryProvider';
-import ErrorBoundary from '@/components/ErrorBoundary';
-import SessionExpiredModal from '@/components/SessionExpiredModal';
+import ErrorBoundary from '@/components/shared/ErrorBoundary';
+import SessionExpiredModal from '@/components/auth/SessionExpiredModal';
 
 const body = Inter({
   subsets: ["latin"],
@@ -58,14 +58,12 @@ export default function RootLayout({
         </a>
         <QueryProvider>
           <AuthProvider>
-            <TaskProvider>
-              <ThemeProvider>
-                <ErrorBoundary>
-                  {children}
-                  <SessionExpiredModal />
-                </ErrorBoundary>
-              </ThemeProvider>
-            </TaskProvider>
+            <ThemeProvider>
+              <ErrorBoundary>
+                {children}
+                <SessionExpiredModal />
+              </ErrorBoundary>
+            </ThemeProvider>
           </AuthProvider>
         </QueryProvider>
       </body>

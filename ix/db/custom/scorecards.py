@@ -9,6 +9,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ix.core.transforms import daily_ffill
+
 logger = logging.getLogger(__name__)
 
 # ── Asset Universes ────────────────────────────────────────────────────────
@@ -109,39 +111,66 @@ ZSCORE_LOOKBACK = 252
 
 _cache: dict[str, Any] = {}
 _CACHE_TTL = 300  # 5 minutes
+_CACHE_MAX = 10  # max entries before eviction
+
+
+def clear_scorecard_cache() -> None:
+    """Force-clear scorecard cache. Series cache is bypassed via force_live=True."""
+    _cache.clear()
 
 
 # ── Batch data loader ──────────────────────────────────────────────────────
 
 
-def _batch_load(codes: list[str]) -> dict[str, pd.Series]:
-    """Load multiple timeseries in a single DB query."""
-    from ix.db.conn import Session
-    from ix.db.models import Timeseries, TimeseriesData
+def _batch_load(codes: list[str], force_live: bool = False) -> dict[str, pd.Series]:
+    """Load multiple timeseries in a single DB query.
+    Falls back to Series() for missing/empty codes so live sources
+    (Yahoo, Fred, Naver) trigger a crawler fetch + DB persist.
+
+    When force_live=True, skip the DB entirely and fetch everything
+    through Series() (triggers live crawler for Yahoo/Fred/Naver sources).
+    """
+    from ix.db.query import Series as QSeries
 
     upper_codes = [c.upper() for c in codes]
     result: dict[str, pd.Series] = {}
 
-    with Session() as session:
-        rows = (
-            session.query(Timeseries.code, TimeseriesData.data)
-            .join(TimeseriesData, TimeseriesData.timeseries_id == Timeseries.id)
-            .filter(Timeseries.code.in_(upper_codes))
-            .all()
-        )
+    if not force_live:
+        from ix.db.conn import Session
+        from ix.db.models import Timeseries, TimeseriesData
 
-        for code, raw_data in rows:
-            if not raw_data:
-                continue
+        with Session() as session:
+            rows = (
+                session.query(Timeseries.code, TimeseriesData.data)
+                .join(TimeseriesData, TimeseriesData.timeseries_id == Timeseries.id)
+                .filter(Timeseries.code.in_(upper_codes))
+                .all()
+            )
+
+            for code, raw_data in rows:
+                if not raw_data:
+                    continue
+                try:
+                    s = pd.Series(raw_data, dtype=float)
+                    s.index = pd.to_datetime(s.index, errors="coerce")
+                    s = s.dropna().sort_index()
+                    s.name = code
+                    if len(s) > 100:
+                        result[code] = s
+                except Exception:
+                    logger.debug("Failed to parse %s", code)
+
+    # Use Series() for codes missing from the batch result (or all codes if force_live).
+    # This triggers the crawler for live sources and persists to DB.
+    missing = [c for c in upper_codes if c not in result]
+    if missing:
+        for code in missing:
             try:
-                s = pd.Series(raw_data, dtype=float)
-                s.index = pd.to_datetime(s.index, errors="coerce")
-                s = s.dropna().sort_index()
-                s.name = code
-                if len(s) > 100:
-                    result[code] = s
+                s = QSeries(code)
+                if not s.empty and len(s) > 100:
+                    result[code.upper()] = s
             except Exception:
-                logger.debug("Failed to parse %s", code)
+                logger.debug("Fallback Series() failed for %s", code)
 
     return result
 
@@ -150,13 +179,14 @@ def _batch_load(codes: list[str]) -> dict[str, pd.Series]:
 
 
 def _load_prices_batch(
-    assets: dict[str, str], extra_codes: list[str] | None = None
+    assets: dict[str, str], extra_codes: list[str] | None = None,
+    force_live: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, pd.Series]]:
     """Load all prices for a universe in one query. Returns (asset_df, raw_series_map)."""
     all_codes = list(assets.values())
     if extra_codes:
         all_codes.extend(extra_codes)
-    raw = _batch_load(all_codes)
+    raw = _batch_load(all_codes, force_live=force_live)
 
     data: dict[str, pd.Series] = {}
     for name, code in assets.items():
@@ -167,7 +197,7 @@ def _load_prices_batch(
     if not data:
         return pd.DataFrame(), raw
     df = pd.DataFrame(data)
-    df = df.resample("D").last().ffill()
+    df = daily_ffill(df)
     return df, raw
 
 
@@ -294,11 +324,11 @@ def _compute_rrg(
 # ── Public API ─────────────────────────────────────────────────────────────
 
 
-def compute_scorecard(category: str, config: dict) -> dict:
+def compute_scorecard(category: str, config: dict, force_live: bool = False) -> dict:
     extra = [config["benchmark"]] if config.get("benchmark") else []
-    prices, raw = _load_prices_batch(config["assets"], extra_codes=extra)
+    prices, raw = _load_prices_batch(config["assets"], extra_codes=extra, force_live=force_live)
     if prices.empty:
-        return {"name": category, "benchmark": "\u2014", "assets": []}
+        return {"name": category, "benchmark": "\u2014", "as_of": None, "assets": []}
 
     returns = _compute_returns(prices)
 
@@ -306,7 +336,7 @@ def compute_scorecard(category: str, config: dict) -> dict:
     if config.get("benchmark"):
         uc = config["benchmark"].upper()
         if uc in raw:
-            benchmark_px = raw[uc].resample("D").last().ffill()
+            benchmark_px = daily_ffill(raw[uc])
 
     dynamic = _compute_rrg(prices, benchmark_px, DYNAMIC_WINDOW, mom_lookback=10)
     tactical = _compute_rrg(prices, benchmark_px, TACTICAL_WINDOW, mom_lookback=5)
@@ -339,22 +369,29 @@ def compute_scorecard(category: str, config: dict) -> dict:
     }
     bm_code = config.get("benchmark")
     bm_label = _BM_LABELS.get(bm_code, bm_code.split(":")[0].split()[0] if bm_code else "Equal Wt")
-    return {"name": category, "benchmark": bm_label, "assets": assets}
+    as_of = prices.index[-1].strftime("%Y-%m-%d") if not prices.empty else None
+    return {"name": category, "benchmark": bm_label, "as_of": as_of, "assets": assets}
 
 
-def compute_all_scorecards() -> list[dict]:
-    now = time.time()
-    cached = _cache.get("data")
-    if cached and now - _cache.get("ts", 0) < _CACHE_TTL:
-        return cached
+def compute_all_scorecards(force_live: bool = False) -> list[dict]:
+    if not force_live:
+        now = time.time()
+        cached = _cache.get("data")
+        if cached and now - _cache.get("ts", 0) < _CACHE_TTL:
+            return cached
 
     results = []
     for cat, config in UNIVERSES.items():
         try:
-            results.append(compute_scorecard(cat, config))
+            results.append(compute_scorecard(cat, config, force_live=force_live))
         except Exception:
             logger.exception("Scorecard failed for %s", cat)
 
+    if len(_cache) >= _CACHE_MAX:
+        # Evict oldest entries (keep only "data" and "ts" keys at most)
+        to_remove = list(_cache.keys())[: max(1, len(_cache) // 4)]
+        for k in to_remove:
+            _cache.pop(k, None)
     _cache["data"] = results
-    _cache["ts"] = now
+    _cache["ts"] = time.time()
     return results

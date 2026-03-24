@@ -34,11 +34,11 @@ function LoginForm() {
   };
 
   return (
-    <div className="w-full max-w-[380px] relative z-10">
+    <div className="w-full max-w-[400px] relative z-10">
       <button
         type="button"
         onClick={() => router.back()}
-        className="absolute -top-12 right-0 p-1.5 rounded-[var(--radius)] text-muted-foreground/30 hover:text-primary hover:bg-primary/10 transition-all"
+        className="absolute -top-12 right-0 p-1.5 rounded-[var(--radius)] text-muted-foreground/25 hover:text-muted-foreground hover:bg-foreground/[0.06] transition-all"
         title="Go back"
         aria-label="Go back"
       >
@@ -46,34 +46,35 @@ function LoginForm() {
       </button>
 
       <div className="mb-10">
-        <h1 className="text-3xl font-bold text-foreground tracking-tight leading-tight">Welcome back</h1>
-        <p className="text-muted-foreground/50 text-sm mt-2">Sign in to continue</p>
+        <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-primary/70 mb-3">Investment-X</div>
+        <h1 className="text-[2.25rem] font-bold text-foreground tracking-[-0.03em] leading-[1.1]">Welcome back</h1>
+        <p className="text-muted-foreground/50 text-[13px] mt-2.5 tracking-wide">Sign in to your research account</p>
       </div>
 
       {isExpired && !error && (
-        <div className="mb-6 p-3 bg-primary/5 border border-primary/15 rounded-[var(--radius)] text-primary text-sm flex items-center gap-2.5">
+        <div className="mb-6 px-3.5 py-3 bg-primary/[0.06] border border-primary/20 rounded-[var(--radius)] text-primary text-[12px] flex items-center gap-2.5">
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-          <span>Session expired. Sign in again.</span>
+          <span>Session expired — please sign in again.</span>
         </div>
       )}
 
       {error && (
-        <div role="alert" aria-live="polite" className="mb-6 p-3 bg-destructive/5 border border-destructive/15 rounded-[var(--radius)] text-destructive text-sm flex items-center gap-2.5">
+        <div role="alert" aria-live="polite" className="mb-6 px-3.5 py-3 bg-destructive/[0.06] border border-destructive/20 rounded-[var(--radius)] text-destructive text-[12px] flex items-center gap-2.5">
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
-          <label className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground/50 pl-0.5">Email</label>
+          <label className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/40 pl-0.5">Email</label>
           <div className="relative group">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/30 group-focus-within:text-primary transition-colors" />
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/25 group-focus-within:text-primary/70 transition-colors" />
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-card/50 border border-border/50 rounded-[var(--radius)] text-sm text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/25"
+              className="w-full pl-9 pr-4 py-3 bg-card border border-border/40 rounded-[var(--radius)] text-[13px] text-foreground focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/20 hover:border-border/60"
               placeholder="analyst@investment-x.com"
             />
           </div>
@@ -81,22 +82,22 @@ function LoginForm() {
 
         <div className="space-y-1.5">
           <div className="flex items-center justify-between pl-0.5">
-            <label className="text-[10px] font-mono uppercase tracking-[0.1em] text-muted-foreground/50">Password</label>
-            <a href="#" className="text-[10px] font-medium text-muted-foreground/40 hover:text-primary transition-colors">Forgot?</a>
+            <label className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/40">Password</label>
+            <a href="#" className="text-[10px] font-mono tracking-[0.04em] text-muted-foreground/35 hover:text-primary/80 transition-colors">Forgot?</a>
           </div>
           <div className="relative group">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/30 group-focus-within:text-primary transition-colors" />
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/25 group-focus-within:text-primary/70 transition-colors" />
             <input
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full pl-10 pr-10 py-2.5 bg-card/50 border border-border/50 rounded-[var(--radius)] text-sm text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/25"
+              className="w-full pl-9 pr-10 py-3 bg-card border border-border/40 rounded-[var(--radius)] text-[13px] text-foreground focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/20 hover:border-border/60"
               placeholder="••••••••"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground/30 hover:text-primary rounded transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground/25 hover:text-muted-foreground/60 rounded transition-colors"
               title={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -104,26 +105,26 @@ function LoginForm() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pl-0.5">
+        <div className="flex items-center gap-2 pl-0.5 pt-0.5">
            <input
              type="checkbox"
              id="remember-me"
              checked={rememberMe}
              onChange={(e) => setRememberMe(e.target.checked)}
-             className="w-3.5 h-3.5 rounded border-border/50 bg-card/50 text-primary focus:ring-primary/30 focus:ring-offset-0 transition-colors accent-primary cursor-pointer"
+             className="w-3.5 h-3.5 rounded border-border/50 bg-card text-primary focus:ring-primary/30 focus:ring-offset-0 transition-colors accent-primary cursor-pointer"
            />
-           <label htmlFor="remember-me" className="text-xs text-muted-foreground/50 select-none cursor-pointer hover:text-foreground transition-colors">
-             Remember me
+           <label htmlFor="remember-me" className="text-[11px] text-muted-foreground/40 select-none cursor-pointer hover:text-muted-foreground/70 transition-colors">
+             Keep me signed in
            </label>
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full mt-3 py-2.5 px-4 bg-primary text-primary-foreground rounded-[var(--radius)] font-semibold text-sm transition-all hover:opacity-90 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed group active:scale-[0.99]"
+          className="w-full mt-2 py-3 px-4 bg-foreground text-background rounded-[var(--radius)] font-semibold text-[12px] uppercase tracking-[0.08em] transition-all hover:opacity-85 active:opacity-75 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed group active:scale-[0.99]"
         >
           {loading ? (
-            <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
           ) : (
             <>
               Sign In
@@ -133,9 +134,9 @@ function LoginForm() {
         </button>
       </form>
 
-      <div className="mt-8 pt-6 border-t border-border/15 text-center text-xs text-muted-foreground/40">
+      <div className="mt-8 pt-6 border-t border-border/15 text-center text-[11px] text-muted-foreground/35 tracking-wide">
         No account?{' '}
-        <Link href="/register" className="text-primary hover:text-primary/80 font-semibold transition-colors underline underline-offset-2">
+        <Link href="/register" className="text-muted-foreground/60 hover:text-foreground font-semibold transition-colors underline underline-offset-2 decoration-border/40">
           Apply for access
         </Link>
       </div>
@@ -148,7 +149,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background relative overflow-hidden">
       <div className="auth-grid-bg" />
       <div className="auth-vignette" />
-      <Suspense fallback={<div className="text-foreground animate-pulse text-sm relative z-10">Loading...</div>}>
+      <Suspense fallback={<div className="text-muted-foreground/40 animate-pulse text-[12px] font-mono relative z-10">Loading...</div>}>
         <LoginForm />
       </Suspense>
     </div>

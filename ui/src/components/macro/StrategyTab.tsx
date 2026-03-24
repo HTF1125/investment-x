@@ -188,30 +188,33 @@ export default function StrategyTab({ backtest, isLoading, target }: {
     <div className="space-y-3">
       {/* Summary metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-        <div className="panel-card px-2 py-1.5">
-          <div className="stat-label">Best Strategy</div>
-          <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">
+        <div className="panel-card px-3 py-2">
+          <div className="stat-label mb-1">Best Strategy</div>
+          <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">
             {bestStrat ?? '-'}
-            {bestStrat && <span className="text-[10px] text-muted-foreground ml-1">({fmt(strategies[bestStrat].sharpe)} SR)</span>}
           </div>
+          {bestStrat && <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">{fmt(strategies[bestStrat].sharpe)} SR</div>}
         </div>
-        <div className="panel-card px-2 py-1.5">
-          <div className="stat-label">Benchmark Sharpe</div>
-          <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">
+        <div className="panel-card px-3 py-2">
+          <div className="stat-label mb-1">Benchmark Sharpe</div>
+          <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">
             {benchmark ? fmt(benchmark.sharpe) : '-'}
           </div>
+          {benchmark && <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">{fmt(benchmark.ann_return * 100, 1)}%/yr</div>}
         </div>
-        <div className="panel-card px-2 py-1.5">
-          <div className="stat-label">Best Alpha</div>
-          <div className={`text-[13px] font-mono font-semibold tabular-nums ${bestAlpha > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+        <div className="panel-card px-3 py-2">
+          <div className="stat-label mb-1">Best Alpha</div>
+          <div className={`text-[14px] font-mono font-semibold tabular-nums leading-none ${bestAlpha > 0 ? 'text-success' : 'text-destructive'}`}>
             {bestAlpha > 0 ? '+' : ''}{fmt(bestAlpha * 100, 1)}%/yr
           </div>
+          <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">annualized excess</div>
         </div>
-        <div className="panel-card px-2 py-1.5">
-          <div className="stat-label">Beating Benchmark</div>
-          <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">
+        <div className="panel-card px-3 py-2">
+          <div className="stat-label mb-1">Beating Benchmark</div>
+          <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">
             {beatingBenchmark}/{stratKeys.length}
           </div>
+          <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">by Sharpe ratio</div>
         </div>
       </div>
 
@@ -219,17 +222,17 @@ export default function StrategyTab({ backtest, isLoading, target }: {
       <div className="panel-card px-3 py-2">
         <SectionTitle info="Annualized walk-forward backtest performance for each category strategy vs 50/50 benchmark. Alpha = ann. excess return.">Strategy Performance</SectionTitle>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px]">
+          <table className="data-table text-[11px]">
             <thead>
-              <tr className="border-b border-border/40">
-                <th className="text-left py-1 pr-3 text-[9px] font-mono uppercase text-muted-foreground/50">Strategy</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Ann Ret</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Sharpe</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Max DD</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">IR</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Hit</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Avg Wt</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Alpha</th>
+              <tr>
+                <th className="text-left">Strategy</th>
+                <th className="text-right">Ann Ret</th>
+                <th className="text-right">Sharpe</th>
+                <th className="text-right">Max DD</th>
+                <th className="text-right">IR</th>
+                <th className="text-right">Hit</th>
+                <th className="text-right">Avg Wt</th>
+                <th className="text-right">Alpha</th>
               </tr>
             </thead>
             <tbody>
@@ -239,11 +242,11 @@ export default function StrategyTab({ backtest, isLoading, target }: {
                   <StatsRow key={k} label={k} color={STRAT_COLORS[k]} values={[
                     `${fmt(s.ann_return * 100, 1)}%`,
                     fmt(s.sharpe),
-                    <span key="dd" className="text-rose-500">{fmt(s.max_dd * 100, 1)}%</span>,
+                    <span key="dd" className="text-destructive">{fmt(s.max_dd * 100, 1)}%</span>,
                     fmt(s.ir),
                     `${fmt(s.hit_rate * 100, 0)}%`,
                     `${fmt(s.avg_eq_wt * 100, 0)}%`,
-                    <span key="a" className={s.alpha > 0 ? 'text-emerald-500' : 'text-rose-500'}>
+                    <span key="a" className={s.alpha > 0 ? 'text-success' : 'text-destructive'}>
                       {s.alpha > 0 ? '+' : ''}{fmt(s.alpha * 100, 1)}%
                     </span>,
                   ]} />
@@ -253,7 +256,7 @@ export default function StrategyTab({ backtest, isLoading, target }: {
                 <StatsRow label="Benchmark" values={[
                   `${fmt(benchmark.ann_return * 100, 1)}%`,
                   fmt(benchmark.sharpe),
-                  <span key="dd" className="text-rose-500">{fmt(benchmark.max_dd * 100, 1)}%</span>,
+                  <span key="dd" className="text-destructive">{fmt(benchmark.max_dd * 100, 1)}%</span>,
                   '-', '-', '50%', '-',
                 ]} />
               )}
@@ -291,13 +294,13 @@ export default function StrategyTab({ backtest, isLoading, target }: {
         <div className="panel-card px-3 py-2">
           <SectionTitle info="Year-by-year alpha (annualized excess return) for each strategy.">Yearly Alpha</SectionTitle>
           <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
+            <table className="data-table text-[11px]">
               <thead>
-                <tr className="border-b border-border/40">
-                  <th className="text-left py-1 pr-3 text-[9px] font-mono uppercase text-muted-foreground/50">Year</th>
+                <tr>
+                  <th className="text-left">Year</th>
                   {stratKeys.map(k => (
-                    <th key={k} className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">
-                      <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ backgroundColor: STRAT_COLORS[k] }} />
+                    <th key={k} className="text-right">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ backgroundColor: STRAT_COLORS[k] }} />
                       {k.slice(0, 4)}
                     </th>
                   ))}
@@ -305,12 +308,12 @@ export default function StrategyTab({ backtest, isLoading, target }: {
               </thead>
               <tbody>
                 {yearlyAlphaData.rows.map(row => (
-                  <tr key={row.year} className="border-b border-border/20">
-                    <td className="py-1 pr-3 font-medium text-foreground text-[11px] font-mono">{row.year}</td>
+                  <tr key={row.year}>
+                    <td className="py-1 pr-3 font-mono text-foreground text-[11px]">{row.year}</td>
                     {stratKeys.map(k => {
                       const v = row.alphas[k] ?? 0;
                       return (
-                        <td key={k} className={`text-right py-1 px-1 font-mono tabular-nums text-[11px] ${v > 0 ? 'text-emerald-500' : v < 0 ? 'text-rose-500' : 'text-foreground'}`}>
+                        <td key={k} className={`text-right py-1 px-1 font-mono tabular-nums text-[11px] ${v > 0 ? 'text-success' : v < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                           {v > 0 ? '+' : ''}{fmt(v * 100, 1)}%
                         </td>
                       );

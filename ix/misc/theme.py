@@ -693,13 +693,11 @@ class ChartTheme:
         spike_color = "rgba(148,163,184,0.20)" if is_dark else "rgba(15,23,42,0.15)"
 
         x_axis_style = dict(
-            showline=True,
+            showline=False,
             linewidth=1,
             linecolor=chart_border,
-            mirror=True,
-            ticks="outside",
-            ticklen=4,
-            tickcolor=chart_border,
+            mirror=False,
+            ticks="",
             tickfont=dict(size=base_font_size, color=text_secondary),
             title_font=dict(size=base_font_size, color=text_secondary),
             showgrid=False,
@@ -713,19 +711,17 @@ class ChartTheme:
             rangeslider=dict(visible=False),
         )
         y_axis_style = dict(
-            showline=True,
+            showline=False,
             linewidth=1,
             linecolor=chart_border,
-            mirror=True,
-            ticks="outside",
-            ticklen=4,
-            tickcolor=chart_border,
+            mirror=False,
+            ticks="",
             tickfont=dict(size=base_font_size, color=text_secondary),
             title_font=dict(size=base_font_size, color=text_secondary),
             showgrid=True,
             gridcolor=grid_color,
-            griddash="dot",
-            gridwidth=1,
+            griddash="solid",
+            gridwidth=0.5,
             zeroline=True,
             zerolinewidth=1,
             zerolinecolor=grid_color,
@@ -839,3 +835,205 @@ def theme_figure_for_delivery(figure: Any) -> Any:
     if figure is None:
         return None
     return chart_theme.apply_json(figure, mode="light")
+
+
+# ------------------------------------------------------------------ #
+# Research / Presentation style (Pictet-inspired white background)    #
+# ------------------------------------------------------------------ #
+
+# NBER recession periods for US recession shading
+NBER_RECESSIONS = [
+    ("1948-11-01", "1949-10-01"),
+    ("1953-07-01", "1954-05-01"),
+    ("1957-08-01", "1958-04-01"),
+    ("1960-04-01", "1961-02-01"),
+    ("1969-12-01", "1970-11-01"),
+    ("1973-11-01", "1975-03-01"),
+    ("1980-01-01", "1980-07-01"),
+    ("1981-07-01", "1982-11-01"),
+    ("1990-07-01", "1991-03-01"),
+    ("2001-03-01", "2001-11-01"),
+    ("2007-12-01", "2009-06-01"),
+    ("2020-02-01", "2020-04-01"),
+]
+
+
+def apply_research_style(
+    fig: go.Figure,
+    *,
+    title: Optional[str] = None,
+    subtitle: Optional[str] = None,
+    source: Optional[str] = None,
+    last_update: Optional[str] = None,
+    recessions: bool = False,
+    width: int = 900,
+    height: int = 500,
+    line_color: str = "#1A6B5A",
+    colorway: Optional[List[str]] = None,
+) -> go.Figure:
+    """
+    Apply a clean white-background research/presentation style to a Plotly figure.
+
+    Inspired by Pictet Asset Management charts — designed for reports, notebooks,
+    and presentations where data clarity and professional typography matter.
+
+    Parameters
+    ----------
+    fig : go.Figure
+        The Plotly figure to style (mutated in-place and returned).
+    title : str, optional
+        Uppercase title displayed centered at top.
+    subtitle : str, optional
+        Smaller gray subtitle below the title (top-left).
+    source : str, optional
+        Source footnote at the bottom-left.
+    last_update : str, optional
+        Date string shown at the top-right (e.g. "02/03/22").
+    recessions : bool
+        If True, add NBER US recession shading as gray vertical bands.
+    width, height : int
+        Figure dimensions in pixels.
+    line_color : str
+        Default accent color for single-line charts.
+    colorway : list[str], optional
+        Custom color sequence. Defaults to a research-friendly palette.
+
+    Returns
+    -------
+    go.Figure
+        The styled figure (same object, mutated).
+
+    Example
+    -------
+    >>> fig = go.Figure()
+    >>> fig.add_trace(go.Scatter(x=dates, y=values, mode="lines"))
+    >>> apply_research_style(fig, title="REAL GDP GROWTH", subtitle="%, YoY",
+    ...                      source="Source: FRED", recessions=True)
+    >>> fig.show()
+    """
+    DARK = "#2d3436"
+    GRAY = "#636e72"
+    LIGHT_GRAY = "#b2bec3"
+    FONT = "Arial, Helvetica, sans-serif"
+
+    if colorway is None:
+        colorway = [
+            "#1A6B5A",  # Teal
+            "#B03A2E",  # Crimson
+            "#2874A6",  # Steel blue
+            "#D4AC0D",  # Gold
+            "#6C3483",  # Purple
+            "#CA6F1E",  # Burnt orange
+            "#1ABC9C",  # Turquoise
+            "#5D6D7E",  # Slate
+        ]
+
+    # ── Recession shading ──
+    if recessions:
+        for rs, re in NBER_RECESSIONS:
+            fig.add_vrect(
+                x0=rs,
+                x1=re,
+                fillcolor="rgba(200,200,200,0.35)",
+                line_width=0,
+                layer="below",
+            )
+
+    # ── Annotations ──
+    annotations = []
+    if subtitle:
+        annotations.append(
+            dict(
+                text=subtitle,
+                x=0.01,
+                y=1.06,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(size=10, color=GRAY, family=FONT),
+                xanchor="left",
+            )
+        )
+    if last_update:
+        annotations.append(
+            dict(
+                text=f"Last Update: {last_update}",
+                x=0.99,
+                y=1.06,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(size=8.5, color=GRAY, family=FONT),
+                xanchor="right",
+            )
+        )
+    if source:
+        annotations.append(
+            dict(
+                text=source,
+                x=0.01,
+                y=-0.22,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(size=7.5, color=LIGHT_GRAY, family=FONT),
+                xanchor="left",
+            )
+        )
+
+    # Preserve any existing annotations from the figure
+    existing = list(fig.layout.annotations or [])
+    annotations = existing + annotations
+
+    # ── Title ──
+    title_dict = {}
+    if title:
+        title_dict = dict(
+            text=(
+                f'<span style="font-size:13px; font-weight:700; letter-spacing:2.5px; '
+                f'color:{DARK}; font-family:{FONT};">{title}</span>'
+            ),
+            x=0.5,
+            xanchor="center",
+            y=0.97,
+        )
+
+    # ── Layout ──
+    fig.update_layout(
+        width=width,
+        height=height,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        margin=dict(l=50, r=50, t=100, b=90),
+        font=dict(family=FONT, color=DARK, size=10),
+        colorway=colorway,
+        hovermode="x",
+        annotations=annotations,
+        legend=dict(
+            orientation="h",
+            x=0.5,
+            xanchor="center",
+            y=-0.15,
+            font=dict(size=9.5, color=DARK, family=FONT),
+            bgcolor="rgba(255,255,255,0)",
+            itemwidth=40,
+        ),
+    )
+
+    if title_dict:
+        fig.update_layout(title=title_dict)
+
+    # ── Axes ──
+    fig.update_xaxes(
+        showgrid=False,
+        showline=False,
+        tickfont=dict(size=9, color=GRAY, family=FONT),
+    )
+    fig.update_yaxes(
+        showgrid=False,
+        showline=False,
+        tickfont=dict(size=9, color=GRAY, family=FONT),
+        zeroline=False,
+    )
+
+    return fig

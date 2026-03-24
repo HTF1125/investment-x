@@ -126,6 +126,11 @@ def Ffill(series: pd.Series) -> pd.Series:
     return series.ffill()
 
 
+def daily_ffill(series: pd.Series, freq: str = "D") -> pd.Series:
+    """Resample to target frequency (default daily), take last value, and forward fill."""
+    return series.resample(freq).last().ffill()
+
+
 def Rebase(series: pd.Series) -> pd.Series:
     """Rebase series to start at 1.0 using first non-null value."""
     clean = _clean_series(series)
@@ -209,6 +214,31 @@ def CycleForecast(
     fitted_series = pd.Series(y_fitted, index=full_index)
 
     return fitted_series
+
+
+def SimilarPatterns(
+    code: str,
+    query_window: int = 252,
+    end_date: Optional[str] = None,
+    top_n: int = 5,
+    metric: str = "correlation",
+) -> pd.DataFrame:
+    """Find historical periods similar to the recent pattern.
+
+    Returns a DataFrame of normalized cumulative return curves for overlay
+    plotting.  Usage: ``SimilarPatterns("SPX INDEX:PX_LAST")``
+    """
+    from ix.core.quantitative.pattern_search import find_similar_patterns
+    from ix.db.query import Series
+
+    result = find_similar_patterns(
+        prices=Series(code),
+        query_window=query_window,
+        end_date=end_date,
+        top_n=top_n,
+        metric=metric,
+    )
+    return result["curves"]
 
 
 def NumPositivePercentByRow(df: pd.DataFrame):

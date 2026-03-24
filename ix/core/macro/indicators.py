@@ -19,7 +19,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 from ix.db.query import Series
-from ix.db.custom import (
+from ix.core.indicators import (
     # Growth axis
     NumOfPmiMfgPositiveMoM,
     NumOfPmiServicesPositiveMoM,
@@ -353,3 +353,46 @@ def load_korea_data(freq: str = "W") -> dict:
 def load_target_index(ticker: str, freq: str = "W") -> pd.Series:
     """Load a target index price series."""
     return Series(ticker, freq=freq)
+
+
+# ==============================================================================
+# VAMS INDEX / ASSET LOADING
+# ==============================================================================
+
+
+def load_index(index_name: str) -> pd.Series:
+    """Load daily price for a VAMS index from DB, with yfinance fallback."""
+    from ix.core.macro.config import INDEX_MAP, YF_FALLBACK
+
+    db_code = INDEX_MAP.get(index_name, "ACWI US EQUITY:PX_LAST")
+    s = Series(db_code)
+    if s.empty:
+        yf_ticker = YF_FALLBACK.get(index_name, "ACWI")
+        try:
+            import yfinance as yf
+            df = yf.download(yf_ticker, period="max", auto_adjust=True)
+            s = df["Close"].squeeze()
+        except Exception:
+            return pd.Series(dtype=float)
+    s.name = index_name
+    return s.dropna()
+
+
+def load_asset_proxy(code: str, yf_ticker: str) -> pd.Series:
+    """Load a single asset class proxy from DB, with yfinance fallback."""
+    s = Series(code)
+    if s.empty:
+        try:
+            import yfinance as yf
+            df = yf.download(yf_ticker, period="max", auto_adjust=True)
+            s = df["Close"].squeeze()
+        except Exception:
+            return pd.Series(dtype=float)
+    return s.dropna()
+
+
+def resample_weekly(s: pd.Series) -> pd.Series:
+    """Resample to weekly (Wednesday) frequency."""
+    if s.empty:
+        return s
+    return s.resample("W-WED").last().ffill().dropna()

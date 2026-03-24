@@ -29,7 +29,7 @@ from ix.api.schemas import (
     TimeseriesColumnarUpload,
     TimeseriesUpdate,
 )
-from ix.api.dependencies import get_db, get_current_admin_user, get_current_user
+from ix.api.dependencies import get_db, get_current_admin_user, get_current_user, get_optional_user
 from ix.db.models import Timeseries
 from ix.db.conn import ensure_connection, Session
 from ix.db.models.user import User
@@ -353,6 +353,319 @@ def get_timeseries_sources(
     return sorted([r[0] for r in rows])
 
 
+# ────────────────────────────────────────────────────────────────────
+# Bulk-create template: download blank / upload filled
+# ────────────────────────────────────────────────────────────────────
+
+_BULK_META_FIELDS = [
+    "code",
+    "name",
+    "provider",
+    "asset_class",
+    "category",
+    "source",
+    "source_code",
+    "frequency",
+    "unit",
+    "scale",
+    "currency",
+    "country",
+    "remark",
+]
+
+_BULK_EXAMPLE = {
+    "code": "US_CPI_YOY",
+    "name": "US CPI YoY",
+    "provider": "FRED",
+    "asset_class": "Macro",
+    "category": "Inflation",
+    "source": "Fred",
+    "source_code": "CPIAUCSL:value",
+    "frequency": "M",
+    "unit": "%",
+    "scale": "1",
+    "currency": "USD",
+    "country": "US",
+    "remark": "Example — delete this column",
+}
+
+
+@router.get("/timeseries/create_template")
+def bulk_create_template(
+    _current_user: User = Depends(get_current_user),
+):
+    """Download a blank Excel template for bulk timeseries creation.
+
+    Sheet 1 "Metadata": one row per timeseries (columns = fields).
+    Sheet 2 "Data": columnar time-series data (Date | code1 | code2 | …).
+    """
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    wb = Workbook()
+
+    # ── Sheet 1: Metadata ──────────────────────────────────────────
+    ws_meta = wb.active
+    ws_meta.title = "Metadata"
+
+    header_font = Font(name="Consolas", size=9, bold=True)
+    required_font = Font(name="Consolas", size=9, bold=True, color="CC0000")
+    normal_font = Font(name="Consolas", size=9)
+    example_font = Font(name="Consolas", size=9, color="999999", italic=True)
+    header_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+
+    # Header row
+    for ci, field in enumerate(_BULK_META_FIELDS):
+        label = f"{field} *" if field == "code" else field
+        cell = ws_meta.cell(row=1, column=ci + 1, value=label)
+        cell.font = required_font if field == "code" else header_font
+        cell.fill = header_fill
+
+    # Example row (row 2)
+    for ci, field in enumerate(_BULK_META_FIELDS):
+        val = _BULK_EXAMPLE.get(field, "")
+        cell = ws_meta.cell(row=2, column=ci + 1, value=val)
+        cell.font = example_font
+
+    # Column widths
+    widths = {"code": 18, "name": 22, "source_code": 22, "remark": 28}
+    for ci, field in enumerate(_BULK_META_FIELDS):
+        from openpyxl.utils import get_column_letter
+        ws_meta.column_dimensions[get_column_letter(ci + 1)].width = widths.get(field, 14)
+
+    # ── Sheet 2: Data ──────────────────────────────────────────────
+    ws_data = wb.create_sheet(title="Data")
+
+    ws_data.cell(row=1, column=1, value="Date").font = header_font
+    ws_data.cell(row=1, column=1).fill = header_fill
+    # Example code header
+    ws_data.cell(row=1, column=2, value="US_CPI_YOY").font = example_font
+    ws_data.cell(row=1, column=2).fill = header_fill
+
+    # Example dates + values
+    example_dates = pd.date_range(end=pd.Timestamp.now().normalize(), periods=5, freq="ME")
+    for i, dt in enumerate(example_dates):
+        cell = ws_data.cell(row=2 + i, column=1, value=dt.to_pydatetime())
+        cell.font = example_font
+        cell.number_format = "YYYY-MM-DD"
+        ws_data.cell(row=2 + i, column=2, value=round(2.0 + i * 0.3, 1)).font = example_font
+
+    ws_data.column_dimensions["A"].width = 14
+    ws_data.column_dimensions["B"].width = 16
+
+    # ── Save ───────────────────────────────────────────────────────
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.document",
+        headers={
+            "Content-Disposition": 'attachment; filename="timeseries_create_template.xlsx"'
+        },
+    )
+
+
+@router.post("/timeseries/create_from_template")
+@_limiter.limit("10/minute")
+async def bulk_create_from_template(
+    request: Request,
+    file: UploadFile = File(...),
+    _current_user: User = Depends(get_current_admin_user),
+):
+    """Upload a filled bulk-creation template.
+
+    Creates new timeseries from the Metadata sheet and optionally merges
+    time-series data from the Data sheet.
+    """
+    import asyncio
+
+    contents = await file.read()
+    if len(contents) > 200 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 200MB size limit")
+
+    result = await asyncio.to_thread(_process_bulk_create, contents)
+    return result
+
+
+def _process_bulk_create(contents: bytes):
+    """Parse bulk-create template: create timeseries metadata + merge data."""
+    import io
+    import math
+    import time as _time
+    from datetime import datetime as _dt, date as _date
+    from openpyxl import load_workbook
+
+    _t0 = _time.time()
+    logger.info("Bulk create: parsing %d bytes...", len(contents))
+    try:
+        wb = load_workbook(io.BytesIO(contents), data_only=True, read_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid Excel format: {e}")
+
+    # ── Parse Metadata sheet ───────────────────────────────────────
+    ws_meta = wb["Metadata"] if "Metadata" in wb.sheetnames else wb.worksheets[0]
+    rows = list(ws_meta.iter_rows(values_only=True))
+    if len(rows) < 2:
+        raise HTTPException(
+            status_code=400, detail="Metadata sheet must have a header row and at least one data row."
+        )
+
+    # Map header to column index
+    headers = [str(h).strip().replace(" *", "").replace("*", "") if h else "" for h in rows[0]]
+    field_indices = {}
+    for fi, field in enumerate(_BULK_META_FIELDS):
+        if field in headers:
+            field_indices[field] = headers.index(field)
+
+    if "code" not in field_indices:
+        raise HTTPException(
+            status_code=400, detail="Metadata sheet must contain a 'code' column."
+        )
+
+    ts_metas: list[dict] = []
+    for row in rows[1:]:
+        code_idx = field_indices["code"]
+        code_val = row[code_idx] if code_idx < len(row) else None
+        if not code_val or not str(code_val).strip():
+            continue
+        meta: dict = {}
+        for field, idx in field_indices.items():
+            val = row[idx] if idx < len(row) else None
+            if val is not None and str(val).strip():
+                meta[field] = str(val).strip()
+        ts_metas.append(meta)
+
+    if not ts_metas:
+        raise HTTPException(status_code=400, detail="No timeseries found in Metadata sheet.")
+
+    logger.info("Bulk create: found %d timeseries definitions", len(ts_metas))
+
+    # ── Create / update timeseries in DB ───────────────────────────
+    ensure_connection()
+    created_codes: list[str] = []
+    updated_codes: list[str] = []
+    errors: list[str] = []
+
+    with Session() as db:
+        codes = [m["code"] for m in ts_metas]
+        existing = db.query(Timeseries).filter(Timeseries.code.in_(codes)).all()
+        existing_by_code = {ts.code: ts for ts in existing}
+
+        for meta in ts_metas:
+            code = meta["code"]
+            try:
+                ts = existing_by_code.get(code)
+                if ts is None:
+                    ts = Timeseries(code=code)
+                    db.add(ts)
+                    existing_by_code[code] = ts
+                    created_codes.append(code)
+                else:
+                    updated_codes.append(code)
+
+                _apply_timeseries_updates(ts, meta)
+                db.flush()
+            except Exception as e:
+                logger.error("Bulk create error for %s: %s", code, e)
+                errors.append(f"{code}: {e}")
+
+        db.commit()
+
+    logger.info(
+        "Bulk create: %d created, %d updated in %.1fs",
+        len(created_codes), len(updated_codes), _time.time() - _t0,
+    )
+
+    # ── Parse Data sheet (optional) ────────────────────────────────
+    data_result = {}
+    if "Data" in wb.sheetnames:
+        ws_data = wb["Data"]
+        data_rows = list(ws_data.iter_rows(values_only=True))
+
+        if len(data_rows) >= 2:
+            # Row 0 = headers: Date, code1, code2, ...
+            data_headers = data_rows[0]
+            data_codes = [
+                str(h).strip() for h in data_headers[1:] if h and str(h).strip()
+            ]
+
+            if data_codes:
+                all_records: dict[str, dict] = {c: {} for c in data_codes}
+
+                for row in data_rows[1:]:
+                    date_cell = row[0] if row else None
+                    if date_cell is None:
+                        continue
+                    date_str = None
+                    if isinstance(date_cell, (_dt, _date)):
+                        date_str = date_cell.strftime("%Y-%m-%d")
+                    elif isinstance(date_cell, (int, float)):
+                        try:
+                            date_str = pd.to_datetime(
+                                date_cell, unit="D", origin="1899-12-30"
+                            ).strftime("%Y-%m-%d")
+                        except Exception:
+                            pass
+                    elif isinstance(date_cell, str):
+                        try:
+                            date_str = pd.to_datetime(date_cell).strftime("%Y-%m-%d")
+                        except Exception:
+                            pass
+                    if not date_str:
+                        continue
+
+                    for ci, code in enumerate(data_codes):
+                        col_idx = ci + 1
+                        if col_idx < len(row) and row[col_idx] is not None:
+                            try:
+                                val = float(row[col_idx])
+                                if not math.isnan(val):
+                                    all_records[code][date_str] = val
+                            except (ValueError, TypeError):
+                                continue
+
+                # Remove empty codes
+                all_records = {c: d for c, d in all_records.items() if d}
+
+                if all_records:
+                    all_dates = sorted({d for rec in all_records.values() for d in rec})
+                    columns = {
+                        code: [rec.get(d) for d in all_dates]
+                        for code, rec in all_records.items()
+                    }
+                    dates_index = pd.to_datetime(all_dates, errors="coerce")
+                    df = pd.DataFrame(columns, index=dates_index)
+                    df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
+
+                    if not df.empty:
+                        with Session() as local_db:
+                            data_result = _merge_columnar_to_db(df, local_db)
+                        logger.info(
+                            "Bulk create: merged %d data points for %d codes",
+                            data_result.get("points", 0),
+                            len(data_result.get("updated", [])),
+                        )
+
+    wb.close()
+
+    response = {
+        "message": f"Created {len(created_codes)}, updated {len(updated_codes)} timeseries.",
+        "created": created_codes,
+        "updated": updated_codes,
+    }
+    if errors:
+        response["errors"] = errors
+    if data_result:
+        response["data_merged"] = data_result.get("points", 0)
+        response["data_codes"] = data_result.get("updated", [])
+        if data_result.get("not_found"):
+            response["data_not_found"] = data_result["not_found"]
+
+    return response
+
+
 # Universal Excel formula template for the download endpoint.
 # Matches user's EXACT formatted string (including spaces).
 # __C__ is replaced with the actual column letter (B, C, D, ...) per timeseries.
@@ -531,23 +844,12 @@ async def upload_template_data(
     file: UploadFile = File(...),
     _current_user: User = Depends(get_current_admin_user),
 ):
-    """Upload filled Excel template. Same behaviour as upload_data_columnar:
-    Server → saves to R2.  Local → merges into local DB + cloud DB.
-    """
+    """Upload filled Excel template and merge into local DB."""
     import asyncio
 
-    # Validate file type
-    allowed_types = {
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/vnd.ms-excel",
-        "application/octet-stream",
-    }
-    if file.content_type and file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="File must be an Excel spreadsheet (.xlsx)")
-
     contents = await file.read()
-    if len(contents) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File exceeds 50MB size limit")
+    if len(contents) > 200 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 200MB size limit")
 
     # Run blocking work (openpyxl + DB) in threadpool — fresh session inside thread
     result = await asyncio.to_thread(_process_template_upload, contents)
@@ -561,8 +863,6 @@ def _process_template_upload(contents: bytes):
     import time as _time
     from datetime import datetime as _dt, date as _date
     from openpyxl import load_workbook
-    from ix.db.boto import Boto
-    from ix.misc.settings import Settings
 
     _t0 = _time.time()
     logger.info("Template upload: parsing %d bytes...", len(contents))
@@ -634,25 +934,7 @@ def _process_template_upload(contents: bytes):
     num_cols = len(columns)
     codes = sorted(columns.keys())
 
-    # Server: save to R2
-    if Settings.is_server:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"uploads/{timestamp}_col_{num_cols}x{num_dates}.json"
-        try:
-            Boto().save_json(
-                {"format": "columnar", "dates": all_dates, "columns": columns},
-                filename,
-            )
-        except Exception as e:
-            logger.exception("Failed to upload to R2: %s", e)
-            raise HTTPException(status_code=500, detail="Failed to save to storage")
-        return {
-            "message": f"Saved {num_dates} dates × {num_cols} columns to storage.",
-            "file": filename,
-            "codes": codes,
-        }
-
-    # Local: merge into local DB + cloud DB (fresh session for thread safety)
+    # Merge into local DB (fresh session for thread safety)
     ensure_connection()
     dates_index = pd.to_datetime(all_dates, errors="coerce")
     df = pd.DataFrame(columns, index=dates_index)
@@ -672,17 +954,6 @@ def _process_template_upload(contents: bytes):
     }
     if result["not_found"]:
         response["warning"] = f"Codes not found in database: {result['not_found']}"
-
-    # Cloud sync in background thread — don't block the response
-    import threading
-    def _bg_cloud_sync(df_copy, resp_copy):
-        try:
-            _sync_to_cloud(df_copy, resp_copy)
-            logger.info("Template upload: cloud sync done in background (%.1fs total)", _time.time() - _t0)
-        except Exception as e:
-            logger.exception("Template upload: cloud sync failed: %s", e)
-    threading.Thread(target=_bg_cloud_sync, args=(df.copy(), {}), daemon=True).start()
-    response["cloud_status"] = "syncing in background"
 
     logger.info("Template upload: returning response after %.1fs", _time.time() - _t0)
     return response
@@ -1369,7 +1640,9 @@ def _process_database_timeseries(
 ) -> Optional[pd.Series]:
     """Process a timeseries from the database and return as pandas Series."""
     try:
-        data_record = ts._get_or_create_data_record(db)
+        # Use eagerly-loaded data_record when available (from joinedload),
+        # only fall back to DB query if not loaded yet
+        data_record = ts.data_record or ts._get_or_create_data_record(db)
         column_data = data_record.data if data_record and data_record.data else {}
         frequency = ts.frequency
 
@@ -1548,6 +1821,7 @@ def _format_dataframe_response(
     return Response(
         content=json.dumps(column_dict, ensure_ascii=False),
         media_type="application/json",
+        headers={"Cache-Control": "private, max-age=60"},
     )
 
 
@@ -1559,7 +1833,7 @@ async def get_custom_timeseries_data(
     start_date: Optional[str] = Query(None, description="Start date (ISO-8601)"),
     end_date: Optional[str] = Query(None, description="End date (ISO-8601)"),
     db: SessionType = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     GET/POST /api/timeseries.custom - Get selected timeseries data based on provided codes.
@@ -1596,15 +1870,19 @@ async def get_custom_timeseries_data(
 
         def _process_all_codes_sync():
             series_list = []
+
+            # Batch-fetch all codes in one query instead of N sequential queries
+            all_ts = (
+                db.query(Timeseries)
+                .options(joinedload(Timeseries.data_record))
+                .filter(Timeseries.code.in_(codes))
+                .all()
+            )
+            found = {ts.code: ts for ts in all_ts}
+
             for code in codes:
                 try:
-                    ts = (
-                        db.query(Timeseries)
-                        .options(joinedload(Timeseries.data_record))
-                        .filter(Timeseries.code == code)
-                        .first()
-                    )
-
+                    ts = found.get(code)
                     if ts:
                         ts_data = _process_database_timeseries(ts, db)
                         if ts_data is not None:
@@ -1642,7 +1920,7 @@ async def get_custom_timeseries_data(
 @_limiter.limit("20/minute")
 async def exec_code_block(
     request: Request,
-    _current_user: User = Depends(get_current_user),
+    _current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     POST /api/timeseries.exec — Execute a multi-line code block that produces
@@ -1807,30 +2085,6 @@ def _merge_columnar_to_db(df: pd.DataFrame, db: SessionType) -> dict:
     return {"updated": updated_codes, "not_found": not_found_codes, "points": total_points}
 
 
-def _sync_to_cloud(df: pd.DataFrame, response: dict) -> None:
-    """Sync a DataFrame to the cloud (Railway) database. Non-fatal on failure."""
-    from ix.db.conn import cloud_session
-
-    try:
-        with cloud_session() as cloud_db:
-            if cloud_db is None:
-                return
-            cloud_result = _merge_columnar_to_db(df, cloud_db)
-            response["cloud_updated"] = cloud_result["updated"]
-            response["cloud_points_merged"] = cloud_result["points"]
-            if cloud_result["not_found"]:
-                response.setdefault("warning", "")
-                if response["warning"]:
-                    response["warning"] += "; "
-                response["warning"] += f"Cloud DB codes not found: {cloud_result['not_found']}"
-            logger.info(
-                "Cloud DB: synced %d codes (%d points)",
-                len(cloud_result["updated"]), cloud_result["points"],
-            )
-    except Exception as e:
-        logger.exception("Cloud DB sync failed: %s", e)
-        response["cloud_warning"] = f"Cloud sync failed: {str(e)}"
-
 
 @router.post("/upload_data")
 @_limiter.limit("10/minute")
@@ -1840,32 +2094,12 @@ def upload_data(
     db: SessionType = Depends(get_db),
     _current_user: User = Depends(get_current_admin_user),
 ):
-    """
-    POST /api/upload_data - Upload timeseries data.
-    Server: saves JSON to R2.
-    Local: merges directly into local DB + cloud DB (no R2).
-    """
-    from ix.db.boto import Boto
-    from ix.misc.settings import Settings
-
+    """POST /api/upload_data - Upload timeseries data and merge into local DB."""
     if not payload.data:
         raise HTTPException(status_code=400, detail="No data provided")
 
     records = [{"date": d.date, "code": d.code, "value": d.value} for d in payload.data]
-    codes = sorted(set(d.code for d in payload.data))
 
-    # Server: save to R2 only
-    if Settings.is_server:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"uploads/{timestamp}_row_{len(records)}rec.json"
-        try:
-            Boto().save_json({"format": "row", "records": records}, filename)
-        except Exception as e:
-            logger.exception("Failed to upload data to R2: %s", e)
-            raise HTTPException(status_code=500, detail="Failed to save to storage")
-        return {"message": f"Saved {len(records)} records to storage.", "file": filename, "codes": codes}
-
-    # Local: merge into local DB + cloud DB
     ensure_connection()
     df = pd.DataFrame(records)
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
@@ -1883,7 +2117,6 @@ def upload_data(
     if result["not_found"]:
         response["warning"] = f"Codes not found in database: {result['not_found']}"
 
-    _sync_to_cloud(pivoted, response)
     return response
 
 
@@ -1895,36 +2128,10 @@ def upload_data_columnar(
     db: SessionType = Depends(get_db),
     _current_user: User = Depends(get_current_admin_user),
 ):
-    """
-    POST /api/upload_data_columnar - Upload timeseries data.
-    Server: saves JSON to R2.
-    Local: merges directly into local DB + cloud DB (no R2).
-    """
-    from ix.db.boto import Boto
-    from ix.misc.settings import Settings
-
+    """POST /api/upload_data_columnar - Upload columnar timeseries data and merge into local DB."""
     if not payload.dates or not payload.columns:
         raise HTTPException(status_code=400, detail="No data provided")
 
-    num_dates = len(payload.dates)
-    num_cols = len(payload.columns)
-    codes = sorted(payload.columns.keys())
-
-    # Server: save to R2 only
-    if Settings.is_server:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"uploads/{timestamp}_col_{num_cols}x{num_dates}.json"
-        try:
-            Boto().save_json(
-                {"format": "columnar", "dates": payload.dates, "columns": payload.columns},
-                filename,
-            )
-        except Exception as e:
-            logger.exception("Failed to upload columnar data to R2: %s", e)
-            raise HTTPException(status_code=500, detail="Failed to save to storage")
-        return {"message": f"Saved {num_dates} dates × {num_cols} columns to storage.", "file": filename, "codes": codes}
-
-    # Local: merge into local DB + cloud DB
     ensure_connection()
     dates_index = pd.to_datetime(payload.dates, errors="coerce")
     df = pd.DataFrame(payload.columns, index=dates_index)
@@ -1937,7 +2144,6 @@ def upload_data_columnar(
     if result["not_found"]:
         response["warning"] = f"Codes not found in database: {result['not_found']}"
 
-    _sync_to_cloud(df, response)
     return response
 
 
@@ -1948,15 +2154,8 @@ def sync_uploads_from_r2(
     db: SessionType = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    """
-    POST /api/sync_uploads - (Local only) Process pending R2 upload files
-    into local DB + cloud DB, then move them to uploads/processed/.
-    """
+    """POST /api/sync_uploads - Process pending R2 upload files into local DB."""
     from ix.db.boto import Boto
-    from ix.misc.settings import Settings
-
-    if Settings.is_server:
-        raise HTTPException(status_code=400, detail="Sync is only available on local env.")
 
     try:
         ensure_connection()
@@ -2008,10 +2207,6 @@ def sync_uploads_from_r2(
             result = _merge_columnar_to_db(df, db)
             logger.info("Synced %s: %d codes, %d points", key, len(result["updated"]), result["points"])
 
-            # Sync to cloud DB
-            file_response = {}
-            _sync_to_cloud(df, file_response)
-
             # Move to processed
             storage.rename_file(key, key.replace("uploads/", "uploads/processed/", 1))
 
@@ -2019,7 +2214,6 @@ def sync_uploads_from_r2(
                 "file": key,
                 "codes": result["updated"],
                 "points": result["points"],
-                "cloud": file_response.get("cloud_updated", []),
             })
         except Exception as e:
             logger.exception("Failed to process %s: %s", key, e)

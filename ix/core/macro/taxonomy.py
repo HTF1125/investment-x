@@ -25,7 +25,7 @@ from ix.db.query import Series as DBSeries
 # ---------------------------------------------------------------------------
 # Imports from existing ix.db.custom modules
 # ---------------------------------------------------------------------------
-from ix.db.custom import (
+from ix.core.indicators import (
     # PMI
     NumOfPmiMfgPositiveMoM,
     NumOfPmiServicesPositiveMoM,
@@ -177,7 +177,7 @@ from ix.db.custom import (
 
 # cross_asset_correlation (full pairwise version) is not re-exported from
 # __init__.py — only cross_asset_correlation_fast is.  Import directly.
-from ix.db.custom.correlation_regime import cross_asset_correlation
+from ix.core.indicators.cross_asset import cross_asset_correlation
 
 
 # ---------------------------------------------------------------------------

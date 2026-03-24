@@ -39,6 +39,7 @@ from .factor_lens import (
     excess_performance,
     risk_weighted_performance,
 )
+from .pattern_search import find_similar_patterns
 
 __all__ = [
     # Correlation
@@ -97,4 +98,6 @@ __all__ = [
     "factor_attribution",
     "excess_performance",
     "risk_weighted_performance",
+    # Pattern search
+    "find_similar_patterns",
 ]

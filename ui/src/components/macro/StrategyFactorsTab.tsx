@@ -11,7 +11,7 @@ import { LoadingSpinner, SectionTitle, ChartBox } from './SharedComponents';
 const CATEGORIES = ['Growth', 'Inflation', 'Liquidity', 'Tactical'] as const;
 
 const REGIME_COLORS_MAP: Record<string, string> = {
-  'Risk-On': '#3fb950', 'Neutral': '#d29922', 'Risk-Off': '#f85149',
+  'Risk-On': 'rgb(var(--success))', 'Neutral': 'rgb(var(--warning))', 'Risk-Off': 'rgb(var(--destructive))',
 };
 
 export default function StrategyFactorsTab({ factors, signal, isLoading, target }: {
@@ -99,25 +99,25 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
               const sig = catSignals[c];
               if (!sig) return null;
               return (
-                <div key={c} className="panel-card px-2 py-1.5">
-                  <div className="stat-label">{c}</div>
-                  <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">
+                <div key={c} className="panel-card px-3 py-2">
+                  <div className="stat-label mb-1">{c}</div>
+                  <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">
                     {fmt(sig.eq_weight * 100, 0)}%
-                    <span className={`text-[10px] ml-1 ${sig.label === 'Risk-On' ? 'text-emerald-500' : sig.label === 'Risk-Off' ? 'text-rose-500' : 'text-muted-foreground'}`}>
-                      {sig.label}
-                    </span>
+                  </div>
+                  <div className={`text-[10px] font-mono mt-0.5 ${sig.label === 'Risk-On' ? 'text-success' : sig.label === 'Risk-Off' ? 'text-destructive' : 'text-warning'}`}>
+                    {sig.label}
                   </div>
                 </div>
               );
             })}
             {regimeSignal && (
-              <div className="panel-card px-2 py-1.5">
-                <div className="stat-label">Regime</div>
-                <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">
-                  <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ backgroundColor: REGIME_COLORS_MAP[regimeSignal.regime ?? ''] ?? '#888' }} />
-                  {regimeSignal.regime ?? '-'}
-                  <span className="text-[10px] text-muted-foreground ml-1">{fmt(regimeSignal.eq_weight * 100, 0)}%</span>
+              <div className="panel-card px-3 py-2">
+                <div className="stat-label mb-1">Regime</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: REGIME_COLORS_MAP[regimeSignal.regime ?? ''] ?? '#888' }} />
+                  <span className="text-[13px] font-mono font-semibold tabular-nums text-foreground leading-none">{regimeSignal.regime ?? '-'}</span>
                 </div>
+                <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">{fmt(regimeSignal.eq_weight * 100, 0)}% equity</div>
               </div>
             )}
           </div>
@@ -125,17 +125,17 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
           {/* Regime percentiles */}
           {regimeSignal?.growth_pctile != null && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              <div className="panel-card px-2 py-1.5">
-                <div className="stat-label">Growth Percentile</div>
-                <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">{fmt((regimeSignal.growth_pctile ?? 0) * 100, 0)}%</div>
+              <div className="panel-card px-3 py-2">
+                <div className="stat-label mb-1">Growth Percentile</div>
+                <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">{fmt((regimeSignal.growth_pctile ?? 0) * 100, 0)}%</div>
               </div>
-              <div className="panel-card px-2 py-1.5">
-                <div className="stat-label">Inflation Percentile</div>
-                <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">{fmt((regimeSignal.inflation_pctile ?? 0) * 100, 0)}%</div>
+              <div className="panel-card px-3 py-2">
+                <div className="stat-label mb-1">Inflation Percentile</div>
+                <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">{fmt((regimeSignal.inflation_pctile ?? 0) * 100, 0)}%</div>
               </div>
-              <div className="panel-card px-2 py-1.5">
-                <div className="stat-label">Signal Date</div>
-                <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">{regimeSignal.date}</div>
+              <div className="panel-card px-3 py-2">
+                <div className="stat-label mb-1">Signal Date</div>
+                <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">{regimeSignal.date}</div>
               </div>
             </div>
           )}
@@ -149,15 +149,15 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
                 if (!sel?.length) return null;
                 return (
                   <div key={c}>
-                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/50 mb-1 flex items-center">
-                      <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: STRAT_COLORS[c] }} />
+                    <div className="stat-label mb-1.5 flex items-center gap-1.5">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STRAT_COLORS[c] }} />
                       {c} ({sel.length})
                     </div>
                     <div className="space-y-0.5">
                       {sel.map((f, i) => (
-                        <div key={i} className="flex items-center justify-between text-[10px]">
-                          <span className="text-foreground truncate mr-2">{f.name}</span>
-                          <span className={`font-mono tabular-nums shrink-0 ${f.ic > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                        <div key={i} className="flex items-center justify-between text-[10px] gap-2">
+                          <span className="text-foreground truncate">{f.name}</span>
+                          <span className={`font-mono tabular-nums shrink-0 ${f.ic > 0 ? 'text-success' : 'text-destructive'}`}>
                             {f.ic > 0 ? '+' : ''}{f.ic.toFixed(4)}
                           </span>
                         </div>
@@ -189,17 +189,17 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
         <>
           {/* Category summary */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-            <div className="panel-card px-2 py-1.5">
-              <div className="stat-label">Rebalances</div>
-              <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">{cat.n_rebalances}</div>
+            <div className="panel-card px-3 py-2">
+              <div className="stat-label mb-1">Rebalances</div>
+              <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">{cat.n_rebalances}</div>
             </div>
-            <div className="panel-card px-2 py-1.5">
-              <div className="stat-label">Unique Indicators</div>
-              <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">{cat.n_unique_indicators}</div>
+            <div className="panel-card px-3 py-2">
+              <div className="stat-label mb-1">Unique Indicators</div>
+              <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">{cat.n_unique_indicators}</div>
             </div>
-            <div className="panel-card px-2 py-1.5">
-              <div className="stat-label">Latest Selection</div>
-              <div className="text-[13px] font-mono font-semibold tabular-nums text-foreground">{cat.latest_selection?.date ?? '-'}</div>
+            <div className="panel-card px-3 py-2">
+              <div className="stat-label mb-1">Latest Selection</div>
+              <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">{cat.latest_selection?.date ?? '-'}</div>
             </div>
           </div>
 
@@ -212,17 +212,17 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
             <div className="lg:col-span-2 space-y-3">
               <div className="panel-card px-3 py-2">
                 <SectionTitle info="Top 10 indicators by selection frequency.">Top 10 Indicators</SectionTitle>
-                <table className="w-full text-[11px]">
+                <table className="data-table text-[11px]">
                   <thead>
-                    <tr className="border-b border-border/40">
-                      <th className="text-left py-1 pr-2 text-[9px] font-mono uppercase text-muted-foreground/50">Indicator</th>
-                      <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Count</th>
-                      <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Freq</th>
+                    <tr>
+                      <th className="text-left">Indicator</th>
+                      <th className="text-right">Count</th>
+                      <th className="text-right">Freq</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(cat.frequency ?? []).slice(0, 10).map((f, i) => (
-                      <tr key={i} className="border-b border-border/20">
+                      <tr key={i}>
                         <td className="py-1 pr-2 text-foreground text-[11px] truncate max-w-[180px]">{f.indicator}</td>
                         <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{f.count}</td>
                         <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{fmt(f.pct, 0)}%</td>
@@ -236,18 +236,18 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
               {cat.latest_selection?.indicators?.length > 0 && (
                 <div className="panel-card px-3 py-2">
                   <SectionTitle info="Indicators selected at the most recent walk-forward rebalance, with their trailing information coefficient.">Latest Selection</SectionTitle>
-                  <table className="w-full text-[11px]">
+                  <table className="data-table text-[11px]">
                     <thead>
-                      <tr className="border-b border-border/40">
-                        <th className="text-left py-1 pr-2 text-[9px] font-mono uppercase text-muted-foreground/50">Indicator</th>
-                        <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">IC</th>
+                      <tr>
+                        <th className="text-left">Indicator</th>
+                        <th className="text-right">IC</th>
                       </tr>
                     </thead>
                     <tbody>
                       {cat.latest_selection.indicators.map((ind, i) => (
-                        <tr key={i} className="border-b border-border/20">
+                        <tr key={i}>
                           <td className="py-1 pr-2 text-foreground text-[11px] truncate max-w-[200px]">{ind.name}</td>
-                          <td className={`text-right py-1 px-1 font-mono tabular-nums text-[11px] ${ind.ic > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          <td className={`text-right py-1 px-1 font-mono tabular-nums text-[11px] ${ind.ic > 0 ? 'text-success' : 'text-destructive'}`}>
                             {ind.ic > 0 ? '+' : ''}{ind.ic.toFixed(4)}
                           </td>
                         </tr>

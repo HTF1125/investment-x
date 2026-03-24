@@ -1,7 +1,5 @@
 export { default as OverviewTab } from './OverviewTab';
 export { default as RegimeTab } from './RegimeTab';
-export { default as LiquidityTab } from './LiquidityTab';
-export { default as TacticalTab } from './TacticalTab';
 export { default as StrategyTab } from './StrategyTab';
 export { default as StrategyFactorsTab } from './StrategyFactorsTab';
 export { default as MethodologyTab } from './MethodologyTab';

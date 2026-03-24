@@ -18,6 +18,11 @@ export interface SeriesConfig {
   lineStyle?: string;
   lineWidth?: number;
   paneId?: number;
+  showMarkers?: boolean;
+  markerSize?: number;
+  markerShape?: string;
+  fillOpacity?: number;
+  showDataLabels?: boolean;
 }
 
 export interface PaneConfig {
@@ -78,6 +83,22 @@ export interface BuildFigureOpts {
   showRecessions?: boolean;
   /** Hover/crosshair mode */
   hoverMode?: 'x unified' | 'closest' | 'x';
+  /** Show legend */
+  showLegend?: boolean;
+  /** Legend position */
+  legendPosition?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'top-center';
+  /** Show gridlines (default true) */
+  showGridlines?: boolean;
+  /** Gridline dash style */
+  gridlineStyle?: string;
+  /** Per-axis custom title text. Key: "paneId-yAxisIndex" */
+  axisTitles?: Record<string, string>;
+  /** Chart title font size (default 14) */
+  titleFontSize?: number;
+  /** Show zero line (default true) */
+  showZeroline?: boolean;
+  /** Bar gap 0-0.8 */
+  bargap?: number;
 }
 
 const NBER_RECESSIONS: [string, string][] = [
@@ -95,7 +116,7 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
     startDate = '', endDate = '',
     compact = false,
     showRecessions = false,
-    hoverMode = 'x unified',
+    hoverMode = 'x',
   } = opts;
   const allSeries = opts.allSeries || series;
   const panes = opts.panes?.length ? opts.panes : [{ id: 0, label: 'Pane 1' }];
@@ -152,6 +173,26 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
   };
   const getYAxisPrimary = (paneId: number): string => getYAxisRef(paneId, 0);
 
+  // ── Style constants (moved before traces so fg is available for data labels) ──
+  const fg = isLight ? '#0f1118' : '#e1e6f0';
+
+  // ── Date range (moved before traces so visStartIdx/visEndIdx available for data labels) ──
+  const xRangeStart = startDate || undefined;
+  const xRangeEnd = endDate || undefined;
+  const hasXRange = !!(xRangeStart || xRangeEnd);
+
+  let visStartIdx = 0;
+  let visEndIdx = dates.length - 1;
+  if (xRangeStart) {
+    const idx = dates.findIndex((d) => d >= xRangeStart);
+    if (idx >= 0) visStartIdx = idx;
+  }
+  if (xRangeEnd) {
+    for (let i = dates.length - 1; i >= 0; i--) {
+      if (dates[i] <= xRangeEnd) { visEndIdx = i; break; }
+    }
+  }
+
   // ── Check if any series uses stacked modes ──
   const hasStackedBar = series.some((s) => s.chartType === 'stackedbar');
   const hasStackedArea = series.some((s) => s.chartType === 'stackedarea');
@@ -180,15 +221,38 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
       name: s.name || s.code,
       yaxis: yAxisRef, xaxis: xAxisRef,
       marker: { color },
-      line: { color, width, dash },
+      line: { color, width, dash, shape: 'spline', smoothing: 0.8 },
       connectgaps: true,
-      hovertemplate: `<b>${s.name || s.code}</b><br>%{x|%Y-%m-%d}<br>%{y:,.2f}<extra></extra>`,
+      hovertemplate: `%{x|%b %d, %Y}  <b>%{y:,.2f}</b><extra>${s.name || s.code}</extra>`,
+    };
+
+    // Data labels support — only for series with <200 visible points
+    const dataLabelProps = (() => {
+      if (!s.showDataLabels) return {};
+      const visibleValues = values.slice(visStartIdx, visEndIdx + 1);
+      const nonNullCount = visibleValues.filter((v) => v != null).length;
+      if (nonNullCount >= 200) return {};
+      return {
+        text: values.map((v) => v != null ? (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : v.toFixed(2)) : ''),
+        textposition: 'top center' as const,
+        textfont: { size: compact ? 7 : 8, color: fg, family: 'Inter, sans-serif' },
+      };
+    })();
+
+    // Fill opacity hex suffix
+    const fillHex = (opacity?: number, fallback = '18') => {
+      if (opacity == null) return fallback;
+      return Math.round((opacity / 100) * 255).toString(16).padStart(2, '0');
     };
 
     switch (s.chartType) {
-      case 'bar': return { ...base, type: 'bar' };
-      case 'stackedbar': return { ...base, type: 'bar' };
-      case 'area': return { ...base, type: 'scatter', mode: 'lines', fill: 'tozeroy', fillcolor: color + '18' };
+      case 'bar': return { ...base, type: 'bar', ...dataLabelProps };
+      case 'stackedbar': return { ...base, type: 'bar', ...dataLabelProps };
+      case 'area': return {
+        ...base, type: 'scatter', mode: 'lines', fill: 'tozeroy',
+        fillcolor: color + fillHex(s.fillOpacity, '18'),
+        ...dataLabelProps,
+      };
       case 'stackedarea': {
         // Group stacked areas by (pane, yAxisIndex) so independent panes stack separately
         const groupKey = `${seriesPaneId}-${s.yAxisIndex ?? 0}`;
@@ -198,31 +262,26 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
         return {
           ...base, type: 'scatter', mode: 'lines',
           stackgroup: stackAreaGroups.get(groupKey),
-          fillcolor: color + '40',
+          fillcolor: color + fillHex(s.fillOpacity, '40'),
           line: { ...base.line, width: 0.5 },
+          ...dataLabelProps,
         };
       }
-      case 'scatter': return { ...base, type: 'scatter', mode: 'markers', marker: { ...base.marker, size: compact ? 3 : 4 } };
-      default: return { ...base, type: 'scatter', mode: 'lines' };
+      case 'scatter': return {
+        ...base, type: 'scatter', mode: 'markers',
+        marker: { ...base.marker, size: s.markerSize ?? (compact ? 3 : 4), symbol: s.markerShape || 'circle' },
+        ...dataLabelProps,
+      };
+      default: {
+        // Line chart — optionally show markers
+        const mode = s.showMarkers ? 'lines+markers' : 'lines';
+        const markerProps = s.showMarkers ? {
+          marker: { ...base.marker, size: s.markerSize ?? 4, symbol: s.markerShape || 'circle' },
+        } : {};
+        return { ...base, type: 'scatter', mode, ...markerProps, ...dataLabelProps };
+      }
     }
   });
-
-  // ── Date range ──
-  const xRangeStart = startDate || undefined;
-  const xRangeEnd = endDate || undefined;
-  const hasXRange = !!(xRangeStart || xRangeEnd);
-
-  let visStartIdx = 0;
-  let visEndIdx = dates.length - 1;
-  if (xRangeStart) {
-    const idx = dates.findIndex((d) => d >= xRangeStart);
-    if (idx >= 0) visStartIdx = idx;
-  }
-  if (xRangeEnd) {
-    for (let i = dates.length - 1; i >= 0; i--) {
-      if (dates[i] <= xRangeEnd) { visEndIdx = i; break; }
-    }
-  }
 
   // Compute y-axis range per (pane, yAxisIndex) from visible data window.
   // For stacked bars/areas, sum all series per date to get the true axis extent.
@@ -287,14 +346,16 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
     }
   }
 
-  // ── Style constants ──
-  const fg = isLight ? '#020617' : '#dbeafe';
-  const grid = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(148,163,184,0.04)';
+  // ── Style constants (continued) ──
+  const grid = isLight ? 'rgba(15,17,24,0.07)' : 'rgba(148,163,184,0.05)';
   const baseFontSize = compact ? 9 : 10;
   const axisBase = {
-    gridcolor: grid, griddash: 'dot' as const, zerolinecolor: grid, showgrid: true,
+    gridcolor: grid, griddash: (opts.gridlineStyle || 'solid') as any, gridwidth: 0.5,
+    zerolinecolor: grid, zerolinewidth: 1,
+    showgrid: opts.showGridlines ?? true,
+    zeroline: opts.showZeroline ?? true,
     tickfont: { color: fg, size: baseFontSize, family: 'Inter, sans-serif' },
-    linecolor: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.06)',
+    linecolor: isLight ? 'rgba(15,17,24,0.12)' : 'rgba(255,255,255,0.06)',
   };
 
   const maxAxesPerPane = Math.max(...panes.map((p) => paneAxisIndices[p.id].size));
@@ -305,8 +366,8 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
     plot_bgcolor: 'rgba(0,0,0,0)',
     font: { color: fg, family: 'Inter, sans-serif', size: compact ? 10 : 11 },
     margin: {
-      t: title ? (compact ? 28 : 35) : (compact ? 8 : 10),
-      l: compact ? 8 : 10,
+      t: compact ? 24 : (title ? 35 : 10),
+      l: compact ? 16 : 20,
       r: compact ? 45 : 55,
       b: compact ? 28 : 35,
     },
@@ -314,25 +375,41 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
     dragmode: 'zoom',
     hoverdistance: 20,
     spikedistance: -1,
-    showlegend: compact ? series.length > 1 : false,
-    ...(compact && series.length > 1 ? {
-      legend: {
-        orientation: 'h' as const, x: 0, y: 1.02, xanchor: 'left', yanchor: 'bottom',
-        font: { size: 9, color: fg }, bgcolor: 'rgba(0,0,0,0)',
-        tracegroupgap: 2,
-      },
-    } : {}),
-    ...(hasStackedBar ? { barmode: 'stack' as const } : {}),
+    showlegend: opts.showLegend ?? (compact && series.length > 1),
+    ...(() => {
+      const showLeg = opts.showLegend ?? (compact && series.length > 1);
+      if (!showLeg) return {};
+      const posMap: Record<string, { x: number; y: number; xanchor: string; yanchor: string }> = {
+        'top-right': { x: 0.99, y: 0.99, xanchor: 'right', yanchor: 'top' },
+        'top-left': { x: 0.01, y: 0.99, xanchor: 'left', yanchor: 'top' },
+        'bottom-right': { x: 0.99, y: 0.01, xanchor: 'right', yanchor: 'bottom' },
+        'bottom-left': { x: 0.01, y: 0.01, xanchor: 'left', yanchor: 'bottom' },
+        'top-center': { x: 0.5, y: 0.99, xanchor: 'center', yanchor: 'top' },
+      };
+      const pos = posMap[opts.legendPosition || 'top-right'] || posMap['top-right'];
+      return {
+        legend: {
+          orientation: 'h' as const, ...pos,
+          font: { size: compact ? 9 : 10, color: fg }, bgcolor: 'rgba(0,0,0,0)',
+          tracegroupgap: 2,
+        },
+      };
+    })(),
+    ...(hasStackedBar ? { barmode: 'relative' as const } : {}),
+    ...(opts.bargap != null ? { bargap: opts.bargap } : {}),
     hoverlabel: {
-      bgcolor: isLight ? 'rgba(255,255,255,0.98)' : 'rgba(15,23,42,0.98)',
-      bordercolor: isLight ? 'rgba(15,23,42,0.1)' : 'rgba(148,163,184,0.2)',
-      font: { color: fg, family: 'Inter, sans-serif', size: compact ? 10 : 11 },
+      bgcolor: isLight ? 'rgba(255,255,255,0.98)' : 'rgba(12,14,22,0.98)',
+      bordercolor: isLight ? 'rgba(15,17,24,0.12)' : 'rgba(148,163,184,0.15)',
+      font: { color: isLight ? '#0f1118' : '#e1e6f0', family: "'Inter', sans-serif", size: compact ? 10 : 11 },
+      namelength: -1,
     },
     ...(title ? {
       title: {
         text: title,
-        font: { size: compact ? 12 : 14, color: fg, family: 'Inter, sans-serif' },
-        x: 0.5, xanchor: 'center',
+        font: { size: compact ? 11 : (opts.titleFontSize ?? 14), color: fg, family: 'Inter, sans-serif' },
+        ...(compact
+          ? { x: 0.01, xanchor: 'left', y: 0.98, yanchor: 'top', pad: { t: 4, l: 4 } }
+          : { x: 0.5, xanchor: 'center' }),
       },
     } : {}),
     modebar: compact
@@ -409,8 +486,7 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
           const pad = (logHi - logLo) * 0.05 || 0.1;
           computedRange = [logLo - pad, logHi + pad];
         } else {
-          const baseVal = axisBase_val ?? 0;
-          const lo = Math.min(baseVal, yRange[0]);
+          const lo = hasCustomBase ? Math.min(axisBase_val!, yRange[0]) : yRange[0];
           const span = yRange[1] - lo;
           const pad = span > 0 ? span * 0.05 : Math.abs(lo) * 0.05 || 1;
           computedRange = [lo - pad, yRange[1] + pad];
@@ -421,7 +497,9 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
       const rangeModeProps = !computedRange && !isLog && !hasManualRange
         ? (hasCustomBase
           ? { rangemode: 'normal' as const, range: [axisBase_val, undefined], autorange: 'max' as const }
-          : { rangemode: 'tozero' as const })
+          : axisHasStacked
+            ? { rangemode: 'tozero' as const }
+            : { rangemode: 'normal' as const })
         : {};
 
       // Determine autorange considering inversion and computed range
@@ -438,7 +516,9 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
         type: isLog ? 'log' : undefined,
         showgrid: isPrimary,
         showspikes: isPrimary,
-        tickformat: isPct ? '.1%' : '~s',
+        tickformat: isPct ? '.1%' : undefined,
+        exponentformat: 'SI',
+        separatethousands: true,
         minexponent: 3,
         ...rangeModeProps,
         ...(computedRange
@@ -460,8 +540,15 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
         title: undefined,
       };
 
-      // Y-axis labels when multiple axes — use native axis title so it follows autoshift
-      if (indices.length > 1) {
+      // Y-axis labels — custom title or auto-label when multiple axes
+      const customTitle = opts.axisTitles?.[rangeKey];
+      if (customTitle) {
+        layout[yKey].title = {
+          text: customTitle,
+          font: { size: 9, color: fg, family: 'Inter, sans-serif' },
+          standoff: 2,
+        };
+      } else if (indices.length > 1) {
         layout[yKey].title = {
           text: `Y${yi + 1}${isLog ? ' log' : ''}`,
           font: { size: 9, color: fg, family: 'Inter, sans-serif' },
@@ -522,7 +609,7 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
   if (showRecessions && dates.length >= 2) {
     const dataStart = dates[0];
     const dataEnd = dates[dates.length - 1];
-    const recFill = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(148,163,184,0.06)';
+    const recFill = isLight ? 'rgba(220,38,38,0.08)' : 'rgba(248,113,113,0.12)';
     for (const [rStart, rEnd] of NBER_RECESSIONS) {
       if (rEnd < dataStart || rStart > dataEnd) continue;
       layout.shapes.push({
@@ -534,4 +621,38 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
   }
 
   return { data: traces, layout };
+}
+
+// ── Figure cache helpers ─────────────────────────────────────────────────────
+
+/**
+ * Strip theme-specific properties from a Plotly figure so it can be stored
+ * as a theme-neutral cache.  `applyChartTheme()` re-applies the correct
+ * theme at render time, but trace-level `textfont.color` (data labels) is
+ * NOT handled by `applyChartTheme`, so we strip it here.
+ */
+export function stripThemeFromFigure(
+  fig: { data: any[]; layout: any },
+): { data: any[]; layout: any } {
+  const data = fig.data.map((trace: any) => {
+    const t = { ...trace };
+    // Remove theme-specific data-label color
+    if (t.textfont?.color) {
+      t.textfont = { ...t.textfont };
+      delete t.textfont.color;
+    }
+    return t;
+  });
+
+  const layout = { ...fig.layout };
+  // Reset backgrounds to transparent — theme will set them
+  layout.paper_bgcolor = 'rgba(0,0,0,0)';
+  layout.plot_bgcolor = 'rgba(0,0,0,0)';
+  // Remove font colors — theme will set them
+  if (layout.font?.color) {
+    layout.font = { ...layout.font };
+    delete layout.font.color;
+  }
+
+  return { data, layout };
 }

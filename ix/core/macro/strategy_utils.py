@@ -15,32 +15,29 @@ import numpy as np
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# Index universe
+# Index universe for strategy backtesting (broader than config.TARGET_INDICES
+# — includes commodities, bonds, and FX for cross-asset allocation)
 # ---------------------------------------------------------------------------
 
 INDEX_MAP = {
-    "ACWI": "ACWI US EQUITY:PX_LAST",
-    "S&P 500": "SPX Index:PX_LAST",
-    "DAX": "DAX Index:PX_LAST",
-    "Nikkei 225": "NKY Index:PX_LAST",
-    "KOSPI": "KOSPI Index:PX_LAST",
-    "Hang Seng": "HSI Index:PX_LAST",
-    "Shanghai Comp": "SHCOMP Index:PX_LAST",
-    "Stoxx 50": "SX5E Index:PX_LAST",
-    "FTSE 100": "UKX Index:PX_LAST",
-    "MSCI EM": "MXEF Index:PX_LAST",
-    "Nasdaq 100": "NDX Index:PX_LAST",
-    "Gold": "IAU US EQUITY:PX_LAST",
+    "S&P 500": "SPX INDEX:PX_LAST",
+    "Nasdaq 100": "NDX INDEX:PX_LAST",
+    "DAX": "DAX INDEX:PX_LAST",
+    "Nikkei 225": "NKY INDEX:PX_LAST",
+    "KOSPI": "KOSPI INDEX:PX_LAST",
+    "Dollar": "DXY INDEX:PX_LAST",
+    "Gold": "GC1 COMDTY:PX_LAST",
+    "Silver": "SI1 COMDTY:PX_LAST",
+    "Treasury 20Y": "TLT US EQUITY:PX_LAST",
 }
 
 INDEX_NAMES = list(INDEX_MAP.keys())
 
 YF_FALLBACK = {
-    "ACWI": "ACWI", "S&P 500": "^GSPC", "DAX": "^GDAXI",
-    "Nikkei 225": "^N225", "KOSPI": "^KS11", "Hang Seng": "^HSI",
-    "Shanghai Comp": "000001.SS", "Stoxx 50": "^STOXX50E",
-    "FTSE 100": "^FTSE", "MSCI EM": "EEM", "Nasdaq 100": "^NDX",
-    "Gold": "IAU",
+    "S&P 500": "^GSPC", "Nasdaq 100": "^NDX", "DAX": "^GDAXI",
+    "Nikkei 225": "^N225", "KOSPI": "^KS11",
+    "Dollar": "DX-Y.NYB", "Gold": "IAU", "Silver": "SIL",
+    "Treasury 20Y": "TLT",
 }
 
 # ---------------------------------------------------------------------------

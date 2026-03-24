@@ -9,8 +9,9 @@ from ix.db.conn import get_session
 from ix.db.models import TelegramMessage
 from ix.db.models.news_item import NewsItem
 from ix.db.models.research_report import ResearchReport
-from ix.api.dependencies import get_current_user
+from ix.api.dependencies import get_current_user, get_optional_user
 from ix.api.rate_limit import limiter as _limiter
+from ix.api.schemas import ensure_tz
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 
@@ -157,7 +158,7 @@ def _is_valid_date(name: str) -> bool:
 def list_research_reports(
     request: Request,
     db: Session = Depends(get_session),
-    _user=Depends(get_current_user),
+    _user=Depends(get_optional_user),
 ):
     """List available research report dates from the database."""
     rows = (
@@ -191,7 +192,7 @@ def get_research_report(
     request: Request,
     date: str,
     db: Session = Depends(get_session),
-    _user=Depends(get_current_user),
+    _user=Depends(get_optional_user),
 ):
     """Return the full research report for a given date from the database."""
     if not _is_valid_date(date):
@@ -222,7 +223,7 @@ def get_research_report(
         "has_infographic": row.has_infographic,
         "has_slide_deck": row.has_slide_deck or (_SLIDE_DECKS_DIR / f"{date}.pdf").is_file(),
         "sources": row.sources or {},
-        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "updated_at": ensure_tz(row.updated_at).isoformat() if row.updated_at else None,
     }
 
 

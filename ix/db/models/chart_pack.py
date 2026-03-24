@@ -23,10 +23,17 @@ class ChartPack(Base):
     description = Column(Text, nullable=True)
     charts = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     is_published = Column(Boolean, nullable=False, server_default=text("false"))
+    is_deleted = Column(Boolean, nullable=False, server_default=text("false"))
+    deleted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
     creator = relationship("User", foreign_keys=[user_id], lazy="select")
+
+    @property
+    def active_charts(self) -> list:
+        """Return only non-deleted charts."""
+        return [c for c in (self.charts or []) if not c.get("deleted")]
 
 
 Index("ix_chart_packs_updated_at", ChartPack.updated_at.desc())
