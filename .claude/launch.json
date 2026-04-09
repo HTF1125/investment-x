@@ -1,0 +1,58 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "ix.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "ix"],
+      "port": 8000
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
+      "cwd": "ui",
+      "port": 3001,
+      "autoPort": true,
+      "env": {
+        "API_URL": "http://127.0.0.1:8000"
+      }
+    },
+    {
+      "name": "macro-factor-test",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "scripts/macro_factor_test.py", "--server.headless", "true"],
+      "port": 8506
+    },
+    {
+      "name": "macro-strategy-lab",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "frameworks/macro_strategy/app.py", "--server.headless", "true", "--server.port", "8600"],
+      "port": 8600
+    },
+    {
+      "name": "spending",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "scripts/spending_dashboard.py", "--server.headless", "true", "--server.port", "8601"],
+      "port": 8601
+    },
+    {
+      "name": "gold-ic-chart",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "scripts/gold_ic_chart.py", "--server.headless", "true", "--server.port", "8602"],
+      "port": 8602
+    },
+    {
+      "name": "regime-dashboard",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "scripts/regime_dashboard.py", "--server.headless", "true", "--server.port", "8603"],
+      "port": 8603
+    },
+    {
+      "name": "technical-search",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "apps/technical_search.py", "--server.headless", "true", "--server.port", "8507"],
+      "port": 8507
+    }
+  ]
+}
