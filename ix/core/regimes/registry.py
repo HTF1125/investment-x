@@ -567,8 +567,18 @@ def _register_builtins() -> None:
         display_name="Vol Term (Complacent × Stressed)",
         description=(
             "2-state VIX term-structure regime — z-score of VIX3M/VIX ratio + "
-            "3M change + VIX-realized spread. Target: SPY 3M fwd. Contrarian "
-            "mapping at backwardation extreme. Draft — needs VIX3M seeded."
+            "3M change. Target: SPY 3M fwd. Contrarian mapping at the "
+            "backwardation extreme. Rebuilt 2026-04-09 — VRP indicator "
+            "dropped (noisy, direction-ambiguous). **Weak standalone signal** "
+            "(per-asset median |d|=0.05, no strong assets) — the SPY@3M "
+            "vol-normalized spread of 0.75 is narrowly targeted and does "
+            "NOT generalize across the macro universe. Intended use: "
+            "**always composed with a balanced partner**. Best pairings "
+            "by multi-asset Cohen's d: `dollar_trend` (joint median |d|=0.59, "
+            "6 strong, all 4/4 joint states tradeable), `commodity_cycle` "
+            "(0.54), `risk_appetite` (0.51), `credit_trend` (0.50). "
+            "DO NOT compose with `cb_surprise` — the joint collapses cb_surprise's "
+            "tail states below n=30."
         ),
         states=["Complacent", "Stressed"],
         dimensions=["VolTerm"],
@@ -830,7 +840,14 @@ def _register_builtins() -> None:
             "3-state central bank policy surprise regime — z-score of "
             "30-day change in 1y OIS, 2y OIS, and terminal rate spread. "
             "Shortest-horizon regime in the registry. Target: SPY 1M fwd. "
-            "Fast-decaying signal, best paired with slower axes."
+            "Fast-decaying signal. **Exceptional multi-asset Cohen's d "
+            "standalone**: BIL 0.86, IEF 0.78, TLT 0.66, TIP 0.63, HYG 0.61, "
+            "DBC 0.56, GLD 0.53 — the strongest rate/duration regime in the "
+            "registry. Best composed with `dispersion` (joint median |d|=0.61, "
+            "IEF joint d=3.27) or `liquidity` (joint median |d|=0.53, 7 "
+            "strong assets). DO NOT compose with tail-concentrated regimes "
+            "like `vol_term` — the joint collapses Dovish/Hawkish tails "
+            "below n=30 and destroys the standalone signal."
         ),
         states=["Dovish", "Neutral", "Hawkish"],
         dimensions=["CBSurprise"],
