@@ -12,7 +12,7 @@ import pandas as pd
 
 from ix.db.query import Series
 from ix.core.macro.config import TARGET_INDICES
-from ix.misc import get_logger
+from ix.common import get_logger
 
 logger = get_logger(__name__)
 

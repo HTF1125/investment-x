@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ix.core.transforms import daily_ffill
+from ix.common.data.transforms import daily_ffill
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ FastAPI dependencies for authentication and database.
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
-from ix.misc.auth import verify_token
+from ix.common.security.auth import verify_token
 from ix.db.models.user import User
 from ix.db.conn import Session, get_session
 
@@ -30,6 +30,20 @@ def get_current_user(
     # 2. Check Cookie if Header is missing
     if not token:
         token = request.cookies.get("access_token")
+
+    if not token:
+        # Fallback 3: Check X-API-Key header
+        api_key_raw = request.headers.get("x-api-key")
+        if api_key_raw:
+            from ix.db.models.api_key import ApiKey
+
+            user = ApiKey.get_user_by_key_hash(api_key_raw)
+            if not user or getattr(user, "disabled", False):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid API key",
+                )
+            return user
 
     if not token:
         raise HTTPException(
@@ -75,6 +89,14 @@ def get_optional_user(
     if not token:
         token = request.cookies.get("access_token")
     if not token:
+        # Fallback 3: Check X-API-Key header
+        api_key_raw = request.headers.get("x-api-key")
+        if api_key_raw:
+            from ix.db.models.api_key import ApiKey
+
+            user = ApiKey.get_user_by_key_hash(api_key_raw)
+            if user and not getattr(user, "disabled", False):
+                return user
         return None
     payload = verify_token(token, log_invalid=False)
     if not payload:

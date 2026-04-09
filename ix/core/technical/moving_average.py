@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from ix.db.client import get_timeseries
-from ix.misc import get_logger
+from ix.common import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from ix.db.query import Series
-from ix.misc.date import today
+from ix.common.date import today
 
 
 def ConstantReturnBenchmark(

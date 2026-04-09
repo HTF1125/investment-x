@@ -2,8 +2,8 @@ import io
 import json
 import boto3
 from typing import List
-from ix.misc.settings import Settings
-from ix.misc import get_logger
+from ix.common.settings import Settings
+from ix.common import get_logger
 
 logger = get_logger(__name__)
 

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ix.db.query import Series, MultiSeries
-from ix.core.transforms import StandardScalar
+from ix.common.data.transforms import StandardScalar
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -925,11 +925,35 @@ def business_confidence_us() -> pd.Series:
     return s.dropna()
 
 
-# NOTE: NAAIM Exposure Index — BLOCKED (needs web scraper for naaim.org data)
-# def naaim_exposure() -> pd.Series:
-#     """NAAIM Exposure Index: active manager equity exposure (0-200%).
-#     Requires scraping naaim.org — no FRED/FactSet code available."""
-#     pass
+# ── NAAIM Exposure Index ───────────────────────────────────────────────────
+
+
+def naaim_exposure() -> pd.Series:
+    """NAAIM Exposure Index: active manager equity exposure (0-200%).
+
+    Contrarian signal — extremes tend to reverse.
+    > 100 = leveraged long. < 0 = net short.
+    Source: naaim.org (collected via NAAIMExposureCollector).
+    """
+    s = Series("NAAIM_EXPOSURE")
+    if s.empty:
+        return pd.Series(dtype=float)
+    s.name = "NAAIM Exposure Index"
+    return s.dropna()
+
+
+def naaim_exposure_zscore(window: int = 78) -> pd.Series:
+    """Z-scored NAAIM Exposure for extreme detection.
+
+    |z| > 1.5 flags contrarian opportunities.
+    Source: Derived from NAAIM Exposure Index.
+    """
+    exp = naaim_exposure()
+    if exp.empty:
+        return pd.Series(dtype=float)
+    z = StandardScalar(exp, window)
+    z.name = "NAAIM Exposure Z-Score"
+    return z.dropna()
 
 
 # ── Big Four Recession Indicators ──────────────────────────────────────────

@@ -53,7 +53,7 @@ class ResearchSource(Base):
     topics = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
     report_id = Column(
         UUID(as_uuid=False),
-        ForeignKey("research_report.id"),
+        ForeignKey("briefings.id"),
         nullable=True,
     )
     published_at = Column(DateTime, nullable=True, index=True)

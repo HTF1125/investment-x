@@ -1,10 +1,10 @@
 """Research library — upload / list / serve / delete institutional research PDFs (DB-backed)."""
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from slowapi import Limiter
@@ -15,7 +15,7 @@ from ix.api.dependencies import get_current_admin_user, get_current_user, get_op
 from ix.db.conn import get_session as get_db
 from ix.db.models import ResearchFile
 from ix.db.models.user import User
-from ix.misc import get_logger
+from ix.common import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/research/library", tags=["Research Library"])
@@ -33,6 +33,12 @@ class LibraryItem(BaseModel):
     size_bytes: int
     uploaded_by: Optional[str] = None
     created_at: str
+    summary: Optional[str] = None
+
+
+class PaginatedLibrary(BaseModel):
+    items: List[LibraryItem]
+    total: int
 
 
 def _to_item(row: ResearchFile) -> dict:
@@ -46,25 +52,30 @@ def _to_item(row: ResearchFile) -> dict:
         "size_bytes": row.size_bytes,
         "uploaded_by": row.uploaded_by,
         "created_at": row.created_at.isoformat() if row.created_at else "",
+        "summary": row.summary,
     }
 
 
 # ── List ──────────────────────────────────────────────────────────────────────
 
 
-@router.get("", response_model=List[LibraryItem])
+@router.get("", response_model=PaginatedLibrary)
 @_limiter.limit("60/minute")
 def list_research(
     request: Request,
     q: Optional[str] = None,
+    limit: int = Query(25, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(ResearchFile).options(defer(ResearchFile.content))
+    base = db.query(ResearchFile).options(defer(ResearchFile.content)).filter(ResearchFile.is_deleted == False)
     if q:
-        query = query.filter(ResearchFile.filename.ilike(f"%{q}%"))
-    rows = query.order_by(ResearchFile.filename.desc()).all()
-    return [_to_item(r) for r in rows]
+        pattern = f"%{q}%"
+        base = base.filter(ResearchFile.filename.ilike(pattern) | ResearchFile.summary.ilike(pattern))
+    total = base.count()
+    rows = base.order_by(ResearchFile.filename.desc()).offset(offset).limit(limit).all()
+    return {"items": [_to_item(r) for r in rows], "total": total}
 
 
 # ── Upload ────────────────────────────────────────────────────────────────────
@@ -76,7 +87,7 @@ def upload_research(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are accepted")
@@ -165,7 +176,8 @@ def delete_research(
     if not row:
         raise HTTPException(404, "File not found")
     name = row.filename
-    db.delete(row)
+    row.is_deleted = True
+    row.deleted_at = datetime.now(timezone.utc)
     db.commit()
-    logger.info(f"Research deleted: {name} by {current_user.email}")
+    logger.info(f"Research soft-deleted: {name} by {current_user.email}")
     return {"ok": True}

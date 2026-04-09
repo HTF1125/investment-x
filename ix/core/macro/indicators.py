@@ -395,4 +395,5 @@ def resample_weekly(s: pd.Series) -> pd.Series:
     """Resample to weekly (Wednesday) frequency."""
     if s.empty:
         return s
-    return s.resample("W-WED").last().ffill().dropna()
+    from ix.common.data.transforms import Resample
+    return Resample(s, "W-WED", ffill=True)

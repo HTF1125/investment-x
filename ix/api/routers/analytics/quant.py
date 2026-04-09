@@ -21,7 +21,7 @@ from plotly.subplots import make_subplots
 from scipy.cluster.hierarchy import dendrogram
 
 from ix.db.query import Series
-from ix.core.quantitative import (
+from ix.common.quantitative import (
     correlation_matrix,
     rolling_correlation,
     hierarchical_cluster,
@@ -33,7 +33,7 @@ from ix.core.quantitative import (
     expected_shortfall,
     rolling_var,
 )
-from ix.misc import get_logger
+from ix.common import get_logger
 
 router = APIRouter()
 logger = get_logger(__name__)

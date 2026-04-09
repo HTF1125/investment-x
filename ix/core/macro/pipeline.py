@@ -710,7 +710,7 @@ def compute_all_targets() -> None:
 
     Called by the scheduler every 4 hours.
     """
-    from ix.misc import get_logger
+    from ix.common import get_logger
 
     logger = get_logger(__name__)
     DEFAULT_TARGETS = list(TARGET_INDICES.keys())

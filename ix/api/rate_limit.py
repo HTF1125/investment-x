@@ -35,9 +35,9 @@ def _rate_limit_key(request: Request) -> str:
             # Inline decode to avoid circular imports and keep this lightweight.
             # We only need the role claim; full auth validation happens in the
             # route dependency.  We import lazily to avoid import-time side
-            # effects (SECRET_KEY validation happens at import of ix.misc.auth).
+            # effects (SECRET_KEY validation happens at import of ix.common.auth).
             import jwt as _jwt
-            from ix.misc.auth import SECRET_KEY, ALGORITHM
+            from ix.common.security.auth import SECRET_KEY, ALGORITHM
 
             payload = _jwt.decode(
                 token, SECRET_KEY, algorithms=[ALGORITHM],
@@ -47,7 +47,16 @@ def _rate_limit_key(request: Request) -> str:
             if role in _EXEMPT_ROLES:
                 return ""
     except Exception:
-        pass  # Fall back to IP-based rate limiting
+        pass  # Fall back to IP-based or API-key-based rate limiting
+
+    # Check X-API-Key header (no DB lookup — just hash for identity)
+    api_key_raw = request.headers.get("x-api-key")
+    if api_key_raw:
+        import hashlib
+
+        key_hash = hashlib.sha256(api_key_raw.encode()).hexdigest()
+        return f"apikey:{key_hash[:16]}"
+
     return get_remote_address(request)
 
 

@@ -1,7 +1,6 @@
 """
 Main FastAPI application.
 """
-
 import os
 import time
 from contextlib import asynccontextmanager
@@ -16,11 +15,11 @@ from sqlalchemy import text
 from slowapi.errors import RateLimitExceeded
 
 from ix.db.conn import ensure_connection, conn
-from ix.utils.logger import setup_logging
+from ix.common.logger import setup_logging
 
 logger = setup_logging(service_name="backend")
 
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(timezone="UTC")
 
 
 def _run_startup_migrations() -> None:
@@ -55,19 +54,9 @@ def _run_startup_migrations() -> None:
                     "CREATE INDEX IF NOT EXISTS ix_user_role ON \"user\" (role)"
                 ))
 
-            # Research report: slide_deck column
+            # Create a view so old code can still read from research_report
             db.execute(text(
-                "ALTER TABLE research_report ADD COLUMN IF NOT EXISTS slide_deck BYTEA"
-            ))
-
-            # Research report: naive timestamps → timezone-aware (interpret existing as UTC)
-            db.execute(text(
-                "ALTER TABLE research_report "
-                "ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'"
-            ))
-            db.execute(text(
-                "ALTER TABLE research_report "
-                "ALTER COLUMN updated_at TYPE TIMESTAMPTZ USING updated_at AT TIME ZONE 'UTC'"
+                "CREATE OR REPLACE VIEW research_report AS SELECT * FROM briefings"
             ))
 
             # Chart packs columns
@@ -98,7 +87,7 @@ async def lifespan(app: FastAPI):
     _run_startup_migrations()
 
     # Schedule macro research pipeline daily at 06:00 UTC
-    from ix.misc.task import run_macro_research
+    from ix.common.task import run_macro_research
     scheduler.add_job(
         run_macro_research,
         "cron", hour=6, minute=0,
@@ -108,7 +97,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Send data reports daily at 07:00 KST (22:00 UTC)
-    from ix.misc.task import send_data_reports
+    from ix.common.task import send_data_reports
     scheduler.add_job(
         send_data_reports,
         "cron", hour=22, minute=0,
@@ -176,6 +165,32 @@ async def app_error_handler(request: Request, exc: AppError):
     )
 
 
+# Domain exception → HTTP status mapping
+from ix.core.exceptions import (  # noqa: E402
+    IxError,
+    NotFoundError,
+    ValidationError,
+    DataError,
+    UploadError,
+)
+
+_IX_STATUS_MAP = {
+    NotFoundError: 404,
+    ValidationError: 400,
+    UploadError: 400,
+    DataError: 422,
+}
+
+
+@app.exception_handler(IxError)
+async def ix_error_handler(request: Request, exc: IxError):
+    status = _IX_STATUS_MAP.get(type(exc), 500)
+    return JSONResponse(
+        status_code=status,
+        content={"detail": str(exc), "code": type(exc).__name__},
+    )
+
+
 # GZip compress responses >= 1KB (Plotly JSON typically 50-500KB)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
@@ -190,8 +205,19 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "X-API-Key"],
 )
+
+
+@app.middleware("http")
+async def normalize_path_middleware(request: Request, call_next):
+    """Collapse double slashes in URL path (e.g. //api/... → /api/...).
+    Cloudflare tunnel can introduce these depending on service URL config."""
+    import re
+    raw = request.scope.get("path", "")
+    if "//" in raw:
+        request.scope["path"] = re.sub(r"/{2,}", "/", raw)
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -331,36 +357,37 @@ async def global_exception_handler(request, exc):
 
 # Include routers with error handling
 try:
-    from ix.api.routers.auth import auth_router, admin_router, user_router
+    from ix.api.routers.auth import auth_router, admin_router, user_router, api_keys_router
     from ix.api.routers.data import (
         timeseries_router,
         series_router,
         evaluation_router,
         collectors_router,
         sources_router,
+        credit_watchlist_router,
     )
     from ix.api.routers.charts import (
-        custom_router,
         chart_packs_router,
-        chart_workspaces_router,
         whiteboard_router,
-        dashboard_router,
     )
     from ix.api.routers.analytics import (
         quant_router,
         technical_router,
+        technicals_router,
         macro_router,
         wartime_router,
         screener_router,
+        strategies_router,
+        regimes_router,
     )
     from ix.api.routers.research import (
         news_router,
-        insights_router,
         scorecards_router,
         tts_router,
         library_router,
     )
     from ix.api.routers.risk import risk_router
+    from ix.api.routers.reports import router as reports_router
 
     logger.info("Importing routers...")
 
@@ -368,6 +395,7 @@ try:
     app.include_router(auth_router, prefix="/api", tags=["Authentication"])
     app.include_router(admin_router, prefix="/api", tags=["Admin"])
     app.include_router(user_router, prefix="/api", tags=["User"])
+    app.include_router(api_keys_router, prefix="/api", tags=["API Keys"])
 
     # Data Management
     app.include_router(timeseries_router, prefix="/api", tags=["Timeseries"])
@@ -375,29 +403,32 @@ try:
     app.include_router(evaluation_router, prefix="/api", tags=["Evaluation"])
     app.include_router(collectors_router, prefix="/api", tags=["Collectors"])
     app.include_router(sources_router, prefix="/api", tags=["Sources"])
+    app.include_router(credit_watchlist_router, prefix="/api", tags=["Credit Watchlist"])
 
     # Charts & Visualization
-    app.include_router(custom_router, prefix="/api", tags=["Custom"])
     app.include_router(chart_packs_router, prefix="/api", tags=["Chart Packs"])
-    app.include_router(chart_workspaces_router, prefix="/api", tags=["Chart Workspaces"])
     app.include_router(whiteboard_router, prefix="/api", tags=["Whiteboard"])
-    app.include_router(dashboard_router, prefix="/api/v1", tags=["Dashboard"])
 
     # Analytics & Quantitative
     app.include_router(quant_router, prefix="/api", tags=["Quant"])
     app.include_router(technical_router, prefix="/api", tags=["Technical"])
+    app.include_router(technicals_router, prefix="/api", tags=["Technicals"])
     app.include_router(macro_router, prefix="/api", tags=["Macro"])
     app.include_router(wartime_router, prefix="/api", tags=["Wartime"])
     app.include_router(screener_router, prefix="/api", tags=["Screener"])
+    app.include_router(strategies_router, prefix="/api", tags=["Strategies"])
+    app.include_router(regimes_router, prefix="/api", tags=["Regimes"])
 
     # Research & News
-    app.include_router(news_router, prefix="/api", tags=["News"])
-    app.include_router(insights_router, prefix="/api", tags=["Insights"])
+    app.include_router(news_router, prefix="/api", tags=["Briefings"])
     app.include_router(scorecards_router, prefix="/api/v1", tags=["Scorecards"])
     app.include_router(tts_router, prefix="/api", tags=["TTS"])
     app.include_router(library_router, prefix="/api", tags=["Research Library"])
 
     app.include_router(risk_router, prefix="/api", tags=["Risk"])
+
+    # Reports
+    app.include_router(reports_router, prefix="/api", tags=["Reports"])
 
     logger.info("Routers registered successfully")
 

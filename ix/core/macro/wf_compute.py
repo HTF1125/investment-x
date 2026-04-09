@@ -17,7 +17,7 @@ import pandas as pd
 from ix.db.conn import Session
 from ix.db.models.macro_regime_strategy import MacroRegimeStrategy as MacroRegimeStrategyDB
 from ix.core.macro.wf_backtest import INDEX_MAP
-from ix.misc import get_logger
+from ix.common import get_logger
 
 logger = get_logger(__name__)
 
@@ -315,31 +315,30 @@ OPTIMIZED_PARAMS = dict(
 
 
 # ---------------------------------------------------------------------------
-# Main compute functions — uses MacroRegimeStrategy(Strategy)
+# Main compute functions
 # ---------------------------------------------------------------------------
 
 
 def compute_and_save(index_name: str) -> None:
-    """Backtest one index via MacroRegimeStrategy and save to both tables.
+    """Run walk-forward pipeline for one index and save to DB.
 
-    Saves to:
-      - ``strategy_result`` table (general-purpose, via Strategy.save())
-      - ``macro_regime_strategy`` table (legacy, for frontend backward compat)
+    Saves to ``macro_regime_strategy`` table (backtest, factors, current_signal).
     """
-    from ix.core.backtesting.macro_regime import MacroRegimeStrategy
+    from ix.core.macro.wf_backtest import run_full_wf_pipeline
 
     t0 = time.time()
     logger.info(f"Computing regime strategy for {index_name}...")
 
-    strat = MacroRegimeStrategy(index_name=index_name).backtest().save()
+    pipeline = run_full_wf_pipeline(index_name=index_name, **OPTIMIZED_PARAMS)
 
-    # Also save to legacy table for frontend backward compatibility
-    pipeline = strat.pipeline_result
-    if pipeline and "error" not in pipeline:
-        bt = serialize_backtest(pipeline)
-        fac = serialize_factors(pipeline)
-        sig = serialize_current_signal(pipeline)
-        _save_to_legacy_db(index_name, bt, fac, sig)
+    if "error" in pipeline:
+        logger.error(f"Pipeline error for {index_name}: {pipeline['error']}")
+        return
+
+    bt = serialize_backtest(pipeline)
+    fac = serialize_factors(pipeline)
+    sig = serialize_current_signal(pipeline)
+    _save_to_legacy_db(index_name, bt, fac, sig)
 
     elapsed = time.time() - t0
     logger.info(f"Saved {index_name} in {elapsed:.1f}s")
@@ -368,8 +367,7 @@ if __name__ == "__main__":
     if args:
         target = args[0]
         if target not in INDEX_MAP:
-            print(f"Unknown index: {target}")
-            print(f"Available: {list(INDEX_MAP.keys())}")
+            logger.error(f"Unknown index: {target}. Available: {list(INDEX_MAP.keys())}")
             sys.exit(1)
         compute_and_save(target)
     else:

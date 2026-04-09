@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ix.db.query import Series, MultiSeries
-from ix.core.transforms import StandardScalar
+from ix.common.data.transforms import StandardScalar
 
 
 # ── Fed Liquidity & M2 ───────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ def credit_impulse(freq: str = "ME") -> pd.Series:
         credit = Series("TOTBKCR", freq=freq)  # legacy fallback
     if credit.empty:
         return pd.Series(dtype=float, name="Credit Impulse")
-    credit_yoy = credit.pct_change(12 if freq == "ME" else 52)
+    credit_yoy = credit.pct_change(12 if freq == "ME" else 52, fill_method=None)
     impulse = credit_yoy.diff(3 if freq == "ME" else 13)
     impulse.name = "Credit Impulse"
     return impulse.dropna()

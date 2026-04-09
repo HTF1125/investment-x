@@ -10,14 +10,14 @@ from datetime import timedelta
 
 from ix.api.schemas import Token, UserLogin, UserRegister, UserResponse
 from ix.api.dependencies import get_current_user
-from ix.misc.auth import (
+from ix.common.security.auth import (
     authenticate_user,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_user_token,
     verify_token_allow_expired,
 )
 from ix.db.models.user import User
-from ix.misc import get_logger
+from ix.common import get_logger
 
 logger = get_logger(__name__)
 

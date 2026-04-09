@@ -1,0 +1,42 @@
+"""Asset and macro data constants for batch strategies."""
+
+ASSET_CODES: dict[str, str] = {
+    "SPY": "SPY US EQUITY:PX_LAST",
+    "QQQ": "QQQ US EQUITY:PX_LAST",
+    "IWM": "IWM US EQUITY:PX_LAST",
+    "EFA": "EFA US EQUITY:PX_LAST",
+    "EEM": "EEM US EQUITY:PX_LAST",
+    "AGG": "AGG US EQUITY:PX_LAST",
+    "TLT": "TLT US EQUITY:PX_LAST",
+    "IEF": "IEF US EQUITY:PX_LAST",
+    "IEI": "IEI US EQUITY:PX_LAST",
+    "TIP": "TIP US EQUITY:PX_LAST",
+    "HYG": "HYG US EQUITY:PX_LAST",
+    "LQD": "LQD US EQUITY:PX_LAST",
+    "BIL": "BIL US EQUITY:PX_LAST",
+    "GLD": "GLD US EQUITY:PX_LAST",
+    "DBC": "DBC US EQUITY:PX_LAST",
+    "VNQ": "VNQ US EQUITY:PX_LAST",
+    "XLK": "XLK US EQUITY:PX_LAST",
+    "XLF": "XLF US EQUITY:PX_LAST",
+    "XLV": "XLV US EQUITY:PX_LAST",
+    "XLI": "XLI US EQUITY:PX_LAST",
+    "XLC": "XLC US EQUITY:PX_LAST",
+    "XLE": "XLE US EQUITY:PX_LAST",
+    "XLY": "XLY US EQUITY:PX_LAST",
+    "XLB": "XLB US EQUITY:PX_LAST",
+    "XLU": "XLU US EQUITY:PX_LAST",
+    "XLP": "XLP US EQUITY:PX_LAST",
+    "XLRE": "XLRE US EQUITY:PX_LAST",
+}
+
+MACRO_CODES: dict[str, str] = {
+    "ISM_PMI": "ISMPMI_M:PX_LAST",
+    "OECD_CLI": "USA.LOLITOAA.STSA",
+    "VIX": "VIX INDEX:PX_LAST",
+}
+
+SECTORS = ["XLK", "XLF", "XLV", "XLI", "XLC", "XLE", "XLY", "XLB", "XLU", "XLP", "XLRE"]
+MULTI5 = ["SPY", "EFA", "EEM", "TLT", "GLD"]
+MULTI8 = ["SPY", "QQQ", "IWM", "EFA", "EEM", "TLT", "GLD", "DBC"]
+BROAD6 = ["SPY", "EFA", "TLT", "IEF", "GLD", "DBC"]

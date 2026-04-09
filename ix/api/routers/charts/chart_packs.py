@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from sqlalchemy import func as sa_func
-from sqlalchemy.orm import Session
-from typing import Optional, List
+from sqlalchemy.orm import Session, load_only
+from typing import Optional, List, Dict, Any, Tuple
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 
@@ -10,7 +11,14 @@ from ix.db.models.chart_pack import ChartPack
 from ix.db.models import User
 from ix.api.dependencies import get_current_user, get_optional_user
 from ix.api.rate_limit import limiter as _limiter
-from ix.misc import get_logger
+from ix.api.routers.charts.pack_reports import (
+    _require_pdf_dep,
+    _resolve_chart_figure,
+    generate_pack_report_pdf,
+    generate_pack_report_pptx,
+    _generate_slides_pdf,
+)
+from ix.common import get_logger
 
 logger = get_logger(__name__)
 
@@ -65,6 +73,41 @@ class PackUpdate(BaseModel):
 class PackAddChart(BaseModel):
     """Add a single chart config to an existing pack."""
     chart: dict
+
+
+class PackReportRequest(BaseModel):
+    pack_ids: List[str] = Field(..., min_length=1, max_length=20)
+    theme: str = Field(default="light", pattern=r"^(light|dark)$")
+
+
+class SlideData(BaseModel):
+    """Layout-aware slide data for export."""
+    layout: str = "chart_full"
+    title: str = ""
+    subtitle: str = ""
+    narrative: str = ""
+    figure: Optional[dict] = None
+    figure2: Optional[dict] = None
+    figure3: Optional[dict] = None
+    kpis: Optional[List[dict]] = None
+    agendaItems: Optional[List[str]] = Field(default=None, alias="agendaItems")
+    columns: Optional[List[str]] = None
+
+    class Config:
+        populate_by_name = True
+
+
+class PptxReportRequest(BaseModel):
+    slides: List[SlideData] = Field(..., min_length=1, max_length=200)
+    theme: str = Field(default="light", pattern=r"^(light|dark)$")
+    report_title: str = Field(default="Investment-X Report")
+    subtitle: str = Field(default="")
+    author: str = Field(default="")
+    classification: str = Field(default="For Internal Use Only")
+    report_date: Optional[str] = Field(default=None)
+    disclaimer: Optional[str] = Field(default=None)
+
+
 
 
 # ── Endpoints ──
@@ -286,3 +329,125 @@ def delete_pack(
     pack.deleted_at = datetime.now(timezone.utc)
     db.flush()
     return {"ok": True}
+
+
+@router.post("/chart-packs/report")
+@_limiter.limit("5/minute")
+def generate_pack_report(
+    request: Request,
+    payload: PackReportRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    """Generate a PDF report from selected chart packs (in order)."""
+    _require_pdf_dep()
+
+    # Load all requested packs in one query
+    packs = (
+        db.query(ChartPack)
+        .filter(ChartPack.id.in_(payload.pack_ids), ChartPack.is_deleted == False)
+        .all()
+    )
+    packs_by_id = {str(p.id): p for p in packs}
+
+    # Validate access and preserve requested order
+    ordered_packs: List[ChartPack] = []
+    for pid in payload.pack_ids:
+        pack = packs_by_id.get(pid)
+        if not pack:
+            raise HTTPException(status_code=404, detail=f"Pack not found: {pid}")
+        is_owner = str(user.id) == str(pack.user_id)
+        if not is_owner and not pack.is_published:
+            raise HTTPException(status_code=404, detail=f"Pack not found: {pid}")
+        ordered_packs.append(pack)
+
+    charts_by_id: Dict[str, Any] = {}
+
+    # Resolve all chart figures
+    pack_sections: List[Tuple[str, str, List[Dict[str, Any]]]] = []
+    for pack in ordered_packs:
+        chart_infos = []
+        for c in (pack.active_charts or []):
+            fig = _resolve_chart_figure(c, charts_by_id)
+            if fig is None:
+                continue
+            chart_infos.append({
+                "title": c.get("title") or c.get("name") or "",
+                "description": c.get("description") or "",
+                "figure": fig,
+            })
+        pack_sections.append((pack.name, pack.description or "", chart_infos))
+
+    # Generate PDF
+    pdf_buffer = generate_pack_report_pdf(pack_sections, theme=payload.theme)
+    if pdf_buffer.getbuffer().nbytes == 0:
+        raise HTTPException(status_code=422, detail="No renderable charts found in selected packs")
+
+    filename = f"InvestmentX_PackReport_{datetime.now().strftime('%Y%m%d')}.pdf"
+    return Response(
+        content=pdf_buffer.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/chart-packs/report/pptx")
+@_limiter.limit("5/minute")
+def generate_pack_report_pptx_endpoint(
+    request: Request,
+    payload: PptxReportRequest,
+    user: User = Depends(get_current_user),
+):
+    """Generate a PPTX report from editor slide data."""
+    slides_data = [s.model_dump(by_alias=True) for s in payload.slides]
+    if not slides_data:
+        raise HTTPException(status_code=422, detail="No slides provided")
+
+    pptx_buffer = generate_pack_report_pptx(
+        slides_data,
+        theme=payload.theme,
+        report_title=payload.report_title,
+        classification=payload.classification,
+    )
+    if pptx_buffer.getbuffer().nbytes == 0:
+        raise HTTPException(status_code=500, detail="PPTX generation failed")
+
+    filename = f"InvestmentX_Report_{datetime.now().strftime('%Y%m%d')}.pptx"
+    return Response(
+        content=pptx_buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/chart-packs/report/pdf")
+@_limiter.limit("5/minute")
+def generate_slides_pdf_endpoint(
+    request: Request,
+    payload: PptxReportRequest,
+    user: User = Depends(get_current_user),
+):
+    """Generate a PDF report from editor slide data."""
+    slides_data = [s.model_dump(by_alias=True) for s in payload.slides]
+    if not slides_data:
+        raise HTTPException(status_code=422, detail="No slides provided")
+
+    pdf_buffer = _generate_slides_pdf(
+        slides_data,
+        theme=payload.theme,
+        report_title=payload.report_title,
+        subtitle=payload.subtitle,
+        author=payload.author,
+        classification=payload.classification,
+        report_date=payload.report_date,
+        disclaimer=payload.disclaimer,
+    )
+    if pdf_buffer.getbuffer().nbytes == 0:
+        raise HTTPException(status_code=500, detail="PDF generation failed")
+
+    filename = f"InvestmentX_Report_{datetime.now().strftime('%Y%m%d')}.pdf"
+    return Response(
+        content=pdf_buffer.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

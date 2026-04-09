@@ -2,12 +2,12 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from ix.core.performance.metrics import to_log_return
+from ix.common.performance.metrics import to_log_return
 
 # from ix import db  # Commented out - MongoDB not in use
-from ix import misc
+from ix import common
 
-logger = misc.get_logger(__name__)
+logger = common.get_logger(__name__)
 
 
 class Signal:

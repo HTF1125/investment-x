@@ -7,7 +7,7 @@ import pandas as pd
 
 from ix.db.conn import Session
 from ix.db.models.collector_state import CollectorState
-from ix.misc import get_logger
+from ix.common import get_logger
 
 
 class BaseCollector(ABC):
@@ -110,49 +110,3 @@ class BaseCollector(ABC):
         # Use the data setter which handles merge + cache invalidation
         ts.data = data
 
-    def _upsert_news_item(
-        self,
-        db,
-        *,
-        source: str,
-        source_name: str,
-        title: str,
-        url: str = None,
-        body_text: str = None,
-        summary: str = None,
-        symbols: list = None,
-        meta: dict = None,
-        published_at: datetime = None,
-    ):
-        """Upsert a NewsItem, deduplicating by url_hash."""
-        import hashlib
-        from ix.db.models import NewsItem
-
-        url_hash = None
-        if url:
-            url_hash = hashlib.sha256(url.encode()).hexdigest()
-            existing = (
-                db.query(NewsItem).filter(NewsItem.url_hash == url_hash).first()
-            )
-            if existing:
-                # Backfill body_text on existing items that lack it
-                if body_text and not existing.body_text:
-                    existing.body_text = body_text
-                    return True
-                return False  # Already exists
-
-        item = NewsItem(
-            source=source,
-            source_name=source_name,
-            title=title,
-            url=url,
-            url_hash=url_hash,
-            body_text=body_text,
-            summary=summary,
-            symbols=symbols or [],
-            meta=meta or {},
-            published_at=published_at,
-            discovered_at=datetime.utcnow(),
-        )
-        db.add(item)
-        return True

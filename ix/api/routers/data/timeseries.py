@@ -1,5 +1,8 @@
 """
 Timeseries router for timeseries data management.
+
+Route handlers and thin HTTP orchestration only.
+Heavy computation lives in ix.core.timeseries_processing.
 """
 
 from fastapi import (
@@ -13,13 +16,11 @@ from fastapi import (
     File,
 )
 from fastapi.responses import Response, StreamingResponse, FileResponse
-from typing import Optional, List, Dict, Any
-from collections import OrderedDict
+from typing import Optional, List, Dict
+from pydantic import BaseModel
 import json
-import math
-import re
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from ix.api.schemas import (
     TimeseriesResponse,
@@ -34,13 +35,26 @@ from ix.db.models import Timeseries
 from ix.db.conn import ensure_connection, Session
 from ix.db.models.user import User
 from sqlalchemy.orm import joinedload, Session as SessionType
-from ix.misc import get_logger
+from ix.common import get_logger
 from ix.api.rate_limit import limiter as _limiter
-from ix.utils.safe_expression import (
-    TIMESERIES_EXPRESSION_CONTEXT,
-    UnsafeExpressionError,
-    safe_eval_expression,
-    safe_exec_code,
+from ix.common.security.safe_expression import UnsafeExpressionError
+
+from ix.core.timeseries_processing import (
+    BULK_META_FIELDS,
+    BULK_EXAMPLE,
+    apply_timeseries_updates,
+    build_search_filter_and_order,
+    generate_export_workbook,
+    generate_create_template_workbook,
+    generate_download_template_workbook,
+    process_bulk_create,
+    process_template_upload,
+    merge_columnar_to_db,
+    process_database_timeseries,
+    evaluate_expression,
+    execute_code_block,
+    format_dataframe_to_column_dict,
+    format_favorites_dataframe,
 )
 
 logger = get_logger(__name__)
@@ -48,52 +62,9 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def _apply_timeseries_updates(ts: Timeseries, data: dict) -> None:
-    """Apply whitelisted updates to a Timeseries instance."""
-    if "code" in data and data["code"] is not None:
-        ts.code = str(data["code"])
-
-    if "name" in data:
-        name = data["name"]
-        ts.name = str(name)[:200] if name else None
-    if "provider" in data:
-        provider = data["provider"]
-        ts.provider = str(provider)[:100] if provider else None
-    if "asset_class" in data:
-        asset_class = data["asset_class"]
-        ts.asset_class = str(asset_class)[:50] if asset_class else None
-    if "category" in data:
-        category = data["category"]
-        ts.category = str(category)[:100] if category else None
-    if "source" in data:
-        source = data["source"]
-        ts.source = str(source)[:100] if source else None
-    if "source_code" in data:
-        source_code = data["source_code"]
-        ts.source_code = str(source_code)[:2000] if source_code else None
-    if "frequency" in data:
-        frequency = data["frequency"]
-        ts.frequency = str(frequency)[:20] if frequency else None
-    if "unit" in data:
-        unit = data["unit"]
-        ts.unit = str(unit)[:50] if unit else None
-    if "scale" in data:
-        scale = data["scale"]
-        if scale is not None:
-            ts.scale = int(scale)
-        else:
-            ts.scale = None
-    if "currency" in data:
-        currency = data["currency"]
-        ts.currency = str(currency)[:10] if currency else None
-    if "country" in data:
-        country = data["country"]
-        ts.country = str(country)[:100] if country else None
-    if "remark" in data:
-        remark = data["remark"]
-        ts.remark = str(remark) if remark else None
-    if "favorite" in data:
-        ts.favorite = bool(data["favorite"]) if data["favorite"] is not None else None
+# ────────────────────────────────────────────────────────────────────
+# List / Search
+# ────────────────────────────────────────────────────────────────────
 
 
 @router.get("/timeseries", response_model=List[TimeseriesResponse])
@@ -115,179 +86,13 @@ def get_timeseries(
     GET /api/timeseries - List all timeseries with optional filtering and pagination.
     """
     ensure_connection()
-    from sqlalchemy import and_, or_, case, func
 
-    timeseries_query = db.query(Timeseries)
+    timeseries_query = db.query(Timeseries).filter(Timeseries.is_deleted == False)
 
-    # DB-native search for PostgreSQL, with fallback ranking for other dialects.
     if search:
-        term = search.strip().lower()
-        tokens = [t for t in re.split(r"\s+", term) if t]
-
-        if tokens:
-            code_l = func.lower(func.coalesce(Timeseries.code, ""))
-            name_l = func.lower(func.coalesce(Timeseries.name, ""))
-            source_l = func.lower(func.coalesce(Timeseries.source, ""))
-            category_l = func.lower(func.coalesce(Timeseries.category, ""))
-            provider_l = func.lower(func.coalesce(Timeseries.provider, ""))
-            asset_class_l = func.lower(func.coalesce(Timeseries.asset_class, ""))
-            country_l = func.lower(func.coalesce(Timeseries.country, ""))
-            source_code_l = func.lower(func.coalesce(Timeseries.source_code, ""))
-
-            dialect_name = (
-                getattr(getattr(db, "bind", None), "dialect", None).name
-                if getattr(getattr(db, "bind", None), "dialect", None) is not None
-                else ""
-            )
-
-            if dialect_name == "postgresql":
-                # Weighted FTS vector:
-                # code/name strongest; metadata moderate; source_code lower.
-                search_vector = (
-                    func.setweight(
-                        func.to_tsvector("simple", func.coalesce(Timeseries.code, "")),
-                        "A",
-                    )
-                    .op("||")(
-                        func.setweight(
-                            func.to_tsvector(
-                                "simple", func.coalesce(Timeseries.name, "")
-                            ),
-                            "A",
-                        )
-                    )
-                    .op("||")(
-                        func.setweight(
-                            func.to_tsvector(
-                                "simple", func.coalesce(Timeseries.source, "")
-                            ),
-                            "B",
-                        )
-                    )
-                    .op("||")(
-                        func.setweight(
-                            func.to_tsvector(
-                                "simple", func.coalesce(Timeseries.category, "")
-                            ),
-                            "B",
-                        )
-                    )
-                    .op("||")(
-                        func.setweight(
-                            func.to_tsvector(
-                                "simple", func.coalesce(Timeseries.provider, "")
-                            ),
-                            "C",
-                        )
-                    )
-                    .op("||")(
-                        func.setweight(
-                            func.to_tsvector(
-                                "simple", func.coalesce(Timeseries.asset_class, "")
-                            ),
-                            "C",
-                        )
-                    )
-                    .op("||")(
-                        func.setweight(
-                            func.to_tsvector(
-                                "simple", func.coalesce(Timeseries.country, "")
-                            ),
-                            "D",
-                        )
-                    )
-                    .op("||")(
-                        func.setweight(
-                            func.to_tsvector(
-                                "simple", func.coalesce(Timeseries.source_code, "")
-                            ),
-                            "D",
-                        )
-                    )
-                )
-                ts_query = func.plainto_tsquery("simple", term)
-
-                # Keep prefix path so incremental typing ("sp", "usd") still feels responsive.
-                prefix_match = or_(
-                    code_l.like(f"{term}%"),
-                    name_l.like(f"{term}%"),
-                    source_l.like(f"{term}%"),
-                    category_l.like(f"{term}%"),
-                )
-                if len(term) >= 3:
-                    prefix_match = or_(prefix_match, source_code_l.like(f"{term}%"))
-
-                fts_match = search_vector.op("@@")(ts_query)
-                timeseries_query = timeseries_query.filter(or_(fts_match, prefix_match))
-
-                rank_expr = (
-                    func.ts_rank_cd(search_vector, ts_query)
-                    + case((code_l == term, 5.0), else_=0.0)
-                    + case((code_l.like(f"{term}%"), 2.6), else_=0.0)
-                    + case((name_l.like(f"{term}%"), 1.2), else_=0.0)
-                    + case((source_l.like(f"{term}%"), 0.6), else_=0.0)
-                    + case((category_l.like(f"{term}%"), 0.5), else_=0.0)
-                )
-
-                timeseries_query = timeseries_query.order_by(
-                    rank_expr.desc(),
-                    Timeseries.favorite.desc(),
-                    Timeseries.code.asc(),
-                )
-            else:
-                # Fallback: token-aware LIKE ranking for non-PostgreSQL backends.
-                token_filters = []
-                for tok in tokens:
-                    tok_like = f"%{tok}%"
-                    token_columns = [
-                        code_l.like(tok_like),
-                        name_l.like(tok_like),
-                        source_l.like(tok_like),
-                        category_l.like(tok_like),
-                        provider_l.like(tok_like),
-                        asset_class_l.like(tok_like),
-                        country_l.like(tok_like),
-                    ]
-                    if len(tok) >= 3:
-                        token_columns.append(source_code_l.like(tok_like))
-                    token_filters.append(or_(*token_columns))
-
-                timeseries_query = timeseries_query.filter(and_(*token_filters))
-
-                rank_expr = (
-                    case((code_l == term, 1000), else_=0)
-                    + case((code_l.like(f"{term}%"), 600), else_=0)
-                    + case((name_l == term, 350), else_=0)
-                    + case((name_l.like(f"{term}%"), 220), else_=0)
-                    + case((source_code_l.like(f"{term}%"), 180), else_=0)
-                    + case((code_l.like(f"%{term}%"), 150), else_=0)
-                    + case((name_l.like(f"%{term}%"), 120), else_=0)
-                    + case((source_l.like(f"%{term}%"), 70), else_=0)
-                    + case((category_l.like(f"%{term}%"), 60), else_=0)
-                )
-
-                for tok in tokens:
-                    tok_like = f"%{tok}%"
-                    rank_expr = (
-                        rank_expr
-                        + case((code_l.like(tok_like), 70), else_=0)
-                        + case((name_l.like(tok_like), 45), else_=0)
-                        + case((source_l.like(tok_like), 25), else_=0)
-                        + case((category_l.like(tok_like), 20), else_=0)
-                        + case((provider_l.like(tok_like), 18), else_=0)
-                        + case((asset_class_l.like(tok_like), 15), else_=0)
-                        + case((country_l.like(tok_like), 12), else_=0)
-                    )
-                    if len(tok) >= 3:
-                        rank_expr = rank_expr + case(
-                            (source_code_l.like(tok_like), 10), else_=0
-                        )
-
-                timeseries_query = timeseries_query.order_by(
-                    rank_expr.desc(),
-                    Timeseries.favorite.desc(),
-                    Timeseries.code.asc(),
-                )
+        timeseries_query = build_search_filter_and_order(
+            timeseries_query, search, Timeseries
+        )
 
     # Apply filters
     if category:
@@ -357,37 +162,29 @@ def get_timeseries_sources(
 # Bulk-create template: download blank / upload filled
 # ────────────────────────────────────────────────────────────────────
 
-_BULK_META_FIELDS = [
-    "code",
-    "name",
-    "provider",
-    "asset_class",
-    "category",
-    "source",
-    "source_code",
-    "frequency",
-    "unit",
-    "scale",
-    "currency",
-    "country",
-    "remark",
-]
 
-_BULK_EXAMPLE = {
-    "code": "US_CPI_YOY",
-    "name": "US CPI YoY",
-    "provider": "FRED",
-    "asset_class": "Macro",
-    "category": "Inflation",
-    "source": "Fred",
-    "source_code": "CPIAUCSL:value",
-    "frequency": "M",
-    "unit": "%",
-    "scale": "1",
-    "currency": "USD",
-    "country": "US",
-    "remark": "Example — delete this column",
-}
+@router.get("/timeseries/export_all")
+def export_all_timeseries(
+    db: SessionType = Depends(get_db),
+    _current_user: User = Depends(get_current_admin_user),
+):
+    """Export all timeseries metadata as an Excel file.
+
+    Uses the same column layout as the create template so the file
+    can be edited and re-uploaded via /timeseries/create_from_template.
+    """
+    ensure_connection()
+    all_ts = db.query(Timeseries).order_by(Timeseries.code).all()
+
+    buffer = generate_export_workbook(all_ts)
+    today = date.today().strftime("%Y%m%d")
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="timeseries_all_{today}.xlsx"'
+        },
+    )
 
 
 @router.get("/timeseries/create_template")
@@ -397,67 +194,9 @@ def bulk_create_template(
     """Download a blank Excel template for bulk timeseries creation.
 
     Sheet 1 "Metadata": one row per timeseries (columns = fields).
-    Sheet 2 "Data": columnar time-series data (Date | code1 | code2 | …).
+    Sheet 2 "Data": columnar time-series data (Date | code1 | code2 | ...).
     """
-    import io
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
-    wb = Workbook()
-
-    # ── Sheet 1: Metadata ──────────────────────────────────────────
-    ws_meta = wb.active
-    ws_meta.title = "Metadata"
-
-    header_font = Font(name="Consolas", size=9, bold=True)
-    required_font = Font(name="Consolas", size=9, bold=True, color="CC0000")
-    normal_font = Font(name="Consolas", size=9)
-    example_font = Font(name="Consolas", size=9, color="999999", italic=True)
-    header_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-
-    # Header row
-    for ci, field in enumerate(_BULK_META_FIELDS):
-        label = f"{field} *" if field == "code" else field
-        cell = ws_meta.cell(row=1, column=ci + 1, value=label)
-        cell.font = required_font if field == "code" else header_font
-        cell.fill = header_fill
-
-    # Example row (row 2)
-    for ci, field in enumerate(_BULK_META_FIELDS):
-        val = _BULK_EXAMPLE.get(field, "")
-        cell = ws_meta.cell(row=2, column=ci + 1, value=val)
-        cell.font = example_font
-
-    # Column widths
-    widths = {"code": 18, "name": 22, "source_code": 22, "remark": 28}
-    for ci, field in enumerate(_BULK_META_FIELDS):
-        from openpyxl.utils import get_column_letter
-        ws_meta.column_dimensions[get_column_letter(ci + 1)].width = widths.get(field, 14)
-
-    # ── Sheet 2: Data ──────────────────────────────────────────────
-    ws_data = wb.create_sheet(title="Data")
-
-    ws_data.cell(row=1, column=1, value="Date").font = header_font
-    ws_data.cell(row=1, column=1).fill = header_fill
-    # Example code header
-    ws_data.cell(row=1, column=2, value="US_CPI_YOY").font = example_font
-    ws_data.cell(row=1, column=2).fill = header_fill
-
-    # Example dates + values
-    example_dates = pd.date_range(end=pd.Timestamp.now().normalize(), periods=5, freq="ME")
-    for i, dt in enumerate(example_dates):
-        cell = ws_data.cell(row=2 + i, column=1, value=dt.to_pydatetime())
-        cell.font = example_font
-        cell.number_format = "YYYY-MM-DD"
-        ws_data.cell(row=2 + i, column=2, value=round(2.0 + i * 0.3, 1)).font = example_font
-
-    ws_data.column_dimensions["A"].width = 14
-    ws_data.column_dimensions["B"].width = 16
-
-    # ── Save ───────────────────────────────────────────────────────
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
+    buffer = generate_create_template_workbook()
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.document",
@@ -485,198 +224,11 @@ async def bulk_create_from_template(
     if len(contents) > 200 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File exceeds 200MB size limit")
 
-    result = await asyncio.to_thread(_process_bulk_create, contents)
-    return result
-
-
-def _process_bulk_create(contents: bytes):
-    """Parse bulk-create template: create timeseries metadata + merge data."""
-    import io
-    import math
-    import time as _time
-    from datetime import datetime as _dt, date as _date
-    from openpyxl import load_workbook
-
-    _t0 = _time.time()
-    logger.info("Bulk create: parsing %d bytes...", len(contents))
     try:
-        wb = load_workbook(io.BytesIO(contents), data_only=True, read_only=True)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid Excel format: {e}")
-
-    # ── Parse Metadata sheet ───────────────────────────────────────
-    ws_meta = wb["Metadata"] if "Metadata" in wb.sheetnames else wb.worksheets[0]
-    rows = list(ws_meta.iter_rows(values_only=True))
-    if len(rows) < 2:
-        raise HTTPException(
-            status_code=400, detail="Metadata sheet must have a header row and at least one data row."
-        )
-
-    # Map header to column index
-    headers = [str(h).strip().replace(" *", "").replace("*", "") if h else "" for h in rows[0]]
-    field_indices = {}
-    for fi, field in enumerate(_BULK_META_FIELDS):
-        if field in headers:
-            field_indices[field] = headers.index(field)
-
-    if "code" not in field_indices:
-        raise HTTPException(
-            status_code=400, detail="Metadata sheet must contain a 'code' column."
-        )
-
-    ts_metas: list[dict] = []
-    for row in rows[1:]:
-        code_idx = field_indices["code"]
-        code_val = row[code_idx] if code_idx < len(row) else None
-        if not code_val or not str(code_val).strip():
-            continue
-        meta: dict = {}
-        for field, idx in field_indices.items():
-            val = row[idx] if idx < len(row) else None
-            if val is not None and str(val).strip():
-                meta[field] = str(val).strip()
-        ts_metas.append(meta)
-
-    if not ts_metas:
-        raise HTTPException(status_code=400, detail="No timeseries found in Metadata sheet.")
-
-    logger.info("Bulk create: found %d timeseries definitions", len(ts_metas))
-
-    # ── Create / update timeseries in DB ───────────────────────────
-    ensure_connection()
-    created_codes: list[str] = []
-    updated_codes: list[str] = []
-    errors: list[str] = []
-
-    with Session() as db:
-        codes = [m["code"] for m in ts_metas]
-        existing = db.query(Timeseries).filter(Timeseries.code.in_(codes)).all()
-        existing_by_code = {ts.code: ts for ts in existing}
-
-        for meta in ts_metas:
-            code = meta["code"]
-            try:
-                ts = existing_by_code.get(code)
-                if ts is None:
-                    ts = Timeseries(code=code)
-                    db.add(ts)
-                    existing_by_code[code] = ts
-                    created_codes.append(code)
-                else:
-                    updated_codes.append(code)
-
-                _apply_timeseries_updates(ts, meta)
-                db.flush()
-            except Exception as e:
-                logger.error("Bulk create error for %s: %s", code, e)
-                errors.append(f"{code}: {e}")
-
-        db.commit()
-
-    logger.info(
-        "Bulk create: %d created, %d updated in %.1fs",
-        len(created_codes), len(updated_codes), _time.time() - _t0,
-    )
-
-    # ── Parse Data sheet (optional) ────────────────────────────────
-    data_result = {}
-    if "Data" in wb.sheetnames:
-        ws_data = wb["Data"]
-        data_rows = list(ws_data.iter_rows(values_only=True))
-
-        if len(data_rows) >= 2:
-            # Row 0 = headers: Date, code1, code2, ...
-            data_headers = data_rows[0]
-            data_codes = [
-                str(h).strip() for h in data_headers[1:] if h and str(h).strip()
-            ]
-
-            if data_codes:
-                all_records: dict[str, dict] = {c: {} for c in data_codes}
-
-                for row in data_rows[1:]:
-                    date_cell = row[0] if row else None
-                    if date_cell is None:
-                        continue
-                    date_str = None
-                    if isinstance(date_cell, (_dt, _date)):
-                        date_str = date_cell.strftime("%Y-%m-%d")
-                    elif isinstance(date_cell, (int, float)):
-                        try:
-                            date_str = pd.to_datetime(
-                                date_cell, unit="D", origin="1899-12-30"
-                            ).strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-                    elif isinstance(date_cell, str):
-                        try:
-                            date_str = pd.to_datetime(date_cell).strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-                    if not date_str:
-                        continue
-
-                    for ci, code in enumerate(data_codes):
-                        col_idx = ci + 1
-                        if col_idx < len(row) and row[col_idx] is not None:
-                            try:
-                                val = float(row[col_idx])
-                                if not math.isnan(val):
-                                    all_records[code][date_str] = val
-                            except (ValueError, TypeError):
-                                continue
-
-                # Remove empty codes
-                all_records = {c: d for c, d in all_records.items() if d}
-
-                if all_records:
-                    all_dates = sorted({d for rec in all_records.values() for d in rec})
-                    columns = {
-                        code: [rec.get(d) for d in all_dates]
-                        for code, rec in all_records.items()
-                    }
-                    dates_index = pd.to_datetime(all_dates, errors="coerce")
-                    df = pd.DataFrame(columns, index=dates_index)
-                    df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
-
-                    if not df.empty:
-                        with Session() as local_db:
-                            data_result = _merge_columnar_to_db(df, local_db)
-                        logger.info(
-                            "Bulk create: merged %d data points for %d codes",
-                            data_result.get("points", 0),
-                            len(data_result.get("updated", [])),
-                        )
-
-    wb.close()
-
-    response = {
-        "message": f"Created {len(created_codes)}, updated {len(updated_codes)} timeseries.",
-        "created": created_codes,
-        "updated": updated_codes,
-    }
-    if errors:
-        response["errors"] = errors
-    if data_result:
-        response["data_merged"] = data_result.get("points", 0)
-        response["data_codes"] = data_result.get("updated", [])
-        if data_result.get("not_found"):
-            response["data_not_found"] = data_result["not_found"]
-
-    return response
-
-
-# Universal Excel formula template for the download endpoint.
-# Matches user's EXACT formatted string (including spaces).
-# __C__ is replaced with the actual column letter (B, C, D, ...) per timeseries.
-_DOWNLOAD_FORMULA_TEMPLATE = (
-    """=IF(__C__6="FactSet",IF(ISNUMBER(SEARCH(__C__3, "FDS_ECON_DATA; FDS_COM_DATA",1)),"""
-    """FDSC("","","PSETCAL(SEVENDAY);"&__C__3&"('" & __C__2 & "'," & $C$1+2 & "," & $B$1 & ", D, NONE, NONE)"),\n"""
-    """FDSC("","","PSETCAL(SEVENDAY);NO_REPEAT_F(SPEC_ID_DATA('" & __C__2 & ":" & __C__3 & "','" & $C$1+2 & "','" & $B$1 & "', D, NONE, NONE,2))")),\n"""
-    """IF(__C__6="Bloomberg",BDH(__C__2,__C__3,$B$1,$C$1+2,"SORT", "TRUE","DTS", "FALSE","DAYS", "C","FILL", "B"),\n"""
-    """IF(__C__6="Infomax",IMDH(__C__5,__C__2&"",__C__3,$B$1,$C$1,9999,"Per=일,sort=D,real=false,Bizday=12,Quote=종가,ROUND=9,Pos=20,Orient=V,Title="&__C__7&",DtFmt=1,TmFmt=1,unit=true"),\n"""
-    """NA())))"""
-)
+        result = await asyncio.to_thread(process_bulk_create, contents)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
 
 
 @router.get("/timeseries/download_template")
@@ -700,10 +252,6 @@ def download_template(
     matching the Google Sheets Bloomberg/FactSet/Infomax workflow.
     Accepts multiple source values via repeated query params.
     """
-    import io
-    from openpyxl import Workbook
-    from openpyxl.styles import Font
-
     ensure_connection()
 
     # Date range
@@ -711,8 +259,6 @@ def download_template(
     start_dt = (
         pd.to_datetime(start_date) if start_date else end_dt - pd.DateOffset(years=1)
     )
-    start_str = start_dt.strftime("%Y-%m-%d")
-    end_str = end_dt.strftime("%Y-%m-%d")
 
     # Query timeseries that have source_code set
     query = db.query(Timeseries).filter(Timeseries.source_code.isnot(None))
@@ -731,103 +277,7 @@ def download_template(
         src = ts.source or "Unknown"
         grouped.setdefault(src, []).append(ts)
 
-    wb = Workbook()
-    wb.remove(wb.active)
-
-    # Styles — white background, black text
-    header_font = Font(name="Consolas", size=9, color="000000")
-    value_font = Font(name="Consolas", size=9, color="000000")
-    code_font = Font(name="Consolas", size=9, color="000000", bold=True)
-    formula_font = Font(name="Consolas", size=8, color="000000", italic=True)
-    date_font = Font(name="Consolas", size=9, color="000000")
-
-    # Date range extent (for formula row count)
-    date_top = end_dt + pd.DateOffset(days=2)
-
-    for sheet_source, ts_list in grouped.items():
-        ws = wb.create_sheet(title=(sheet_source or "Unknown")[:31])
-
-        # Row 1: Header info — matches Sample.xlsx layout (A1=source, B1=start, C1=end)
-        ws.cell(row=1, column=1, value=sheet_source).font = Font(
-            name="Consolas", size=10, color="0000FF", bold=True
-        )
-        # B1 = start date, C1 = end date
-        ws.cell(row=1, column=2, value=start_dt.to_pydatetime()).font = value_font
-        ws.cell(row=1, column=2).number_format = "mm-dd-yy"
-        ws.cell(row=1, column=3, value=end_dt.to_pydatetime()).font = value_font
-        ws.cell(row=1, column=3).number_format = "mm-dd-yy"
-
-        # Metadata row labels (col A)
-        row_labels = {
-            2: "source_ticker",
-            3: "source_field",
-            4: "source_code",
-            5: "asset_class",
-            6: "source",
-            7: "name",
-            8: "code",
-        }
-        for r, label in row_labels.items():
-            cell = ws.cell(row=r, column=1, value=label)
-            cell.font = header_font
-
-        # Fill columns B+ with timeseries metadata
-        for col_idx, ts in enumerate(ts_list, start=2):
-            sc = str(ts.source_code) if ts.source_code else ":"
-            parts = sc.rsplit(":", 1) if ":" in sc else [sc, ""]
-            ticker = parts[0] if len(parts) > 0 else ""
-            field = parts[1] if len(parts) > 1 else ""
-
-            c = ws.cell(row=2, column=col_idx, value=ticker)
-            c.font = value_font
-            c.number_format = '@'
-            c.data_type = 's'  # Force string — preserves leading zeros like "001"
-            c = ws.cell(row=3, column=col_idx, value=field)
-            c.font = value_font
-            c.number_format = '@'
-            c.data_type = 's'
-            c = ws.cell(row=4, column=col_idx, value=sc)
-            c.font = value_font
-            c.number_format = '@'
-            c.data_type = 's'
-            ws.cell(row=5, column=col_idx, value=ts.asset_class or "").font = value_font
-            ws.cell(row=6, column=col_idx, value=ts.source or "").font = value_font
-            ws.cell(row=7, column=col_idx, value=ts.name or "").font = value_font
-            c = ws.cell(row=8, column=col_idx, value=ts.code or "")
-            c.font = code_font
-            c.number_format = '@'
-            c.data_type = 's'
-
-            # Universal formula — column letter swapped via template
-            from openpyxl.utils import get_column_letter
-
-            col = get_column_letter(col_idx)
-            formula_text = _DOWNLOAD_FORMULA_TEMPLATE.replace("__C__", col)
-
-            ws.cell(row=9, column=col_idx, value=formula_text).font = formula_font
-
-        # Date column (A9+) — descending from end_date+2 toward start_date
-        num_date_rows = (date_top - start_dt).days + 1
-        # A9 = C1+2 (most recent), then A10 = A9-1, A11 = A10-1, etc.
-        c = ws.cell(row=9, column=1, value="=C1+2")
-        c.font = date_font
-        c.number_format = "mm-dd-yy"
-        for i in range(1, num_date_rows):
-            c = ws.cell(row=9 + i, column=1, value=f"=A{9 + i - 1}-1")
-            c.font = date_font
-            c.number_format = "mm-dd-yy"
-
-        # Column widths
-        ws.column_dimensions["A"].width = 16
-        for col_idx in range(2, len(ts_list) + 2):
-            ws.column_dimensions[ws.cell(row=2, column=col_idx).column_letter].width = (
-                14
-            )
-
-    # Save to buffer
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
+    buffer = generate_download_template_workbook(grouped, start_dt, end_dt)
 
     filename = f"timeseries_template_{end_dt.strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(
@@ -851,112 +301,65 @@ async def upload_template_data(
     if len(contents) > 200 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File exceeds 200MB size limit")
 
-    # Run blocking work (openpyxl + DB) in threadpool — fresh session inside thread
-    result = await asyncio.to_thread(_process_template_upload, contents)
+    try:
+        result = await asyncio.to_thread(process_template_upload, contents)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return result
 
 
-def _process_template_upload(contents: bytes):
-    """Blocking worker: parse Excel template and merge into DB (same as upload_data_columnar)."""
-    import io
-    import math
-    import time as _time
-    from datetime import datetime as _dt, date as _date
-    from openpyxl import load_workbook
+class _UploadDataJSON(BaseModel):
+    """JSON payload for direct data upload from Excel add-in."""
+    data: Dict[str, Dict[str, float]]  # {code: {date_str: value}}
 
-    _t0 = _time.time()
-    logger.info("Template upload: parsing %d bytes...", len(contents))
-    try:
-        wb = load_workbook(io.BytesIO(contents), data_only=True, read_only=True)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid Excel format: {e}")
-    logger.info("Template upload: workbook loaded in %.1fs", _time.time() - _t0)
 
-    all_records: dict = {}  # {code: {date_str: value}}
-    for ws in wb.worksheets:
-        row_num = 0
-        codes_by_col_idx: dict = {}  # {0-based col index: code}
-        for row in ws.iter_rows(values_only=True):
-            row_num += 1
-            if row_num < 8:
-                continue
-            if row_num == 8:
-                # Row 8 = codes (skip col A at index 0)
-                for ci, val in enumerate(row):
-                    if ci > 0 and val:
-                        codes_by_col_idx[ci] = str(val).strip()
-                continue
-            # Rows 9+ = data
-            if not row or not codes_by_col_idx:
-                continue
-            date_cell = row[0]
-            if date_cell is None:
-                continue
-            date_str = None
-            if isinstance(date_cell, (_dt, _date)):
-                date_str = date_cell.strftime("%Y-%m-%d")
-            elif isinstance(date_cell, (int, float)):
-                try:
-                    date_str = pd.to_datetime(date_cell, unit="D", origin="1899-12-30").strftime("%Y-%m-%d")
-                except Exception:
-                    pass
-            elif isinstance(date_cell, str):
-                try:
-                    date_str = pd.to_datetime(date_cell).strftime("%Y-%m-%d")
-                except Exception:
-                    pass
-            if not date_str:
-                continue
-            for ci, code in codes_by_col_idx.items():
-                if ci < len(row) and row[ci] is not None:
-                    try:
-                        val = float(row[ci])
-                        if math.isnan(val):
-                            continue
-                    except Exception:
-                        continue
-                    if code not in all_records:
-                        all_records[code] = {}
-                    all_records[code][date_str] = val
-    wb.close()
-    logger.info("Template upload: parsed %d codes in %.1fs", len(all_records), _time.time() - _t0)
+@router.post("/timeseries/upload_data")
+@_limiter.limit("10/minute")
+def upload_data_json(
+    request: Request,
+    payload: _UploadDataJSON,
+    _current_user: User = Depends(get_current_admin_user),
+    db: SessionType = Depends(get_db),
+):
+    """Merge timeseries data from JSON (Excel add-in).
 
-    if not all_records:
-        raise HTTPException(status_code=400, detail="No data found in uploaded file.")
+    Accepts ``{data: {code: {date: value, ...}, ...}}``.
+    """
+    from ix.core.ts.bulk_upload import merge_columnar_to_db
 
-    # Build columnar format
-    all_dates = sorted({d for rec in all_records.values() for d in rec})
-    columns = {}
-    for code, rec in all_records.items():
-        columns[code] = [rec.get(d) for d in all_dates]
+    if not payload.data:
+        raise HTTPException(status_code=400, detail="No data provided")
 
-    num_dates = len(all_dates)
-    num_cols = len(columns)
-    codes = sorted(columns.keys())
+    # Build a date-indexed DataFrame from the nested dict
+    frames = {}
+    for code, date_vals in payload.data.items():
+        if not date_vals:
+            continue
+        s = pd.Series(date_vals, dtype=float)
+        s.index = pd.to_datetime(s.index, errors="coerce")
+        s = s.dropna()
+        if not s.empty:
+            frames[code] = s
 
-    # Merge into local DB (fresh session for thread safety)
-    ensure_connection()
-    dates_index = pd.to_datetime(all_dates, errors="coerce")
-    df = pd.DataFrame(columns, index=dates_index)
-    df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
-    if df.empty:
-        raise HTTPException(status_code=400, detail="No valid records after cleaning.")
+    if not frames:
+        raise HTTPException(status_code=400, detail="No valid data points found")
 
-    logger.info("Template upload: merging %d codes into local DB...", len(df.columns))
-    _t1 = _time.time()
-    with Session() as local_db:
-        result = _merge_columnar_to_db(df, local_db)
-    logger.info("Template upload: local DB merge done in %.1fs (%d updated)", _time.time() - _t1, len(result["updated"]))
-    response = {
+    df = pd.DataFrame(frames)
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+
+    result = merge_columnar_to_db(df, db)
+    return {
         "message": f"Merged {result['points']} points for {len(result['updated'])} codes.",
         "db_updated": result["updated"],
         "db_points_merged": result["points"],
+        "warning": f"Codes not found: {result['not_found']}" if result["not_found"] else None,
     }
-    if result["not_found"]:
-        response["warning"] = f"Codes not found in database: {result['not_found']}"
 
-    logger.info("Template upload: returning response after %.1fs", _time.time() - _t0)
-    return response
+
+# ────────────────────────────────────────────────────────────────────
+# CRUD: create / update / delete / get
+# ────────────────────────────────────────────────────────────────────
 
 
 @router.post("/timeseries")
@@ -1026,51 +429,21 @@ def create_or_update_timeseries_bulk(
                         "Either 'id' or 'code' is required to create/update timeseries"
                     )
                     continue
+                # Normalize code: append :PX_LAST if no field suffix
+                new_code = ts_data.code
+                if ":" not in new_code:
+                    new_code = f"{new_code}:PX_LAST"
                 # Create new timeseries
-                ts = Timeseries(code=ts_data.code)
+                ts = Timeseries(code=new_code)
                 db.add(ts)
-                existing_by_code[str(ts_data.code)] = (
+                existing_by_code[str(new_code)] = (
                     ts  # Register for subsequent lookups
                 )
-                created_codes.append(ts_data.code)
+                created_codes.append(new_code)
 
-            # Update fields
-            # Update code if provided (only if different from current)
-            if ts_data.code and ts_data.code != ts.code:
-                ts.code = ts_data.code
-
-            if ts_data.name is not None:
-                ts.name = str(ts_data.name)[:200] if ts_data.name else None
-            if ts_data.provider is not None:
-                ts.provider = str(ts_data.provider)[:100] if ts_data.provider else None
-            if ts_data.asset_class is not None:
-                ts.asset_class = (
-                    str(ts_data.asset_class)[:50] if ts_data.asset_class else None
-                )
-            if ts_data.category is not None:
-                ts.category = str(ts_data.category)[:100] if ts_data.category else None
-            if ts_data.source is not None:
-                ts.source = str(ts_data.source)[:100] if ts_data.source else None
-            if ts_data.source_code is not None:
-                ts.source_code = (
-                    str(ts_data.source_code)[:2000] if ts_data.source_code else None
-                )
-            if ts_data.frequency is not None:
-                ts.frequency = (
-                    str(ts_data.frequency)[:20] if ts_data.frequency else None
-                )
-            if ts_data.unit is not None:
-                ts.unit = str(ts_data.unit)[:50] if ts_data.unit else None
-            if ts_data.scale is not None:
-                ts.scale = ts_data.scale
-            if ts_data.currency is not None:
-                ts.currency = str(ts_data.currency)[:10] if ts_data.currency else None
-            if ts_data.country is not None:
-                ts.country = str(ts_data.country)[:100] if ts_data.country else None
-            if ts_data.remark is not None:
-                ts.remark = str(ts_data.remark) if ts_data.remark else None
-            if ts_data.favorite is not None:
-                ts.favorite = ts_data.favorite
+            # Update fields using canonical helper (exclude_unset avoids
+            # overwriting with Pydantic defaults like scale=1, favorite=False)
+            apply_timeseries_updates(ts, ts_data.model_dump(exclude_unset=True))
 
             # We use a nested transaction (SAVEPOINT) to safely catch individual loop errors
             # without breaking the entire batch transaction.
@@ -1138,7 +511,7 @@ def update_timeseries(
     try:
         # Apply changes
         try:
-            _apply_timeseries_updates(ts, update_fields)
+            apply_timeseries_updates(ts, update_fields)
         except (TypeError, ValueError):
             raise HTTPException(
                 status_code=400, detail="Invalid field type in payload."
@@ -1197,6 +570,10 @@ def create_timeseries(
     """
     ensure_connection()
 
+    # Normalize code: append :PX_LAST if no field suffix
+    if ":" not in code:
+        code = f"{code}:PX_LAST"
+
     # Validate existence
     existing = db.query(Timeseries).filter(Timeseries.code == code).first()
     if existing:
@@ -1210,7 +587,7 @@ def create_timeseries(
 
     try:
         ts = Timeseries(code=code)
-        _apply_timeseries_updates(ts, create_data)
+        apply_timeseries_updates(ts, create_data)
         ts.created = datetime.now()
         ts.updated = datetime.now()
 
@@ -1268,9 +645,10 @@ def delete_timeseries(
         )
 
     try:
-        db.delete(ts)
+        ts.is_deleted = True
+        ts.deleted_at = datetime.now(timezone.utc)
         db.commit()
-        logger.info("Admin %s deleted timeseries: %s", current_user.email, code)
+        logger.info("Admin %s soft-deleted timeseries: %s", current_user.email, code)
         return
     except Exception as e:
         db.rollback()
@@ -1358,6 +736,11 @@ def get_timeseries_by_code(
     )
 
 
+# ────────────────────────────────────────────────────────────────────
+# Favorites
+# ────────────────────────────────────────────────────────────────────
+
+
 @router.get("/timeseries/favorites")
 def get_favorite_timeseries_data(
     start_date: Optional[str] = Query(None, description="Start date (ISO-8601)"),
@@ -1373,9 +756,6 @@ def get_favorite_timeseries_data(
     ensure_connection()
 
     try:
-        # Query favorite timeseries metadata only — data_record loaded lazily
-        # per item via _get_or_create_data_record() to avoid a single massive
-        # JOIN that pulls all JSONB payloads into memory at once.
         favorite_timeseries = (
             db.query(Timeseries)
             .filter(Timeseries.favorite == True)
@@ -1388,134 +768,31 @@ def get_favorite_timeseries_data(
                 media_type="application/json",
             )
 
-        # Collect all series data as pandas Series for concatenation
+        # Collect all series data
         series_list = []
-
         for ts in favorite_timeseries:
             try:
-                ts_code = ts.code
-                data_record = ts._get_or_create_data_record(db)
-                column_data = (
-                    data_record.data if data_record and data_record.data else {}
-                )
-                frequency = ts.frequency
-
-                # Convert JSONB dict to pandas Series
-                if column_data and isinstance(column_data, dict):
-                    ts_data = pd.Series(column_data)
-                    try:
-                        ts_data.index = pd.to_datetime(ts_data.index)
-                        ts_data = pd.to_numeric(ts_data, errors="coerce").dropna()
-                        ts_data.name = ts_code
-                        if frequency and len(ts_data) > 0:
-                            ts_data = (
-                                ts_data.sort_index()
-                                .resample(str(frequency))
-                                .last()
-                                .dropna()
-                            )
-                        else:
-                            ts_data = ts_data.sort_index()
-
-                        if not ts_data.empty:
-                            series_list.append(ts_data)
-                    except Exception:
-                        try:
-                            valid_dates = pd.to_datetime(ts_data.index, errors="coerce")
-                            ts_data = ts_data[valid_dates.notna()]
-                            ts_data.index = pd.to_datetime(ts_data.index)
-                            ts_data = pd.to_numeric(ts_data, errors="coerce").dropna()
-                            ts_data.name = ts_code
-                            ts_data = ts_data.sort_index()
-                            if not ts_data.empty:
-                                series_list.append(ts_data)
-                        except Exception:
-                            logger.warning(
-                                f"Error processing timeseries {ts_code}: could not convert to Series"
-                            )
-                            continue
+                ts_data = process_database_timeseries(ts, db)
+                if ts_data is not None:
+                    series_list.append(ts_data)
             except Exception as e:
                 logger.warning("Error processing favorite timeseries %s: %s", ts.code, e)
                 continue
 
-        # Concatenate all series into a DataFrame
-        if series_list:
-            df = pd.concat(series_list, axis=1)
-            df.index.name = "Date"
-
-            # Optional date slicing
-            start_ts = (
-                pd.to_datetime(start_date, errors="coerce") if start_date else None
-            )
-            end_ts = pd.to_datetime(end_date, errors="coerce") if end_date else None
-
-            # Normalize timezone info
-            try:
-                df.index = pd.DatetimeIndex(df.index).tz_localize(None)
-            except Exception:
-                try:
-                    df.index = pd.DatetimeIndex(df.index).tz_convert(None)
-                except Exception:
-                    pass
-
-            df = df.resample("D").last()
-
-            if isinstance(start_ts, pd.Timestamp):
-                try:
-                    start_ts = start_ts.tz_localize(None)
-                except Exception:
-                    try:
-                        start_ts = start_ts.tz_convert(None)
-                    except Exception:
-                        pass
-
-            if isinstance(end_ts, pd.Timestamp):
-                try:
-                    end_ts = end_ts.tz_localize(None)
-                except Exception:
-                    try:
-                        end_ts = end_ts.tz_convert(None)
-                    except Exception:
-                        pass
-
-            # Apply slicing if bounds are valid
-            if isinstance(start_ts, pd.Timestamp):
-                df = df[df.index >= start_ts]
-            if isinstance(end_ts, pd.Timestamp):
-                df = df[df.index <= end_ts]
-
-            # Sort dates descending
-            df = df.sort_index(ascending=True)
-
-            # Convert to column-oriented format
-            df_indexed = df.reset_index()
-            column_dict = OrderedDict()
-
-            for col in df_indexed.columns:
-                values = df_indexed[col].tolist()
-                cleaned_values = []
-                for v in values:
-                    if v is None or (isinstance(v, float) and math.isnan(v)):
-                        cleaned_values.append(None)
-                    elif isinstance(v, (pd.Timestamp, datetime)):
-                        cleaned_values.append(v.isoformat())
-                    else:
-                        cleaned_values.append(v)
-                column_dict[col] = cleaned_values
-
-            return Response(
-                content=json.dumps(column_dict, ensure_ascii=False),
-                media_type="application/json",
-            )
-        else:
-            return Response(
-                content=json.dumps({"Date": []}, ensure_ascii=False),
-                media_type="application/json",
-            )
+        column_dict = format_favorites_dataframe(series_list, start_date, end_date)
+        return Response(
+            content=json.dumps(column_dict, ensure_ascii=False),
+            media_type="application/json",
+        )
 
     except Exception as e:
         logger.exception("Error retrieving favorite timeseries: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ────────────────────────────────────────────────────────────────────
+# Custom timeseries (expression evaluation)
+# ────────────────────────────────────────────────────────────────────
 
 
 async def _parse_codes_from_request(request: Request) -> List[str]:
@@ -1572,7 +849,6 @@ async def _parse_codes_from_request(request: Request) -> List[str]:
                     )
             except (json.JSONDecodeError, ValueError) as e:
                 # Check if header looks like it might contain complex expressions with commas
-                # If it contains function calls, quotes, or parentheses, it's likely JSON should be used
                 has_complex_expressions = any(
                     char in header_codes
                     for char in [
@@ -1635,196 +911,6 @@ async def _parse_codes_from_request(request: Request) -> List[str]:
     return unique_codes
 
 
-def _process_database_timeseries(
-    ts: Timeseries, db: SessionType
-) -> Optional[pd.Series]:
-    """Process a timeseries from the database and return as pandas Series."""
-    try:
-        # Use eagerly-loaded data_record when available (from joinedload),
-        # only fall back to DB query if not loaded yet
-        data_record = ts.data_record or ts._get_or_create_data_record(db)
-        column_data = data_record.data if data_record and data_record.data else {}
-        frequency = ts.frequency
-
-        if column_data and isinstance(column_data, dict):
-            ts_data = pd.Series(column_data)
-            try:
-                ts_data.index = pd.to_datetime(ts_data.index)
-                ts_data = pd.to_numeric(ts_data, errors="coerce").dropna()
-                ts_data.name = ts.code
-                if frequency and len(ts_data) > 0:
-                    ts_data = (
-                        ts_data.sort_index().resample(str(frequency)).last().dropna()
-                    )
-                else:
-                    ts_data = ts_data.sort_index()
-
-                if not ts_data.empty:
-                    return ts_data
-            except Exception:
-                try:
-                    valid_dates = pd.to_datetime(ts_data.index, errors="coerce")
-                    ts_data = ts_data[valid_dates.notna()]
-                    ts_data.index = pd.to_datetime(ts_data.index)
-                    ts_data = pd.to_numeric(ts_data, errors="coerce").dropna()
-                    ts_data.name = ts.code
-                    ts_data = ts_data.sort_index()
-                    if not ts_data.empty:
-                        return ts_data
-                except Exception:
-                    logger.warning(
-                        f"Error processing timeseries {ts.code}: could not convert to Series"
-                    )
-                    return None
-    except Exception as e:
-        logger.warning("Error processing database timeseries %s: %s", ts.code, e)
-        return None
-
-    return None
-
-
-def _evaluate_expression(
-    code: str, start_date: Optional[str], end_date: Optional[str]
-) -> List[pd.Series]:
-    """Evaluate code as Python expression and return list of Series."""
-    try:
-        logger.info(
-            "Code %s not found in database, attempting to evaluate as expression", code
-        )
-        evaluated_series = safe_eval_expression(code, TIMESERIES_EXPRESSION_CONTEXT)
-        series_list = []
-
-        # Handle both Series and DataFrame results
-        if isinstance(evaluated_series, pd.Series):
-            evaluated_series.name = code
-            if not evaluated_series.empty:
-                # Apply date filtering if provided
-                if start_date:
-                    start_dt = pd.to_datetime(start_date, errors="coerce")
-                    if start_dt:
-                        evaluated_series = evaluated_series.loc[
-                            evaluated_series.index >= start_dt
-                        ]
-                if end_date:
-                    end_dt = pd.to_datetime(end_date, errors="coerce")
-                    if end_dt:
-                        evaluated_series = evaluated_series.loc[
-                            evaluated_series.index <= end_dt
-                        ]
-                series_list.append(evaluated_series)
-        elif isinstance(evaluated_series, pd.DataFrame):
-            # If DataFrame, convert each column to a series
-            for col in evaluated_series.columns:
-                col_series = evaluated_series[col].copy()
-                col_series.name = col
-                # Apply date filtering if provided
-                if start_date:
-                    start_dt = pd.to_datetime(start_date, errors="coerce")
-                    if start_dt:
-                        col_series = col_series.loc[col_series.index >= start_dt]
-                if end_date:
-                    end_dt = pd.to_datetime(end_date, errors="coerce")
-                    if end_dt:
-                        col_series = col_series.loc[col_series.index <= end_dt]
-                if not col_series.empty:
-                    series_list.append(col_series)
-        else:
-            logger.warning(
-                "Evaluated expression %s did not return a Series or DataFrame", code
-            )
-
-        return series_list
-    except UnsafeExpressionError as e:
-        logger.warning("Rejected custom timeseries expression %s: %s", code, e)
-        return []
-    except Exception as e:
-        logger.warning(
-            "Code %s not found in database and failed to evaluate as expression: %s", code, e
-        )
-        return []
-
-
-def _normalize_timezone(ts: pd.Timestamp) -> pd.Timestamp:
-    """Normalize timezone info from a Timestamp."""
-    try:
-        return ts.tz_localize(None)
-    except Exception:
-        try:
-            return ts.tz_convert(None)
-        except Exception:
-            return ts
-
-
-def _format_dataframe_response(
-    df: pd.DataFrame,
-    series_list: List[pd.Series],
-    start_date: Optional[str],
-    end_date: Optional[str],
-) -> Response:
-    """Format DataFrame into column-oriented JSON response."""
-    df.index.name = "Date"
-
-    # Optional date bounds
-    start_ts = pd.to_datetime(start_date, errors="coerce") if start_date else None
-    end_ts = pd.to_datetime(end_date, errors="coerce") if end_date else None
-
-    # Normalize timezone info
-    try:
-        df.index = pd.DatetimeIndex(df.index).tz_localize(None)
-    except Exception:
-        try:
-            df.index = pd.DatetimeIndex(df.index).tz_convert(None)
-        except Exception:
-            pass
-
-    # Resample to daily frequency, drop all-NaN rows (weekends/holidays)
-    df = df.resample("D").last().dropna(how="all")
-
-    if isinstance(start_ts, pd.Timestamp):
-        start_ts = _normalize_timezone(start_ts)
-    if isinstance(end_ts, pd.Timestamp):
-        end_ts = _normalize_timezone(end_ts)
-
-    # Apply slicing if bounds are valid
-    if isinstance(start_ts, pd.Timestamp):
-        df = df[df.index >= start_ts]
-    if isinstance(end_ts, pd.Timestamp):
-        df = df[df.index <= end_ts]
-
-    # Reorder columns to preserve input order
-    present_in_order = [s.name for s in series_list if s.name in df.columns]
-    seen_present = set()
-    present_in_order = [
-        c for c in present_in_order if not (c in seen_present or seen_present.add(c))
-    ]
-    df = df[present_in_order]
-
-    # Sort dates ascending as requested
-    df = df.sort_index(ascending=True)
-
-    # Convert to column-oriented format
-    df_indexed = df.reset_index()
-    column_dict = OrderedDict()
-
-    for col in df_indexed.columns:
-        values = df_indexed[col].tolist()
-        cleaned_values = []
-        for v in values:
-            if v is None or (isinstance(v, float) and math.isnan(v)):
-                cleaned_values.append(None)
-            elif isinstance(v, (pd.Timestamp, datetime)):
-                cleaned_values.append(v.isoformat())
-            else:
-                cleaned_values.append(v)
-        column_dict[col] = cleaned_values
-
-    return Response(
-        content=json.dumps(column_dict, ensure_ascii=False),
-        media_type="application/json",
-        headers={"Cache-Control": "private, max-age=60"},
-    )
-
-
 @router.get("/timeseries.custom")
 @router.post("/timeseries.custom")
 @_limiter.limit("60/minute")
@@ -1884,11 +970,11 @@ async def get_custom_timeseries_data(
                 try:
                     ts = found.get(code)
                     if ts:
-                        ts_data = _process_database_timeseries(ts, db)
+                        ts_data = process_database_timeseries(ts, db)
                         if ts_data is not None:
                             series_list.append(ts_data)
                     else:
-                        evaluated_series = _evaluate_expression(
+                        evaluated_series = evaluate_expression(
                             code, start_date, end_date
                         )
                         series_list.extend(evaluated_series)
@@ -1898,7 +984,14 @@ async def get_custom_timeseries_data(
 
             if series_list:
                 df = pd.concat(series_list, axis=1)
-                return _format_dataframe_response(df, series_list, start_date, end_date)
+                column_dict = format_dataframe_to_column_dict(
+                    df, series_list, start_date, end_date
+                )
+                return Response(
+                    content=json.dumps(column_dict, ensure_ascii=False),
+                    media_type="application/json",
+                    headers={"Cache-Control": "private, max-age=60"},
+                )
             else:
                 return Response(
                     content=json.dumps({"Date": []}, ensure_ascii=False),
@@ -1923,7 +1016,7 @@ async def exec_code_block(
     _current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
-    POST /api/timeseries.exec — Execute a multi-line code block that produces
+    POST /api/timeseries.exec -- Execute a multi-line code block that produces
     a DataFrame or Series.  The code must assign its output to ``result``.
 
     Body: ``{ "code": "..." }``
@@ -1945,35 +1038,7 @@ async def exec_code_block(
 
         import asyncio
 
-        def _run():
-            evaluated = safe_exec_code(code, TIMESERIES_EXPRESSION_CONTEXT)
-            if isinstance(evaluated, pd.Series):
-                df = evaluated.to_frame()
-            else:
-                df = evaluated
-            df.index.name = "Date"
-            df = df.sort_index()
-            # Format index — handle both datetime and non-datetime indices
-            idx = df.index
-            if hasattr(idx, 'strftime'):
-                dates = [d.strftime("%Y-%m-%d") for d in idx]
-            else:
-                try:
-                    dates = [pd.Timestamp(d).strftime("%Y-%m-%d") for d in idx]
-                except Exception:
-                    dates = [str(d) for d in idx]
-            # Column-oriented JSON (same format as timeseries.custom)
-            out: dict = {"Date": dates}
-            for col in df.columns:
-                vals = df[col].tolist()
-                out[str(col)] = [
-                    None if (v is None or (isinstance(v, float) and (pd.isna(v) or not math.isfinite(v)))) else v
-                    for v in vals
-                ]
-            out["__columns__"] = [str(c) for c in df.columns]
-            return out
-
-        result = await asyncio.to_thread(_run)
+        result = await asyncio.to_thread(execute_code_block, code)
         return result
 
     except UnsafeExpressionError as e:
@@ -1985,12 +1050,13 @@ async def exec_code_block(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ==============================================================================
+# ────────────────────────────────────────────────────────────────────
 # Market.xlsm Download
-# ==============================================================================
+# ────────────────────────────────────────────────────────────────────
 import pathlib as _pathlib
 
 _MARKET_FILE = _pathlib.Path(__file__).resolve().parents[4] / "Market.xlsm"
+_XLAM_FILE = _pathlib.Path(__file__).resolve().parents[4] / "scripts" / "office" / "InvestmentX.xlam"
 
 
 @router.get("/download/market")
@@ -2000,90 +1066,34 @@ def download_market_file(
     """Download Market.xlsm Excel macro workbook."""
     if not _MARKET_FILE.is_file():
         raise HTTPException(status_code=404, detail="Market.xlsm not found on server")
-    return FileResponse(
+    resp = FileResponse(
         path=str(_MARKET_FILE),
         media_type="application/vnd.ms-excel.sheet.macroEnabled.12",
         filename="Market.xlsm",
     )
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
-def _merge_columnar_to_db(df: pd.DataFrame, db: SessionType) -> dict:
-    """Merge a date-indexed DataFrame (columns=codes) into the database.
-    Returns {"updated": [...], "not_found": [...], "points": int}.
-    Uses batch loading to minimize DB queries.
-    """
-    from ix.db.models import TimeseriesData
+@router.get("/download/addin")
+def download_excel_addin(
+    _current_user: User = Depends(get_current_user),
+):
+    """Download InvestmentX.xlam Excel add-in."""
+    if not _XLAM_FILE.is_file():
+        raise HTTPException(status_code=404, detail="InvestmentX.xlam not found on server")
+    resp = FileResponse(
+        path=str(_XLAM_FILE),
+        media_type="application/vnd.ms-excel.addin.macroEnabled.12",
+        filename="InvestmentX.xlam",
+    )
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
-    codes_list = list(df.columns)
-    if not codes_list:
-        return {"updated": [], "not_found": [], "points": 0}
 
-    # Batch-load all matching Timeseries in one query
-    all_ts = db.query(Timeseries).filter(Timeseries.code.in_(codes_list)).all()
-    ts_by_code = {ts.code: ts for ts in all_ts}
-    found_codes = set(ts_by_code.keys())
-    not_found_codes = [c for c in codes_list if c not in found_codes]
-
-    if not ts_by_code:
-        return {"updated": [], "not_found": not_found_codes, "points": 0}
-
-    # Batch-load all data records in one query
-    ts_ids = [ts.id for ts in all_ts]
-    all_data = db.query(TimeseriesData).filter(TimeseriesData.timeseries_id.in_(ts_ids)).all()
-    data_by_ts_id = {dr.timeseries_id: dr for dr in all_data}
-
-    updated_codes = []
-    total_points = 0
-    now = datetime.now()
-
-    for code in codes_list:
-        ts = ts_by_code.get(code)
-        if ts is None:
-            continue
-
-        # Get or create data record (no extra query — already loaded)
-        data_record = data_by_ts_id.get(ts.id)
-        if data_record is None:
-            data_record = TimeseriesData(timeseries_id=ts.id, data={})
-            db.add(data_record)
-            data_by_ts_id[ts.id] = data_record
-
-        column_data = data_record.data if data_record.data else {}
-
-        if column_data and isinstance(column_data, dict):
-            existing_data = pd.Series(column_data)
-            if not existing_data.empty:
-                existing_data.index = pd.to_datetime(existing_data.index, errors="coerce")
-                existing_data = existing_data.dropna()
-        else:
-            existing_data = pd.Series(dtype=float)
-
-        new_series = df[code].dropna()
-
-        if not existing_data.empty:
-            combined = pd.concat([existing_data, new_series], axis=0)
-            combined = combined[~combined.index.duplicated(keep="last")].sort_index()
-        else:
-            combined = new_series.sort_index()
-
-        data_dict = {}
-        for k, v in combined.to_dict().items():
-            date_str = str(k.date()) if hasattr(k, "date") else str(pd.to_datetime(k).date()) if not isinstance(k, str) else k
-            data_dict[date_str] = float(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else None
-
-        data_record.data = data_dict
-        data_record.updated = now
-        ts.start = combined.index.min().date() if len(combined) > 0 else None
-        ts.end = combined.index.max().date() if len(combined) > 0 else None
-        ts.num_data = len(combined)
-        ts.updated = now
-
-        total_points += len(new_series)
-        updated_codes.append(code)
-
-    db.commit()
-    return {"updated": updated_codes, "not_found": not_found_codes, "points": total_points}
-
+# ────────────────────────────────────────────────────────────────────
+# Data upload endpoints
+# ────────────────────────────────────────────────────────────────────
 
 
 @router.post("/upload_data")
@@ -2112,7 +1122,7 @@ def upload_data(
     pivoted = pivoted.dropna(how="all", axis=1).dropna(how="all", axis=0)
     pivoted.index = pd.to_datetime(pivoted.index)
 
-    result = _merge_columnar_to_db(pivoted, db)
+    result = merge_columnar_to_db(pivoted, db)
     response = {"message": f"Merged {result['points']} points for {len(result['updated'])} codes.", "db_updated": result["updated"], "db_points_merged": result["points"]}
     if result["not_found"]:
         response["warning"] = f"Codes not found in database: {result['not_found']}"
@@ -2139,7 +1149,7 @@ def upload_data_columnar(
     if df.empty:
         raise HTTPException(status_code=400, detail="No valid records after cleaning.")
 
-    result = _merge_columnar_to_db(df, db)
+    result = merge_columnar_to_db(df, db)
     response = {"message": f"Merged {result['points']} points for {len(result['updated'])} codes.", "db_updated": result["updated"], "db_points_merged": result["points"]}
     if result["not_found"]:
         response["warning"] = f"Codes not found in database: {result['not_found']}"
@@ -2204,7 +1214,7 @@ def sync_uploads_from_r2(
                 continue
 
             # Merge into local DB
-            result = _merge_columnar_to_db(df, db)
+            result = merge_columnar_to_db(df, db)
             logger.info("Synced %s: %d codes, %d points", key, len(result["updated"]), result["points"])
 
             # Move to processed

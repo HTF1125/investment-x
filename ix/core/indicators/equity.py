@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ix.db.query import Series
-from ix.core.transforms import StandardScalar
+from ix.common.data.transforms import StandardScalar
 
 
 # ── Equity Valuation ──────────────────────────────────────────────────────────
@@ -419,3 +419,40 @@ def fed_model_spread() -> pd.Series:
     result = (df["ey"] - df["tsy"])
     result.name = "Fed Model Spread (%)"
     return result.dropna()
+
+
+# ── Buffett Indicator ──────────────────────────────────────────────────────
+
+
+def buffett_indicator() -> pd.Series:
+    """Buffett Indicator: Total Market Cap / GDP (%).
+
+    Uses Wilshire 5000 as market cap proxy vs nominal GDP.
+    Values > 200% historically signal overvaluation.
+    Source: Warren Buffett / Fortune Magazine (2001).
+    """
+    wilshire = Series("WILL5000IND", freq="ME")
+    gdp = Series("GDP", freq="QE")
+    if wilshire.empty or gdp.empty:
+        return pd.Series(dtype=float)
+    # Wilshire 5000 index ≈ market cap in $B (index level * ~1.2)
+    mkt_cap = wilshire * 1.2
+    gdp_monthly = gdp.resample("ME").ffill()
+    ratio = (mkt_cap / gdp_monthly * 100).dropna()
+    ratio.name = "Buffett Indicator (%)"
+    return ratio
+
+
+def buffett_indicator_zscore(window: int = 120) -> pd.Series:
+    """Z-scored Buffett Indicator for regime detection.
+
+    Useful for identifying when market cap / GDP is at extremes
+    relative to its own history.
+    Source: Derived from Wilshire 5000 / GDP.
+    """
+    bi = buffett_indicator()
+    if bi.empty:
+        return pd.Series(dtype=float)
+    z = StandardScalar(bi, window)
+    z.name = "Buffett Indicator Z-Score"
+    return z.dropna()

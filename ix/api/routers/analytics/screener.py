@@ -1,7 +1,7 @@
 """VOMO Stock Screener — institutional flows + risk-adjusted momentum.
 
 Combines 13F institutional holding data with VOMO (Return/ATR) scoring,
-trend confirmation, and forward earnings estimates.
+trend confirmation, forward earnings estimates, and market context.
 Data is TTL-cached for 6 hours.
 """
 
@@ -38,6 +38,9 @@ _lock = threading.Lock()
 _sec_name_map: dict[str, str] = {}  # UPPER(company_name) -> ticker
 _sec_map_loaded = False
 _cusip_ticker_cache: dict[str, str | None] = {}
+
+# Persistent ticker info cache (sector, market_cap, industry) — survives recomputes
+_ticker_info_cache: dict[str, dict[str, Any]] = {}
 
 SEC_HEADERS = {
     "User-Agent": "Investment-X Research Platform admin@investment-x.com",
@@ -159,6 +162,17 @@ def _trend_flags(close: pd.Series) -> tuple[bool, bool]:
     return bool(px > sma50), bool(px > sma200)
 
 
+def _normalize_series(values: list[float]) -> list[float]:
+    """Normalize a list of floats to 0-1 range."""
+    if not values:
+        return []
+    lo, hi = min(values), max(values)
+    span = hi - lo
+    if span == 0:
+        return [0.5] * len(values)
+    return [round((v - lo) / span, 4) for v in values]
+
+
 # ---------------------------------------------------------------------------
 # Main Computation
 # ---------------------------------------------------------------------------
@@ -179,6 +193,8 @@ def compute_screener() -> dict[str, Any]:
     # Step 1: Query holdings from DB
     try:
         with Session() as db:
+            from sqlalchemy import func as sqlfunc
+
             # Distinct CUSIPs with security names
             distinct_cusips = (
                 db.query(
@@ -191,9 +207,7 @@ def compute_screener() -> dict[str, Any]:
                 .all()
             )
 
-            # All holdings for flow data (latest report per fund)
-            from sqlalchemy import func as sqlfunc
-
+            # Latest report per fund (for current holdings)
             latest_dates = (
                 db.query(
                     InstitutionalHolding.fund_name,
@@ -212,6 +226,42 @@ def compute_screener() -> dict[str, Any]:
                 )
                 .all()
             )
+
+            # Previous quarter holdings (for Q-over-Q comparison)
+            # Find the two most recent distinct report_dates per fund
+            prev_holdings_map: dict[str, dict[str, Any]] = {}  # "fund|symbol" -> holding
+            try:
+                for fund_row in db.query(InstitutionalHolding.fund_name).distinct().all():
+                    fname = fund_row.fund_name
+                    # Get 2 most recent distinct report_dates for this fund
+                    dates = (
+                        db.query(InstitutionalHolding.report_date)
+                        .filter(InstitutionalHolding.fund_name == fname)
+                        .distinct()
+                        .order_by(InstitutionalHolding.report_date.desc())
+                        .limit(2)
+                        .all()
+                    )
+                    if len(dates) < 2:
+                        continue
+                    prev_date = dates[1].report_date
+                    prev_rows = (
+                        db.query(InstitutionalHolding)
+                        .filter(
+                            InstitutionalHolding.fund_name == fname,
+                            InstitutionalHolding.report_date == prev_date,
+                        )
+                        .all()
+                    )
+                    for ph in prev_rows:
+                        key = f"{fname}|{ph.symbol or ph.cusip}"
+                        prev_holdings_map[key] = {
+                            "shares": ph.shares,
+                            "value_usd": ph.value_usd,
+                        }
+            except Exception as e:
+                logger.warning(f"Q-over-Q query failed (non-critical): {e}")
+
     except Exception as e:
         logger.error(f"DB query failed: {e}")
         return empty_result
@@ -273,7 +323,7 @@ def compute_screener() -> dict[str, Any]:
             ticker_funds.setdefault(ticker, set()).add(h.fund_name)
     ticker_fund_count = {t: len(funds) for t, funds in ticker_funds.items()}
 
-    # Step 5: Compute VOMO scores
+    # Step 5: Compute VOMO scores + new market data fields
     stocks: list[dict[str, Any]] = []
     for sym in symbols:
         try:
@@ -281,10 +331,12 @@ def compute_screener() -> dict[str, Any]:
                 close = data["Close"][sym].dropna()
                 high = data["High"][sym].dropna()
                 low = data["Low"][sym].dropna()
+                volume = data["Volume"][sym].dropna()
             else:
                 close = data["Close"].dropna()
                 high = data["High"].dropna()
                 low = data["Low"].dropna()
+                volume = data["Volume"].dropna()
 
             if len(close) < 50:
                 continue
@@ -318,6 +370,19 @@ def compute_screener() -> dict[str, Any]:
             ret_6m = round(float(close.iloc[-1] / close.iloc[-min(126, n)] - 1) * 100, 1) if n >= 126 else None
             ret_1y = round(float(close.iloc[-1] / close.iloc[-min(252, n)] - 1) * 100, 1) if n >= 252 else None
 
+            # New: volume metrics
+            vol_30d = float(volume.iloc[-30:].mean()) if len(volume) >= 30 else None
+            last_vol = float(volume.iloc[-1]) if len(volume) > 0 else None
+            rel_vol = round(last_vol / vol_30d, 2) if vol_30d and last_vol and vol_30d > 0 else None
+
+            # New: drawdown from 52-week high
+            high_252 = float(close.iloc[-min(252, n):].max())
+            drawdown = round((px / high_252 - 1) * 100, 1) if high_252 > 0 else None
+
+            # New: sparkline (last 63 trading days, normalized 0-1)
+            spark_raw = close.iloc[-min(63, n):].tolist()
+            sparkline = _normalize_series([float(v) for v in spark_raw])
+
             stocks.append(
                 {
                     "symbol": sym,
@@ -334,44 +399,90 @@ def compute_screener() -> dict[str, Any]:
                     "return_1m": ret_1m,
                     "return_6m": ret_6m,
                     "return_1y": ret_1y,
+                    # New fields
+                    "market_cap": None,
+                    "sector": None,
+                    "avg_volume_30d": round(vol_30d) if vol_30d else None,
+                    "relative_volume": rel_vol,
+                    "drawdown_52w": drawdown,
+                    "rs_percentile": None,  # filled in post-pass
+                    "sparkline_3m": sparkline,
                 }
             )
         except Exception as e:
             logger.debug(f"Skipping {sym}: {e}")
             continue
 
-    # Step 6: Forward earnings estimates (rate-limited)
+    # Step 6: Forward earnings + market cap + sector (rate-limited)
     for stock in stocks[:100]:  # Cap at 100 to avoid excessive API calls
+        sym = stock["symbol"]
         try:
-            t = yf.Ticker(stock["symbol"])
+            t = yf.Ticker(sym)
+
+            # Forward EPS growth
             ge = t.growth_estimates
             if ge is not None and not ge.empty:
-                # growth_estimates rows: 0q, +1q, 0y, +1y, +5y; cols: stock, industry, sector
                 if "+1y" in ge.index and "stock" in ge.columns:
                     val = ge.loc["+1y", "stock"]
                     if val is not None and not pd.isna(val):
                         stock["fwd_eps_growth"] = round(float(val), 3)
+
+            # Market cap + sector (use persistent cache)
+            if sym in _ticker_info_cache:
+                cached = _ticker_info_cache[sym]
+                stock["market_cap"] = cached.get("market_cap")
+                stock["sector"] = cached.get("sector")
+            else:
+                try:
+                    info = t.info
+                    mc = info.get("marketCap")
+                    sec = info.get("sector")
+                    _ticker_info_cache[sym] = {
+                        "market_cap": mc,
+                        "sector": sec,
+                        "industry": info.get("industry"),
+                    }
+                    stock["market_cap"] = mc
+                    stock["sector"] = sec
+                except Exception:
+                    _ticker_info_cache[sym] = {"market_cap": None, "sector": None, "industry": None}
+
             time.sleep(0.12)
         except Exception:
             pass
+
+    # Step 6b: Relative strength percentile (post-pass)
+    returns_6m = [(i, s.get("return_6m")) for i, s in enumerate(stocks)]
+    valid_returns = [(i, r) for i, r in returns_6m if r is not None]
+    if valid_returns:
+        sorted_returns = sorted(valid_returns, key=lambda x: x[1])
+        for rank_idx, (stock_idx, _) in enumerate(sorted_returns):
+            pct = round(rank_idx / max(len(sorted_returns) - 1, 1) * 100)
+            stocks[stock_idx]["rs_percentile"] = pct
 
     # Sort by composite VOMO descending
     stocks.sort(key=lambda s: s["vomo_composite"] or -999, reverse=True)
     for i, s in enumerate(stocks):
         s["rank"] = i + 1
 
-    # Step 7: Build flows data
+    # Build a quick lookup for VOMO by symbol
+    vomo_by_sym = {s["symbol"]: s["vomo_composite"] for s in stocks}
+
+    # Step 7: Build flows data (with Q-over-Q comparison)
     flows: list[dict[str, Any]] = []
     for h in all_holdings:
         ticker = symbol_map.get(h.cusip) if h.cusip else h.symbol
         if not ticker or h.put_call:
             continue  # Skip options
 
-        vomo = None
-        for s in stocks:
-            if s["symbol"] == ticker:
-                vomo = s["vomo_composite"]
-                break
+        # Q-over-Q comparison
+        prev_key = f"{h.fund_name}|{ticker}"
+        prev = prev_holdings_map.get(prev_key)
+        prev_shares = prev["shares"] if prev else None
+        prev_value = prev["value_usd"] if prev else None
+        qoq_pct = None
+        if prev_shares and h.shares and prev_shares > 0:
+            qoq_pct = round((h.shares - prev_shares) / prev_shares * 100, 1)
 
         flows.append(
             {
@@ -385,7 +496,11 @@ def compute_screener() -> dict[str, Any]:
                     round(float(h.shares_change_pct), 1) if h.shares_change_pct else None
                 ),
                 "report_date": str(h.report_date) if h.report_date else None,
-                "vomo_composite": vomo,
+                "vomo_composite": vomo_by_sym.get(ticker),
+                # Q-over-Q fields
+                "prev_shares": prev_shares,
+                "prev_value_usd": prev_value,
+                "qoq_shares_change_pct": qoq_pct,
             }
         )
 
@@ -441,6 +556,8 @@ def get_rankings(
         "vomo_composite", "vomo_1m", "vomo_6m", "vomo_1y",
         "fund_count", "price", "fwd_eps_growth",
         "return_1m", "return_6m", "return_1y",
+        "market_cap", "avg_volume_30d", "relative_volume",
+        "drawdown_52w", "rs_percentile",
     }
     if sort_by in valid_sorts:
         stocks = sorted(stocks, key=lambda s: s.get(sort_by) or -999, reverse=True)
@@ -477,6 +594,129 @@ def get_flows(
     return {
         "flows": flows,
         "total": len(flows),
+        "computed_at": data["computed_at"],
+    }
+
+
+@router.get("/screener/consensus")
+@_limiter.limit("20/minute")
+def get_consensus(
+    request: Request,
+    _user=Depends(get_optional_user),
+) -> dict[str, Any]:
+    """Cross-fund consensus: stocks aggregated by how many funds hold them."""
+    data = _get_data()
+    flows = data["flows"]
+    stocks_by_sym = {s["symbol"]: s for s in data["stocks"]}
+
+    # Aggregate by symbol
+    agg: dict[str, dict[str, Any]] = {}
+    for f in flows:
+        sym = f["symbol"]
+        if sym not in agg:
+            stock = stocks_by_sym.get(sym, {})
+            agg[sym] = {
+                "symbol": sym,
+                "fund_count": 0,
+                "total_value_usd": 0,
+                "fund_names": [],
+                "actions": {},
+                "sector": stock.get("sector"),
+                "market_cap": stock.get("market_cap"),
+                "vomo_composite": stock.get("vomo_composite"),
+                "price": stock.get("price"),
+                "drawdown_52w": stock.get("drawdown_52w"),
+                "rs_percentile": stock.get("rs_percentile"),
+            }
+        entry = agg[sym]
+        if f["fund_name"] not in entry["fund_names"]:
+            entry["fund_names"].append(f["fund_name"])
+            entry["fund_count"] += 1
+        entry["total_value_usd"] += f["value_usd"] or 0
+        action = f["action"]
+        entry["actions"][action] = entry["actions"].get(action, 0) + 1
+
+    # Compute consensus label
+    for entry in agg.values():
+        acts = entry["actions"]
+        bullish = acts.get("NEW", 0) + acts.get("INCREASED", 0)
+        bearish = acts.get("DECREASED", 0) + acts.get("SOLD", 0)
+        total = bullish + bearish
+        if total == 0:
+            entry["consensus_label"] = "Unchanged"
+        elif bullish > bearish:
+            entry["consensus_label"] = "Accumulating"
+        elif bearish > bullish:
+            entry["consensus_label"] = "Reducing"
+        else:
+            entry["consensus_label"] = "Mixed"
+
+    consensus = sorted(agg.values(), key=lambda x: (x["fund_count"], x["total_value_usd"]), reverse=True)
+
+    return {
+        "consensus": consensus,
+        "total": len(consensus),
+        "computed_at": data["computed_at"],
+    }
+
+
+@router.get("/screener/sector-concentration")
+@_limiter.limit("20/minute")
+def get_sector_concentration(
+    request: Request,
+    _user=Depends(get_optional_user),
+) -> dict[str, Any]:
+    """Sector-level aggregation of institutional positioning."""
+    data = _get_data()
+    stocks = data["stocks"]
+    flows = data["flows"]
+
+    # Build total value by symbol from flows
+    sym_value: dict[str, float] = {}
+    for f in flows:
+        sym_value[f["symbol"]] = sym_value.get(f["symbol"], 0) + (f["value_usd"] or 0)
+
+    # Aggregate by sector
+    sectors: dict[str, dict[str, Any]] = {}
+    for s in stocks:
+        sec = s.get("sector")
+        if not sec:
+            continue
+        if sec not in sectors:
+            sectors[sec] = {
+                "sector": sec,
+                "stock_count": 0,
+                "total_value_usd": 0,
+                "vomo_sum": 0,
+                "fund_count_sum": 0,
+                "symbols": [],
+            }
+        entry = sectors[sec]
+        entry["stock_count"] += 1
+        entry["total_value_usd"] += sym_value.get(s["symbol"], 0)
+        entry["vomo_sum"] += s.get("vomo_composite") or 0
+        entry["fund_count_sum"] += s.get("fund_count", 0)
+        entry["symbols"].append((s["symbol"], sym_value.get(s["symbol"], 0)))
+
+    result = []
+    for entry in sectors.values():
+        count = entry["stock_count"]
+        # Top 3 symbols by value
+        top = sorted(entry["symbols"], key=lambda x: x[1], reverse=True)[:3]
+        result.append({
+            "sector": entry["sector"],
+            "stock_count": count,
+            "total_value_usd": round(entry["total_value_usd"]),
+            "avg_vomo": round(entry["vomo_sum"] / count, 2) if count else None,
+            "avg_fund_count": round(entry["fund_count_sum"] / count, 1) if count else None,
+            "top_symbols": [s[0] for s in top],
+        })
+
+    result.sort(key=lambda x: x["total_value_usd"], reverse=True)
+
+    return {
+        "sectors": result,
+        "total": len(result),
         "computed_at": data["computed_at"],
     }
 

@@ -7,18 +7,18 @@ serialized to JSON for the API or rendered in the Streamlit app.
 import numpy as np
 import pandas as pd
 
+from ix.common.data.transforms import clean_series
+
 
 def _clean_series(series: pd.Series, name: str) -> pd.Series:
-    clean = pd.to_numeric(series, errors="coerce")
-    clean = clean.replace([np.inf, -np.inf], np.nan).dropna()
+    """Clean + parse datetime index (extends core clean_series)."""
+    clean = clean_series(series, name=name)
     if clean.empty:
-        return pd.Series(dtype=float, name=name)
+        return clean
     idx = pd.to_datetime(clean.index, errors="coerce")
     clean = clean.loc[~idx.isna()].copy()
     clean.index = idx[~idx.isna()]
-    clean = clean.sort_index()
-    clean.name = name
-    return clean
+    return clean.sort_index()
 
 
 def _empty_outputs() -> tuple:

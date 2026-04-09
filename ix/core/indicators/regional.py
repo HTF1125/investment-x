@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ix.db.query import Series
-from ix.core.transforms import StandardScalar
+from ix.common.data.transforms import StandardScalar
 
 from ix.core.indicators.cross_asset import baltic_dry_index, copper_gold_ratio
 
@@ -188,7 +188,7 @@ def china_credit_impulse(freq: str = "ME") -> pd.Series:
     m2_cn = Series("CN.MAM2", freq=freq)
     if m2_cn.empty:
         return pd.Series(dtype=float, name="China Credit Impulse")
-    yoy = m2_cn.pct_change(12) * 100
+    yoy = m2_cn.pct_change(12, fill_method=None) * 100
     impulse = yoy.diff(3)
     impulse.name = "China Credit Impulse"
     return impulse.dropna()
@@ -203,7 +203,7 @@ def china_m2_yoy(freq: str = "ME") -> pd.Series:
     m2_cn = Series("CN.MAM2", freq=freq)
     if m2_cn.empty:
         return pd.Series(dtype=float)
-    s = m2_cn.pct_change(12) * 100
+    s = m2_cn.pct_change(12, fill_method=None) * 100
     s.name = "China M2 YoY"
     return s.dropna()
 
@@ -390,6 +390,52 @@ def em_composite_indicator(window: int = 120) -> pd.Series:
     s = pd.DataFrame(components).mean(axis=1).dropna()
     s.name = "EM Composite"
     return s
+
+
+# ── Li Keqiang Index (Proxy) ────────────────────────────────────────────
+
+
+def li_keqiang_proxy(window: int = 78) -> pd.Series:
+    """Modified Li Keqiang Index using available China data.
+
+    Original: 40% electricity + 35% bank loans + 25% rail freight.
+    Proxy: 40% China PMI + 35% China M2 YoY + 25% China Credit Impulse.
+    Source: Li Keqiang (2007), modified for data availability.
+    """
+    components = {}
+
+    pmi = china_pmi_composite()
+    if not pmi.empty:
+        components["PMI"] = StandardScalar(pmi, window) * 0.40
+
+    m2 = china_m2_yoy()
+    if not m2.empty:
+        components["M2"] = StandardScalar(m2, window) * 0.35
+
+    credit = china_credit_impulse()
+    if not credit.empty:
+        components["Credit"] = StandardScalar(credit, window) * 0.25
+
+    if not components:
+        return pd.Series(dtype=float, name="Li Keqiang Proxy")
+
+    result = pd.DataFrame(components).sum(axis=1).dropna()
+    result.name = "Li Keqiang Proxy"
+    return result
+
+
+def li_keqiang_momentum(window: int = 13) -> pd.Series:
+    """Li Keqiang Proxy momentum (13-week change).
+
+    Rising = China growth accelerating. Falling = decelerating.
+    Source: Derived from Modified Li Keqiang Index.
+    """
+    lk = li_keqiang_proxy()
+    if lk.empty:
+        return pd.Series(dtype=float)
+    mom = lk.diff(window)
+    mom.name = "Li Keqiang Momentum"
+    return mom.dropna()
 
 
 # ── Global Trade ─────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from ix.db.query import Series
-from ix.core.transforms import StandardScalar
+from ix.common.data.transforms import StandardScalar
 
 
 # ── Channel weights (inspired by Goldman FCI methodology) ──

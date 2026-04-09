@@ -15,8 +15,8 @@ from ix.db.conn import ensure_connection
 from ix.db.query import Series
 from ix.api.dependencies import get_current_user
 from ix.db.models.user import User
-from ix.misc import get_logger
-from ix.utils.safe_expression import (
+from ix.common import get_logger
+from ix.common.security.safe_expression import (
     SERIES_EXPRESSION_CONTEXT,
     UnsafeExpressionError,
     safe_eval_expression,

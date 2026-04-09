@@ -24,10 +24,10 @@ class AAIISentimentCollector(BaseCollector):
     HISTORICAL_URL = "https://www.aaii.com/files/surveys/sentiment.xls"
 
     SERIES = [
-        ("AAII_BULL", "Bullish", "Bullish %"),
-        ("AAII_BEAR", "Bearish", "Bearish %"),
-        ("AAII_NEUTRAL", "Neutral", "Neutral %"),
-        ("AAII_BULL_BEAR_SPREAD", "Spread", "Bull-Bear Spread"),
+        ("AAII_BULL:PX_LAST", "Bullish", "Bullish %"),
+        ("AAII_BEAR:PX_LAST", "Bearish", "Bearish %"),
+        ("AAII_NEUTRAL:PX_LAST", "Neutral", "Neutral %"),
+        ("AAII_BULL_BEAR_SPREAD:PX_LAST", "Spread", "Bull-Bear Spread"),
     ]
 
     def collect(self, progress_cb=None) -> dict:

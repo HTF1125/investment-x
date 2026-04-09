@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ix.db.query import Series, MultiSeries
-from ix.core.transforms import StandardScalar, Offset
+from ix.common.data.transforms import StandardScalar, Offset
 
 
 def inflation_momentum() -> pd.DataFrame:

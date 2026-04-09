@@ -8,7 +8,7 @@ import pandas as pd
 from sqlalchemy.orm import Session as SessionType
 
 from ix.db.models import Timeseries
-from ix.misc.date import today
+from ix.common.date import today
 
 # TTL cache for crawler results: {source_code: (timestamp, pd.Series)}
 _crawler_cache: dict[str, tuple[float, pd.Series]] = {}
@@ -40,7 +40,7 @@ def clear_series_cache(code: str | None = None) -> None:
 
 # Re-export transforms so legacy custom chart code using
 # `from ix.db.query import ...` continues to work.
-from ix.core.transforms import (  # noqa: F401
+from ix.common.data.transforms import (  # noqa: F401
     Clip,
     CycleForecast,
     Diff,
@@ -56,7 +56,24 @@ from ix.core.transforms import (  # noqa: F401
     StandardScalar,
     daily_ffill,
 )
-from ix.core.quantitative.statistics import Cycle  # noqa: F401
+from ix.common.data.statistics import Cycle  # noqa: F401
+
+
+def bulk_load_timeseries(db, codes: list[str]) -> dict[str, "Timeseries"]:
+    """Batch-load Timeseries with eagerly-loaded data records.
+
+    Returns a dict mapping code to Timeseries, avoiding N+1 queries
+    when you need both metadata and data for multiple series.
+    """
+    from sqlalchemy.orm import joinedload
+
+    rows = (
+        db.query(Timeseries)
+        .options(joinedload(Timeseries.data_record))
+        .filter(Timeseries.code.in_(codes))
+        .all()
+    )
+    return {ts.code: ts for ts in rows}
 
 
 def MultiSeries(series: dict[str, pd.Series] | None = None, **kwargs: pd.Series) -> pd.DataFrame:
@@ -99,6 +116,7 @@ def Series(
     session: Optional[SessionType] = None,
     _skip_fx: bool = False,
     strict: bool = False,
+    db_only: bool = False,
 ) -> pd.Series:
     """
     Return a pandas Series for `code`, resampled to `freq` if provided,
@@ -155,7 +173,7 @@ def Series(
                 result.name = code
                 return result
 
-            from ix.misc.crawler import get_yahoo_data, get_fred_data, get_naver_data
+            from ix.collectors.crawler import get_yahoo_data, get_fred_data, get_naver_data
             ticker, field = source_code.rsplit(":", 1)
             try:
                 if source == "Yahoo":
@@ -225,7 +243,7 @@ def Series(
             if not ts:
                 return None, pd.Series(dtype=float)
             src = str(ts.source or "")
-            if src in _LIVE_SOURCES and ts.source_code:
+            if src in _LIVE_SOURCES and ts.source_code and not db_only:
                 # Fetch from crawler, not DB
                 ts_currency = (ts.currency or "").upper()
                 try:
@@ -245,16 +263,9 @@ def Series(
             ts, s = _lookup_ts(session)
             found = ts is not None
         else:
-            from ix.db.conn import custom_chart_session
-
-            ctx_session = custom_chart_session.get()
-            if ctx_session:
-                ts, s = _lookup_ts(ctx_session)
+            with Session() as session_local:
+                ts, s = _lookup_ts(session_local)
                 found = ts is not None
-            else:
-                with Session() as session_local:
-                    ts, s = _lookup_ts(session_local)
-                    found = ts is not None
 
         if not found:
             return pd.Series(name=code)
@@ -263,6 +274,13 @@ def Series(
         if not isinstance(s.index, pd.DatetimeIndex):
             s.index = pd.to_datetime(s.index, errors="coerce")
             s = s.dropna()
+
+        # Normalize to date-only (strip time/timezone) to prevent alignment
+        # issues when merging series from different sources
+        if s.index.tz is not None:
+            s.index = s.index.tz_localize(None)
+        s.index = s.index.normalize()
+        s = s[~s.index.duplicated(keep="last")]
 
         # Compute slice window: [start, today]
         start_dt = pd.to_datetime(ts_start) if ts_start else s.index.min()

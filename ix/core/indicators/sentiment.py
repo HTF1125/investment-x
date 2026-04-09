@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ix.db.query import Series
-from ix.core.transforms import StandardScalar
+from ix.common.data.transforms import StandardScalar
 
 
 # ── Sentiment & Surveys ─────────────────────────────────────────────────────
@@ -325,11 +325,14 @@ def bank_credit_impulse(freq: str = "ME") -> pd.Series:
     Second derivative of credit — leads economic activity by 6-9 months.
     Positive = credit expanding at an increasing rate (stimulative).
     Negative = credit decelerating (contractionary).
+    Uses LOANINV (Bank Credit, All Commercial Banks, FRED H.8).
     """
-    credit = Series("TOTBKCR", freq=freq)
+    credit = Series("LOANINV", freq=freq)
+    if credit.empty:
+        credit = Series("TOTBKCR", freq=freq)  # legacy fallback
     if credit.empty:
         return pd.Series(dtype=float)
-    yoy = credit.pct_change(12) * 100
+    yoy = credit.pct_change(12, fill_method=None) * 100
     impulse = yoy.diff(3)
     impulse.name = "Bank Credit Impulse"
     return impulse.dropna()
@@ -431,3 +434,67 @@ def cftc_speculative_sentiment() -> pd.DataFrame:
     if not data:
         return pd.DataFrame()
     return pd.DataFrame(data).dropna(how="all")
+
+
+# ── AAII Sentiment ─────────────────────────────────────────────────────────
+
+
+def aaii_bull_bear_spread() -> pd.Series:
+    """AAII Bull-Bear Spread (%).
+
+    Classic contrarian indicator — extreme readings reverse.
+    Source: AAII Weekly Sentiment Survey.
+    """
+    s = Series("AAII_BULL_BEAR_SPREAD")
+    if s.empty:
+        return pd.Series(dtype=float)
+    s.name = "AAII Bull-Bear Spread"
+    return s.dropna()
+
+
+def aaii_bull_bear_ratio() -> pd.Series:
+    """AAII Bullish / Bearish ratio.
+
+    Values > 2 indicate extreme optimism (contrarian bearish).
+    Values < 0.5 indicate extreme pessimism (contrarian bullish).
+    Source: AAII Weekly Sentiment Survey.
+    """
+    bull = Series("AAII_BULL")
+    bear = Series("AAII_BEAR")
+    if bull.empty or bear.empty:
+        return pd.Series(dtype=float)
+    ratio = (bull / bear.replace(0, np.nan)).dropna()
+    ratio.name = "AAII Bull/Bear Ratio"
+    return ratio
+
+
+def aaii_sentiment_zscore(window: int = 78) -> pd.Series:
+    """Z-scored AAII Bull-Bear Spread for extreme detection.
+
+    |z| > 1.5 flags contrarian opportunities.
+    Source: AAII Weekly Sentiment Survey, z-scored.
+    """
+    spread = aaii_bull_bear_spread()
+    if spread.empty:
+        return pd.Series(dtype=float)
+    z = StandardScalar(spread, window)
+    z.name = "AAII Sentiment Z-Score"
+    return z.dropna()
+
+
+def aaii_sentiment_components() -> pd.DataFrame:
+    """All AAII sentiment components (Bull/Bear/Neutral %).
+
+    Source: AAII Weekly Sentiment Survey.
+    """
+    bull = Series("AAII_BULL")
+    bear = Series("AAII_BEAR")
+    neutral = Series("AAII_NEUTRAL")
+    if bull.empty and bear.empty and neutral.empty:
+        return pd.DataFrame()
+    df = pd.DataFrame({
+        "Bullish %": bull,
+        "Bearish %": bear,
+        "Neutral %": neutral,
+    }).dropna()
+    return df

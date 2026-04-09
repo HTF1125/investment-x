@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ix.core.transforms import MonthEndOffset, StandardScalar
+from ix.common.data.transforms import MonthEndOffset, StandardScalar
 from ix.db.query import MultiSeries, Series
 
 

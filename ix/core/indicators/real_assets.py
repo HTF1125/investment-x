@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ix.db.query import Series, MultiSeries
-from ix.core.transforms import StandardScalar
+from ix.common.data.transforms import StandardScalar
 
 
 # ── Semiconductors & Alt Data ─────────────────────────────────────────────
@@ -253,6 +253,73 @@ def gold_real_rate_relationship(window: int = 120) -> pd.Series:
     rr_chg = real_rate.diff()
     s = gold_s.rolling(window).corr(rr_chg).dropna()
     s.name = "Gold-Real Rate Corr"
+    return s
+
+
+def gold_oil_ratio(freq: str = "W") -> pd.Series:
+    """Gold / WTI crude oil ratio (barrels per ounce).
+
+    Rising = gold outperforming energy (deflation/risk-off).
+    Falling = energy outperforming gold (reflation/growth).
+    Historical norm ~15-25x; current ~45x is historically elevated.
+    """
+    g = Series("GOLDCOMP:PX_LAST", freq=freq)
+    oil = Series("WTI:PX_LAST", freq=freq)
+    if g.empty or oil.empty:
+        return pd.Series(dtype=float)
+    s = (g / oil).dropna()
+    s.name = "Gold/Oil Ratio"
+    return s
+
+
+def gold_spx_ratio(freq: str = "W") -> pd.Series:
+    """S&P 500 / Gold ratio — equity valuation relative to gold.
+
+    Falling = gold outperforming equities (risk-off, debasement).
+    FTSE Russell: ratio at decade low in 2026 correction.
+    """
+    spx = Series("SPX INDEX:PX_LAST", freq=freq)
+    g = Series("GOLDCOMP:PX_LAST", freq=freq)
+    if spx.empty or g.empty:
+        return pd.Series(dtype=float)
+    s = (spx / g).dropna()
+    s.name = "S&P 500 / Gold"
+    return s
+
+
+def gold_bitcoin_correlation(window: int = 90) -> pd.Series:
+    """Rolling correlation between gold and bitcoin daily returns.
+
+    Positive = "digital gold" narrative active.
+    Negative = decoupled regimes (gold=haven, BTC=risk asset).
+    Post-2022: correlation went to -0.17, breaking digital gold thesis.
+    """
+    g = Series("GOLDCOMP:PX_LAST")
+    btc = Series("XBTUSD CURNCY:PX_LAST")
+    if g.empty or btc.empty:
+        return pd.Series(dtype=float)
+    df = pd.DataFrame({"g": g.pct_change(), "btc": btc.pct_change()}).dropna()
+    if len(df) < window:
+        return pd.Series(dtype=float)
+    s = df["g"].rolling(window).corr(df["btc"]).dropna()
+    s.name = f"Gold-BTC Corr ({window}d)"
+    return s
+
+
+def gold_etf_flows(freq: str = "W") -> pd.Series:
+    """Cumulative gold ETF flows (GLD + IAU).
+
+    Rising = institutional accumulation.
+    9 consecutive positive months through Feb 2026.
+    Tracks structural demand momentum.
+    """
+    gld = Series("GLD US EQUITY:FUND_FLOW", freq=freq)
+    iau = Series("IAU US EQUITY:FUND_FLOW", freq=freq)
+    if gld.empty and iau.empty:
+        return pd.Series(dtype=float)
+    combined = pd.DataFrame({"gld": gld, "iau": iau}).fillna(0).sum(axis=1)
+    s = combined.cumsum().dropna()
+    s.name = "Gold ETF Flows (Cumulative)"
     return s
 
 

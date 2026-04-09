@@ -159,7 +159,10 @@ class CBOECollector(BaseCollector):
             return 0
 
         series = hist["Close"].dropna()
-        series.index = pd.to_datetime(series.index).tz_localize(None)
+        idx = pd.DatetimeIndex(series.index)
+        if idx.tz is not None:
+            idx = idx.tz_localize(None)
+        series.index = idx.normalize()
 
         self._upsert_timeseries(
             db,

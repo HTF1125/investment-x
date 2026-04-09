@@ -89,6 +89,18 @@ class PutCallRatio:
     zscore = staticmethod(put_call_zscore)
 
 
+class AAIISentiment:
+    spread = staticmethod(aaii_bull_bear_spread)
+    ratio = staticmethod(aaii_bull_bear_ratio)
+    zscore = staticmethod(aaii_sentiment_zscore)
+    components = staticmethod(aaii_sentiment_components)
+
+
+class NAAIMExposure:
+    index = staticmethod(naaim_exposure)
+    zscore = staticmethod(naaim_exposure_zscore)
+
+
 class ISMIndicators:
     manufacturing_data = staticmethod(ism_manufacturing_data)
     services_data = staticmethod(ism_services_data)
@@ -173,6 +185,8 @@ class EquityValuation:
     erp_zscore = staticmethod(erp_zscore)
     erp_momentum = staticmethod(erp_momentum)
     nasdaq_spx = staticmethod(nasdaq_spx_relative_valuation)
+    buffett = staticmethod(buffett_indicator)
+    buffett_zscore = staticmethod(buffett_indicator_zscore)
 
 
 class MonetaryPolicy:
@@ -306,6 +320,8 @@ class ChinaEM:
     usdcny_momentum = staticmethod(usdcny_momentum)
     em_dm_momentum = staticmethod(em_dm_relative_momentum)
     em_composite = staticmethod(em_composite_indicator)
+    li_keqiang = staticmethod(li_keqiang_proxy)
+    li_keqiang_mom = staticmethod(li_keqiang_momentum)
 
 
 class CentralBankWatch:
@@ -341,6 +357,10 @@ class AltData:
     gold = staticmethod(gold)
     gold_silver = staticmethod(gold_silver_ratio)
     gold_real_rate = staticmethod(gold_real_rate_relationship)
+    gold_oil = staticmethod(gold_oil_ratio)
+    gold_spx = staticmethod(gold_spx_ratio)
+    gold_btc_corr = staticmethod(gold_bitcoin_correlation)
+    gold_etf = staticmethod(gold_etf_flows)
     bdi_momentum = staticmethod(baltic_dry_momentum)
     container_freight = staticmethod(container_freight_proxy)
     composite = staticmethod(alt_data_composite)

@@ -5,7 +5,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from ix.core.transforms import StandardScalar, daily_ffill
+from ix.common.data.transforms import StandardScalar, daily_ffill
 from ix.db.query import Series
 
 logger = logging.getLogger(__name__)

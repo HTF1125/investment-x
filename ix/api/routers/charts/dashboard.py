@@ -8,8 +8,8 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from ix.api.dependencies import get_optional_user
 from ix.api.rate_limit import limiter as _limiter
-from ix.misc import get_logger
-from ix.misc.theme import chart_theme, theme_figure_for_delivery as _theme_figure_for_delivery
+from ix.common import get_logger
+from ix.common.viz.theme import chart_theme, theme_figure_for_delivery as _theme_figure_for_delivery
 
 logger = get_logger(__name__)
 
@@ -210,6 +210,61 @@ def get_chart_figure(
         "figure": _theme_figure_for_delivery(chart.figure),
         "chart_style": chart.chart_style,
     }
+
+
+@router.get("/dashboard/charts/{chart_id}/image.png")
+@_limiter.limit("30/minute")
+def get_chart_image(
+    request: Request,
+    chart_id: str,
+    response: Response,
+    w: int = Query(1200, ge=200, le=3840),
+    h: int = Query(800, ge=200, le=2160),
+    theme: str = Query("dark"),
+    db: Session = Depends(get_session),
+    current_user: User | None = Depends(get_optional_user),
+):
+    """Returns a PNG image of the chart for embedding in external tools."""
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    chart_fields = [
+        Charts.id, Charts.name, Charts.figure, Charts.chart_style,
+        Charts.public, Charts.created_by_user_id,
+    ]
+    chart = None
+    try:
+        chart = db.query(Charts).options(load_only(*chart_fields)).filter(Charts.id == chart_id).first()
+    except Exception:
+        db.rollback()  # UUID cast failure — roll back the aborted txn
+    if not chart:
+        chart = db.query(Charts).options(load_only(*chart_fields)).filter(Charts.name == chart_id).first()
+        if not chart:
+            raise HTTPException(status_code=404, detail="Chart not found")
+
+    if not _can_view_chart(chart, current_user):
+        raise HTTPException(status_code=404, detail="Chart not found")
+
+    if not chart.figure:
+        raise HTTPException(status_code=404, detail="Figure data missing for this chart")
+
+    mode = "light" if theme == "light" else "dark"
+    themed = chart_theme.apply_json(chart.figure, mode=mode)
+    fig = go.Figure(themed, skip_invalid=True)
+
+    # Set opaque background for image export
+    bg = "#f8f7f4" if mode == "light" else "#080a10"
+    fig.update_layout(paper_bgcolor=bg, plot_bgcolor=bg)
+
+    try:
+        img_bytes = pio.to_image(fig, format="png", width=w, height=h, scale=2)
+    except Exception as e:
+        logger.error("Chart image render failed for %s: %s", chart_id, e)
+        raise HTTPException(status_code=500, detail="Image render failed")
+
+    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
+    response.headers["Content-Disposition"] = f'inline; filename="{chart_id}.png"'
+    return Response(content=img_bytes, media_type="image/png")
 
 
 @router.get("/dashboard/charts/figures", response_model=DashboardFigureBatchResponse)

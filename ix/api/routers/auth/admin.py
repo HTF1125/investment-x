@@ -14,7 +14,7 @@ from ix.api.rate_limit import limiter as _limiter
 from ix.db.conn import Session
 from ix.db.models.logs import Logs
 from ix.db.models.user import User
-from ix.misc import get_logger
+from ix.common import get_logger
 
 logger = get_logger(__name__)
 
@@ -420,8 +420,29 @@ def delete_user(
                 detail="At least one active admin account is required",
             )
 
-    db.delete(user)
+    user.disabled = True
     db.commit()
 
-    logger.info(f"Admin {current_user.email} deleted user {user.email}")
-    return {"message": "User deleted successfully"}
+    logger.info(f"Admin {current_user.email} disabled user {user.email}")
+    return {"message": "User disabled successfully"}
+
+
+# ── Architecture docs ────────────────────────────────────────────────────────
+
+
+@router.get("/admin/architecture")
+def get_architecture_docs(_user=Depends(get_current_admin_user)):
+    """Return ARCHITECTURE.md contents for backend and frontend."""
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[4]  # project root
+    result = {}
+    for key, path in [
+        ("backend", root / "ix" / "ARCHITECTURE.md"),
+        ("frontend", root / "ui" / "ARCHITECTURE.md"),
+    ]:
+        if path.exists():
+            result[key] = path.read_text(encoding="utf-8")
+        else:
+            result[key] = f"*{path.name} not found.*"
+    return result

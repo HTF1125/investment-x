@@ -181,7 +181,8 @@ def resample_to_freq(s: pd.Series, freq: str) -> pd.Series:
     if s.empty:
         return s
     try:
-        return s.resample(freq).last().ffill().dropna()
+        from ix.common.data.transforms import Resample
+        return Resample(s, freq, ffill=True)
     except Exception:
         return s
 

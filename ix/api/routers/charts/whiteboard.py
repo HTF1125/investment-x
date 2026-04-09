@@ -8,7 +8,7 @@ from ix.db.conn import get_session
 from ix.db.models import Whiteboard, User
 from ix.api.dependencies import get_current_user
 from ix.api.rate_limit import limiter as _limiter
-from ix.misc import get_logger
+from ix.common import get_logger
 
 logger = get_logger(__name__)
 

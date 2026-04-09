@@ -1,28 +1,27 @@
 """Collector registry — maps collector names to instances and provides scheduler helpers."""
 
-from ix.collectors.cftc import CFTCCollector
-from ix.collectors.aaii import AAIISentimentCollector
-from ix.collectors.cboe import CBOECollector
-from ix.collectors.google_trends import GoogleTrendsCollector
-from ix.collectors.sec_13f import SEC13FCollector
-from ix.collectors.insider_tx import InsiderTransactionCollector
-from ix.collectors.finra_darkpool import FINRADarkPoolCollector
-from ix.collectors.investor_letters import InvestorLettersCollector
-from ix.collectors.academic import AcademicPapersCollector
-from ix.collectors.reddit_sentiment import RedditSentimentCollector
+import logging
 
-ALL_COLLECTORS = [
-    CFTCCollector(),
-    AAIISentimentCollector(),
-    CBOECollector(),
-    GoogleTrendsCollector(),
-    SEC13FCollector(),
-    InsiderTransactionCollector(),
-    FINRADarkPoolCollector(),
-    InvestorLettersCollector(),
-    AcademicPapersCollector(),
-    RedditSentimentCollector(),
+logger = logging.getLogger(__name__)
+
+_COLLECTOR_CLASSES = [
+    ("ix.collectors.cftc", "CFTCCollector"),
+    ("ix.collectors.aaii", "AAIISentimentCollector"),
+    ("ix.collectors.naaim", "NAAIMExposureCollector"),
+    ("ix.collectors.cboe", "CBOECollector"),
+    ("ix.collectors.google_trends", "GoogleTrendsCollector"),
+    ("ix.collectors.sec_13f", "SEC13FCollector"),
+    ("ix.collectors.finra_darkpool", "FINRADarkPoolCollector"),
 ]
+
+ALL_COLLECTORS = []
+for _mod, _cls in _COLLECTOR_CLASSES:
+    try:
+        import importlib
+        _m = importlib.import_module(_mod)
+        ALL_COLLECTORS.append(getattr(_m, _cls)())
+    except Exception as e:
+        logger.warning(f"Failed to load collector {_cls} from {_mod}: {e}")
 
 COLLECTOR_MAP = {c.name: c for c in ALL_COLLECTORS}
 
