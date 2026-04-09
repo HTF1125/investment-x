@@ -10,6 +10,9 @@
 !.env.example
 
 
+# Office temp files
+*.xlam.tmp
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -41,6 +44,7 @@ share/python-wheels/
 *.db
 *.ipynb
 *.bat
+!dev.bat
 # *.csv
 # *.feather
 files/
@@ -201,6 +205,10 @@ DWS/
 # Temporary files
 /hovered.png
 /implementation/
+.tmp/
+.firecrawl/
+resources/
+work/
 
 # Claude config
 .claude/
@@ -220,3 +228,16 @@ scripts/
 
 # Docs (unused)
 docs/
+
+# Database backups (huge binary dumps, 1 GB+)
+db_backup.sql
+*.dump
+
+# Temp / draft output files
+_briefing_text.txt
+_email_body.html
+gateway.js
+
+# Personal Korean-language draft docs (not source of truth)
+투자전략팀_*.docx
+투자전략팀_*.xlsx
