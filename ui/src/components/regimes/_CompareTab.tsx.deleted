@@ -1,0 +1,371 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import { useQueries } from '@tanstack/react-query';
+import { apiFetchJson } from '@/lib/api';
+import type {
+  RegimeModel,
+  CurrentStateResponse,
+  AssetAnalyticsResponse,
+} from './types';
+import { getRegimeColor, getRegimeDescription } from './constants';
+import { hexToRgb } from './helpers';
+import { PanelCard, StatLabel, LoadingSpinner } from './SharedComponents';
+
+interface Props {
+  models: RegimeModel[];
+}
+
+/** Cohen's d color tier — matches AssetPerformanceTab finance-calibrated
+ * thresholds: |d|>1.0 exceptional, |d|>0.5 strong, |d|>0.2 meaningful,
+ * |d|>0.1 weak, <0.1 noise. */
+function cohensDColor(d: number | null | undefined): string {
+  if (d === null || d === undefined) return 'rgba(148,163,184,0.35)';
+  const ad = Math.abs(d);
+  if (ad >= 1.0) return '#16a34a';
+  if (ad >= 0.5) return '#22c55e';
+  if (ad >= 0.2) return '#84cc16';
+  if (ad >= 0.1) return '#f59e0b';
+  return '#ef5350';
+}
+
+function pValueStars(p: number | null | undefined): string {
+  if (p === null || p === undefined) return '';
+  if (p < 0.001) return '***';
+  if (p < 0.01) return '**';
+  if (p < 0.05) return '*';
+  if (p < 0.10) return '†';
+  return '';
+}
+
+export function CompareTab({ models }: Props) {
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
+    () => new Set(models.map((m) => m.key)),
+  );
+
+  // Fetch current state + asset analytics for each selected regime
+  const selectedKeysArr = Array.from(selectedKeys);
+
+  const currentQueries = useQueries({
+    queries: selectedKeysArr.map((key) => ({
+      queryKey: ['regime-current', key],
+      queryFn: () =>
+        apiFetchJson<CurrentStateResponse>(`/api/regimes/${key}/current`),
+      staleTime: 120_000,
+    })),
+  });
+
+  const assetsQueries = useQueries({
+    queries: selectedKeysArr.map((key) => ({
+      queryKey: ['regime-assets', key],
+      queryFn: () =>
+        apiFetchJson<AssetAnalyticsResponse>(`/api/regimes/${key}/assets`),
+      staleTime: 120_000,
+    })),
+  });
+
+  const loading =
+    currentQueries.some((q) => q.isLoading) ||
+    assetsQueries.some((q) => q.isLoading);
+
+  // Build key → model lookup for fast access
+  const modelByKey = useMemo(() => {
+    const m: Record<string, RegimeModel> = {};
+    for (const model of models) m[model.key] = model;
+    return m;
+  }, [models]);
+
+  // Union of all asset tickers across selected regimes
+  const allTickers = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const q of assetsQueries) {
+      const tickers = q.data?.asset_analytics?.tickers ?? [];
+      for (const t of tickers) {
+        if (!seen.has(t)) {
+          seen.add(t);
+          ordered.push(t);
+        }
+      }
+    }
+    return ordered;
+  }, [assetsQueries.map((q) => q.data).join('|')]);
+
+  // Build a matrix: tickers × selected regimes → Cohen's d + p-value
+  const cohensMatrix = useMemo(() => {
+    const matrix: Record<string, Record<string, { d: number | null; p: number | null }>> = {};
+    for (const ticker of allTickers) {
+      matrix[ticker] = {};
+    }
+    for (let i = 0; i < selectedKeysArr.length; i++) {
+      const key = selectedKeysArr[i];
+      const sep = assetsQueries[i]?.data?.asset_analytics?.regime_separation ?? {};
+      for (const ticker of allTickers) {
+        const entry = sep[ticker];
+        matrix[ticker][key] = {
+          d: entry?.cohens_d ?? null,
+          p: entry?.p_value ?? null,
+        };
+      }
+    }
+    return matrix;
+  }, [allTickers, selectedKeysArr.join('|'), assetsQueries.map((q) => q.data).join('|')]);
+
+  // Sort tickers by max |Cohen's d| across selected regimes (most actionable first)
+  const sortedTickers = useMemo(() => {
+    return [...allTickers].sort((a, b) => {
+      const maxA = Math.max(
+        ...selectedKeysArr.map((k) => Math.abs(cohensMatrix[a]?.[k]?.d ?? 0)),
+      );
+      const maxB = Math.max(
+        ...selectedKeysArr.map((k) => Math.abs(cohensMatrix[b]?.[k]?.d ?? 0)),
+      );
+      return maxB - maxA;
+    });
+  }, [allTickers, selectedKeysArr.join('|'), cohensMatrix]);
+
+  const toggleKey = (key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedKeys(new Set(models.map((m) => m.key)));
+  const selectNone = () => setSelectedKeys(new Set());
+
+  return (
+    <div className="space-y-4">
+      {/* ── Regime multi-select chips ── */}
+      <PanelCard>
+        <div className="flex items-center justify-between mb-3">
+          <StatLabel>Compare Regimes — pick 2 or more</StatLabel>
+          <div className="flex gap-2 text-[10.5px]">
+            <button
+              onClick={selectAll}
+              className="text-muted-foreground hover:text-foreground underline"
+            >
+              all
+            </button>
+            <span className="text-muted-foreground/40">·</span>
+            <button
+              onClick={selectNone}
+              className="text-muted-foreground hover:text-foreground underline"
+            >
+              none
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {models.map((m) => {
+            const active = selectedKeys.has(m.key);
+            const color = getRegimeColor(m.states[0], m);
+            const rgb = hexToRgb(color);
+            return (
+              <button
+                key={m.key}
+                onClick={() => toggleKey(m.key)}
+                className="px-3 py-1.5 text-[11.5px] font-semibold rounded-[var(--radius)] border transition-all"
+                style={{
+                  color: active ? color : 'rgb(var(--muted-foreground))',
+                  borderColor: active ? `rgba(${rgb}, 0.5)` : 'rgba(148,163,184,0.25)',
+                  background: active ? `rgba(${rgb}, 0.08)` : 'transparent',
+                }}
+              >
+                {active ? '✓ ' : ''}
+                {m.display_name}
+              </button>
+            );
+          })}
+        </div>
+      </PanelCard>
+
+      {loading && <LoadingSpinner label="Loading regime data" />}
+
+      {!loading && selectedKeysArr.length === 0 && (
+        <p className="text-muted-foreground text-[12.5px] py-6 text-center">
+          Select at least one regime to compare.
+        </p>
+      )}
+
+      {/* ── Current state summary ── */}
+      {!loading && selectedKeysArr.length > 0 && (
+        <PanelCard>
+          <StatLabel>Current State · All Selected Regimes</StatLabel>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-[11.5px]">
+              <thead>
+                <tr className="border-b border-border/40 text-muted-foreground/60 uppercase tracking-wider text-[10px]">
+                  <th className="text-left py-2 px-2">Regime</th>
+                  <th className="text-left py-2 px-2">Current State</th>
+                  <th className="text-right py-2 px-2">Prob</th>
+                  <th className="text-right py-2 px-2">Conviction</th>
+                  <th className="text-right py-2 px-2">Months</th>
+                  <th className="text-left py-2 px-2 hidden md:table-cell">Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedKeysArr.map((key, idx) => {
+                  const q = currentQueries[idx];
+                  const data = q.data;
+                  const model = modelByKey[key];
+                  if (!data || !model) {
+                    return (
+                      <tr key={key} className="border-b border-border/20">
+                        <td className="py-2 px-2 font-semibold text-muted-foreground">
+                          {model?.display_name ?? key}
+                        </td>
+                        <td colSpan={5} className="py-2 px-2 text-muted-foreground/50 italic">
+                          {q.isError ? 'failed to load' : 'loading…'}
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const cs = data.current_state;
+                  if (!cs || cs.error || !cs.date) {
+                    return (
+                      <tr key={key} className="border-b border-border/20">
+                        <td className="py-2 px-2 font-semibold">{model.display_name}</td>
+                        <td colSpan={5} className="py-2 px-2 text-muted-foreground/50 italic">
+                          no data
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const dom = cs.dominant;
+                  const color = getRegimeColor(dom, model);
+                  const rgb = hexToRgb(color);
+                  const desc = getRegimeDescription(dom, model);
+                  return (
+                    <tr
+                      key={key}
+                      className="border-b border-border/20 hover:bg-card/50 transition-colors"
+                    >
+                      <td className="py-2 px-2 font-semibold">{model.display_name}</td>
+                      <td className="py-2 px-2">
+                        <span
+                          className="px-2 py-0.5 rounded font-bold"
+                          style={{
+                            color,
+                            background: `rgba(${rgb}, 0.10)`,
+                            border: `1px solid rgba(${rgb}, 0.3)`,
+                          }}
+                        >
+                          {dom}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono" style={{ color }}>
+                        {Math.round(cs.dominant_probability * 100)}%
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono">
+                        <span
+                          style={{
+                            color:
+                              cs.conviction >= 50
+                                ? '#22c55e'
+                                : cs.conviction >= 30
+                                ? '#f59e0b'
+                                : '#ef5350',
+                          }}
+                        >
+                          {Math.round(cs.conviction)}
+                        </span>
+                        <span className="text-muted-foreground/40">/100</span>
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-muted-foreground">
+                        {cs.months_in_regime}
+                      </td>
+                      <td className="py-2 px-2 text-[11px] text-muted-foreground/70 hidden md:table-cell">
+                        {desc}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </PanelCard>
+      )}
+
+      {/* ── Cohen's d comparison matrix ── */}
+      {!loading && selectedKeysArr.length > 0 && sortedTickers.length > 0 && (
+        <PanelCard>
+          <div className="flex justify-between items-baseline mb-3">
+            <StatLabel>Cohen's d Matrix — Asset × Regime</StatLabel>
+            <span className="text-[10.5px] text-muted-foreground/60">
+              best vs worst state separation · sorted by max |d| · ***p&lt;0.001 **p&lt;0.01 *p&lt;0.05
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11.5px] border-collapse">
+              <thead>
+                <tr className="border-b border-border/40">
+                  <th className="py-2 px-2 text-left text-[10px] uppercase tracking-wider text-muted-foreground/60 sticky left-0 bg-background">
+                    Asset
+                  </th>
+                  {selectedKeysArr.map((key) => {
+                    const model = modelByKey[key];
+                    const color = getRegimeColor(model?.states[0] ?? '', model);
+                    return (
+                      <th
+                        key={key}
+                        className="py-2 px-2 text-right text-[10px] uppercase tracking-wider border-l border-border/30"
+                        style={{ color }}
+                      >
+                        {model?.display_name?.split(' ')[0] ?? key}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTickers.map((ticker) => (
+                  <tr key={ticker} className="border-b border-border/15 hover:bg-card/50">
+                    <td className="py-1.5 px-2 font-mono font-semibold sticky left-0 bg-background">
+                      {ticker}
+                    </td>
+                    {selectedKeysArr.map((key) => {
+                      const cell = cohensMatrix[ticker]?.[key];
+                      const d = cell?.d;
+                      const p = cell?.p;
+                      const stars = pValueStars(p);
+                      const hasData = d !== null && d !== undefined;
+                      return (
+                        <td
+                          key={`${ticker}-${key}`}
+                          className="py-1.5 px-2 text-right font-mono font-semibold border-l border-border/30"
+                          style={{ color: hasData ? cohensDColor(d) : 'rgba(148,163,184,0.2)' }}
+                          title={
+                            hasData
+                              ? `Cohen's d = ${d.toFixed(3)} · p = ${p?.toExponential(2) ?? '—'}`
+                              : 'asset not in this regime universe'
+                          }
+                        >
+                          {hasData ? d.toFixed(2) : '—'}
+                          {stars && (
+                            <span className="text-[9px] ml-0.5 text-muted-foreground">
+                              {stars}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10.5px] text-muted-foreground/60 mt-3">
+            Higher |d| = regime separates this asset's forward returns more strongly.
+            Reading across a row shows which regime best predicts that asset.
+          </p>
+        </PanelCard>
+      )}
+    </div>
+  );
+}

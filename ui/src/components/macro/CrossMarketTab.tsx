@@ -147,7 +147,7 @@ export default function CrossMarketTab() {
 
   return (
     <div className="space-y-6">
-      <p className="text-[12px] text-muted-foreground leading-relaxed">
+      <p className="text-[13px] text-muted-foreground leading-relaxed">
         The strategy uses the SAME global macro indicator pool for all indices.
         No index-specific tuning is performed. Results below from walk-forward backtests across 10 global equity indices.
       </p>
@@ -168,13 +168,13 @@ export default function CrossMarketTab() {
       <div className="panel-card p-4">
         <SectionTitle>Cross-Strategy Summary (Averaged Across Indices)</SectionTitle>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px] font-mono">
+          <table className="w-full text-[12.5px] font-mono">
             <thead>
               <tr className="border-b border-border/20">
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Strategy</th>
-                <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Avg Sharpe</th>
-                <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Avg Alpha</th>
-                <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">% Indices Beat</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Strategy</th>
+                <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Avg Sharpe</th>
+                <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Avg Alpha</th>
+                <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">% Indices Beat</th>
               </tr>
             </thead>
             <tbody>
@@ -197,7 +197,7 @@ export default function CrossMarketTab() {
       <div className="panel-card p-4">
         <SectionTitle info="Spearman rank IC of binary regime composite vs forward returns">Composite IC by Forward Horizon</SectionTitle>
         <ChartBox chart={mhChart} height={350} />
-        <div className="mt-3 text-[11px] text-muted-foreground space-y-1">
+        <div className="mt-3 text-[12.5px] text-muted-foreground space-y-1">
           <p>- IC peaks at 13-26 weeks for most indices (sweet spot for macro signals)</p>
           <p>- 4-week IC is lowest -- macro signals are noisy at short horizons</p>
           <p>- 52-week IC drops off -- mean reversion dilutes predictive power</p>
@@ -209,13 +209,13 @@ export default function CrossMarketTab() {
       <div className="panel-card p-4">
         <SectionTitle>Top Indicators by IC (Full-Sample Average)</SectionTitle>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px] font-mono">
+          <table className="w-full text-[12.5px] font-mono">
             <thead>
               <tr className="border-b border-border/20">
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Indicator</th>
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Category</th>
-                <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Avg IC</th>
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Direction</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Indicator</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Category</th>
+                <th className="text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]" title="Information Coefficient — predictive accuracy of an indicator">Avg IC</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Direction</th>
               </tr>
             </thead>
             <tbody>

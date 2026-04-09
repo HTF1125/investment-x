@@ -32,12 +32,30 @@ export interface PaneConfig {
 
 export interface AnnotationConfig {
   id: string;
-  type: 'hline' | 'vline' | 'text';
+  type: 'hline' | 'vline' | 'text' | 'measure';
   x?: string;
   y?: number;
+  /** End date for measure annotations */
+  x2?: string;
+  /** End value for measure annotations */
+  y2?: number;
   text?: string;
   color: string;
   paneId: number;
+}
+
+/** User-drawn Plotly shape (line, rect) persisted with the chart */
+export interface DrawnShape {
+  type: 'line' | 'rect' | 'circle';
+  x0: string | number;
+  y0: number;
+  x1: string | number;
+  y1: number;
+  xref?: string;
+  yref?: string;
+  line?: { color?: string; width?: number; dash?: string };
+  fillcolor?: string;
+  opacity?: number;
 }
 
 export function getApiCode(s: SeriesConfig): string {
@@ -99,6 +117,12 @@ export interface BuildFigureOpts {
   showZeroline?: boolean;
   /** Bar gap 0-0.8 */
   bargap?: number;
+  /** Container width in px — used for dynamic font scaling */
+  containerWidth?: number;
+  /** Container height in px — used for dynamic font scaling */
+  containerHeight?: number;
+  /** User-drawn shapes (trend lines, rectangles) to overlay */
+  drawnShapes?: DrawnShape[];
 }
 
 const NBER_RECESSIONS: [string, string][] = [
@@ -235,7 +259,7 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
       return {
         text: values.map((v) => v != null ? (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : v.toFixed(2)) : ''),
         textposition: 'top center' as const,
-        textfont: { size: compact ? 7 : 8, color: fg, family: 'Inter, sans-serif' },
+        textfont: { size: fs(compact ? 7 : 8), color: fg, family: 'var(--font-mono), "Space Mono", monospace' },
       };
     })();
 
@@ -346,15 +370,23 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
     }
   }
 
+  // ── Dynamic font scaling ──
+  // Scale fonts/margins based on actual container size instead of binary compact flag.
+  // Reference: 600px width = scale 1.0 (the "normal" editor size)
+  const cw = opts.containerWidth || (compact ? 400 : 700);
+  const ch = opts.containerHeight || (compact ? 300 : 500);
+  const fontScale = Math.max(0.7, Math.min(1.3, cw / 600));
+  const fs = (base: number) => Math.round(base * fontScale * 10) / 10; // scaled font size
+
   // ── Style constants (continued) ──
   const grid = isLight ? 'rgba(15,17,24,0.07)' : 'rgba(148,163,184,0.05)';
-  const baseFontSize = compact ? 9 : 10;
+  const baseFontSize = fs(compact ? 9 : 10);
   const axisBase = {
     gridcolor: grid, griddash: (opts.gridlineStyle || 'solid') as any, gridwidth: 0.5,
     zerolinecolor: grid, zerolinewidth: 1,
     showgrid: opts.showGridlines ?? true,
     zeroline: opts.showZeroline ?? true,
-    tickfont: { color: fg, size: baseFontSize, family: 'Inter, sans-serif' },
+    tickfont: { color: fg, size: baseFontSize, family: 'var(--font-mono), "Space Mono", monospace' },
     linecolor: isLight ? 'rgba(15,17,24,0.12)' : 'rgba(255,255,255,0.06)',
   };
 
@@ -364,12 +396,12 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
     autosize: true,
     paper_bgcolor: 'rgba(0,0,0,0)',
     plot_bgcolor: 'rgba(0,0,0,0)',
-    font: { color: fg, family: 'Inter, sans-serif', size: compact ? 10 : 11 },
+    font: { color: fg, family: 'var(--font-mono), "Space Mono", monospace', size: fs(compact ? 10 : 11) },
     margin: {
-      t: compact ? 24 : (title ? 35 : 10),
-      l: compact ? 16 : 20,
-      r: compact ? 45 : 55,
-      b: compact ? 28 : 35,
+      t: compact ? Math.round(24 * fontScale) : (title ? 35 : 10),
+      l: compact ? Math.round(16 * fontScale) : 20,
+      r: compact ? Math.round(45 * fontScale) : 55,
+      b: compact ? Math.round(28 * fontScale) : 35,
     },
     hovermode: hoverMode,
     dragmode: 'zoom',
@@ -390,7 +422,7 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
       return {
         legend: {
           orientation: 'h' as const, ...pos,
-          font: { size: compact ? 9 : 10, color: fg }, bgcolor: 'rgba(0,0,0,0)',
+          font: { size: fs(compact ? 9 : 10), color: fg }, bgcolor: 'rgba(0,0,0,0)',
           tracegroupgap: 2,
         },
       };
@@ -400,13 +432,13 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
     hoverlabel: {
       bgcolor: isLight ? 'rgba(255,255,255,0.98)' : 'rgba(12,14,22,0.98)',
       bordercolor: isLight ? 'rgba(15,17,24,0.12)' : 'rgba(148,163,184,0.15)',
-      font: { color: isLight ? '#0f1118' : '#e1e6f0', family: "'Inter', sans-serif", size: compact ? 10 : 11 },
+      font: { color: isLight ? '#0f1118' : '#e1e6f0', family: '"Space Mono", monospace', size: fs(compact ? 10 : 11) },
       namelength: -1,
     },
     ...(title ? {
       title: {
         text: title,
-        font: { size: compact ? 11 : (opts.titleFontSize ?? 14), color: fg, family: 'Inter, sans-serif' },
+        font: { size: fs(compact ? 11 : (opts.titleFontSize ?? 14)), color: fg, family: 'var(--font-mono), "Space Mono", monospace' },
         ...(compact
           ? { x: 0.01, xanchor: 'left', y: 0.98, yanchor: 'top', pad: { t: 4, l: 4 } }
           : { x: 0.5, xanchor: 'center' }),
@@ -541,17 +573,18 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
       };
 
       // Y-axis labels — custom title or auto-label when multiple axes
+      // Skip auto-labels in compact mode (too cluttered for card tiles)
       const customTitle = opts.axisTitles?.[rangeKey];
       if (customTitle) {
         layout[yKey].title = {
           text: customTitle,
-          font: { size: 9, color: fg, family: 'Inter, sans-serif' },
+          font: { size: fs(9), color: fg, family: 'var(--font-mono), "Space Mono", monospace' },
           standoff: 2,
         };
-      } else if (indices.length > 1) {
+      } else if (indices.length > 1 && !compact) {
         layout[yKey].title = {
           text: `Y${yi + 1}${isLog ? ' log' : ''}`,
-          font: { size: 9, color: fg, family: 'Inter, sans-serif' },
+          font: { size: fs(9), color: fg, family: 'var(--font-mono), "Space Mono", monospace' },
           standoff: 2,
         };
       }
@@ -566,16 +599,51 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
 
     if (ann.type === 'hline' && ann.y != null) {
       layout.shapes.push({ type: 'line', x0: 0, x1: 1, xref: 'paper', y0: ann.y, y1: ann.y, yref: yRef, line: { color: ann.color, width: 1, dash: 'dash' } });
-      layout.annotations.push({ x: 1, xref: 'paper', xanchor: 'left', y: ann.y, yref: yRef, text: `${ann.y}`, showarrow: false, font: { size: 9, color: ann.color, family: 'Inter' }, xshift: 4 });
+      layout.annotations.push({ x: 1, xref: 'paper', xanchor: 'left', y: ann.y, yref: yRef, text: `${ann.y}`, showarrow: false, font: { size: fs(9), color: ann.color, family: '"Space Mono", monospace' }, xshift: 4 });
     } else if (ann.type === 'vline' && ann.x) {
       layout.shapes.push({ type: 'line', x0: ann.x, x1: ann.x, xref: xRef, y0: 0, y1: 1, yref: 'paper', line: { color: ann.color, width: 1, dash: 'dash' } });
-      if (ann.text) layout.annotations.push({ x: ann.x, xref: xRef, y: 1, yref: 'paper', yanchor: 'bottom', text: ann.text, showarrow: false, font: { size: 9, color: ann.color, family: 'Inter' }, yshift: 2 });
+      if (ann.text) layout.annotations.push({ x: ann.x, xref: xRef, y: 1, yref: 'paper', yanchor: 'bottom', text: ann.text, showarrow: false, font: { size: fs(9), color: ann.color, family: '"Space Mono", monospace' }, yshift: 2 });
     } else if (ann.type === 'text' && ann.x && ann.y != null) {
       layout.annotations.push({
         x: ann.x, xref: xRef, y: ann.y, yref: yRef, text: ann.text || '', showarrow: true, arrowhead: 2, arrowsize: 0.8, arrowwidth: 1, arrowcolor: ann.color,
-        font: { size: 10, color: ann.color, family: 'Inter' },
+        font: { size: fs(10), color: ann.color, family: '"Space Mono", monospace' },
         bgcolor: isLight ? 'rgba(255,255,255,0.9)' : 'rgba(15,15,22,0.9)',
         bordercolor: ann.color, borderwidth: 1, borderpad: 3,
+      });
+    } else if (ann.type === 'measure' && ann.x && ann.x2 && ann.y != null && ann.y2 != null) {
+      // Drawdown/measurement annotation — shaded rectangle + label
+      const pctChange = ann.y !== 0 ? ((ann.y2 - ann.y) / Math.abs(ann.y)) * 100 : 0;
+      const days = Math.round((new Date(ann.x2).getTime() - new Date(ann.x).getTime()) / 86400000);
+      const absChange = ann.y2 - ann.y;
+      const isPositive = absChange >= 0;
+      const fillColor = isPositive
+        ? (isLight ? 'rgba(34,197,94,0.08)' : 'rgba(34,197,94,0.12)')
+        : (isLight ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.12)');
+      const labelColor = isPositive ? 'rgb(var(--success))' : 'rgb(var(--destructive))';
+
+      // Shaded rectangle
+      layout.shapes.push({
+        type: 'rect', xref: xRef, yref: yRef,
+        x0: ann.x, x1: ann.x2, y0: ann.y, y1: ann.y2,
+        fillcolor: fillColor, line: { color: ann.color, width: 1, dash: 'dot' },
+      });
+      // Connecting line
+      layout.shapes.push({
+        type: 'line', xref: xRef, yref: yRef,
+        x0: ann.x, y0: ann.y, x1: ann.x2, y1: ann.y2,
+        line: { color: ann.color, width: 1.5, dash: 'solid' },
+      });
+      // Label at midpoint
+      const fmtPct = `${isPositive ? '+' : ''}${pctChange.toFixed(1)}%`;
+      const fmtAbs = `${isPositive ? '+' : ''}${absChange.toFixed(2)}`;
+      layout.annotations.push({
+        x: ann.x2, xref: xRef, y: ann.y2, yref: yRef,
+        text: `${fmtPct} (${fmtAbs})<br>${days}d`,
+        showarrow: true, arrowhead: 0, arrowwidth: 1, arrowcolor: ann.color,
+        ax: 40, ay: isPositive ? -30 : 30,
+        font: { size: fs(9), color: labelColor, family: 'var(--font-mono), monospace' },
+        bgcolor: isLight ? 'rgba(255,255,255,0.95)' : 'rgba(12,14,22,0.95)',
+        bordercolor: ann.color, borderwidth: 1, borderpad: 4,
       });
     }
   });
@@ -620,6 +688,21 @@ export function buildChartFigure(opts: BuildFigureOpts): { data: any[]; layout: 
     }
   }
 
+  // ── User-drawn shapes (trend lines, rectangles from drawing tools) ──
+  if (opts.drawnShapes?.length) {
+    for (const shape of opts.drawnShapes) {
+      layout.shapes.push({
+        type: shape.type,
+        xref: shape.xref || 'x', yref: shape.yref || 'y',
+        x0: shape.x0, y0: shape.y0, x1: shape.x1, y1: shape.y1,
+        line: shape.line || { color: fg, width: 1.5 },
+        fillcolor: shape.fillcolor,
+        opacity: shape.opacity ?? 1,
+        editable: true,
+      });
+    }
+  }
+
   return { data: traces, layout };
 }
 
@@ -644,14 +727,71 @@ export function stripThemeFromFigure(
     return t;
   });
 
-  const layout = { ...fig.layout };
+  // Deep clone layout — shallow spread leaves nested objects as shared refs
+  // which Plotly's diffing treats as "unchanged", skipping re-layout on re-render.
+  const layout = structuredClone(fig.layout);
+
   // Reset backgrounds to transparent — theme will set them
   layout.paper_bgcolor = 'rgba(0,0,0,0)';
   layout.plot_bgcolor = 'rgba(0,0,0,0)';
-  // Remove font colors — theme will set them
-  if (layout.font?.color) {
-    layout.font = { ...layout.font };
-    delete layout.font.color;
+
+  // Remove global font color — theme will set it
+  if (layout.font?.color) delete layout.font.color;
+
+  // Strip axis-level theme colors (tickfont, title font, grid/line/spike colors)
+  for (const key of Object.keys(layout)) {
+    if (!/^[xy]axis\d*$/.test(key)) continue;
+    const axis = layout[key];
+    if (!axis || typeof axis !== 'object') continue;
+    if (axis.tickfont?.color) delete axis.tickfont.color;
+    if (axis.title?.font?.color) delete axis.title.font.color;
+    delete axis.gridcolor;
+    delete axis.zerolinecolor;
+    delete axis.linecolor;
+    delete axis.spikecolor;
+  }
+
+  // Strip shape colors (year-boundary lines, recession shading)
+  if (Array.isArray(layout.shapes)) {
+    layout.shapes = layout.shapes.map((s: any) => {
+      const shape = { ...s };
+      if (shape.name === 'year_boundary' && shape.line?.color) {
+        shape.line = { ...shape.line };
+        delete shape.line.color;
+      }
+      if (shape.fillcolor) delete shape.fillcolor;
+      return shape;
+    });
+  }
+
+  // Strip annotation font colors
+  if (Array.isArray(layout.annotations)) {
+    layout.annotations = layout.annotations.map((a: any) => {
+      if (a?.font?.color) return { ...a, font: { ...a.font, color: undefined } };
+      return a;
+    });
+  }
+
+  // Strip legend font color
+  if (layout.legend?.font?.color) {
+    layout.legend = { ...layout.legend, font: { ...layout.legend.font } };
+    delete layout.legend.font.color;
+  }
+
+  // Strip hover label colors
+  if (layout.hoverlabel) {
+    layout.hoverlabel = { ...layout.hoverlabel };
+    if (layout.hoverlabel.bgcolor) delete layout.hoverlabel.bgcolor;
+    if (layout.hoverlabel.font?.color) {
+      layout.hoverlabel.font = { ...layout.hoverlabel.font };
+      delete layout.hoverlabel.font.color;
+    }
+  }
+
+  // Strip title font color
+  if (layout.title?.font?.color) {
+    layout.title = { ...layout.title, font: { ...layout.title.font } };
+    delete layout.title.font.color;
   }
 
   return { data, layout };

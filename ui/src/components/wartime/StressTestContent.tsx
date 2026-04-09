@@ -185,7 +185,7 @@ function StatCard({ label, value, sub, icon }: { label: string; value: string; s
         <span className="stat-label">{label}</span>
       </div>
       <div className="text-lg font-semibold font-mono text-foreground">{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground/60 mt-0.5">{sub}</div>}
+      {sub && <div className="text-[11.5px] text-muted-foreground/60 mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -211,7 +211,7 @@ function StressTable({ events, horizons, averages, returnLabel, onRowClick, sele
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-[11px] border-collapse">
+      <table className="w-full text-[12.5px] border-collapse">
         <thead>
           <tr className="border-b border-border/50">
             <th className="text-left px-3 py-2 text-muted-foreground/70 font-medium sticky left-0 bg-background z-10">Date</th>
@@ -295,7 +295,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
         <div className="flex items-center gap-3">
           <div>
             <h2 className="page-title">Stress Test</h2>
-            <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+            <p className="text-[12.5px] text-muted-foreground/60 mt-0.5">
               {data
                 ? `Historical crash & recovery analysis — ${data.source} (${data.sourceDate})`
                 : stressQuery.isLoading ? 'Computing stress test...' : 'Select an index'}
@@ -304,7 +304,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
           <select
             value={selectedIndex}
             onChange={(e) => { setSelectedIndex(e.target.value); setSelectedCB(new Set()); }}
-            className="border border-border/50 rounded-lg px-2.5 py-1 text-[11px] focus:outline-none focus:border-primary/40 text-foreground cursor-pointer"
+            className="border border-border/50 rounded-lg px-2.5 py-1 text-[12.5px] focus:outline-none focus:border-primary/40 text-foreground cursor-pointer"
             style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
           >
             {(targetsQuery.data?.targets ?? []).map(t => (
@@ -321,7 +321,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
               { id: 'recovery' as ViewMode, label: 'Recovery Paths', icon: <TrendingUp className="w-3 h-3" /> },
             ]).map(t => (
               <button key={t.id} onClick={() => setView(t.id)}
-                className={`h-7 px-2.5 rounded-md text-[11px] inline-flex items-center gap-1.5 border transition-colors ${
+                className={`h-7 px-2.5 rounded-md text-[12.5px] inline-flex items-center gap-1.5 border transition-colors ${
                   view === t.id ? 'border-border bg-primary/10 text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.06]'
                 }`}>{t.icon}{t.label}</button>
             ))}
@@ -333,7 +333,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
       {stressQuery.isLoading && (
         <div className="panel-card p-12 flex flex-col items-center justify-center text-center gap-3">
           <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
-          <p className="text-[11px] text-muted-foreground">Computing stress test for {selectedIndex}...</p>
+          <p className="text-[12.5px] text-muted-foreground">Computing stress test for {selectedIndex}...</p>
         </div>
       )}
 
@@ -343,7 +343,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
           <AlertTriangle className="w-8 h-8 text-muted-foreground/30" />
           <div>
             <p className="text-sm font-medium text-foreground">Failed to compute stress test for {selectedIndex}</p>
-            <p className="text-[11px] text-muted-foreground/60 mt-1">
+            <p className="text-[12.5px] text-muted-foreground/60 mt-1">
               {(stressQuery.error as any)?.message || 'Insufficient price data or computation error'}
             </p>
           </div>
@@ -369,8 +369,8 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
             <div className="space-y-4">
               <div className="panel-card overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-border/40">
-                  <h3 className="text-[12px] font-semibold text-foreground">{data.label} Single-Day Crash History — Forward Returns</h3>
-                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">Click rows to compare in recovery chart. {data.cbEvents.length} events detected.</p>
+                  <h3 className="text-[13px] font-semibold text-foreground">{data.label} Single-Day Crash History — Forward Returns</h3>
+                  <p className="text-[11.5px] text-muted-foreground/50 mt-0.5">Click rows to compare in recovery chart. {data.cbEvents.length} events detected.</p>
                 </div>
                 <StressTable events={data.cbEvents} horizons={data.cbHorizons} averages={data.cbAvg} returnLabel="Day Rtn" onRowClick={toggleCB} selectedRows={selectedCB} />
               </div>
@@ -387,8 +387,8 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
             <div className="space-y-4">
               <div className="panel-card overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-border/40">
-                  <h3 className="text-[12px] font-semibold text-foreground">{data.label} 2-Day Crash History — Forward Returns</h3>
-                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                  <h3 className="text-[13px] font-semibold text-foreground">{data.label} 2-Day Crash History — Forward Returns</h3>
+                  <p className="text-[11.5px] text-muted-foreground/50 mt-0.5">
                     Avg +40T: {fmt(data.crashAvg['+40T'])}, Avg +90T: {fmt(data.crashAvg['+90T'])}. {data.crashEvents.length} events detected.
                   </p>
                 </div>
@@ -409,15 +409,15 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
                 <>
                   <div className="panel-card p-3">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-[11px] font-medium text-muted-foreground">Select events to compare:</span>
-                      <button onClick={() => setSelectedCB(new Set())} className="text-[10px] text-primary hover:text-primary transition-colors">Show all</button>
+                      <span className="text-[12.5px] font-medium text-muted-foreground">Select events to compare:</span>
+                      <button onClick={() => setSelectedCB(new Set())} className="text-[11.5px] text-primary hover:text-primary transition-colors">Show all</button>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {data.cbEvents.filter(ev => data.recoveryCurves[ev.date]).map(ev => {
                         const active = selectedCB.has(ev.date);
                         return (
                           <button key={ev.date} onClick={() => toggleCB(ev.date)}
-                            className={`h-6 px-2 rounded text-[10px] font-mono border transition-colors ${
+                            className={`h-6 px-2 rounded text-[11.5px] font-mono border transition-colors ${
                               active ? (ev.isCurrent ? 'border-red-500/50 bg-red-500/10 text-red-500' : 'border-primary/50 bg-primary/10 text-primary')
                                 : 'border-border/40 text-muted-foreground/60 hover:text-foreground hover:border-border'
                             }`}>{ev.date.slice(0, 4)} {ev.cause}</button>
@@ -432,7 +432,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
                 </>
               ) : (
                 <div className="panel-card p-8 text-center">
-                  <p className="text-[11px] text-muted-foreground">No recovery curve data available for {data.label}</p>
+                  <p className="text-[12.5px] text-muted-foreground">No recovery curve data available for {data.label}</p>
                 </div>
               )}
 
@@ -441,8 +441,8 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {(data.insights.positive.length > 0 || data.insights.caution.length > 0) && (
                     <div className="panel-card p-4">
-                      <h4 className="text-[12px] font-semibold text-foreground mb-2">Key Findings</h4>
-                      <ul className="space-y-1.5 text-[11px] text-muted-foreground">
+                      <h4 className="text-[13px] font-semibold text-foreground mb-2">Key Findings</h4>
+                      <ul className="space-y-1.5 text-[12.5px] text-muted-foreground">
                         {data.insights.positive.map((t, i) => (
                           <li key={i} className="flex items-start gap-2"><span className="text-emerald-500 mt-0.5">+</span><span>{t}</span></li>
                         ))}
@@ -454,8 +454,8 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
                   )}
                   {data.valuation.length > 0 && (
                     <div className="panel-card p-4">
-                      <h4 className="text-[12px] font-semibold text-foreground mb-2">Data Summary</h4>
-                      <ul className="space-y-1.5 text-[11px] text-muted-foreground">
+                      <h4 className="text-[13px] font-semibold text-foreground mb-2">Data Summary</h4>
+                      <ul className="space-y-1.5 text-[12.5px] text-muted-foreground">
                         {data.valuation.map((t, i) => (
                           <li key={i} className="flex items-start gap-2"><span className="text-primary mt-0.5">&bull;</span><span>{t}</span></li>
                         ))}

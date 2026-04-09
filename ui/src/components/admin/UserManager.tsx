@@ -4,18 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import {
-  Loader2,
-  Search,
-  Plus,
-  Crown,
-  Shield,
-  ShieldOff,
-  UserX,
-  UserCheck,
-  Trash2,
-  KeyRound,
-  Users,
+  Loader2, Search, Plus, Crown, Shield, ShieldOff,
+  UserX, UserCheck, Trash2, KeyRound, X, Check, AlertCircle,
 } from 'lucide-react';
 
 interface AdminUser {
@@ -39,16 +31,48 @@ interface CreateUserForm {
 }
 
 const EMPTY_FORM: CreateUserForm = {
-  email: '',
-  password: '',
-  first_name: '',
-  last_name: '',
-  role: 'general',
-  disabled: false,
+  email: '', password: '', first_name: '', last_name: '', role: 'general', disabled: false,
 };
+
+// ── Helpers ──
+
+function RoleBadge({ role }: { role: string }) {
+  const r = role.toLowerCase();
+  if (r === 'owner') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius)] text-[11.5px] font-mono font-semibold bg-warning/[0.08] text-warning border border-warning/20">
+      <Crown className="w-3 h-3" />OWNER
+    </span>
+  );
+  if (r === 'admin') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius)] text-[11.5px] font-mono font-semibold bg-success/[0.08] text-success border border-success/20">
+      <Shield className="w-3 h-3" />ADMIN
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius)] text-[11.5px] font-mono font-semibold text-muted-foreground/60 border border-border/30">
+      <ShieldOff className="w-3 h-3" />GENERAL
+    </span>
+  );
+}
+
+function StatusBadge({ disabled }: { disabled: boolean }) {
+  if (disabled) return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius)] text-[11.5px] font-mono font-semibold bg-destructive/[0.08] text-destructive border border-destructive/20">
+      <UserX className="w-3 h-3" />OFF
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius)] text-[11.5px] font-mono font-semibold bg-primary/[0.06] text-primary border border-primary/20">
+      <UserCheck className="w-3 h-3" />ON
+    </span>
+  );
+}
+
+// ── Main ──
 
 export default function UserManager() {
   const { user: currentUser } = useAuth();
+  const { theme } = useTheme();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
@@ -63,13 +87,17 @@ export default function UserManager() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Auto-clear flash
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 4000);
+    return () => clearTimeout(t);
+  }, [flash]);
+
   const { data: users = [], isLoading, isFetching, isError, error } = useQuery<AdminUser[]>({
     queryKey: ['admin-users', debouncedSearch],
-    queryFn: () =>
-      apiFetchJson<AdminUser[]>(
-        `/api/admin/users?limit=500&offset=0&search=${encodeURIComponent(debouncedSearch)}`
-      ),
-    staleTime: 1000 * 30,
+    queryFn: () => apiFetchJson<AdminUser[]>(`/api/admin/users?limit=500&offset=0&search=${encodeURIComponent(debouncedSearch)}`),
+    staleTime: 30_000,
   });
 
   const createUserMutation = useMutation({
@@ -85,9 +113,7 @@ export default function UserManager() {
       setShowCreate(false);
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
     },
-    onError: (e: any) => {
-      setFlash({ type: 'error', text: e?.message || 'Failed to create user.' });
-    },
+    onError: (e: any) => setFlash({ type: 'error', text: e?.message || 'Failed to create user.' }),
   });
 
   const updateUserMutation = useMutation({
@@ -97,16 +123,12 @@ export default function UserManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
   });
 
   const deleteUserMutation = useMutation({
     mutationFn: async (id: string) =>
-      apiFetchJson<{ message: string }>(`/api/admin/users/${id}`, {
-        method: 'DELETE',
-      }),
+      apiFetchJson<{ message: string }>(`/api/admin/users/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       setFlash({ type: 'success', text: 'User deleted.' });
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
@@ -115,17 +137,12 @@ export default function UserManager() {
 
   const totals = useMemo(() => {
     const all = users.length;
-    const owners = users.filter((u) => (u.role || '').toLowerCase() === 'owner').length;
-    const admins = users.filter((u) => ['owner', 'admin'].includes((u.role || '').toLowerCase())).length;
-    const disabled = users.filter((u) => u.disabled).length;
-    return { all, owners, admins, disabled };
+    const admins = users.filter(u => ['owner', 'admin'].includes((u.role || '').toLowerCase())).length;
+    const disabled = users.filter(u => u.disabled).length;
+    return { all, admins, disabled };
   }, [users]);
 
-  const runUserAction = async (
-    target: AdminUser,
-    action: () => Promise<any>,
-    successMessage: string
-  ) => {
+  const runUserAction = async (target: AdminUser, action: () => Promise<any>, successMessage: string) => {
     setFlash(null);
     setBusyUserId(target.id);
     try {
@@ -139,313 +156,196 @@ export default function UserManager() {
   };
 
   const handleCreate = () => {
-    if (!form.email.trim()) {
-      setFlash({ type: 'error', text: 'Email is required.' });
-      return;
-    }
-    if (!form.password.trim() || form.password.trim().length < 6) {
-      setFlash({ type: 'error', text: 'Password must be at least 6 characters.' });
-      return;
-    }
-    createUserMutation.mutate({
-      ...form,
-      email: form.email.trim(),
-      password: form.password.trim(),
-      first_name: form.first_name.trim(),
-      last_name: form.last_name.trim(),
-    });
+    if (!form.email.trim()) { setFlash({ type: 'error', text: 'Email is required.' }); return; }
+    if (!form.password.trim() || form.password.trim().length < 6) { setFlash({ type: 'error', text: 'Password must be at least 6 characters.' }); return; }
+    createUserMutation.mutate({ ...form, email: form.email.trim(), password: form.password.trim(), first_name: form.first_name.trim(), last_name: form.last_name.trim() });
   };
 
+  const formStyle = { colorScheme: theme === 'light' ? 'light' as const : 'dark' as const, backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' };
+
   return (
-    <div className="space-y-6">
-      {/* Header Card */}
-      <div className="rounded-[var(--radius)] border border-border/50 bg-card p-6 md:p-8 shadow-md">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground tracking-tight flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
-                <Users className="w-5 h-5 text-primary" />
-              </div>
-              User Management
-            </h2>
-            <p className="text-xs text-muted-foreground font-mono tracking-wider uppercase mt-1">
-              Roles • Permissions • Account Control
-            </p>
-          </div>
-          <button
-            onClick={() => setShowCreate((p) => !p)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold shadow-lg shadow-primary/20 transition-all"
-          >
-            <Plus className="w-4 h-4" /> {showCreate ? 'Close Form' : 'New User'}
-          </button>
+    <div className="space-y-3">
+
+      {/* ── Toolbar: stats + search + add ── */}
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        {/* Stats */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11.5px] font-mono text-muted-foreground/40 tabular-nums">{totals.all} users</span>
+          <span className="w-px h-3 bg-border/30" />
+          <span className="text-[11.5px] font-mono text-success/60 tabular-nums">{totals.admins} admin</span>
+          {totals.disabled > 0 && (
+            <>
+              <span className="w-px h-3 bg-border/30" />
+              <span className="text-[11.5px] font-mono text-destructive/60 tabular-nums">{totals.disabled} disabled</span>
+            </>
+          )}
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="rounded-[var(--radius)] border border-border/50 bg-background/50 backdrop-blur-sm px-4 py-3">
-            <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Total Users</div>
-            <div className="text-2xl font-bold text-foreground">{totals.all}</div>
-          </div>
-          <div className="rounded-lg border border-success/30 bg-success/10 px-4 py-3">
-            <div className="text-[10px] font-mono text-success uppercase tracking-wider mb-1">Admin/Owner</div>
-            <div className="text-2xl font-bold text-success">{totals.admins}</div>
-          </div>
-          <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3">
-            <div className="text-[10px] font-mono text-warning uppercase tracking-wider mb-1">Disabled</div>
-            <div className="text-2xl font-bold text-warning">{totals.disabled}</div>
-          </div>
+        <div className="flex-1 min-w-[8px]" />
+
+        {/* Search */}
+        <div className="relative order-last sm:order-none w-full sm:w-auto">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="h-7 w-full sm:w-48 pl-7 pr-2.5 text-[12.5px] border border-border/40 rounded-[var(--radius)] bg-background text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/50 transition-colors"
+            style={formStyle}
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/30 hover:text-foreground">
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
+
+        {/* Add user button */}
+        <button onClick={() => setShowCreate(p => !p)} className="btn-toolbar gap-1">
+          {showCreate ? <X className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+          <span className="text-[11.5px] font-semibold">{showCreate ? 'Cancel' : 'Add User'}</span>
+        </button>
       </div>
 
+      {/* ── Flash message ── */}
+      {flash && (
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius)] text-[12.5px] font-medium ${
+          flash.type === 'success'
+            ? 'bg-success/[0.06] border border-success/20 text-success'
+            : 'bg-destructive/[0.06] border border-destructive/20 text-destructive'
+        }`}>
+          {flash.type === 'success' ? <Check className="w-3 h-3 shrink-0" /> : <AlertCircle className="w-3 h-3 shrink-0" />}
+          {flash.text}
+          <button onClick={() => setFlash(null)} className="ml-auto opacity-50 hover:opacity-100"><X className="w-3 h-3" /></button>
+        </div>
+      )}
+
+      {/* ── Create user form ── */}
       {showCreate && (
-        <div className="rounded-[var(--radius)] border border-border/50 bg-card p-6 md:p-8 shadow-md">
-          <h3 className="text-lg font-bold text-foreground uppercase tracking-wider mb-6 flex items-center gap-2">
-            <Plus className="w-5 h-5 text-primary" />
-            Create New User
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <Field label="Email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
-            <Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
-            <Field label="First Name" value={form.first_name} onChange={(v) => setForm({ ...form, first_name: v })} />
-            <Field label="Last Name" value={form.last_name} onChange={(v) => setForm({ ...form, last_name: v })} />
-          </div>
-          <div className="flex flex-wrap items-end gap-4 mb-6">
-            <label className="text-xs text-muted-foreground">
-              <div className="mb-2 font-semibold uppercase tracking-wider">Role</div>
-              <select
-                value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value as CreateUserForm['role'] })}
-                className="px-4 py-2.5 rounded-lg bg-background border border-border text-sm text-foreground outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 transition-all"
-              >
-                <option value="general">General</option>
-                <option value="admin">Admin</option>
-                <option value="owner">Owner</option>
-              </select>
-            </label>
-            <Toggle
-              label="Disabled"
-              checked={form.disabled}
-              onChange={(checked) => setForm({ ...form, disabled: checked })}
-            />
+        <div className="panel-card p-3 sm:p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+            <div>
+              <label className="stat-label block mb-1">Email</label>
+              <input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                className="w-full h-7 px-2.5 text-[12.5px] border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/50"
+                style={formStyle} />
+            </div>
+            <div>
+              <label className="stat-label block mb-1">Password</label>
+              <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                className="w-full h-7 px-2.5 text-[12.5px] border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/50"
+                style={formStyle} />
+            </div>
+            <div>
+              <label className="stat-label block mb-1">First Name</label>
+              <input value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })}
+                className="w-full h-7 px-2.5 text-[12.5px] border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/50"
+                style={formStyle} />
+            </div>
+            <div>
+              <label className="stat-label block mb-1">Last Name</label>
+              <input value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })}
+                className="w-full h-7 px-2.5 text-[12.5px] border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/50"
+                style={formStyle} />
+            </div>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleCreate}
-              disabled={createUserMutation.isPending}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold shadow-lg shadow-primary/20 disabled:opacity-50 transition-all"
-            >
-              {createUserMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Create User
-            </button>
-            <button
-              onClick={() => {
-                setShowCreate(false);
-                setForm(EMPTY_FORM);
-              }}
-              className="px-6 py-2.5 rounded-lg border border-border/50 bg-background/40 hover:bg-accent/40 text-sm text-foreground font-semibold transition-all"
-            >
-              Cancel
+            <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as CreateUserForm['role'] })}
+              className="h-7 px-2.5 text-[12.5px] border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/50 cursor-pointer"
+              style={formStyle}>
+              <option value="general">General</option>
+              <option value="admin">Admin</option>
+              <option value="owner">Owner</option>
+            </select>
+            <button onClick={handleCreate} disabled={createUserMutation.isPending} className="btn-primary">
+              {createUserMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+              Create
             </button>
           </div>
         </div>
       )}
 
-      <div className="rounded-[var(--radius)] border border-border/50 bg-card p-6 md:p-8 shadow-md">
-        <div className="mb-4 relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by email or name..."
-            className="w-full pl-12 pr-4 py-3 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 transition-all"
-          />
+      {/* ── User list ── */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/30" />
         </div>
-
-        {flash && (
-          <div
-            className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${
-              flash.type === 'success'
-                ? 'bg-success/10 text-success border border-success/20'
-                : 'bg-destructive/10 text-destructive border border-destructive/20'
-            }`}
-          >
-            {flash.type === 'success' ? '✓' : '⚠'} {flash.text}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="py-20 text-center">
-            <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">Loading users...</p>
-          </div>
-        ) : isError ? (
-          <div className="py-20 text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
-              ⚠ {(error as Error)?.message || 'Failed to load users.'}
-            </div>
-          </div>
-        ) : (
-          <div className="overflow-x-auto border border-border/50 rounded-md bg-background/40 backdrop-blur-sm">
-            <table className="w-full min-w-[880px] text-left">
-              <thead className="bg-gradient-to-r from-muted/30 to-muted/20 border-b border-border text-[11px] uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-bold">Name</th>
-                  <th className="px-4 py-3 font-bold">Email</th>
-                  <th className="px-4 py-3 font-bold">Role</th>
-                  <th className="px-4 py-3 font-bold">Status</th>
-                  <th className="px-4 py-3 font-bold">Created</th>
-                  <th className="px-4 py-3 font-bold">Actions</th>
+      ) : isError ? (
+        <div className="flex items-center justify-center py-16">
+          <span className="text-[12.5px] text-destructive flex items-center gap-1.5">
+            <AlertCircle className="w-3 h-3" />{(error as Error)?.message || 'Failed to load users.'}
+          </span>
+        </div>
+      ) : (
+        <>
+          {/* ── Desktop table (md+) ── */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border/30">
+                  <th className="stat-label text-left px-3 py-2">User</th>
+                  <th className="stat-label text-left px-3 py-2">Role</th>
+                  <th className="stat-label text-left px-3 py-2">Status</th>
+                  <th className="stat-label text-left px-3 py-2">Created</th>
+                  <th className="stat-label text-right px-3 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => {
+                {users.map(u => {
                   const role = (u.role || 'general').toLowerCase();
                   const isSelf = currentUser?.id === u.id;
-                  const rowBusy =
-                    busyUserId === u.id ||
-                    updateUserMutation.isPending ||
-                    deleteUserMutation.isPending;
+                  const rowBusy = busyUserId === u.id;
+                  const name = [u.first_name, u.last_name].filter(Boolean).join(' ');
                   return (
-                    <tr key={u.id} className="border-b border-border/25 text-sm text-foreground hover:bg-accent/10 transition-colors group">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold">
-                          {[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'}
+                    <tr key={u.id} className="border-b border-border/10 hover:bg-foreground/[0.02] transition-colors group">
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-foreground/[0.06] border border-border/30 flex items-center justify-center text-[11.5px] font-mono font-bold text-muted-foreground/50 uppercase shrink-0">
+                            {(u.first_name?.[0] || u.email[0])}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[13px] font-semibold text-foreground truncate">
+                              {name || u.email.split('@')[0]}
+                              {isSelf && <span className="ml-1.5 text-[11px] font-mono text-primary/60">you</span>}
+                            </div>
+                            <div className="text-[11.5px] font-mono text-muted-foreground/40 truncate">{u.email}</div>
+                          </div>
                         </div>
-                        {isSelf && <div className="text-[10px] text-primary dark:text-primary font-mono mt-0.5">You</div>}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{u.email}</td>
-                      <td className="px-4 py-3">
-                        {role === 'owner' ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-warning/10 text-warning border border-warning/30">
-                            <Crown className="w-3.5 h-3.5" /> Owner
-                          </span>
-                        ) : role === 'admin' ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-success/10 text-success border border-success/30">
-                            <Shield className="w-3.5 h-3.5" /> Admin
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-muted/50 text-muted-foreground border border-border/70">
-                            <ShieldOff className="w-3.5 h-3.5" /> General
-                          </span>
-                        )}
+                      <td className="px-3 py-2"><RoleBadge role={role} /></td>
+                      <td className="px-3 py-2"><StatusBadge disabled={u.disabled} /></td>
+                      <td className="px-3 py-2 text-[11.5px] font-mono text-muted-foreground/40 tabular-nums">
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
                       </td>
-                      <td className="px-4 py-3">
-                        {u.disabled ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-destructive/10 text-destructive border border-destructive/30">
-                            <UserX className="w-3.5 h-3.5" /> Disabled
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-primary/10 text-primary dark:text-primary border border-primary/30">
-                            <UserCheck className="w-3.5 h-3.5" /> Active
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
-                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                          <button
-                            disabled={rowBusy || isSelf}
-                            onClick={() =>
-                              runUserAction(
-                                u,
-                                () =>
-                                  updateUserMutation.mutateAsync({
-                                    id: u.id,
-                                    payload: {
-                                      role:
-                                        role === 'general'
-                                          ? 'admin'
-                                          : role === 'admin'
-                                            ? 'general'
-                                            : 'admin',
-                                    },
-                                  }),
-                                role === 'general'
-                                  ? 'Admin role granted.'
-                                  : role === 'admin'
-                                    ? 'Role changed to general.'
-                                    : 'Owner role changed to admin.'
-                              )
-                            }
-                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-border/70 text-foreground hover:bg-accent/30 disabled:opacity-40 transition-all"
-                          >
-                            {role === 'general' ? 'Make Admin' : role === 'admin' ? 'Make General' : 'Set Admin'}
-                          </button>
-                          <button
-                            disabled={rowBusy || isSelf || role === 'owner'}
-                            onClick={() =>
-                              runUserAction(
-                                u,
-                                () =>
-                                  updateUserMutation.mutateAsync({
-                                    id: u.id,
-                                    payload: { role: 'owner' },
-                                  }),
-                                'User promoted to owner.'
-                              )
-                            }
-                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-warning/40 text-warning hover:bg-warning/10 disabled:opacity-40 inline-flex items-center gap-1 transition-all"
-                          >
-                            <Crown className="w-3 h-3" /> Owner
-                          </button>
-                          <button
-                            disabled={rowBusy || isSelf}
-                            onClick={() =>
-                              runUserAction(
-                                u,
-                                () =>
-                                  updateUserMutation.mutateAsync({
-                                    id: u.id,
-                                    payload: { disabled: !u.disabled },
-                                  }),
-                                u.disabled ? 'User enabled.' : 'User disabled.'
-                              )
-                            }
-                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-border/70 text-foreground hover:bg-accent/30 disabled:opacity-40 transition-all"
-                          >
-                            {u.disabled ? 'Enable' : 'Disable'}
-                          </button>
-                          <button
-                            disabled={rowBusy}
-                            onClick={async () => {
-                              const pw = window.prompt(`Set a new password for ${u.email} (min 6 chars):`);
-                              if (!pw) return;
-                              if (pw.trim().length < 6) {
-                                setFlash({ type: 'error', text: 'Password must be at least 6 characters.' });
-                                return;
-                              }
-                              await runUserAction(
-                                u,
-                                () =>
-                                  updateUserMutation.mutateAsync({
-                                    id: u.id,
-                                    payload: { password: pw.trim() },
-                                  }),
-                                'Password updated.'
-                              );
-                            }}
-                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-primary/40 text-primary dark:text-primary hover:bg-primary/10 disabled:opacity-40 inline-flex items-center gap-1 transition-all"
-                          >
-                            <KeyRound className="w-3 h-3" /> Password
-                          </button>
-                          <button
-                            disabled={rowBusy || isSelf}
-                            onClick={async () => {
-                              const ok = window.confirm(`Delete user ${u.email}? This cannot be undone.`);
-                              if (!ok) return;
-                              await runUserAction(
-                                u,
-                                () => deleteUserMutation.mutateAsync(u.id),
-                                'User deleted.'
-                              );
-                            }}
-                            className="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-40 inline-flex items-center gap-1 transition-all"
-                          >
-                            <Trash2 className="w-3 h-3" /> Delete
-                          </button>
-                        </div>
+                      <td className="px-3 py-2">
+                        <UserActions user={u} role={role} isSelf={isSelf} rowBusy={rowBusy}
+                          onRoleToggle={() => runUserAction(u,
+                            () => updateUserMutation.mutateAsync({ id: u.id, payload: { role: role === 'general' ? 'admin' : role === 'admin' ? 'general' : 'admin' } }),
+                            role === 'general' ? 'Admin granted.' : 'Set to general.'
+                          )}
+                          onOwner={() => runUserAction(u,
+                            () => updateUserMutation.mutateAsync({ id: u.id, payload: { role: 'owner' } }),
+                            'Promoted to owner.'
+                          )}
+                          onToggleDisabled={() => runUserAction(u,
+                            () => updateUserMutation.mutateAsync({ id: u.id, payload: { disabled: !u.disabled } }),
+                            u.disabled ? 'Enabled.' : 'Disabled.'
+                          )}
+                          onPassword={async () => {
+                            const pw = window.prompt(`New password for ${u.email} (min 6 chars):`);
+                            if (!pw) return;
+                            if (pw.trim().length < 6) { setFlash({ type: 'error', text: 'Min 6 characters.' }); return; }
+                            await runUserAction(u,
+                              () => updateUserMutation.mutateAsync({ id: u.id, payload: { password: pw.trim() } }),
+                              'Password updated.'
+                            );
+                          }}
+                          onDelete={async () => {
+                            if (!window.confirm(`Delete ${u.email}?`)) return;
+                            await runUserAction(u, () => deleteUserMutation.mutateAsync(u.id), 'Deleted.');
+                          }}
+                          className="justify-end opacity-0 group-hover:opacity-100 transition-opacity"
+                        />
                       </td>
                     </tr>
                   );
@@ -453,64 +353,108 @@ export default function UserManager() {
               </tbody>
             </table>
           </div>
-        )}
-        {isFetching && !isLoading && (
-          <div className="mt-3 text-[10px] text-muted-foreground font-mono flex items-center gap-2">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            Refreshing user list...
+
+          {/* ── Mobile card list (<md) ── */}
+          <div className="md:hidden space-y-2">
+            {users.map(u => {
+              const role = (u.role || 'general').toLowerCase();
+              const isSelf = currentUser?.id === u.id;
+              const rowBusy = busyUserId === u.id;
+              const name = [u.first_name, u.last_name].filter(Boolean).join(' ');
+              return (
+                <div key={u.id} className="panel-card p-3">
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-foreground/[0.06] border border-border/30 flex items-center justify-center text-[12.5px] font-mono font-bold text-muted-foreground/50 uppercase shrink-0">
+                      {(u.first_name?.[0] || u.email[0])}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-semibold text-foreground truncate">
+                        {name || u.email.split('@')[0]}
+                        {isSelf && <span className="ml-1.5 text-[11px] font-mono text-primary/60">you</span>}
+                      </div>
+                      <div className="text-[11.5px] font-mono text-muted-foreground/40 truncate">{u.email}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <RoleBadge role={role} />
+                      <StatusBadge disabled={u.disabled} />
+                    </div>
+                  </div>
+                  <UserActions user={u} role={role} isSelf={isSelf} rowBusy={rowBusy}
+                    onRoleToggle={() => runUserAction(u,
+                      () => updateUserMutation.mutateAsync({ id: u.id, payload: { role: role === 'general' ? 'admin' : role === 'admin' ? 'general' : 'admin' } }),
+                      role === 'general' ? 'Admin granted.' : 'Set to general.'
+                    )}
+                    onOwner={() => runUserAction(u,
+                      () => updateUserMutation.mutateAsync({ id: u.id, payload: { role: 'owner' } }),
+                      'Promoted to owner.'
+                    )}
+                    onToggleDisabled={() => runUserAction(u,
+                      () => updateUserMutation.mutateAsync({ id: u.id, payload: { disabled: !u.disabled } }),
+                      u.disabled ? 'Enabled.' : 'Disabled.'
+                    )}
+                    onPassword={async () => {
+                      const pw = window.prompt(`New password for ${u.email} (min 6 chars):`);
+                      if (!pw) return;
+                      if (pw.trim().length < 6) { setFlash({ type: 'error', text: 'Min 6 characters.' }); return; }
+                      await runUserAction(u,
+                        () => updateUserMutation.mutateAsync({ id: u.id, payload: { password: pw.trim() } }),
+                        'Password updated.'
+                      );
+                    }}
+                    onDelete={async () => {
+                      if (!window.confirm(`Delete ${u.email}?`)) return;
+                      await runUserAction(u, () => deleteUserMutation.mutateAsync(u.id), 'Deleted.');
+                    }}
+                    className="justify-start"
+                  />
+                </div>
+              );
+            })}
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {/* Refreshing indicator */}
+      {isFetching && !isLoading && (
+        <div className="flex items-center gap-1.5 text-[11.5px] font-mono text-muted-foreground/30">
+          <Loader2 className="w-3 h-3 animate-spin" />Refreshing...
+        </div>
+      )}
     </div>
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = 'text',
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-}) {
-  return (
-    <label className="text-xs text-muted-foreground">
-      <div className="mb-2 font-semibold uppercase tracking-wider">{label}</div>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-sm text-foreground outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 transition-all"
-      />
-    </label>
-  );
-}
+// ── Action buttons (shared between table and card views) ──
 
-function Toggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
+const actionBtn = "h-6 px-2 text-[11px] font-mono font-semibold rounded-[calc(var(--radius)-2px)] disabled:opacity-30 transition-all";
+
+function UserActions({ user, role, isSelf, rowBusy, onRoleToggle, onOwner, onToggleDisabled, onPassword, onDelete, className = '' }: {
+  user: AdminUser; role: string; isSelf: boolean; rowBusy: boolean;
+  onRoleToggle: () => void; onOwner: () => void; onToggleDisabled: () => void;
+  onPassword: () => void; onDelete: () => void; className?: string;
 }) {
   return (
-    <label className="inline-flex items-center gap-3 text-sm text-foreground cursor-pointer">
-      <div className="relative">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          className="sr-only peer"
-        />
-        <div className="w-11 h-6 bg-muted rounded-full peer peer-checked:bg-primary transition-colors" />
-        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-      </div>
-      <span className="font-medium">{label}</span>
-    </label>
+    <div className={`flex items-center flex-wrap gap-0.5 ${className}`}>
+      <button disabled={rowBusy || isSelf} onClick={onRoleToggle}
+        className={`${actionBtn} border border-border/30 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06]`}>
+        {role === 'general' ? 'ADMIN' : role === 'admin' ? 'GENERAL' : 'ADMIN'}
+      </button>
+      <button disabled={rowBusy || isSelf || role === 'owner'} onClick={onOwner} title="Promote to owner"
+        className={`${actionBtn} border border-warning/20 text-warning/60 hover:text-warning hover:bg-warning/[0.06]`}>
+        <Crown className="w-3 h-3" />
+      </button>
+      <button disabled={rowBusy || isSelf} onClick={onToggleDisabled}
+        className={`${actionBtn} border border-border/30 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06]`}>
+        {user.disabled ? 'ON' : 'OFF'}
+      </button>
+      <button disabled={rowBusy} onClick={onPassword} title="Reset password"
+        className={`${actionBtn} border border-primary/20 text-primary/60 hover:text-primary hover:bg-primary/[0.06]`}>
+        <KeyRound className="w-3 h-3" />
+      </button>
+      <button disabled={rowBusy || isSelf} onClick={onDelete} title="Delete user"
+        className={`${actionBtn} border border-destructive/20 text-destructive/60 hover:text-destructive hover:bg-destructive/[0.06]`}>
+        <Trash2 className="w-3 h-3" />
+      </button>
+    </div>
   );
 }

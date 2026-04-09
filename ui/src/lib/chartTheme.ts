@@ -34,9 +34,10 @@ const STYLE: ChartStyleConfig = {
   showZeroline: false,
   showLine: false,
   mirror: false,
-  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif',
-  baseFontSize: 11,
-  titleFontSize: 13,
+  // Global mono-first typography — matches body font in globals.css.
+  fontFamily: 'var(--font-mono), "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+  baseFontSize: 12,
+  titleFontSize: 14,
   legend: { x: 0.01, y: 0.99, xanchor: 'left', yanchor: 'top', orientation: 'h' },
   margin: { t: 30, l: 0, r: 0, b: 0 },
   gridOpacityScale: 0,
@@ -64,18 +65,18 @@ export const CHART_SEMANTIC: Record<UiTheme, {
   primary: string;
 }> = {
   dark: {
-    success: 'rgb(63,185,80)',      // --success dark
-    destructive: 'rgb(245,80,80)',   // --destructive dark
-    warning: 'rgb(210,153,34)',      // --warning dark
-    neutral: 'rgb(100,110,135)',     // --muted-foreground dark
-    primary: 'rgb(99,130,255)',      // --primary dark
+    success: 'rgb(72,168,110)',      // --success dark (muted forest)
+    destructive: 'rgb(214,86,86)',   // --destructive dark (muted rust)
+    warning: 'rgb(216,162,64)',      // --warning dark (amber)
+    neutral: 'rgb(128,136,148)',     // --muted-foreground dark (steel)
+    primary: 'rgb(198,204,214)',     // --primary dark (platinum)
   },
   light: {
-    success: 'rgb(26,127,55)',       // --success light
-    destructive: 'rgb(220,55,55)',   // --destructive light
-    warning: 'rgb(154,103,0)',       // --warning light
-    neutral: 'rgb(95,92,85)',        // --muted-foreground light
-    primary: 'rgb(50,80,210)',       // --primary light
+    success: 'rgb(32,112,56)',       // --success light
+    destructive: 'rgb(184,48,48)',   // --destructive light
+    warning: 'rgb(158,104,8)',       // --warning light
+    neutral: 'rgb(86,94,108)',       // --muted-foreground light
+    primary: 'rgb(40,48,64)',        // --primary light (graphite)
   },
 };
 
@@ -86,16 +87,16 @@ const AXIS_KEY_REGEX = /^(x|y)axis(\d*)$/;
  * Ordered for maximum contrast between adjacent traces.
  */
 export const COLORWAY = [
-  '#00D2FF', // Cyan
-  '#FF69B4', // Magenta
-  '#A020F0', // Purple
-  '#00FF66', // Emerald
-  '#FFB84D', // Amber
-  '#ef4444', // Rose
-  '#3b82f6', // Sky
-  '#f59e0b', // Gold
-  '#8b5cf6', // Violet
-  '#06b6d4', // Teal
+  '#C6CCD6', // Platinum
+  '#E0A848', // Amber
+  '#4895B0', // Muted teal
+  '#8FA68E', // Sage
+  '#B89176', // Tan
+  '#7D8596', // Slate
+  '#D86C6C', // Muted rust
+  '#6B8EAE', // Steel blue
+  '#C4A869', // Sand
+  '#9AA4B2', // Cool gray
 ];
 
 export const THEME_TOKENS: Record<UiTheme, {
@@ -111,32 +112,32 @@ export const THEME_TOKENS: Record<UiTheme, {
   spikeColor: string;
 }> = {
   light: {
-    // Matches --foreground: 18 20 28 and --muted-foreground: 95 92 85
-    text: 'rgb(18,20,28)',
-    textSecondary: 'rgba(95,92,85,0.9)',
-    grid: 'rgba(50,80,210,0.06)',
+    // Matches --foreground: 24 28 36 and --muted-foreground: 86 94 108
+    text: 'rgb(24,28,36)',
+    textSecondary: 'rgba(86,94,108,0.9)',
+    grid: 'rgba(40,48,64,0.06)',
     // Matches --card: 255 254 251 and --background: 248 247 244
     paperBg: 'rgb(255,254,251)',
     plotBg: 'rgb(255,254,251)',
-    chartBorder: 'rgba(18,20,28,0.08)',
+    chartBorder: 'rgba(24,28,36,0.08)',
     legendBg: 'rgba(0,0,0,0)',
     legendBorder: 'rgba(0,0,0,0)',
     hoverBg: 'rgba(255,254,251,0.98)',
-    spikeColor: 'rgba(18,20,28,0.08)',
+    spikeColor: 'rgba(24,28,36,0.10)',
   },
   dark: {
-    // Matches --foreground: 205 215 230 and --muted-foreground: 100 110 135
-    text: 'rgb(205,215,230)',
-    textSecondary: 'rgba(100,110,135,0.9)',
-    grid: 'rgba(99,130,255,0.04)',
-    // Matches --card: 12 14 22 and --background: 8 10 16
-    paperBg: 'rgb(12,14,22)',
-    plotBg: 'rgb(12,14,22)',
-    chartBorder: 'rgba(30,35,55,0.9)',
+    // Matches --foreground: 218 222 228 and --muted-foreground: 128 136 148
+    text: 'rgb(218,222,228)',
+    textSecondary: 'rgba(128,136,148,0.9)',
+    grid: 'rgba(198,204,214,0.04)',
+    // Matches --card: 20 23 28 and --background: 14 16 20
+    paperBg: 'rgb(20,23,28)',
+    plotBg: 'rgb(20,23,28)',
+    chartBorder: 'rgba(48,54,64,0.9)',
     legendBg: 'rgba(0,0,0,0)',
     legendBorder: 'rgba(0,0,0,0)',
-    hoverBg: 'rgba(12,14,22,0.98)',
-    spikeColor: 'rgba(100,110,135,0.15)',
+    hoverBg: 'rgba(20,23,28,0.98)',
+    spikeColor: 'rgba(128,136,148,0.20)',
   },
 };
 

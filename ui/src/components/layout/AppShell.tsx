@@ -13,9 +13,11 @@ import GlobalSearchPalette from '@/components/shared/GlobalSearchPalette';
 export default function AppShell({
   children,
   hideFooter = false,
+  fullWidth = false,
 }: {
   children: React.ReactNode;
   hideFooter?: boolean;
+  fullWidth?: boolean;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -34,10 +36,10 @@ export default function AppShell({
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-background">
+    <div className="min-h-screen flex flex-col relative overflow-x-clip bg-background">
       <Navbar onOpenSearch={openSearch} />
-      {/* Match fixed navbar height (48px) */}
-      <main id="main-content" className="pt-[48px] flex-grow relative max-w-[1440px] mx-auto w-full">
+      {/* Match fixed navbar height (56px) */}
+      <main id="main-content" className={`pt-[56px] flex-grow relative w-full ${fullWidth ? '' : 'max-w-[1600px] mx-auto'}`}>
         {children}
       </main>
       {!hideFooter && <Footer />}

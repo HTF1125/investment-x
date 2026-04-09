@@ -50,14 +50,14 @@ export default function SessionExpiredModal() {
           </button>
         </div>
 
-        <p className="px-5 text-[12px] text-muted-foreground">
+        <p className="px-5 text-[13px] text-muted-foreground">
           Your session has expired. Sign in again to continue without losing your work.
         </p>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-3">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Email</label>
+            <label className="text-[11.5px] font-bold uppercase tracking-widest text-muted-foreground/50">Email</label>
             <input
               type="email"
               value={email}
@@ -68,7 +68,7 @@ export default function SessionExpiredModal() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Password</label>
+            <label className="text-[11.5px] font-bold uppercase tracking-widest text-muted-foreground/50">Password</label>
             <input
               type="password"
               value={password}
@@ -80,7 +80,7 @@ export default function SessionExpiredModal() {
           </div>
 
           {error && (
-            <p role="alert" className="text-[11px] text-destructive font-medium">{error}</p>
+            <p role="alert" className="text-[12.5px] text-destructive font-medium">{error}</p>
           )}
 
           <div className="flex items-center gap-2 pt-1">

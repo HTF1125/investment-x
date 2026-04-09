@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import NavigatorShell from '@/components/layout/NavigatorShell';
-import { BarChart3, Loader2, TrendingUp, GitBranch, Shield, Sigma } from 'lucide-react';
+import { AlertTriangle, BarChart3, Loader2, TrendingUp, GitBranch, Shield, Sigma } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
@@ -19,7 +19,7 @@ const Plot = dynamic(() => import('react-plotly.js'), {
     <div className="h-full w-full flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-3">
         <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
-        <span className="text-[11px] text-muted-foreground/50 tracking-widest uppercase">Loading Chart</span>
+        <span className="text-[12.5px] text-muted-foreground/50 tracking-widest uppercase">Loading Chart</span>
       </div>
     </div>
   ),
@@ -29,11 +29,11 @@ const Plot = dynamic(() => import('react-plotly.js'), {
 
 type Tab = 'correlation' | 'regression' | 'pca' | 'var';
 
-const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+const TABS: { key: Tab; label: string; icon: React.ReactNode; title?: string }[] = [
   { key: 'correlation', label: 'Correlation', icon: <GitBranch className="w-3.5 h-3.5" /> },
   { key: 'regression', label: 'Regression', icon: <TrendingUp className="w-3.5 h-3.5" /> },
-  { key: 'pca', label: 'PCA', icon: <Sigma className="w-3.5 h-3.5" /> },
-  { key: 'var', label: 'VaR', icon: <Shield className="w-3.5 h-3.5" /> },
+  { key: 'pca', label: 'PCA', icon: <Sigma className="w-3.5 h-3.5" />, title: 'Principal Component Analysis' },
+  { key: 'var', label: 'VaR', icon: <Shield className="w-3.5 h-3.5" />, title: 'Value at Risk — maximum expected loss at a given confidence level' },
 ];
 
 const DEFAULT_CODES = 'SPY,TLT,GLD,EEM,DXY Index';
@@ -52,7 +52,7 @@ function ControlInput({ label, value, onChange, placeholder, type = 'text', min,
         type={type} value={value} placeholder={placeholder}
         min={min} max={max} step={step}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-border/50 rounded-[var(--radius)] px-2.5 h-7 text-[12px] focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 text-foreground transition-all placeholder:text-muted-foreground/35"
+        className="w-full border border-border/50 rounded-[var(--radius)] px-2.5 h-7 text-[13px] focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 text-foreground transition-all placeholder:text-muted-foreground/35"
         style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
       />
     </div>
@@ -69,7 +69,7 @@ function ControlSelect({ label, value, onChange, options }: {
       <label className="stat-label block">{label}</label>
       <select
         value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-border/50 rounded-[var(--radius)] px-2.5 h-7 text-[12px] focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 text-foreground cursor-pointer transition-all"
+        className="w-full border border-border/50 rounded-[var(--radius)] px-2.5 h-7 text-[13px] focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 text-foreground cursor-pointer transition-all"
         style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -218,21 +218,21 @@ export default function QuantPage() {
   });
 
   // ── Active figure ──
-  const { figData, isLoading, isFetching } = useMemo(() => {
+  const { figData, isLoading, isFetching, isError } = useMemo(() => {
     if (activeTab === 'correlation') {
       const q = corrMode === 'matrix' ? corrMatrixQuery : corrRollingQuery;
-      return { figData: q.data, isLoading: q.isLoading, isFetching: q.isFetching };
+      return { figData: q.data, isLoading: q.isLoading, isFetching: q.isFetching, isError: q.isError };
     }
     if (activeTab === 'regression') {
       const q = regMode === 'ols' ? regOlsQuery : regBetaQuery;
-      return { figData: q.data, isLoading: q.isLoading, isFetching: q.isFetching };
+      return { figData: q.data, isLoading: q.isLoading, isFetching: q.isFetching, isError: q.isError };
     }
     if (activeTab === 'pca') {
-      return { figData: pcaQuery.data, isLoading: pcaQuery.isLoading, isFetching: pcaQuery.isFetching };
+      return { figData: pcaQuery.data, isLoading: pcaQuery.isLoading, isFetching: pcaQuery.isFetching, isError: pcaQuery.isError };
     }
     // var
     const q = varMode === 'snapshot' ? varSnapshotQuery : varRollingQuery;
-    return { figData: q.data, isLoading: q.isLoading, isFetching: q.isFetching };
+    return { figData: q.data, isLoading: q.isLoading, isFetching: q.isFetching, isError: q.isError };
   }, [activeTab, corrMode, regMode, varMode, corrMatrixQuery, corrRollingQuery, regOlsQuery, regBetaQuery, pcaQuery, varSnapshotQuery, varRollingQuery]);
 
   // ── Theme the figure ──
@@ -271,7 +271,8 @@ export default function QuantPage() {
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-[var(--radius)] text-[11px] font-semibold transition-all ${
+              title={t.title}
+              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-[var(--radius)] text-[12.5px] font-semibold transition-all ${
                 activeTab === t.key
                   ? 'bg-foreground text-background'
                   : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] border border-border/30'
@@ -292,7 +293,7 @@ export default function QuantPage() {
                 <button
                   key={m}
                   onClick={() => setCorrMode(m)}
-                  className={`flex-1 h-6 rounded text-[10px] font-bold tracking-wider transition-all ${
+                  className={`flex-1 h-6 rounded text-[11.5px] font-bold tracking-wider transition-all ${
                     corrMode === m
                       ? 'bg-foreground text-background shadow-sm'
                       : 'text-muted-foreground/60 hover:text-foreground'
@@ -337,7 +338,7 @@ export default function QuantPage() {
                 <button
                   key={m}
                   onClick={() => setRegMode(m)}
-                  className={`flex-1 h-6 rounded text-[10px] font-bold tracking-wider transition-all ${
+                  className={`flex-1 h-6 rounded text-[11.5px] font-bold tracking-wider transition-all ${
                     regMode === m
                       ? 'bg-foreground text-background shadow-sm'
                       : 'text-muted-foreground/60 hover:text-foreground'
@@ -381,7 +382,7 @@ export default function QuantPage() {
                 <button
                   key={m}
                   onClick={() => setVarMode(m)}
-                  className={`flex-1 h-6 rounded text-[10px] font-bold tracking-wider transition-all ${
+                  className={`flex-1 h-6 rounded text-[11.5px] font-bold tracking-wider transition-all ${
                     varMode === m
                       ? 'bg-foreground text-background shadow-sm'
                       : 'text-muted-foreground/60 hover:text-foreground'
@@ -425,11 +426,11 @@ export default function QuantPage() {
         sidebarOpenWidthClassName="w-[220px]"
         topBarLeft={
           <div className="flex items-center gap-2.5">
-            <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-foreground/80">{activeLabel}</span>
+            <span className="text-[12.5px] font-bold uppercase tracking-[0.08em] text-foreground/80">{activeLabel}</span>
             {isFetching && (
               <div className="flex items-center gap-1.5">
                 <Loader2 className="w-3 h-3 animate-spin text-primary" />
-                <span className="text-[10px] font-mono text-primary/70 tracking-wider">Loading...</span>
+                <span className="text-[11.5px] font-mono text-primary/70 tracking-wider">Loading...</span>
               </div>
             )}
           </div>
@@ -441,6 +442,16 @@ export default function QuantPage() {
               <div className="flex flex-col items-center gap-2.5">
                 <Loader2 className="w-5 h-5 animate-spin text-primary/50" />
                 <span className="stat-label">Running analysis...</span>
+              </div>
+            </div>
+          ) : isError ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3 text-center max-w-xs animate-fade-in">
+                <div className="w-10 h-10 rounded-[var(--radius)] bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+                  <AlertTriangle className="w-4.5 h-4.5 text-destructive" />
+                </div>
+                <p className="text-[13px] font-medium text-foreground">Failed to load {activeLabel.toLowerCase()} analysis</p>
+                <p className="text-[12px] text-muted-foreground">Check that the series codes are valid and try again</p>
               </div>
             </div>
           ) : themedFig ? (
@@ -462,7 +473,7 @@ export default function QuantPage() {
                   <BarChart3 className="w-5 h-5 text-muted-foreground/30" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[12px] font-medium text-foreground/50">No analysis selected</p>
+                  <p className="text-[13px] font-medium text-foreground/50">No analysis selected</p>
                   <p className="stat-label">Configure parameters in the sidebar</p>
                 </div>
               </div>

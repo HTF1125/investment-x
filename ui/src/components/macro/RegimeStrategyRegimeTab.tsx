@@ -314,7 +314,7 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, s
           </div>
           <div>
             <div className="stat-label">As Of</div>
-            <div className="text-[11px] font-mono text-muted-foreground mt-0.5">{current.date}</div>
+            <div className="text-[12.5px] font-mono text-muted-foreground mt-0.5">{current.date}</div>
           </div>
         </div>
       )}
@@ -350,15 +350,15 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, s
           </div>
           <div className="panel-card px-3 py-2">
             <SectionTitle info="Historical 13-week forward returns by dominant regime. Mean, median, volatility, Sharpe, hit rate, and sample size.">Forward Returns by Regime</SectionTitle>
-            <table className="w-full text-[11px]">
+            <table className="w-full text-[12.5px]">
               <thead><tr className="border-b border-border/40">
-                <th className="text-left py-1 pr-2 text-[9px] font-mono uppercase text-muted-foreground/50">Regime</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Mean</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Med</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Vol</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Sharpe</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">%Pos</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">N</th>
+                <th className="text-left py-1 pr-2 text-[11px] font-mono uppercase text-muted-foreground/50">Regime</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Mean</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Med</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Vol</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Sharpe</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">%Pos</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">N</th>
               </tr></thead>
               <tbody>
                 {snapshot.regime_stats.map(s => (
@@ -400,14 +400,14 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, s
             Regime Duration
           </SectionTitle>
           <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
+            <table className="w-full text-[12.5px]">
               <thead>
                 <tr className="border-b border-border/40">
-                  <th className="text-left py-1 pr-3 text-[9px] font-mono uppercase text-muted-foreground/50">Regime</th>
-                  <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Runs</th>
-                  <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Avg</th>
-                  <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Min</th>
-                  <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Max</th>
+                  <th className="text-left py-1 pr-3 text-[11px] font-mono uppercase text-muted-foreground/50">Regime</th>
+                  <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Runs</th>
+                  <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Avg</th>
+                  <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Min</th>
+                  <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Max</th>
                 </tr>
               </thead>
               <tbody>
@@ -427,15 +427,15 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, s
           Regime Statistics
         </SectionTitle>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px]">
+          <table className="w-full text-[12.5px]">
             <thead>
               <tr className="border-b border-border/40">
-                <th className="text-left py-1 pr-3 text-[9px] font-mono uppercase text-muted-foreground/50">Regime</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Count</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Freq %</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Avg Growth</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Avg Infl</th>
-                <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Avg Eq Wt</th>
+                <th className="text-left py-1 pr-3 text-[11px] font-mono uppercase text-muted-foreground/50">Regime</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Count</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Freq %</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Avg Growth</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Avg Infl</th>
+                <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Avg Eq Wt</th>
               </tr>
             </thead>
             <tbody>
@@ -461,27 +461,27 @@ export default function RegimeStrategyRegimeTab({ backtest, isLoading, target, s
             Recent Readings
           </SectionTitle>
           <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
+            <table className="w-full text-[12.5px]">
               <thead>
                 <tr className="border-b border-border/40">
-                  <th className="text-left py-1 pr-3 text-[9px] font-mono uppercase text-muted-foreground/50">Date</th>
-                  <th className="text-left py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Regime</th>
-                  <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Growth %ile</th>
-                  <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Infl %ile</th>
-                  <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Eq Wt</th>
+                  <th className="text-left py-1 pr-3 text-[11px] font-mono uppercase text-muted-foreground/50">Date</th>
+                  <th className="text-left py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Regime</th>
+                  <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Growth %ile</th>
+                  <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Infl %ile</th>
+                  <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Eq Wt</th>
                 </tr>
               </thead>
               <tbody>
                 {regimeHistory.slice(-12).reverse().map(r => (
                   <tr key={r.date} className="border-b border-border/20">
-                    <td className="py-1 pr-3 font-mono tabular-nums text-[11px] text-foreground">{r.date}</td>
-                    <td className="py-1 px-1 text-[11px] text-foreground">
+                    <td className="py-1 pr-3 font-mono tabular-nums text-[12.5px] text-foreground">{r.date}</td>
+                    <td className="py-1 px-1 text-[12.5px] text-foreground">
                       <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ backgroundColor: REGIME_COLORS[r.regime] ?? '#888' }} />
                       {r.regime}
                     </td>
-                    <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{fmt(r.growth_pctile * 100, 0)}%</td>
-                    <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{fmt(r.inflation_pctile * 100, 0)}%</td>
-                    <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{fmt(r.eq_weight * 100, 0)}%</td>
+                    <td className="text-right py-1 px-1 font-mono tabular-nums text-[12.5px] text-foreground">{fmt(r.growth_pctile * 100, 0)}%</td>
+                    <td className="text-right py-1 px-1 font-mono tabular-nums text-[12.5px] text-foreground">{fmt(r.inflation_pctile * 100, 0)}%</td>
+                    <td className="text-right py-1 px-1 font-mono tabular-nums text-[12.5px] text-foreground">{fmt(r.eq_weight * 100, 0)}%</td>
                   </tr>
                 ))}
               </tbody>

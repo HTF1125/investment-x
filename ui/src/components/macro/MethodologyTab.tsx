@@ -43,16 +43,16 @@ export default function MethodologyTab() {
       {/* Investment Problem */}
       <div className="panel-card p-4">
         <SectionTitle>The Investment Problem</SectionTitle>
-        <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
+        <p className="text-[13px] text-muted-foreground leading-relaxed mb-3">
           Asset allocation is the single most important decision for any investor.
           Getting the equity weight right during regime transitions accounts for the
           vast majority of long-term risk-adjusted returns.
         </p>
-        <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
+        <p className="text-[13px] text-muted-foreground leading-relaxed mb-3">
           The core insight: <span className="text-foreground font-semibold">binary regime switching</span> dramatically
           outperforms continuous allocation tilting.
         </p>
-        <table className="data-table text-[11px] font-mono">
+        <table className="data-table text-[12.5px] font-mono">
           <thead>
             <tr>
               <th className="text-left">Approach</th>
@@ -78,14 +78,14 @@ export default function MethodologyTab() {
       {/* 90/50/10 Rule */}
       <div className="panel-card p-4">
         <SectionTitle>The 90/50/10 Allocation Rule</SectionTitle>
-        <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
+        <p className="text-[13px] text-muted-foreground leading-relaxed mb-3">
           Two independent signals classify the regime:
         </p>
-        <ol className="text-[12px] text-muted-foreground leading-relaxed mb-3 list-decimal list-inside space-y-1">
+        <ol className="text-[13px] text-muted-foreground leading-relaxed mb-3 list-decimal list-inside space-y-1">
           <li><span className="text-foreground font-medium">Trend signal:</span> Is price above 40-week SMA?</li>
           <li><span className="text-foreground font-medium">Macro composite:</span> Is factor composite above trailing median?</li>
         </ol>
-        <table className="data-table text-[11px] font-mono">
+        <table className="data-table text-[12.5px] font-mono">
           <thead>
             <tr>
               <th className="text-center">Trend</th>
@@ -115,7 +115,7 @@ export default function MethodologyTab() {
             </tr>
           </tbody>
         </table>
-        <p className="text-[10px] text-muted-foreground/50 mt-2">Benchmark: static 50% equity / 50% cash allocation.</p>
+        <p className="text-[11.5px] text-muted-foreground/50 mt-2">Benchmark: static 50% equity / 50% cash allocation.</p>
       </div>
 
       {/* Factor Categories */}
@@ -131,9 +131,9 @@ export default function MethodologyTab() {
             <div key={cat.name} className="border border-border/30 rounded-[var(--radius)] p-3">
               <div className="flex items-center gap-2 mb-2.5">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground/80">{cat.name}</span>
+                <span className="text-[12.5px] font-semibold uppercase tracking-[0.06em] text-foreground/80">{cat.name}</span>
               </div>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5 mb-2.5">
+              <ul className="text-[12.5px] text-muted-foreground space-y-0.5 mb-2.5">
                 {cat.items.map(item => (
                   <li key={item} className="flex items-start gap-1.5">
                     <span className="text-border/60 mt-0.5 shrink-0">–</span>
@@ -141,7 +141,7 @@ export default function MethodologyTab() {
                   </li>
                 ))}
               </ul>
-              <p className="text-[10px] text-muted-foreground/55 font-mono border-t border-border/20 pt-2 mt-2">{cat.theory}</p>
+              <p className="text-[11.5px] text-muted-foreground/55 font-mono border-t border-border/20 pt-2 mt-2">{cat.theory}</p>
             </div>
           ))}
         </div>
@@ -150,7 +150,7 @@ export default function MethodologyTab() {
       {/* Factor Selection Process */}
       <div className="panel-card p-4">
         <SectionTitle>Factor Selection Process</SectionTitle>
-        <ol className="text-[12px] text-muted-foreground leading-relaxed space-y-2">
+        <ol className="text-[13px] text-muted-foreground leading-relaxed space-y-2">
           {[
             ['Apply publication lags', 'Shift each indicator by its known publication delay (1-12 weeks) to eliminate look-ahead bias.'],
             ['Compute trailing IC', 'Spearman rank correlation between z-score and per-category forward returns (Growth 26w, Inflation 13w, Liquidity 13w, Tactical 8w) using ONLY prior 5 years.'],
@@ -173,7 +173,7 @@ export default function MethodologyTab() {
       {/* Regime Quadrant */}
       <div className="panel-card p-4">
         <SectionTitle>Regime Quadrant Model</SectionTitle>
-        <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
+        <p className="text-[13px] text-muted-foreground leading-relaxed mb-3">
           Two separate composites (Growth and Inflation) classify the environment into four quadrants:
         </p>
         <ChartBox chart={quadrantChart} height={300} />
@@ -183,7 +183,7 @@ export default function MethodologyTab() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="panel-card p-4 border-destructive/25">
           <SectionTitle>What NOT to Do</SectionTitle>
-          <ul className="text-[11px] text-muted-foreground space-y-1.5">
+          <ul className="text-[12.5px] text-muted-foreground space-y-1.5">
             {[
               'Do NOT include Global M2 — zero IC, pure noise',
               'Do NOT use continuous allocation tilts — caps alpha at <1%/yr',
@@ -198,7 +198,7 @@ export default function MethodologyTab() {
         </div>
         <div className="panel-card p-4 border-success/25">
           <SectionTitle>What Works</SectionTitle>
-          <ul className="text-[11px] text-muted-foreground space-y-1.5">
+          <ul className="text-[12.5px] text-muted-foreground space-y-1.5">
             {[
               'Raw z-score composites — no IC-sign direction flipping',
               'Equal-weighting across indicators AND categories (no in-sample optimization)',
@@ -219,12 +219,12 @@ export default function MethodologyTab() {
       {/* Composite Direction */}
       <div className="panel-card p-4">
         <SectionTitle>Composite Direction</SectionTitle>
-        <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
+        <p className="text-[13px] text-muted-foreground leading-relaxed mb-3">
           Composites are built from <span className="text-foreground font-medium">raw z-score averages</span> — no IC-sign flipping.
           Each composite directly reflects its economic axis (e.g. high inflation composite = high inflation).
           For allocation, categories where a high reading is bearish have their percentile inverted:
         </p>
-        <table className="data-table text-[11px] font-mono">
+        <table className="data-table text-[12.5px] font-mono">
           <thead>
             <tr>
               <th className="text-left">Category</th>

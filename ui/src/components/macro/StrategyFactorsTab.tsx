@@ -104,7 +104,7 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
                   <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">
                     {fmt(sig.eq_weight * 100, 0)}%
                   </div>
-                  <div className={`text-[10px] font-mono mt-0.5 ${sig.label === 'Risk-On' ? 'text-success' : sig.label === 'Risk-Off' ? 'text-destructive' : 'text-warning'}`}>
+                  <div className={`text-[11.5px] font-mono mt-0.5 ${sig.label === 'Risk-On' ? 'text-success' : sig.label === 'Risk-Off' ? 'text-destructive' : 'text-warning'}`}>
                     {sig.label}
                   </div>
                 </div>
@@ -117,7 +117,7 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
                   <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: REGIME_COLORS_MAP[regimeSignal.regime ?? ''] ?? '#888' }} />
                   <span className="text-[13px] font-mono font-semibold tabular-nums text-foreground leading-none">{regimeSignal.regime ?? '-'}</span>
                 </div>
-                <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">{fmt(regimeSignal.eq_weight * 100, 0)}% equity</div>
+                <div className="text-[11.5px] text-muted-foreground/50 font-mono mt-0.5">{fmt(regimeSignal.eq_weight * 100, 0)}% equity</div>
               </div>
             )}
           </div>
@@ -155,7 +155,7 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
                     </div>
                     <div className="space-y-0.5">
                       {sel.map((f, i) => (
-                        <div key={i} className="flex items-center justify-between text-[10px] gap-2">
+                        <div key={i} className="flex items-center justify-between text-[11.5px] gap-2">
                           <span className="text-foreground truncate">{f.name}</span>
                           <span className={`font-mono tabular-nums shrink-0 ${f.ic > 0 ? 'text-success' : 'text-destructive'}`}>
                             {f.ic > 0 ? '+' : ''}{f.ic.toFixed(4)}
@@ -212,7 +212,7 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
             <div className="lg:col-span-2 space-y-3">
               <div className="panel-card px-3 py-2">
                 <SectionTitle info="Top 10 indicators by selection frequency.">Top 10 Indicators</SectionTitle>
-                <table className="data-table text-[11px]">
+                <table className="data-table text-[12.5px]">
                   <thead>
                     <tr>
                       <th className="text-left">Indicator</th>
@@ -223,9 +223,9 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
                   <tbody>
                     {(cat.frequency ?? []).slice(0, 10).map((f, i) => (
                       <tr key={i}>
-                        <td className="py-1 pr-2 text-foreground text-[11px] truncate max-w-[180px]">{f.indicator}</td>
-                        <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{f.count}</td>
-                        <td className="text-right py-1 px-1 font-mono tabular-nums text-[11px] text-foreground">{fmt(f.pct, 0)}%</td>
+                        <td className="py-1 pr-2 text-foreground text-[12.5px] truncate max-w-[180px]">{f.indicator}</td>
+                        <td className="text-right py-1 px-1 font-mono tabular-nums text-[12.5px] text-foreground">{f.count}</td>
+                        <td className="text-right py-1 px-1 font-mono tabular-nums text-[12.5px] text-foreground">{fmt(f.pct, 0)}%</td>
                       </tr>
                     ))}
                   </tbody>
@@ -236,18 +236,18 @@ export default function StrategyFactorsTab({ factors, signal, isLoading, target 
               {cat.latest_selection?.indicators?.length > 0 && (
                 <div className="panel-card px-3 py-2">
                   <SectionTitle info="Indicators selected at the most recent walk-forward rebalance, with their trailing information coefficient.">Latest Selection</SectionTitle>
-                  <table className="data-table text-[11px]">
+                  <table className="data-table text-[12.5px]">
                     <thead>
                       <tr>
                         <th className="text-left">Indicator</th>
-                        <th className="text-right">IC</th>
+                        <th className="text-right" title="Information Coefficient — predictive accuracy of an indicator">IC</th>
                       </tr>
                     </thead>
                     <tbody>
                       {cat.latest_selection.indicators.map((ind, i) => (
                         <tr key={i}>
-                          <td className="py-1 pr-2 text-foreground text-[11px] truncate max-w-[200px]">{ind.name}</td>
-                          <td className={`text-right py-1 px-1 font-mono tabular-nums text-[11px] ${ind.ic > 0 ? 'text-success' : 'text-destructive'}`}>
+                          <td className="py-1 pr-2 text-foreground text-[12.5px] truncate max-w-[200px]">{ind.name}</td>
+                          <td className={`text-right py-1 px-1 font-mono tabular-nums text-[12.5px] ${ind.ic > 0 ? 'text-success' : 'text-destructive'}`}>
                             {ind.ic > 0 ? '+' : ''}{ind.ic.toFixed(4)}
                           </td>
                         </tr>

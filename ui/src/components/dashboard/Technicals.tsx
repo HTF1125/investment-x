@@ -15,24 +15,25 @@ const Plot = dynamic(() => import('react-plotly.js'), {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface VomoScores {
+export interface VomoScores {
   '1m': number | null; '6m': number | null; '1y': number | null; composite: number | null;
   history?: { dates: string[]; values: number[] };
 }
 
-interface ApiIndex {
+export interface ApiIndex {
   name: string;
   regime: 'Bull' | 'Bear' | 'Neutral';
   score: number;
   price: number;
+  daily_ret: number | null;
   ret_1m: number | null;
   ret_3m: number | null;
   ret_6m: number | null;
   ret_1y: number | null;
   weeks_in_regime: number;
   vomo: VomoScores;
-  daily_prices: { dates: string[]; open: number[]; high: number[]; low: number[]; close: number[]; volume: number[] };
-  weekly_vams: { dates: string[]; scores: number[] };
+  daily_prices?: { dates: string[]; open: number[]; high: number[]; low: number[]; close: number[]; volume: number[] };
+  weekly_vams?: { dates: string[]; scores: number[] };
 }
 
 interface VamsResponse {
@@ -180,8 +181,9 @@ function vomoBorderCls(composite: number | null): string {
 
 // ── Chart builder ────────────────────────────────────────────────────────────
 
-function buildFig(idx: ApiIndex, theme: 'light' | 'dark', startStr: string): PlotlyFigure {
+function buildFig(idx: ApiIndex, theme: 'light' | 'dark', startStr: string): PlotlyFigure | null {
   const dp = idx.daily_prices;
+  if (!dp || dp.dates.length === 0) return null;
   const isDark = theme === 'dark';
   const sem = CHART_SEMANTIC[theme];
   const n = dp.dates.length;
@@ -279,7 +281,7 @@ function buildFig(idx: ApiIndex, theme: 'light' | 'dark', startStr: string): Plo
   const dividerColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   const hoverBg = isDark ? 'rgba(16,18,28,0.97)' : 'rgba(255,255,252,0.97)';
   const hoverBorder = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
-  const hoverFont = { family: '"Inter", system-ui, -apple-system, sans-serif', size: 12, color: isDark ? '#e2e4ea' : '#1a1c24' };
+  const hoverFont = { family: '"Space Mono", monospace', size: 12, color: isDark ? '#e2e4ea' : '#1a1c24' };
   const annoColor = isDark ? 'rgba(200,200,210,0.3)' : 'rgba(40,40,45,0.3)';
 
   // ── Hover palette ──
@@ -293,7 +295,7 @@ function buildFig(idx: ApiIndex, theme: 'light' | 'dark', startStr: string): Plo
   const mono = `font-family:${MONO}`;
 
   // ── Hover text ──
-  const sans = 'font-family:"Inter",system-ui,-apple-system,sans-serif';
+  const sans = 'font-family:"Space Mono",monospace';
   const hoverText = dates.map((_, i) => {
     const d = new Date(dates[i] + 'T12:00:00');
     const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
@@ -386,7 +388,7 @@ const ChartCard = React.memo(function ChartCard({ idx, theme, startStr, indices,
   indices: ApiIndex[]; selectedIdx: number; onSelect: (i: number) => void;
 }) {
   const fig = useMemo(() => buildFig(idx, theme, startStr), [idx, theme, startStr]);
-  const layout = useMemo(() => ({ ...fig.layout, autosize: true }), [fig.layout]);
+  const layout = useMemo(() => fig ? { ...fig.layout, autosize: true } : null, [fig?.layout]);
   const vomo = idx.vomo;
   const borderCls = vomoBorderCls(vomo?.composite);
   const [showPicker, setShowPicker] = useState(false);
@@ -403,10 +405,10 @@ const ChartCard = React.memo(function ChartCard({ idx, theme, startStr, indices,
   }, [showPicker]);
 
   const dailyRet = useMemo(() => {
-    const c = idx.daily_prices.close;
-    if (c.length < 2 || !c[c.length - 2]) return null;
+    const c = idx.daily_prices?.close;
+    if (!c || c.length < 2 || !c[c.length - 2]) return null;
     return (c[c.length - 1] - c[c.length - 2]) / c[c.length - 2];
-  }, [idx.daily_prices.close]);
+  }, [idx.daily_prices?.close]);
 
   return (
     <div className={`rounded-[var(--radius)] border bg-card flex flex-col overflow-hidden hover:border-foreground/20 transition-colors ${borderCls}`} style={{ minHeight: 480 }}>
@@ -415,7 +417,7 @@ const ChartCard = React.memo(function ChartCard({ idx, theme, startStr, indices,
         <div ref={pickerRef} className="relative">
           <button
             onClick={() => setShowPicker(p => !p)}
-            className="flex items-center gap-1 text-[11px] font-semibold text-foreground leading-none hover:text-primary transition-colors"
+            className="flex items-center gap-1 text-[12.5px] font-semibold text-foreground leading-none hover:text-primary transition-colors"
           >
             {idx.name}
             <ChevronDown className="w-3 h-3 text-muted-foreground/40" />
@@ -426,7 +428,7 @@ const ChartCard = React.memo(function ChartCard({ idx, theme, startStr, indices,
                 <button
                   key={item.name}
                   onClick={() => { onSelect(i); setShowPicker(false); }}
-                  className={`w-full text-left px-2.5 py-1.5 text-[10px] font-mono transition-colors ${
+                  className={`w-full text-left px-2.5 py-1.5 text-[11.5px] font-mono transition-colors ${
                     i === selectedIdx
                       ? 'text-foreground bg-primary/10 font-semibold'
                       : 'text-foreground/70 hover:text-foreground hover:bg-foreground/[0.05]'
@@ -439,9 +441,9 @@ const ChartCard = React.memo(function ChartCard({ idx, theme, startStr, indices,
           )}
         </div>
         <div className="flex-1" />
-        <span className="text-[11px] font-mono tabular-nums text-foreground/80 font-semibold shrink-0">{fmtNum(idx.price)}</span>
+        <span className="text-[12.5px] font-mono tabular-nums text-foreground/80 font-semibold shrink-0">{fmtNum(idx.price)}</span>
         {dailyRet !== null && (
-          <span className={`text-[9px] font-mono tabular-nums font-bold shrink-0 ${dailyRet >= 0 ? 'text-success' : 'text-destructive'}`}>
+          <span className={`text-[11px] font-mono tabular-nums font-bold shrink-0 ${dailyRet >= 0 ? 'text-success' : 'text-destructive'}`}>
             {dailyRet > 0 ? '+' : ''}{(dailyRet * 100).toFixed(1)}%
           </span>
         )}
@@ -451,8 +453,8 @@ const ChartCard = React.memo(function ChartCard({ idx, theme, startStr, indices,
       <div className="flex items-center gap-0 px-0 border-b border-border/10 bg-foreground/[0.015]">
         {/* Composite — prominent */}
         <div className="flex items-center gap-1 px-2.5 py-1 border-r border-border/10">
-          <span className="text-[8px] font-mono text-muted-foreground/35 uppercase">VOMO</span>
-          <span className={`text-[12px] font-mono tabular-nums font-bold ${vomoCls(vomo?.composite)}`}>
+          <span className="text-[9.5px] font-mono text-muted-foreground/35 uppercase" title="Volatility Momentum — composite signal measuring value and momentum across timeframes">VOMO</span>
+          <span className={`text-[13px] font-mono tabular-nums font-bold ${vomoCls(vomo?.composite)}`}>
             {vomo?.composite != null ? (vomo.composite > 0 ? '+' : '') + vomo.composite.toFixed(1) : '\u2014'}
           </span>
         </div>
@@ -460,7 +462,7 @@ const ChartCard = React.memo(function ChartCard({ idx, theme, startStr, indices,
         {([['1M', vomo?.['1m']], ['6M', vomo?.['6m']], ['1Y', vomo?.['1y']]] as [string, number | null][]).map(([label, v]) => (
           <div key={label} className="flex items-center gap-1 px-2 py-1 border-r border-border/10 last:border-r-0">
             <span className="text-[7px] font-mono text-muted-foreground/30 uppercase">{label}</span>
-            <span className={`text-[9px] font-mono tabular-nums font-semibold ${vomoCls(v)}`}>
+            <span className={`text-[11px] font-mono tabular-nums font-semibold ${vomoCls(v)}`}>
               {v != null ? (v > 0 ? '+' : '') + v.toFixed(1) : '\u2014'}
             </span>
           </div>
@@ -469,7 +471,11 @@ const ChartCard = React.memo(function ChartCard({ idx, theme, startStr, indices,
 
       {/* Chart */}
       <div className="flex-1 min-h-0">
-        <Plot data={fig.data} layout={layout} config={PLOT_CONFIG} useResizeHandler style={PLOT_STYLE} />
+        {fig && layout ? (
+          <Plot data={fig.data} layout={layout} config={PLOT_CONFIG} useResizeHandler style={PLOT_STYLE} />
+        ) : (
+          <div className="h-full flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground/20" /></div>
+        )}
       </div>
     </div>
   );
@@ -480,43 +486,47 @@ const DEFAULT_INDEX = 'S&P 500';
 
 // ── Main component ───────────────────────────────────────────────────────────
 
-export default function Technicals({ period }: { period: Period }) {
+export default function Technicals({ defaultIndex, onOpenBriefing }: {
+  defaultIndex?: string; onOpenBriefing?: () => void;
+}) {
   const { theme } = useTheme();
-  const [selectedName, setSelectedName] = useState(DEFAULT_INDEX);
+  const [selectedName, setSelectedName] = useState(defaultIndex || DEFAULT_INDEX);
+  const [activePeriod, setActivePeriod] = useState<Period>('1Y');
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['technicals', selectedName],
-    queryFn: () => apiFetchJson<VamsResponse>(
-      `/api/macro/technicals?index=${encodeURIComponent(selectedName)}`
-    ),
-    staleTime: 300_000,
-    gcTime: 600_000,
-    refetchOnWindowFocus: false,
+  const { data: detail, isLoading, isError } = useQuery({
+    queryKey: ['technicals-detail', selectedName],
+    queryFn: () => apiFetchJson<ApiIndex>(`/api/macro/technicals/detail?index=${encodeURIComponent(selectedName)}`),
+    staleTime: 60_000, gcTime: 120_000, refetchOnWindowFocus: false,
+  });
+  const { data: summary } = useQuery({
+    queryKey: ['technicals-summary'],
+    queryFn: () => apiFetchJson<VamsResponse>('/api/macro/technicals/summary'),
+    staleTime: 60_000, gcTime: 120_000,
   });
 
-  const startStr = useMemo(() => periodStart(period), [period]);
-  const indices = data?.indices ?? [];
+  const startStr = useMemo(() => periodStart(activePeriod), [activePeriod]);
+  const indices = summary?.indices ?? [];
   const selectedIdx = useMemo(() => {
     const i = indices.findIndex(idx => idx.name === selectedName);
     return i >= 0 ? i : 0;
   }, [indices, selectedName]);
-  const current = indices[selectedIdx];
+  const current = detail ?? null;
 
   if (isLoading) {
-    return <div className="h-[300px] flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground/30" /></div>;
+    return <div className="h-full flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground/30" /></div>;
   }
 
-  if (isError || !indices.length) {
+  if (isError || !current) {
     return (
-      <div className="flex items-center justify-center py-12 gap-2">
+      <div className="h-full flex items-center justify-center gap-2">
         <AlertTriangle className="w-3.5 h-3.5 text-muted-foreground/30" />
-        <span className="text-[11px] text-muted-foreground/30 font-mono">VAMS data unavailable</span>
+        <span className="text-[12.5px] text-muted-foreground/30 font-mono">Technical data unavailable</span>
       </div>
     );
   }
 
   return (
-    <div className="px-1.5 sm:px-2 pt-1 pb-1">
+    <div className="h-full px-1.5 sm:px-2 pt-1 pb-1">
       <ChartCard idx={current} theme={theme} startStr={startStr} indices={indices} selectedIdx={selectedIdx} onSelect={(i) => setSelectedName(indices[i].name)} />
     </div>
   );

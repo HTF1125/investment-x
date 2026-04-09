@@ -230,39 +230,35 @@ export default function TimeseriesManager() {
         y: chartData[Object.keys(chartData).find(k => k !== 'Date') || ''] || [],
         type: 'scatter',
         mode: 'lines',
-        line: { color: '#6366f1', width: 2.5 },
+        line: { color: 'rgb(99,130,255)', width: 2 },
         fill: 'tozeroy',
-        fillcolor: 'rgba(99, 102, 241, 0.1)',
+        fillcolor: 'rgba(99,130,255,0.06)',
         name: viewChartItem.code
       }
     ];
   }, [chartData, viewChartItem]);
 
-  const plotLayout = React.useMemo(() => ({
-    autosize: true,
-    paper_bgcolor: 'rgba(0,0,0,0)',
-    plot_bgcolor: 'rgba(0,0,0,0)',
-    font: { color: '#94a3b8', family: 'Inter, sans-serif' },
-    margin: { l: 60, r: 30, t: 40, b: 50 },
-    xaxis: {
-      gridcolor: 'rgba(255,255,255,0.05)',
-      zerolinecolor: 'rgba(255,255,255,0.1)',
-      showgrid: true,
-      tickfont: { size: 11 },
-    },
-    yaxis: {
-      gridcolor: 'rgba(255,255,255,0.05)',
-      zerolinecolor: 'rgba(255,255,255,0.1)',
-      showgrid: true,
-      tickfont: { size: 11 },
-    },
-    hovermode: 'x' as const,
-    hoverdistance: 20,
-    showlegend: false,
-    dragmode: 'zoom' as const
-  }), []);
+  const plotLayout = React.useMemo(() => {
+    const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    const fg = isDark ? 'rgb(205,215,230)' : 'rgb(18,20,28)';
+    const muted = isDark ? 'rgba(100,110,135,0.9)' : 'rgba(95,92,85,0.9)';
+    const grid = isDark ? 'rgba(99,130,255,0.04)' : 'rgba(50,80,210,0.06)';
+    return {
+      autosize: true,
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { color: fg, family: 'var(--font-mono), "Space Mono", monospace', size: 12 },
+      margin: { l: 50, r: 20, t: 30, b: 40 },
+      xaxis: { gridcolor: grid, zerolinecolor: grid, showgrid: false, tickfont: { size: 11, color: muted } },
+      yaxis: { gridcolor: grid, zerolinecolor: grid, showgrid: false, tickfont: { size: 11, color: muted } },
+      hovermode: 'x unified' as const,
+      hoverdistance: 20,
+      showlegend: false,
+      dragmode: 'zoom' as const,
+    };
+  }, []);
 
-  const plotConfig = React.useMemo(() => ({ responsive: true, displayModeBar: true, displaylogo: false, scrollZoom: true }), []);
+  const plotConfig = React.useMemo(() => ({ responsive: true, displayModeBar: false, displaylogo: false, scrollZoom: true }), []);
   const plotStyle = React.useMemo(() => ({ width: '100%', height: '100%' }), []);
 
   // ───── Mutations
@@ -487,6 +483,37 @@ export default function TimeseriesManager() {
       });
   };
 
+  const [exportingAll, setExportingAll] = useState(false);
+
+  const handleExportAll = () => {
+    if (exportingAll) return;
+    setExportingAll(true);
+    flash('Exporting all timeseries...', 'success');
+    apiFetch('/api/timeseries/export_all')
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: 'Export failed' }));
+          throw new Error(err.detail);
+        }
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `timeseries_all_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        flash('Export complete — edit and re-upload via the create template.', 'success');
+      })
+      .catch((err: any) => {
+        flash(err.message || 'Export failed', 'error');
+      })
+      .finally(() => setExportingAll(false));
+  };
+
   const handleBulkCreateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -544,410 +571,209 @@ export default function TimeseriesManager() {
   };
 
   // ───── Render
+  const actionBtn = "h-6 px-2 text-[11px] font-mono font-semibold rounded-[calc(var(--radius)-2px)] disabled:opacity-30 transition-all";
+
   return (
-    <div className="space-y-6">
-      {/* ── Header ── */}
-      <div className="rounded-[var(--radius)] border border-border/50 bg-card p-6 md:p-8 shadow-md">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-md bg-primary/15 flex items-center justify-center">
-              <Database className="w-6 h-6 text-foreground" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-foreground tracking-tight">Timeseries Data</h2>
-              <p className="text-xs text-muted-foreground font-mono tracking-wider uppercase">Search • Create • Edit • Delete</p>
-            </div>
-          </div>
+    <div className="space-y-3">
+      {/* ── Toolbar ── */}
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <span className="text-[11.5px] font-mono text-muted-foreground/40 tabular-nums">
+          {!loading && `${items.length}${hasMore ? '+' : ''} series`}
+        </span>
+        <span className="text-[11.5px] font-mono text-muted-foreground/30">pg {page + 1}</span>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
-            {updating && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-[var(--radius)] border border-primary/20 text-xs font-mono animate-pulse">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    {updateMsg || 'Updating...'}
-                </div>
-            )}
+        <div className="flex-1 min-w-[8px]" />
 
-            {/* Bulk Create: Download Template + Upload */}
-            <a
-              href="/api/timeseries/create_template"
-              download="timeseries_create_template.xlsx"
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary/[0.06] hover:bg-primary/[0.12] text-foreground rounded-[var(--radius)] text-sm font-semibold transition-all border border-border/50"
-            >
-              <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Template</span>
-            </a>
-            <button
-              onClick={() => bulkCreateInputRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary/[0.06] hover:bg-primary/[0.12] text-foreground rounded-[var(--radius)] text-sm font-semibold transition-all border border-border/50"
-            >
-              <Upload className="w-4 h-4" />
-              <span className="hidden sm:inline">Upload</span>
+        {/* Search */}
+        <div className="relative order-last sm:order-none w-full sm:w-auto">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search code, name, source..."
+            className="h-7 w-full sm:w-56 pl-7 pr-2.5 text-[12.5px] border border-border/40 rounded-[var(--radius)] bg-background text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/50 transition-colors"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/30 hover:text-foreground">
+              <X className="w-3 h-3" />
             </button>
+          )}
+        </div>
 
-            {/* Actions Dropdown */}
-            <div className="relative" ref={downloadMenuRef}>
-              <button
-                ref={actionsBtnRef}
-                onClick={() => {
-                  positionActionsMenu();
-                  setShowActionsMenu((p) => !p);
-                  if (showActionsMenu) setShowDownloadMenu(false);
-                }}
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary/[0.06] hover:bg-primary/[0.12] text-foreground rounded-[var(--radius)] text-sm font-semibold transition-all border border-border/50 shadow-md"
-              >
-                <Database className="w-4 h-4" />
-                Actions
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showActionsMenu ? 'rotate-180' : ''}`} />
-              </button>
+        {/* Action buttons */}
+        <button onClick={handleExportAll} disabled={exportingAll} className="btn-toolbar gap-1" title="Download all timeseries metadata as Excel">
+          {exportingAll ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+          <span className="text-[11.5px] font-semibold hidden sm:inline">Export All</span>
+        </button>
+        <button onClick={() => { setShowCreate(true); setForm({ ...EMPTY_FORM }); }} className="btn-toolbar gap-1">
+          <Plus className="w-3 h-3" /><span className="text-[11.5px] font-semibold hidden sm:inline">New</span>
+        </button>
 
-              {showActionsMenu && createPortal(
-                <div
-                  className="fixed w-72 bg-card border border-border/40 rounded-[var(--radius)] shadow-lg shadow-black/30 overflow-hidden z-[120]"
-                  style={{ top: actionsMenuPos.top, left: actionsMenuPos.left }}
-                >
-                  <div className="p-2">
-                    <button
-                      onClick={handleTriggerUpdate}
-                      disabled={updating}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-[var(--radius)] text-sm font-medium text-foreground hover:bg-accent/50 transition-all ${updating ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
-                      {updating ? 'Running...' : 'Update Data'}
+        {/* Hidden file inputs */}
+        <input type="file" ref={fileInputRef} onChange={handleUpload} accept=".xlsx" className="hidden" />
+        <input type="file" ref={bulkCreateInputRef} onChange={handleBulkCreateUpload} accept=".xlsx" className="hidden" />
+      </div>
+
+      {/* ── Flash toast ── */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius)] text-[12.5px] font-medium overflow-hidden ${
+              toast.type === 'success'
+                ? 'bg-success/[0.06] border border-success/20 text-success'
+                : 'bg-destructive/[0.06] border border-destructive/20 text-destructive'
+            }`}
+          >
+            {toast.type === 'success' ? <Check className="w-3 h-3 shrink-0" /> : <AlertTriangle className="w-3 h-3 shrink-0" />}
+            <span className="flex-1 truncate">{toast.msg}</span>
+            <button onClick={() => setToast(null)} className="opacity-50 hover:opacity-100 shrink-0"><X className="w-3 h-3" /></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Table (desktop) ── */}
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-border/30">
+              {['Code', 'Name', 'Source', 'Class', 'Freq', 'Start', 'End', '#', ''].map(h => (
+                <th key={h} className="stat-label text-left px-3 py-2 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className={isPlaceholderData ? 'opacity-50 pointer-events-none' : ''}>
+            {loading && items.length === 0 ? (
+              <tr><td colSpan={9} className="py-16 text-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground/30 mx-auto" /></td></tr>
+            ) : items.length === 0 ? (
+              <tr><td colSpan={9} className="py-16 text-center text-[12.5px] text-muted-foreground/30 font-mono">No timeseries found</td></tr>
+            ) : items.map(ts => (
+              <tr key={ts.id} className="border-b border-border/10 hover:bg-foreground/[0.02] transition-colors group">
+                <td className="px-3 py-2 font-mono text-[12.5px] text-primary whitespace-nowrap">
+                  <div className="flex items-center gap-1.5">
+                    {ts.favorite && <Star className="w-3 h-3 text-warning fill-warning" />}
+                    <span className="font-semibold">{ts.code}</span>
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-[12.5px] text-foreground/80 max-w-[200px] truncate">{ts.name || '—'}</td>
+                <td className="px-3 py-2 text-[11.5px] text-muted-foreground/50 font-mono truncate max-w-[100px]">{ts.source || '—'}</td>
+                <td className="px-3 py-2">
+                  {ts.asset_class ? (
+                    <span className="px-1.5 py-0.5 text-[11px] font-mono font-semibold rounded-[calc(var(--radius)-2px)] bg-primary/[0.06] text-primary/70 border border-primary/15">
+                      {ts.asset_class}
+                    </span>
+                  ) : <span className="text-[11.5px] text-muted-foreground/30">—</span>}
+                </td>
+                <td className="px-3 py-2 text-[11.5px] font-mono text-muted-foreground/40">{ts.frequency || '—'}</td>
+                <td className="px-3 py-2 text-[11.5px] font-mono text-muted-foreground/40 whitespace-nowrap">{ts.start || '—'}</td>
+                <td className="px-3 py-2 text-[11.5px] font-mono text-muted-foreground/40 whitespace-nowrap">{ts.end || '—'}</td>
+                <td className="px-3 py-2 text-[11.5px] font-mono text-muted-foreground/40 tabular-nums">{ts.num_data?.toLocaleString() ?? '—'}</td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => setViewChartItem(ts)} className={`${actionBtn} border border-success/20 text-success/60 hover:text-success hover:bg-success/[0.06]`} title="Chart">
+                      <LineChart className="w-3 h-3" />
                     </button>
-                    <button
-                      onClick={handleSendEmail}
-                      disabled={emailing}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-[var(--radius)] text-sm font-medium text-foreground hover:bg-accent/50 transition-all ${emailing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      {emailing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                      {emailing ? 'Sending...' : 'Email Report'}
+                    <button onClick={() => openEdit(ts)} className={`${actionBtn} border border-primary/20 text-primary/60 hover:text-primary hover:bg-primary/[0.06]`} title="Edit">
+                      <Edit3 className="w-3 h-3" />
                     </button>
-                    <button
-                      onClick={() => setShowDownloadMenu((p) => !p)}
-                      disabled={downloading}
-                      className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-[var(--radius)] text-sm font-medium text-foreground hover:bg-accent/50 transition-all ${downloading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <span className="flex items-center gap-3">
-                        {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                        {downloading ? 'Preparing...' : 'Download Data'}
-                      </span>
-                      <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showDownloadMenu ? 'rotate-90' : ''}`} />
-                    </button>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-[var(--radius)] text-sm font-medium text-foreground hover:bg-accent/50 transition-all"
-                    >
-                      <Upload className="w-4 h-4" /> Upload Data
-                    </button>
-                    <div className="my-2 h-px bg-border/50" />
-                    <button
-                      onClick={handleDownloadCreateTemplate}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-[var(--radius)] text-sm font-medium text-foreground hover:bg-accent/50 transition-all"
-                    >
-                      <FileSpreadsheet className="w-4 h-4" /> Download Create Template
-                    </button>
-                    <button
-                      onClick={() => { setShowActionsMenu(false); bulkCreateInputRef.current?.click(); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-[var(--radius)] text-sm font-medium text-foreground hover:bg-accent/50 transition-all"
-                    >
-                      <Upload className="w-4 h-4" /> Upload New Timeseries
-                    </button>
-                    <div className="my-2 h-px bg-border/50" />
-                    <button
-                      onClick={() => { setShowActionsMenu(false); setShowCreate(true); setForm({ ...EMPTY_FORM }); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-[var(--radius)] text-sm font-semibold text-primary hover:text-primary/80 hover:bg-primary/10 transition-all"
-                    >
-                      <Plus className="w-4 h-4" /> New Timeseries
+                    <button onClick={() => setDeleteTarget(ts)} className={`${actionBtn} border border-destructive/20 text-destructive/60 hover:text-destructive hover:bg-destructive/[0.06]`} title="Delete">
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-
-                  {showDownloadMenu && (
-                    <div className="border-t border-border/50">
-                      <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between bg-muted/20">
-                        <span className="text-[10px] font-bold tracking-[2px] text-muted-foreground uppercase">Select Sources</span>
-                        {availableSources.length > 0 && (
-                          <button
-                            onClick={() =>
-                              setSelectedSources((prev) =>
-                                prev.length === availableSources.length ? [] : [...availableSources]
-                              )
-                            }
-                            className="text-[10px] text-primary hover:text-primary font-semibold uppercase tracking-wider transition-colors"
-                          >
-                            {selectedSources.length === availableSources.length ? 'None' : 'All'}
-                          </button>
-                        )}
-                      </div>
-                      {availableSources.length === 0 ? (
-                        <div className="px-4 py-6 flex items-center justify-center">
-                          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                        </div>
-                      ) : (
-                        <>
-                          <div className="py-1 max-h-64 overflow-y-auto">
-                            {availableSources.map((src) => (
-                              <label
-                                key={src}
-                                onClick={() => toggleSource(src)}
-                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-accent/30 transition-colors cursor-pointer select-none"
-                              >
-                                <div className={`w-5 h-5 rounded-[var(--radius)] border flex items-center justify-center transition-all ${
-                                  selectedSources.includes(src)
-                                    ? 'bg-primary border-primary'
-                                    : 'border-border bg-background/40'
-                                }`}>
-                                  {selectedSources.includes(src) && <Check className="w-3.5 h-3.5 text-background" />}
-                                </div>
-                                <span className="font-medium">{src}</span>
-                              </label>
-                            ))}
-                          </div>
-                          <div className="px-3 py-3 border-t border-border/50 bg-muted/10">
-                            <button
-                              onClick={() => handleDownloadTemplate(selectedSources)}
-                              disabled={selectedSources.length === 0}
-                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-[var(--radius)] text-sm font-semibold transition-all shadow-lg shadow-primary/20 disabled:opacity-30 disabled:cursor-not-allowed"
-                            >
-                              <Download className="w-4 h-4" />
-                              Download {selectedSources.length > 0 ? `(${selectedSources.length})` : ''}
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>,
-                document.body
-              )}
-            </div>
-
-            {/* Upload inputs (triggered by dropdown actions) */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleUpload}
-              accept=".xlsx"
-              className="hidden"
-            />
-            <input
-              type="file"
-              ref={bulkCreateInputRef}
-              onChange={handleBulkCreateUpload}
-              accept=".xlsx"
-              className="hidden"
-            />
-          </div>
-        </div>
-
-      {/* ── Search Bar ── */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by code, name, source, category..."
-          aria-label="Search timeseries"
-          className="w-full pl-12 pr-4 py-3.5 bg-background border border-border/50 rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 transition-all text-sm backdrop-blur-sm"
-        />
-        {search && (
-          <button onClick={() => setSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-      </div>
-
-      {/* ── Table ── */}
-      <div className="overflow-hidden rounded-[var(--radius)] border border-border/50 bg-card shadow-md">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/50 bg-muted/20">
-                {['Code', 'Name', 'Provider', 'Asset Class', 'Category', 'Source', 'Source Code', 'Freq', 'Start', 'End', '#', ''].map((h) => (
-                  <th key={h} className="px-4 py-3.5 text-left text-[10px] font-bold tracking-[2px] text-muted-foreground uppercase whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                </td>
               </tr>
-            </thead>
-            <tbody className={isPlaceholderData ? 'opacity-50 pointer-events-none transition-opacity' : 'transition-opacity'}>
-              {loading && items.length === 0 ? (
-                <tr>
-                  <td colSpan={12} className="px-4 py-24 text-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
-                    <p className="text-sm text-muted-foreground">Loading timeseries data...</p>
-                  </td>
-                </tr>
-              ) : items.length === 0 ? (
-                <tr>
-                  <td colSpan={12} className="px-4 py-24 text-center">
-                    <Database className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-                    <p className="text-sm text-muted-foreground">No timeseries found.</p>
-                  </td>
-                </tr>
-              ) : (
-                items.map((ts) => (
-                  <tr
-                    key={ts.id}
-                    className="border-b border-border/25 hover:bg-accent/10 transition-colors group"
-                  >
-                    <td className="px-4 py-3.5 font-mono text-primary text-xs whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        {ts.favorite && <Star className="w-3.5 h-3.5 text-warning fill-warning" />}
-                        <span className="font-semibold">{ts.code}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 text-foreground text-xs min-w-[200px] whitespace-normal font-medium">{ts.name || '—'}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground text-xs">{ts.provider || '—'}</td>
-                    <td className="px-4 py-3.5">
-                      {ts.asset_class ? (
-                        <span className="px-2.5 py-1 text-[10px] font-semibold rounded-[var(--radius)] bg-primary/[0.08] text-primary border border-primary/20">
-                          {ts.asset_class}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3.5 text-muted-foreground text-xs">{ts.category || '—'}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground text-xs max-w-[120px] truncate">{ts.source || '—'}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground text-xs font-mono">{ts.source_code || '—'}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground text-xs font-mono">{ts.frequency || '—'}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground text-xs font-mono whitespace-nowrap">{ts.start || '—'}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground text-xs font-mono whitespace-nowrap">{ts.end || '—'}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground text-xs font-mono">{ts.num_data?.toLocaleString() ?? '—'}</td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => setViewChartItem(ts)}
-                          className="p-2 text-muted-foreground hover:text-success hover:bg-success/10 rounded-[var(--radius)] transition-all"
-                          title="View Chart"
-                        >
-                          <LineChart className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => openEdit(ts)}
-                          className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-[var(--radius)] transition-all"
-                          title="Edit"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget(ts)}
-                          className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-[var(--radius)] transition-all"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-        {/* Pagination */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 border-t border-border/50 bg-muted/20">
-          <span className="text-xs text-muted-foreground font-mono">
-            Page {page + 1} • {items.length} items
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              disabled={page === 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all rounded-[var(--radius)]"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              disabled={!hasMore}
-              onClick={() => setPage((p) => p + 1)}
-              className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all rounded-[var(--radius)]"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
+      {/* ── Card list (mobile) ── */}
+      <div className="md:hidden space-y-2">
+        {loading && items.length === 0 ? (
+          <div className="flex items-center justify-center py-16"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground/30" /></div>
+        ) : items.length === 0 ? (
+          <div className="py-16 text-center text-[12.5px] text-muted-foreground/30 font-mono">No timeseries found</div>
+        ) : items.map(ts => (
+          <div key={ts.id} className="panel-card p-3">
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  {ts.favorite && <Star className="w-3 h-3 text-warning fill-warning shrink-0" />}
+                  <span className="text-[13px] font-mono font-semibold text-primary truncate">{ts.code}</span>
+                </div>
+                <div className="text-[12.5px] text-foreground/70 truncate">{ts.name || '—'}</div>
+              </div>
+              {ts.asset_class && (
+                <span className="px-1.5 py-0.5 text-[11px] font-mono font-semibold rounded-[calc(var(--radius)-2px)] bg-primary/[0.06] text-primary/70 border border-primary/15 shrink-0">
+                  {ts.asset_class}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 text-[11.5px] font-mono text-muted-foreground/40 mb-2">
+              <span>{ts.source || '—'}</span>
+              <span>{ts.frequency || '—'}</span>
+              <span>{ts.num_data?.toLocaleString() ?? '—'} pts</span>
+            </div>
+            <div className="flex items-center gap-0.5">
+              <button onClick={() => setViewChartItem(ts)} className={`${actionBtn} border border-success/20 text-success/60 hover:text-success hover:bg-success/[0.06]`}><LineChart className="w-3 h-3" /></button>
+              <button onClick={() => openEdit(ts)} className={`${actionBtn} border border-primary/20 text-primary/60 hover:text-primary hover:bg-primary/[0.06]`}><Edit3 className="w-3 h-3" /></button>
+              <button onClick={() => setDeleteTarget(ts)} className={`${actionBtn} border border-destructive/20 text-destructive/60 hover:text-destructive hover:bg-destructive/[0.06]`}><Trash2 className="w-3 h-3" /></button>
+            </div>
           </div>
+        ))}
+      </div>
+
+      {/* ── Pagination ── */}
+      <div className="flex items-center justify-between">
+        <span className="text-[11.5px] font-mono text-muted-foreground/30 tabular-nums">
+          Page {page + 1} {items.length > 0 && `· ${items.length} items`}
+        </span>
+        <div className="flex items-center gap-1">
+          <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}
+            className="btn-icon disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
+          <button disabled={!hasMore} onClick={() => setPage(p => p + 1)}
+            className="btn-icon disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
         </div>
       </div>
 
-      {/* ═══════════════ Create / Edit Modal ═══════════════ */}
+      {/* ═══ Create / Edit Modal ═══ */}
       {(showCreate || editItem) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={editItem ? `Edit ${editItem.code}` : 'Create new timeseries'} onClick={() => { setShowCreate(false); setEditItem(null); }}>
-          <div
-            className="bg-card border border-border/50 rounded-[var(--radius)] w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-lg shadow-black/60 mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 bg-card border-b border-border/50 px-6 py-5 flex items-center justify-between z-10">
-              <div>
-                <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  {editItem ? <Edit3 className="w-5 h-5 text-primary" /> : <Plus className="w-5 h-5 text-primary" />}
-                  {editItem ? `Edit: ${editItem.code}` : 'Create New Timeseries'}
-                </h2>
-                <p className="text-xs text-muted-foreground font-mono mt-1">
-                  {editItem ? 'Update timeseries metadata' : 'Add a new data series to the system'}
-                </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowCreate(false); setEditItem(null); }}>
+          <div className="bg-card border border-border/40 rounded-[var(--radius)] w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-lg mx-4" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-card border-b border-border/30 px-4 py-3 flex items-center justify-between z-10">
+              <div className="flex items-center gap-2">
+                {editItem ? <Edit3 className="w-3.5 h-3.5 text-primary" /> : <Plus className="w-3.5 h-3.5 text-primary" />}
+                <span className="text-[13px] font-semibold text-foreground">{editItem ? `Edit: ${editItem.code}` : 'New Timeseries'}</span>
               </div>
-              <button
-                onClick={() => { setShowCreate(false); setEditItem(null); }}
-                className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-[var(--radius)] transition-all"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => { setShowCreate(false); setEditItem(null); }} className="btn-icon"><X className="w-3.5 h-3.5" /></button>
             </div>
-
-            <div className="p-6 space-y-6">
-              {/* Code — required */}
-              <FormField label="Code *" value={form.code} onChange={(v) => setForm({ ...form, code: v })} mono disabled={!!editItem} />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField label="Name" value={form.name || ''} onChange={(v) => setForm({ ...form, name: v })} />
-                <FormField label="Provider" value={form.provider || ''} onChange={(v) => setForm({ ...form, provider: v })} />
-                <FormField label="Asset Class" value={form.asset_class || ''} onChange={(v) => setForm({ ...form, asset_class: v })} />
-                <FormField label="Category" value={form.category || ''} onChange={(v) => setForm({ ...form, category: v })} />
-                <FormField label="Source" value={form.source || ''} onChange={(v) => setForm({ ...form, source: v })} />
-                <FormField label="Source Code" value={form.source_code || ''} onChange={(v) => setForm({ ...form, source_code: v })} mono />
-                <FormField label="Frequency" value={form.frequency || ''} onChange={(v) => setForm({ ...form, frequency: v })} placeholder="e.g. D, W, M, Q" />
-                <FormField label="Unit" value={form.unit || ''} onChange={(v) => setForm({ ...form, unit: v })} />
-                <FormField label="Scale" value={String(form.scale ?? 1)} onChange={(v) => setForm({ ...form, scale: Number(v) || 1 })} type="number" />
-                <FormField label="Currency" value={form.currency || ''} onChange={(v) => setForm({ ...form, currency: v })} placeholder="e.g. USD, KRW" />
-                <FormField label="Country" value={form.country || ''} onChange={(v) => setForm({ ...form, country: v })} />
+            <div className="p-4 space-y-4">
+              <FormField label="Code *" value={form.code} onChange={v => setForm({ ...form, code: v })} mono disabled={!!editItem} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <FormField label="Name" value={form.name || ''} onChange={v => setForm({ ...form, name: v })} />
+                <FormField label="Provider" value={form.provider || ''} onChange={v => setForm({ ...form, provider: v })} />
+                <FormField label="Asset Class" value={form.asset_class || ''} onChange={v => setForm({ ...form, asset_class: v })} />
+                <FormField label="Category" value={form.category || ''} onChange={v => setForm({ ...form, category: v })} />
+                <FormField label="Source" value={form.source || ''} onChange={v => setForm({ ...form, source: v })} />
+                <FormField label="Source Code" value={form.source_code || ''} onChange={v => setForm({ ...form, source_code: v })} mono />
+                <FormField label="Frequency" value={form.frequency || ''} onChange={v => setForm({ ...form, frequency: v })} placeholder="D, W, M, Q" />
+                <FormField label="Unit" value={form.unit || ''} onChange={v => setForm({ ...form, unit: v })} />
+                <FormField label="Scale" value={String(form.scale ?? 1)} onChange={v => setForm({ ...form, scale: Number(v) || 1 })} type="number" />
+                <FormField label="Currency" value={form.currency || ''} onChange={v => setForm({ ...form, currency: v })} placeholder="USD, KRW" />
+                <FormField label="Country" value={form.country || ''} onChange={v => setForm({ ...form, country: v })} />
               </div>
-
-              <FormField label="Remark" value={form.remark || ''} onChange={(v) => setForm({ ...form, remark: v })} multiline />
-
-              {/* Favorite toggle */}
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={form.favorite}
-                    onChange={(e) => setForm({ ...form, favorite: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-muted rounded-full peer peer-checked:bg-primary transition-colors" />
-                  <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                </div>
-                <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors font-medium flex items-center gap-2">
-                  <Star className="w-4 h-4" />
-                  Mark as Favorite
-                </span>
+              <FormField label="Remark" value={form.remark || ''} onChange={v => setForm({ ...form, remark: v })} multiline />
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.favorite} onChange={e => setForm({ ...form, favorite: e.target.checked })} className="accent-primary w-3.5 h-3.5" />
+                <span className="text-[12.5px] text-muted-foreground/60 flex items-center gap-1.5"><Star className="w-3 h-3" /> Favorite</span>
               </label>
             </div>
-
-            {/* Footer */}
-            <div className="sticky bottom-0 bg-card border-t border-border/50 px-6 py-5 flex items-center justify-end gap-3">
-              <button
-                onClick={() => { setShowCreate(false); setEditItem(null); }}
-                className="px-6 py-2.5 text-sm font-semibold text-muted-foreground hover:text-foreground bg-background hover:bg-accent/40 rounded-[var(--radius)] transition-all border border-border/50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={editItem ? handleUpdate : handleCreate}
-                disabled={saving}
-                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-[var(--radius)] transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            <div className="sticky bottom-0 bg-card border-t border-border/30 px-4 py-3 flex items-center justify-end gap-2">
+              <button onClick={() => { setShowCreate(false); setEditItem(null); }} className="btn-toolbar">Cancel</button>
+              <button onClick={editItem ? handleUpdate : handleCreate} disabled={saving} className="btn-primary">
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 {editItem ? 'Update' : 'Create'}
               </button>
             </div>
@@ -955,39 +781,27 @@ export default function TimeseriesManager() {
         </div>
       )}
 
-      {/* ═══════════════ Delete Confirmation ═══════════════ */}
+      {/* ═══ Delete Confirmation ═══ */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Delete confirmation" onClick={() => setDeleteTarget(null)}>
-          <div
-            className="bg-card border border-destructive/30 rounded-[var(--radius)] w-full max-w-md shadow-lg shadow-black/60 p-8 mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-14 h-14 rounded-md bg-destructive/15 flex items-center justify-center border border-destructive/30">
-                <AlertTriangle className="w-7 h-7 text-destructive" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setDeleteTarget(null)}>
+          <div className="bg-card border border-destructive/20 rounded-[var(--radius)] w-full max-w-sm shadow-lg p-5 mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-[var(--radius)] bg-destructive/[0.08] flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4 text-destructive" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-foreground">Delete Timeseries</h3>
-                <p className="text-xs text-muted-foreground mt-1">This action cannot be undone.</p>
+                <h3 className="text-[13px] font-semibold text-foreground">Delete Timeseries</h3>
+                <p className="text-[11.5px] text-muted-foreground/50">This cannot be undone.</p>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
-              Are you sure you want to delete <span className="font-mono text-destructive font-semibold">{deleteTarget.code}</span>
-              {deleteTarget.name ? ` (${deleteTarget.name})` : ''}? All associated data will be permanently removed.
+            <p className="text-[12.5px] text-muted-foreground/60 mb-5">
+              Delete <span className="font-mono text-destructive font-semibold">{deleteTarget.code}</span>{deleteTarget.name ? ` (${deleteTarget.name})` : ''}?
             </p>
-            <div className="flex items-center justify-end gap-3">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="px-6 py-2.5 text-sm font-semibold text-muted-foreground hover:text-foreground bg-background hover:bg-accent/40 rounded-[var(--radius)] transition-all border border-border/50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-[var(--radius)] transition-all shadow-lg shadow-destructive/20 disabled:opacity-50"
-              >
-                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setDeleteTarget(null)} className="btn-toolbar">Cancel</button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="h-7 px-3 text-[12.5px] font-semibold bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-[var(--radius)] transition-all disabled:opacity-50 flex items-center gap-1.5">
+                {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                 Delete
               </button>
             </div>
@@ -995,102 +809,34 @@ export default function TimeseriesManager() {
         </div>
       )}
 
-      {/* ═══════════════ Toast ═══════════════ */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className={`fixed bottom-6 left-6 right-6 sm:left-auto sm:right-6 sm:max-w-md z-[60] flex items-start sm:items-center gap-3 px-5 py-4 rounded-md shadow-lg border ${
-              toast.type === 'success'
-                ? 'bg-success/15 border-success/30 text-success'
-                : 'bg-destructive/15 border-destructive/30 text-destructive'
-            }`}
-            role="alert"
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              toast.type === 'success' ? 'bg-success/20' : 'bg-destructive/20'
-            }`}>
-              {toast.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-            </div>
-            <div className="flex-1 flex items-start sm:items-center gap-3 min-w-0">
-              <span className="text-sm font-medium break-words">{toast.msg}</span>
-              {toast.sticky && (
-                <button
-                  onClick={() => setToast(null)}
-                  className="px-3 py-1.5 rounded-[var(--radius)] border border-current/30 text-xs font-semibold hover:bg-primary/10 transition-colors shrink-0"
-                >
-                  OK
-                </button>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ═══════════════ Chart Modal ═══════════════ */}
+      {/* ═══ Chart Modal ═══ */}
       {viewChartItem && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          role="dialog"
-          onClick={() => setViewChartItem(null)}
-        >
-          <div
-             className="bg-card border border-border/50 rounded-[var(--radius)] w-full max-w-6xl h-[85dvh] sm:h-[85vh] flex flex-col shadow-lg overflow-hidden"
-             onClick={(e) => e.stopPropagation()}
-          >
-            <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-5 border-b border-border/50 bg-card">
-              <div>
-                <h2 className="text-xl font-bold text-foreground flex items-center gap-3">
-                   <div className="w-10 h-10 rounded-[var(--radius)] bg-primary/15 flex items-center justify-center">
-                     <LineChart className="w-5 h-5 text-foreground" />
-                   </div>
-                   {viewChartItem.name || viewChartItem.code}
-                </h2>
-                <p className="text-xs text-muted-foreground font-mono mt-1.5 tracking-wide">
-                  {viewChartItem.code} • {viewChartItem.frequency || 'N/A'} • {viewChartItem.provider || 'Unknown Provider'}
-                </p>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={() => setViewChartItem(null)}>
+          <div className="bg-card border border-border/40 rounded-[var(--radius)] w-full max-w-5xl h-[80vh] flex flex-col shadow-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-border/30">
+              <div className="min-w-0">
+                <span className="text-[13px] font-semibold text-foreground truncate">{viewChartItem.name || viewChartItem.code}</span>
+                <span className="text-[11.5px] font-mono text-muted-foreground/40 ml-2">{viewChartItem.code} · {viewChartItem.frequency || '—'} · {viewChartItem.provider || '—'}</span>
               </div>
-              <button
-                onClick={() => setViewChartItem(null)}
-                className="p-2.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-[var(--radius)] transition-all"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              <button onClick={() => setViewChartItem(null)} className="btn-icon"><X className="w-3.5 h-3.5" /></button>
             </div>
-
-            <div className="flex-grow relative bg-background/50">
-               {/* Loading State */}
-               {chartLoading && (
-                 <div className="absolute inset-0 z-10 flex items-center justify-center flex-col gap-4 bg-background/80 backdrop-blur-sm">
-                   <Loader2 className="w-12 h-12 text-primary animate-spin" />
-                   <p className="text-sm text-muted-foreground font-medium">Loading timeseries data...</p>
-                 </div>
-               )}
-
-               {/* Chart */}
-               {chartData && (
-                 <div className="w-full h-full p-6">
-                  <Plot
-                      data={plotData}
-                      layout={plotLayout}
-                      config={plotConfig}
-                      style={plotStyle}
-                  />
-                 </div>
-               )}
-
-               {/* Empty State */}
-               {!chartLoading && (!chartData || Object.keys(chartData).length <= 1) && (
-                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground flex-col gap-3">
-                    <div className="w-16 h-16 rounded-md bg-muted/20 flex items-center justify-center">
-                      <AlertTriangle className="w-8 h-8 opacity-50" />
-                    </div>
-                    <p className="text-sm font-medium">No data available for this series.</p>
-                 </div>
-               )}
+            <div className="flex-1 min-h-0 relative">
+              {chartLoading && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
+                  <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                </div>
+              )}
+              {chartData && (
+                <div className="w-full h-full p-3">
+                  <Plot data={plotData} layout={plotLayout} config={plotConfig} style={plotStyle} />
+                </div>
+              )}
+              {!chartLoading && (!chartData || Object.keys(chartData).length <= 1) && (
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/40 flex-col gap-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  <span className="text-[12.5px] font-mono">No data available</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1099,22 +845,21 @@ export default function TimeseriesManager() {
   );
 }
 
-// ────────────────────────────────────────────────── Form Field Component
+// ── Form Field ──
 function FormField({
   label, value, onChange, mono, disabled, multiline, placeholder, type = 'text'
 }: {
   label: string; value: string; onChange: (v: string) => void;
   mono?: boolean; disabled?: boolean; multiline?: boolean; placeholder?: string; type?: string;
 }) {
-  const cls = `w-full px-4 py-3 bg-background border border-border/50 rounded-[var(--radius)] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/15 transition-all disabled:opacity-40 disabled:cursor-not-allowed backdrop-blur-sm ${mono ? 'font-mono' : ''}`;
-
+  const cls = `w-full h-7 px-2.5 text-[12.5px] bg-background border border-border/50 rounded-[var(--radius)] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 transition-colors disabled:opacity-40 ${mono ? 'font-mono' : ''}`;
   return (
     <div>
-      <label className="block text-[11px] font-bold tracking-wider text-muted-foreground uppercase mb-2">{label}</label>
+      <label className="stat-label block mb-1">{label}</label>
       {multiline ? (
-        <textarea value={value} onChange={(e) => onChange(e.target.value)} className={`${cls} min-h-[100px] resize-y`} disabled={disabled} placeholder={placeholder} />
+        <textarea value={value} onChange={e => onChange(e.target.value)} className={`${cls} h-auto min-h-[60px] py-1.5 resize-y`} disabled={disabled} placeholder={placeholder} />
       ) : (
-        <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className={cls} disabled={disabled} placeholder={placeholder} />
+        <input type={type} value={value} onChange={e => onChange(e.target.value)} className={cls} disabled={disabled} placeholder={placeholder} />
       )}
     </div>
   );

@@ -48,13 +48,13 @@ const SUMMARY = [
   { test: 'Overall Verdict', result: 'ROBUST', status: 'Pass' },
 ];
 
-const TH = 'text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]';
+const TH = 'text-right py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]';
 const TD = 'text-right py-1.5 tabular-nums text-foreground';
 
 export default function RobustnessTab() {
   return (
     <div className="space-y-6">
-      <p className="text-[12px] text-muted-foreground leading-relaxed">
+      <p className="text-[13px] text-muted-foreground leading-relaxed">
         Parameter sensitivity, neighborhood stability, time-period splits, and leave-one-index-out cross-validation.
       </p>
 
@@ -76,16 +76,16 @@ export default function RobustnessTab() {
       {/* Parameter Sensitivity */}
       <div className="panel-card p-4">
         <SectionTitle info="Each parameter varied individually while holding others at defaults">Parameter Sensitivity</SectionTitle>
-        <p className="text-[11px] text-muted-foreground mb-3">
+        <p className="text-[12.5px] text-muted-foreground mb-3">
           All 8 parameters pass (alpha &gt; 0 in &ge;80% of settings).
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px] font-mono">
+          <table className="w-full text-[12.5px] font-mono">
             <thead>
               <tr className="border-b border-border/20">
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Parameter</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Parameter</th>
                 <th className={TH}>Result</th>
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Detail</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Detail</th>
               </tr>
             </thead>
             <tbody>
@@ -104,14 +104,14 @@ export default function RobustnessTab() {
       {/* Neighborhood Robustness */}
       <div className="panel-card p-4">
         <SectionTitle info="50 random perturbations within +/-1 step of default parameters">Neighborhood Robustness</SectionTitle>
-        <p className="text-[11px] text-muted-foreground mb-3">
+        <p className="text-[12.5px] text-muted-foreground mb-3">
           All 50 produce positive alpha.
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px] font-mono">
+          <table className="w-full text-[12.5px] font-mono">
             <thead>
               <tr className="border-b border-border/20">
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Metric</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Metric</th>
                 <th className={TH}>Value</th>
               </tr>
             </thead>
@@ -135,14 +135,14 @@ export default function RobustnessTab() {
       {/* Time-Period Stability */}
       <div className="panel-card p-4">
         <SectionTitle info="Strategy tested across three non-overlapping sub-periods">Time-Period Stability</SectionTitle>
-        <p className="text-[11px] text-muted-foreground mb-3">
+        <p className="text-[12.5px] text-muted-foreground mb-3">
           Alpha is not concentrated in a single era.
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px] font-mono">
+          <table className="w-full text-[12.5px] font-mono">
             <thead>
               <tr className="border-b border-border/20">
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Period</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Period</th>
                 <th className={TH}>Avg Alpha</th>
                 <th className={TH}>Indices Positive</th>
                 <th className={TH}>Avg Sharpe</th>
@@ -165,14 +165,14 @@ export default function RobustnessTab() {
       {/* LOIO Cross-Validation */}
       <div className="panel-card p-4">
         <SectionTitle info="Factor weights trained on 8 indices, tested on held-out 9th">Leave-One-Index-Out Cross-Validation</SectionTitle>
-        <p className="text-[11px] text-muted-foreground mb-3">
+        <p className="text-[12.5px] text-muted-foreground mb-3">
           All 9 held-out indices beat the 50/50 benchmark.
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px] font-mono">
+          <table className="w-full text-[12.5px] font-mono">
             <thead>
               <tr className="border-b border-border/20">
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Held-Out Index</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Held-Out Index</th>
                 <th className={TH}>Strategy CAGR</th>
                 <th className={TH}>Benchmark CAGR</th>
                 <th className={TH}>Alpha</th>
@@ -190,18 +190,18 @@ export default function RobustnessTab() {
             </tbody>
           </table>
         </div>
-        <p className="text-[10px] text-muted-foreground/50 mt-2">Average held-out alpha: <span className="text-emerald-500 font-semibold">+2.31%</span> across all 9 indices.</p>
+        <p className="text-[11.5px] text-muted-foreground/50 mt-2">Average held-out alpha: <span className="text-emerald-500 font-semibold">+2.31%</span> across all 9 indices.</p>
       </div>
 
       {/* Summary Scorecard */}
       <div className="panel-card p-4">
         <SectionTitle>Summary Scorecard</SectionTitle>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px] font-mono">
+          <table className="w-full text-[12.5px] font-mono">
             <thead>
               <tr className="border-b border-border/20">
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Test</th>
-                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[9px]">Result</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Test</th>
+                <th className="text-left py-1.5 text-muted-foreground/50 font-semibold uppercase tracking-wider text-[11px]">Result</th>
                 <th className={TH}>Status</th>
               </tr>
             </thead>
@@ -217,7 +217,7 @@ export default function RobustnessTab() {
           </table>
         </div>
         <div className="mt-3 px-3 py-2 rounded-[var(--radius)] bg-success/5 border border-success/20">
-          <p className="text-[11px] text-success font-medium">
+          <p className="text-[12.5px] text-success font-medium">
             Verdict: ROBUST — The strategy survives all four robustness tests.
             Alpha is not an artifact of parameter tuning, time-period selection, or index-specific overfitting.
           </p>

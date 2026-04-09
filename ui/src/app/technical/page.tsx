@@ -7,7 +7,7 @@ import Modal from '@/components/shared/Modal';
 import NavigatorShell from '@/components/layout/NavigatorShell';
 import {
   Activity, Loader2, BrainCircuit, BarChart2, Settings2, Plus, X, Search, ChevronRight, Minimize2, Maximize2,
-  ChevronUp, ChevronDown, FileText, Presentation as PresentationIcon
+  ChevronUp, ChevronDown, FileText, Presentation as PresentationIcon, AlertTriangle
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetchJson, apiFetch } from '@/lib/api';
@@ -24,7 +24,7 @@ const Plot = dynamic(() => import('react-plotly.js'), {
     <div className="h-full w-full flex items-center justify-center bg-background animate-in fade-in duration-500">
       <div className="flex flex-col items-center gap-4">
         <div className="w-8 h-8 border-2 border-border border-t-foreground rounded-full animate-spin" />
-        <span className="text-[11px] text-muted-foreground/60 tracking-[0.12em] font-medium uppercase">Loading</span>
+        <span className="text-[12.5px] text-muted-foreground/60 tracking-[0.12em] font-medium uppercase">Loading</span>
       </div>
     </div>
   ),
@@ -76,11 +76,11 @@ function ParamRow({ label, value, onChange, min, max, step }: ParamRowProps) {
   const nativeInputStyle = useNativeInputStyle();
   return (
     <div className="flex items-center justify-between gap-4 group">
-      <span className="text-[12px] text-muted-foreground/80 font-medium group-hover:text-foreground/90 transition-colors">{label}</span>
+      <span className="text-[13px] text-muted-foreground/80 font-medium group-hover:text-foreground/90 transition-colors">{label}</span>
       <input
         type="number" value={value as number} min={min} max={max} step={step ?? 1}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-20 text-right text-[12px] bg-primary/[0.03] border border-border/40 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 text-foreground transition-all"
+        className="w-20 text-right text-[13px] bg-primary/[0.03] border border-border/40 rounded-[var(--radius)] px-2.5 py-1.5 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 text-foreground transition-all"
         style={nativeInputStyle}
       />
     </div>
@@ -94,10 +94,10 @@ function ParamSelect({ label, value, onChange, options }: {
   const nativeInputStyle = useNativeInputStyle();
   return (
     <div className="flex items-center justify-between gap-4 group">
-      <span className="text-[12px] text-muted-foreground/80 font-medium group-hover:text-foreground/90 transition-colors">{label}</span>
+      <span className="text-[13px] text-muted-foreground/80 font-medium group-hover:text-foreground/90 transition-colors">{label}</span>
       <select
         value={value} onChange={(e) => onChange(e.target.value)}
-        className="text-[12px] bg-primary/[0.03] border border-border/40 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 text-foreground cursor-pointer transition-all appearance-none pr-8 relative"
+        className="text-[13px] bg-primary/[0.03] border border-border/40 rounded-[var(--radius)] px-2.5 py-1.5 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 text-foreground cursor-pointer transition-all appearance-none pr-8 relative"
         style={{ ...nativeInputStyle, backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2371717A%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.7rem top 50%', backgroundSize: '0.65rem auto' }}
       >
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -129,7 +129,7 @@ function IndicatorRow({
   return (
     <div className="relative">
       <div
-        className={`flex items-center gap-3 px-3 py-1.5 group hover:bg-primary/10 transition-all cursor-pointer select-none rounded-lg mx-2 ${checked ? 'bg-primary/[0.04]' : ''}`}
+        className={`flex items-center gap-3 px-3 py-1.5 group hover:bg-primary/10 transition-all cursor-pointer select-none rounded-[var(--radius)] mx-2 ${checked ? 'bg-primary/[0.04]' : ''}`}
         onClick={() => onCheck(!checked)}
       >
         {/* TradingView Style Checkbox */}
@@ -153,11 +153,11 @@ function IndicatorRow({
         {/* Label and Sublabel */}
         <div className="flex-1 min-w-0 flex flex-col justify-center">
           <div className="flex items-baseline gap-2 overflow-hidden">
-            <span className={`text-[12px] font-bold tracking-tight transition-colors truncate ${checked ? 'text-foreground' : 'text-muted-foreground/40'}`}>
+            <span className={`text-[13px] font-bold tracking-tight transition-colors truncate ${checked ? 'text-foreground' : 'text-muted-foreground/40'}`}>
               {label}
             </span>
             {sublabel && checked && (
-              <span className="text-[10px] text-primary/40 font-bold tabular-nums truncate">{sublabel}</span>
+              <span className="text-[11.5px] text-primary/40 font-bold tabular-nums truncate">{sublabel}</span>
             )}
           </div>
         </div>
@@ -204,8 +204,8 @@ function IndicatorRow({
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="px-4 pt-5 pb-2.5 flex items-center gap-2">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/40">{children}</span>
-      <div className="h-px flex-1 bg-gradient-to-r from-border/50 to-transparent" />
+      <span className="text-[11.5px] font-bold uppercase tracking-widest text-muted-foreground/40">{children}</span>
+      <div className="h-px flex-1 border-b border-border/30" />
     </div>
   );
 }
@@ -703,17 +703,17 @@ export default function TechnicalPage() {
       ...cloned.layout,
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { ...(cloned.layout?.font || {}), color: fg, family: 'Inter, sans-serif' },
+      font: { ...(cloned.layout?.font || {}), color: fg, family: '"Space Mono", monospace' },
       margin: { l: 50, r: 15, t: 15, b: 30 },
       legend: {
         orientation: 'h', x: 0.01, xanchor: 'left', y: 0.99, yanchor: 'bottom',
         itemsizing: 'constant', traceorder: 'normal', bgcolor: 'rgba(0,0,0,0)', borderwidth: 0,
-        font: { color: fg, family: 'Inter, sans-serif', size: 10 },
+        font: { color: fg, family: '"Space Mono", monospace', size: 10 },
       },
       hoverlabel: {
         bgcolor: isLight ? 'rgba(255,255,255,0.98)' : 'rgba(15,23,42,0.98)',
         bordercolor: isLight ? 'rgba(15,23,42,0.1)' : 'rgba(148,163,184,0.2)',
-        font: { color: fg, family: 'Inter, sans-serif', size: 12 },
+        font: { color: fg, family: '"Space Mono", monospace', size: 12 },
       },
       hovermode: 'x',
       hoverdistance: 20,
@@ -783,7 +783,7 @@ export default function TechnicalPage() {
               value={sidebarSearch}
               onChange={(e) => setSidebarSearch(e.target.value)}
               placeholder="Search indicators..."
-              className="w-full bg-primary/[0.04] border border-border/40 rounded-lg pl-8 pr-8 py-1.5 text-[11.5px] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/30"
+              className="w-full bg-primary/[0.04] border border-border/40 rounded-[var(--radius)] pl-8 pr-8 py-1.5 text-[13px] focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/30"
             />
             {sidebarSearch && (
               <button 
@@ -802,7 +802,7 @@ export default function TechnicalPage() {
             <>
               <SectionLabel>On Chart</SectionLabel>
               {match('Elliott Wave') && (
-                <IndicatorRow color="#22c55e" label="Elliott Wave" sublabel="Auto" checked={state.showElliott} onCheck={(v: boolean) => setState(s => ({ ...s, showElliott: v }))} onSettingsOpen={() => toggleSettings('elliott')} settingsOpen={openSettings === 'elliott'} settingsContent={<div className="text-[12px] text-muted-foreground/60 py-2 leading-relaxed">Automatic detection of motive (1–5) and corrective (A–B–C) wave patterns. Calculation is based on fractal swing highs/lows.</div>} />
+                <IndicatorRow color="#22c55e" label="Elliott Wave" sublabel="Auto" checked={state.showElliott} onCheck={(v: boolean) => setState(s => ({ ...s, showElliott: v }))} onSettingsOpen={() => toggleSettings('elliott')} settingsOpen={openSettings === 'elliott'} settingsContent={<div className="text-[13px] text-muted-foreground/60 py-2 leading-relaxed">Automatic detection of motive (1–5) and corrective (A–B–C) wave patterns. Calculation is based on fractal swing highs/lows.</div>} />
               )}
               {match('TD Sequential') && (
                 <IndicatorRow color="#f59e0b" label="TD Sequential" checked={state.showTD} onCheck={(v: boolean) => setState(s => ({ ...s, showTD: v }))} onSettingsOpen={() => toggleSettings('td')} settingsOpen={openSettings === 'td'} settingsContent={<div className="space-y-4"><ParamSelect label="Setup from" value={state.setupFrom} onChange={(v) => setState(s => ({ ...s, setupFrom: Number(v) }))} options={[1, 5, 7, 9].map((v) => ({ value: v, label: `${v}+` }))} /><ParamSelect label="Countdown from" value={state.countdownFrom} onChange={(v) => setState(s => ({ ...s, countdownFrom: Number(v) }))} options={[9, 10, 11, 12, 13].map((v) => ({ value: v, label: `${v}+` }))} /><ParamSelect label="Cooldown bars" value={state.cooldown} onChange={(v) => setState(s => ({ ...s, cooldown: Number(v) }))} options={[0, 5, 10, 15, 20].map((v) => ({ value: v, label: `${v}` }))} /></div>} />
@@ -811,7 +811,7 @@ export default function TechnicalPage() {
                 <IndicatorRow color="#2196f3" label="Bollinger Bands" sublabel={state.showBB ? `${state.bbLen} ${state.bbMult}σ` : undefined} checked={state.showBB} onCheck={(v: boolean) => setState(s => ({ ...s, showBB: v }))} onSettingsOpen={() => toggleSettings('bb')} settingsOpen={openSettings === 'bb'} settingsContent={<div className="space-y-4"><ParamRow label="Length" value={state.bbLen} min={5} max={100} onChange={(v: number) => setState(s => ({ ...s, bbLen: v }))} /><ParamRow label="Multiplier" value={state.bbMult} min={0.5} max={5} step={0.1} onChange={(v: number) => setState(s => ({ ...s, bbMult: v }))} /></div>} />
               )}
               {match('VWAP') && (
-                <IndicatorRow color="#ff9800" label="VWAP" checked={state.showVWAP} onCheck={(v: boolean) => setState(s => ({ ...s, showVWAP: v }))} onSettingsOpen={() => toggleSettings('vwap')} settingsOpen={openSettings === 'vwap'} settingsContent={<div className="text-[12px] text-muted-foreground/60 py-2">Volume Weighted Average Price. Cumulative, no adjustable parameters.</div>} />
+                <IndicatorRow color="#ff9800" label="VWAP" checked={state.showVWAP} onCheck={(v: boolean) => setState(s => ({ ...s, showVWAP: v }))} onSettingsOpen={() => toggleSettings('vwap')} settingsOpen={openSettings === 'vwap'} settingsContent={<div className="text-[13px] text-muted-foreground/60 py-2">Volume Weighted Average Price. Cumulative, no adjustable parameters.</div>} />
               )}
               {match('Supertrend') && (
                 <IndicatorRow color="#f43f5e" label="Supertrend" sublabel={state.showST ? `ATR ${state.stPeriod} × ${state.stMult}` : undefined} checked={state.showST} onCheck={(v: boolean) => setState(s => ({ ...s, showST: v }))} onSettingsOpen={() => toggleSettings('st')} settingsOpen={openSettings === 'st'} settingsContent={<div className="space-y-4"><ParamRow label="ATR Period" value={state.stPeriod} min={2} max={50} onChange={(v: number) => setState(s => ({ ...s, stPeriod: v }))} /><ParamRow label="Multiplier" value={state.stMult} min={0.5} max={10} step={0.1} onChange={(v: number) => setState(s => ({ ...s, stMult: v }))} /></div>} />
@@ -845,10 +845,10 @@ export default function TechnicalPage() {
                           return (
                             <div key={idx} className="flex items-center gap-3 group/ma">
                               <input type="color" value={cfg.color} onChange={(e) => setState(s => ({ ...s, maConfigs: s.maConfigs.map((c, i) => i === idx ? { ...c, color: e.target.value } : c) }))} className="w-6 h-6 rounded cursor-pointer border border-border/40 p-0 bg-transparent shrink-0" />
-                              <span className="text-[12px] font-mono font-medium text-foreground/80 w-10">{cfg.period}</span>
+                              <span className="text-[13px] font-mono font-medium text-foreground/80 w-10">{cfg.period}</span>
                               <button
                                 onClick={() => setState(s => ({ ...s, maConfigs: s.maConfigs.map((c, i) => i === idx ? { ...c, enabled: !c.enabled } : c) }))}
-                                className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${cfg.enabled ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/30 text-muted-foreground/40'}`}
+                                className={`text-[11.5px] px-2 py-0.5 rounded-md border transition-all ${cfg.enabled ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/30 text-muted-foreground/40'}`}
                               >{cfg.enabled ? 'On' : 'Off'}</button>
                               <div className="flex-1" />
                               <button onClick={() => setState(s => ({ ...s, maConfigs: s.maConfigs.filter((_, i) => i !== idx) }))} className="opacity-0 group-hover/ma:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 text-muted-foreground/40 hover:text-destructive"><X className="w-3 h-3" /></button>
@@ -864,10 +864,10 @@ export default function TechnicalPage() {
                 {maAdderOpen ? (
                   <div className="p-3 rounded-[var(--radius)] border border-border/50 bg-primary/[0.03] space-y-3">
                     {/* Type selector */}
-                    <div className="flex p-0.5 bg-primary/[0.04] border border-border/40 rounded-lg">
+                    <div className="flex p-0.5 bg-primary/[0.04] border border-border/40 rounded-[var(--radius)]">
                       {(['SMA', 'EMA', 'WMA'] as const).map((t) => (
                         <button key={t} onClick={() => setMaAdderType(t)}
-                          className={`flex-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-all ${maAdderType === t ? 'bg-background shadow-sm text-foreground ring-1 ring-border/50' : 'text-muted-foreground/60 hover:text-foreground'}`}
+                          className={`flex-1 px-2 py-1 rounded-md text-[12.5px] font-semibold transition-all ${maAdderType === t ? 'bg-background shadow-sm text-foreground ring-1 ring-border/50' : 'text-muted-foreground/60 hover:text-foreground'}`}
                         >{t}</button>
                       ))}
                     </div>
@@ -879,7 +879,7 @@ export default function TechnicalPage() {
                         return (
                           <button key={p} disabled={alreadyExists}
                             onClick={() => setMaAdderPeriods(prev => { const n = new Set(prev); if (n.has(p)) n.delete(p); else n.add(p); return n; })}
-                            className={`px-2 py-1.5 rounded-md text-[11px] font-mono font-medium border transition-all ${alreadyExists ? 'opacity-30 cursor-not-allowed border-border/30 text-muted-foreground/40' : checked ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border/40 text-muted-foreground/60 hover:border-border hover:text-foreground'}`}
+                            className={`px-2 py-1.5 rounded-md text-[12.5px] font-mono font-medium border transition-all ${alreadyExists ? 'opacity-30 cursor-not-allowed border-border/30 text-muted-foreground/40' : checked ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border/40 text-muted-foreground/60 hover:border-border hover:text-foreground'}`}
                           >{p}</button>
                         );
                       })}
@@ -902,13 +902,13 @@ export default function TechnicalPage() {
                           setMaAdderOpen(false);
                         }}
                         disabled={maAdderPeriods.size === 0}
-                        className="flex-1 py-1.5 rounded-md text-[11px] font-medium bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-30 transition-all"
+                        className="flex-1 py-1.5 rounded-md text-[12.5px] font-medium bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-30 transition-all"
                       >Add {maAdderPeriods.size > 0 ? `${maAdderPeriods.size} ${maAdderType}${maAdderPeriods.size > 1 ? 's' : ''}` : maAdderType}</button>
-                      <button onClick={() => { setMaAdderOpen(false); setMaAdderPeriods(new Set()); }} className="px-3 py-1.5 rounded-md text-[11px] font-medium text-muted-foreground/60 hover:text-foreground hover:bg-primary/[0.06] transition-all">Cancel</button>
+                      <button onClick={() => { setMaAdderOpen(false); setMaAdderPeriods(new Set()); }} className="px-3 py-1.5 rounded-md text-[12.5px] font-medium text-muted-foreground/60 hover:text-foreground hover:bg-primary/[0.06] transition-all">Cancel</button>
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => setMaAdderOpen(true)} className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-[11px] font-medium border border-dashed border-border/50 text-muted-foreground/70 hover:text-foreground hover:bg-primary/[0.04] hover:border-border transition-all">
+                  <button onClick={() => setMaAdderOpen(true)} className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-[12.5px] font-medium border border-dashed border-border/50 text-muted-foreground/70 hover:text-foreground hover:bg-primary/[0.04] hover:border-border transition-all">
                     <Plus className="w-3 h-3" /> Add MA
                   </button>
                 )}
@@ -954,7 +954,7 @@ export default function TechnicalPage() {
         <div className={`h-full flex flex-col bg-background relative ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
 
           {/* ── Top Bar ── */}
-          <div className="h-12 px-4 border-b border-border/50 flex items-center justify-between shrink-0 bg-background/95 backdrop-blur-md z-10 shadow-sm">
+          <div className="h-12 px-4 border-b border-border/40 flex items-center justify-between shrink-0 bg-background/95 z-10 shadow-sm">
             <div className="flex items-center gap-4">
               {/* Ticker Input */}
               <div className="relative flex items-center">
@@ -966,14 +966,14 @@ export default function TechnicalPage() {
                   onBlur={applyTicker}
                   maxLength={10}
                   placeholder="Symbol"
-                  className="w-28 pl-8 pr-3 py-1.5 bg-primary/[0.03] border border-border/50 rounded-lg text-[13px] font-bold tracking-wide focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 text-foreground transition-all uppercase placeholder:font-normal"
+                  className="w-28 pl-8 pr-3 py-1.5 bg-primary/[0.03] border border-border/50 rounded-[var(--radius)] text-[13px] font-bold tracking-wide focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 text-foreground transition-all uppercase placeholder:font-normal"
                 />
               </div>
 
               <div className="w-px h-5 bg-border/50" />
 
               {/* Frequency Segmented Control */}
-              <div className="flex p-0.5 bg-primary/[0.03] border border-border/40 rounded-lg">
+              <div className="flex p-0.5 bg-primary/[0.03] border border-border/40 rounded-[var(--radius)]">
                 {(['D', 'W', 'M'] as Frequency[]).map((f) => (
                   <button
                     key={f}
@@ -981,7 +981,7 @@ export default function TechnicalPage() {
                       const newStart = isoDateYearsAgo(FREQ_CONFIG[f].years);
                       setState(s => ({ ...s, freq: f, startDate: newStart }));
                     }}
-                    className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                    className={`px-3 py-1 rounded-md text-[12.5px] font-semibold transition-all ${
                       state.freq === f 
                         ? 'bg-background shadow-sm text-foreground ring-1 ring-border/50' 
                         : 'text-muted-foreground/70 hover:text-foreground hover:bg-primary/[0.04]'
@@ -996,9 +996,9 @@ export default function TechnicalPage() {
 
               {/* Date Range */}
               <div className="hidden sm:flex items-center gap-2">
-                <input type="date" value={state.startDate} onChange={(e) => setState(s => ({ ...s, startDate: e.target.value }))} className="bg-transparent text-[12px] text-muted-foreground hover:text-foreground focus:outline-none cursor-pointer" style={{ colorScheme: isLight ? 'light' : 'dark' }} />
+                <input type="date" value={state.startDate} onChange={(e) => setState(s => ({ ...s, startDate: e.target.value }))} className="bg-transparent text-[13px] text-muted-foreground hover:text-foreground focus:outline-none cursor-pointer" style={{ colorScheme: isLight ? 'light' : 'dark' }} />
                 <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
-                <input type="date" value={state.endDate} max={today} onChange={(e) => setState(s => ({ ...s, endDate: e.target.value }))} className="bg-transparent text-[12px] text-muted-foreground hover:text-foreground focus:outline-none cursor-pointer" style={{ colorScheme: isLight ? 'light' : 'dark' }} />
+                <input type="date" value={state.endDate} max={today} onChange={(e) => setState(s => ({ ...s, endDate: e.target.value }))} className="bg-transparent text-[13px] text-muted-foreground hover:text-foreground focus:outline-none cursor-pointer" style={{ colorScheme: isLight ? 'light' : 'dark' }} />
               </div>
             </div>
 
@@ -1006,9 +1006,9 @@ export default function TechnicalPage() {
               {/* Status Indicator */}
               <div className="flex items-center gap-1.5 px-2">
                 {isFetching ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin text-primary" /><span className="text-[11px] font-medium text-primary">Updating</span></>
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin text-primary" /><span className="text-[12.5px] font-medium text-primary">Updating</span></>
                 ) : (
-                  <><span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span></span><span className="text-[11px] font-medium text-muted-foreground">Live</span></>
+                  <><span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span></span><span className="text-[12.5px] font-medium text-muted-foreground">Live</span></>
                 )}
               </div>
 
@@ -1016,7 +1016,7 @@ export default function TechnicalPage() {
 
               <button
                 onClick={() => setShowAiSummary(!showAiSummary)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all ${showAiSummary ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : 'bg-primary/[0.03] border border-border/40 text-muted-foreground hover:text-foreground hover:bg-primary/[0.06]'}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius)] text-[13px] font-medium transition-all ${showAiSummary ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : 'bg-primary/[0.03] border border-border/40 text-muted-foreground hover:text-foreground hover:bg-primary/[0.06]'}`}
               >
                 <BrainCircuit className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">AI Analysis</span>
@@ -1024,7 +1024,7 @@ export default function TechnicalPage() {
 
               <button
                 onClick={() => setIsFullscreen(!isFullscreen)}
-                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-primary/10 rounded-lg transition-colors"
+                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-primary/10 rounded-[var(--radius)] transition-colors"
                 title="Toggle Fullscreen"
               >
                 {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -1036,10 +1036,10 @@ export default function TechnicalPage() {
           <div className="flex-1 relative min-h-0 bg-background">
             {/* Floating AI Panel */}
             {showAiSummary && (
-              <div className="absolute top-4 left-4 z-20 w-[400px] max-h-[85%] flex flex-col bg-background/95 border border-border/50 backdrop-blur-2xl rounded-md shadow-lg overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ring-1 ring-foreground/5">
+              <div className="absolute top-4 left-4 z-20 w-[400px] max-h-[85%] flex flex-col bg-background/95 border border-border/50 rounded-md shadow-lg overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 ring-1 ring-foreground/5">
                 <div className="px-5 py-3.5 border-b border-border/50 flex items-center justify-between bg-primary/[0.03]">
                   <div className="flex items-center gap-2.5 text-primary">
-                    <div className={`p-1 rounded-lg ${isLight ? 'bg-primary/10' : 'bg-primary/10'}`}>
+                    <div className={`p-1 rounded-[var(--radius)] ${isLight ? 'bg-primary/10' : 'bg-primary/10'}`}>
                       <BrainCircuit className="w-4 h-4" />
                     </div>
                     <span className="text-[13px] font-bold uppercase tracking-wider">Intelligence Report</span>
@@ -1081,18 +1081,18 @@ export default function TechnicalPage() {
                         components={{
                           h1: ({node, ...props}) => <h1 className="text-primary font-bold text-[15px] mb-4 mt-2 border-b border-primary/20 pb-2" {...props} />,
                           h2: ({node, ...props}) => <h2 className="text-foreground font-bold text-[13px] mb-3 mt-6" {...props} />,
-                          h3: ({node, ...props}) => <h3 className="text-foreground/90 font-bold text-[12px] mb-2 mt-4 underline decoration-primary/30 underline-offset-4" {...props} />,
-                          p: ({node, ...props}) => <p className="mb-4 text-[12px] leading-[1.6] text-foreground/70" {...props} />,
+                          h3: ({node, ...props}) => <h3 className="text-foreground/90 font-bold text-[13px] mb-2 mt-4 underline decoration-primary/30 underline-offset-4" {...props} />,
+                          p: ({node, ...props}) => <p className="mb-4 text-[13px] leading-[1.6] text-foreground/70" {...props} />,
                           ul: ({node, ...props}) => <ul className="mb-4 space-y-2 list-none pl-0" {...props} />,
                           li: ({node, ...props}) => (
-                            <li className="flex gap-2 text-[12px] text-foreground/70 items-start">
+                            <li className="flex gap-2 text-[13px] text-foreground/70 items-start">
                               <span className="text-primary mt-1.5 shrink-0">•</span>
                               <span>{props.children}</span>
                             </li>
                           ),
                           strong: ({node, ...props}) => <strong className="text-primary font-semibold" {...props} />,
                           blockquote: ({node, ...props}) => (
-                            <blockquote className="my-4 p-3 rounded-lg border-l-2 border-primary/40 bg-primary/[0.05] italic text-foreground/80" {...props} />
+                            <blockquote className="my-4 p-3 rounded-[var(--radius)] border-l-2 border-primary/40 bg-primary/[0.05] italic text-foreground/80" {...props} />
                           ),
                         }}
                       >
@@ -1105,13 +1105,13 @@ export default function TechnicalPage() {
                         <Activity className="w-8 h-8 animate-pulse text-primary/20" />
                         <Loader2 className="w-8 h-8 animate-spin text-primary absolute inset-0" />
                       </div>
-                      <span className="text-[12px] font-medium animate-pulse">Generating Intelligence Report...</span>
+                      <span className="text-[13px] font-medium animate-pulse">Generating Intelligence Report...</span>
                     </div>
                   )}
                 </div>
                 {summaryQuery.data?.summary && (
                   <div className="px-5 py-3 border-t border-border/40 text-center bg-primary/[0.02]">
-                    <span className="text-[10px] text-muted-foreground/40 uppercase tracking-[0.2em]">End of Analysis</span>
+                    <span className="text-[11.5px] text-muted-foreground/40 uppercase tracking-[0.2em]">End of Analysis</span>
                   </div>
                 )}
               </div>
@@ -1119,9 +1119,13 @@ export default function TechnicalPage() {
 
             {/* Error State */}
             {!isLoading && error && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 backdrop-blur-sm">
-                <div className="bg-destructive/10 text-destructive px-4 py-2 rounded-lg border border-destructive/20 text-sm font-medium">
-                  {(error as Error)?.message || 'Failed to load chart'}
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
+                <div className="flex flex-col items-center gap-3 text-center max-w-xs animate-fade-in">
+                  <div className="w-10 h-10 rounded-[var(--radius)] bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+                    <AlertTriangle className="w-4.5 h-4.5 text-destructive" />
+                  </div>
+                  <p className="text-[13px] font-medium text-foreground">Failed to load chart</p>
+                  <p className="text-[12px] text-muted-foreground">{(error as Error)?.message || 'Check your connection and try refreshing the page.'}</p>
                 </div>
               </div>
             )}
@@ -1157,7 +1161,7 @@ export default function TechnicalPage() {
 function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   useEffect(() => { const t = setTimeout(onDismiss, 4000); return () => clearTimeout(t); }, [onDismiss]);
   return (
-    <div className="fixed bottom-4 right-4 z-[200] bg-destructive text-background px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
+    <div className="fixed bottom-4 right-4 z-[200] bg-destructive text-background px-4 py-2.5 rounded-[var(--radius)] shadow-lg text-sm font-medium flex items-center gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
       {message}
       <button onClick={onDismiss} className="ml-1 opacity-70 hover:opacity-100">&times;</button>
     </div>

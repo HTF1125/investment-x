@@ -56,7 +56,7 @@ export default function LeftSidebar({
     <div className="w-[240px] shrink-0 border-r border-border/30 flex flex-col bg-card/20 overflow-hidden">
       {/* Header */}
       <div className="shrink-0 h-8 border-b border-border/20 flex items-center px-2.5 gap-1.5">
-        <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50 flex-1">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50 flex-1">
           Series
           {selectedSeries.length > 0 && (
             <span className="ml-1 text-primary/60">{selectedSeries.length}</span>
@@ -75,7 +75,7 @@ export default function LeftSidebar({
       <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
         {selectedSeries.length === 0 ? (
           <div className="px-3 py-6 text-center">
-            <p className="text-[10px] text-muted-foreground/25">Run code to load series</p>
+            <p className="text-[11.5px] text-muted-foreground/25">Run code to load series</p>
           </div>
         ) : (
           <Reorder.Group axis="y" values={selectedSeries} onReorder={setSelectedSeries} as="div">

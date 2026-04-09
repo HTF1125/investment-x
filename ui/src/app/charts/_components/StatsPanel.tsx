@@ -41,16 +41,16 @@ export default function StatsPanel({
   if (stats.length === 0) return null;
 
   return (
-    <div className="text-[9px] font-mono">
+    <div className="text-[11px] font-mono">
       <div className="flex items-center gap-0 px-2 py-0.5 border-b border-border/20 bg-foreground/[0.02]">
         <span className="w-3 shrink-0" />
-        <span className="flex-1 min-w-0 text-[8px] uppercase tracking-[0.1em] text-muted-foreground/40 font-semibold">{'\u2014'}</span>
-        <span className="w-[50px] text-right text-[8px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">Last</span>
-        <span className="w-[42px] text-right text-[8px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">{'\u0394'}%</span>
-        <span className="w-[42px] text-right text-[8px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">Lo</span>
-        <span className="w-[42px] text-right text-[8px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">Hi</span>
-        <span className="w-[42px] text-right text-[8px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">{'\u03BC'}</span>
-        <span className="w-[42px] text-right text-[8px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">{'\u03C3'}</span>
+        <span className="flex-1 min-w-0 text-[9.5px] uppercase tracking-[0.1em] text-muted-foreground/40 font-semibold">{'\u2014'}</span>
+        <span className="w-[50px] text-right text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">Last</span>
+        <span className="w-[42px] text-right text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">{'\u0394'}%</span>
+        <span className="w-[42px] text-right text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">Lo</span>
+        <span className="w-[42px] text-right text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">Hi</span>
+        <span className="w-[42px] text-right text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">{'\u03BC'}</span>
+        <span className="w-[42px] text-right text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground/40 font-semibold shrink-0">{'\u03C3'}</span>
       </div>
       {stats.map((row, i) => (
         <div key={row.code} className={`flex items-center gap-0 px-2 py-0.5 border-b border-border/8 hover:bg-foreground/[0.02] transition-colors ${i % 2 === 1 ? 'bg-foreground/[0.01]' : ''}`}>

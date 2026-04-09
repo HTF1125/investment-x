@@ -26,6 +26,7 @@ WORKDIR /app
 
 # Copy only what's needed to run (use node user from base image)
 COPY --from=builder --chown=node:node /app/package*.json ./
+COPY --from=builder --chown=node:node /app/next.config.mjs ./
 COPY --from=builder --chown=node:node /app/.next ./.next
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules

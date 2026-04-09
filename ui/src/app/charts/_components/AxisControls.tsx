@@ -45,10 +45,10 @@ export default function AxisControls({
           const label = panes.length > 1 ? `P${paneId + 1}\u00B7Y${yAxisIndex + 1}` : `Y${yAxisIndex + 1}`;
           return (
             <div key={key} className="flex items-center gap-0.5">
-              <span className="text-[8px] font-mono font-bold text-muted-foreground/50 w-6 shrink-0">{label}</span>
+              <span className="text-[9.5px] font-mono font-bold text-muted-foreground/50 w-6 shrink-0">{label}</span>
               <button
                 onClick={() => toggleLogAxis(paneId, yAxisIndex)}
-                className={`h-[18px] px-1 text-[8px] font-mono font-bold rounded-[3px] transition-colors shrink-0 ${
+                className={`h-[18px] px-1 text-[9.5px] font-mono font-bold rounded-[3px] transition-colors shrink-0 ${
                   isLog ? 'bg-foreground text-background' : 'text-muted-foreground/25 hover:text-foreground'
                 }`}
                 title="Log scale"
@@ -57,7 +57,7 @@ export default function AxisControls({
               </button>
               <button
                 onClick={() => toggleInvertAxis(paneId, yAxisIndex)}
-                className={`h-[18px] px-1 text-[8px] font-mono font-bold rounded-[3px] transition-colors shrink-0 ${
+                className={`h-[18px] px-1 text-[9.5px] font-mono font-bold rounded-[3px] transition-colors shrink-0 ${
                   isInv ? 'bg-foreground text-background' : 'text-muted-foreground/25 hover:text-foreground'
                 }`}
                 title="Invert axis"
@@ -66,7 +66,7 @@ export default function AxisControls({
               </button>
               <button
                 onClick={() => togglePctAxis(paneId, yAxisIndex)}
-                className={`h-[18px] w-5 text-[8px] font-mono font-bold rounded-[3px] transition-colors shrink-0 ${
+                className={`h-[18px] w-5 text-[9.5px] font-mono font-bold rounded-[3px] transition-colors shrink-0 ${
                   isPct ? 'bg-foreground text-background' : 'text-muted-foreground/25 hover:text-foreground'
                 }`}
                 title="Percent format"
@@ -80,7 +80,7 @@ export default function AxisControls({
                   const v = e.target.value;
                   setYAxisRange(paneId, yAxisIndex, { ...range, min: v === '' ? undefined : parseFloat(v) });
                 }}
-                className="w-[42px] h-[18px] px-1 text-[8px] font-mono text-center border border-border/25 rounded-[3px] bg-background text-foreground focus:outline-none focus:border-primary/40"
+                className="w-[42px] h-[18px] px-1 text-[9.5px] font-mono text-center border border-border/25 rounded-[3px] bg-background text-foreground focus:outline-none focus:border-primary/40"
                 placeholder="min"
                 step="any"
               />
@@ -91,7 +91,7 @@ export default function AxisControls({
                   const v = e.target.value;
                   setYAxisRange(paneId, yAxisIndex, { ...range, max: v === '' ? undefined : parseFloat(v) });
                 }}
-                className="w-[42px] h-[18px] px-1 text-[8px] font-mono text-center border border-border/25 rounded-[3px] bg-background text-foreground focus:outline-none focus:border-primary/40"
+                className="w-[42px] h-[18px] px-1 text-[9.5px] font-mono text-center border border-border/25 rounded-[3px] bg-background text-foreground focus:outline-none focus:border-primary/40"
                 placeholder="max"
                 step="any"
               />

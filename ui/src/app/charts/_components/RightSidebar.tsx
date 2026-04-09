@@ -125,7 +125,7 @@ export default function RightSidebar({
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`h-8 px-2 text-[9px] font-semibold uppercase tracking-[0.06em] transition-colors relative ${
+              className={`h-8 px-2 text-[11px] font-semibold uppercase tracking-[0.06em] transition-colors relative ${
                 tab === t ? 'text-foreground' : 'text-muted-foreground/30 hover:text-foreground'
               }`}
             >
@@ -155,7 +155,7 @@ export default function RightSidebar({
           <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
             {selectedSeries.length === 0 ? (
               <div className="px-3 py-8 text-center">
-                <p className="text-[10px] text-muted-foreground/25">Run code to load series</p>
+                <p className="text-[11.5px] text-muted-foreground/25">Run code to load series</p>
               </div>
             ) : (
               <Reorder.Group axis="y" values={selectedSeries} onReorder={setSelectedSeries} as="div">

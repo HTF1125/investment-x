@@ -87,15 +87,15 @@ export default function RegimeTab({ snapshot, timeseries, tsLoading, backtest, b
         </div>
         <div className="panel-card px-3 py-2">
           <SectionTitle info="Historical 13-week forward returns by dominant regime. Mean, median, volatility, Sharpe, hit rate, and sample size.">Forward Returns by Regime</SectionTitle>
-          <table className="w-full text-[11px]">
+          <table className="w-full text-[12.5px]">
             <thead><tr className="border-b border-border/40">
-              <th className="text-left py-1 pr-2 text-[9px] font-mono uppercase text-muted-foreground/50">Regime</th>
-              <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Mean</th>
-              <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Med</th>
-              <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Vol</th>
-              <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">Sharpe</th>
-              <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">%Pos</th>
-              <th className="text-right py-1 px-1 text-[9px] font-mono uppercase text-muted-foreground/50">N</th>
+              <th className="text-left py-1 pr-2 text-[11px] font-mono uppercase text-muted-foreground/50">Regime</th>
+              <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Mean</th>
+              <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Med</th>
+              <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Vol</th>
+              <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">Sharpe</th>
+              <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">%Pos</th>
+              <th className="text-right py-1 px-1 text-[11px] font-mono uppercase text-muted-foreground/50">N</th>
             </tr></thead>
             <tbody>
               {snapshot.regime_stats.map(s => (

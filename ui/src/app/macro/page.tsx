@@ -1,173 +1,461 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
-import { useTheme } from '@/context/ThemeContext';
-import { LoadingSpinner } from '@/components/macro/SharedComponents';
-import { TABS } from '@/components/macro/constants';
-import { OverviewTab } from '@/components/macro';
-import { StrategyTab } from '@/components/macro';
-import { StrategyFactorsTab } from '@/components/macro';
-import { MethodologyTab } from '@/components/macro';
-import { RegimeStrategyRegimeTab } from '@/components/macro';
-import type { Tab, RegimeStrategyBacktest, FactorCategory, CurrentSignalData, SummaryIndex, Snapshot, TimeseriesData } from '@/components/macro/types';
+import { AlertTriangle, Info, Sparkles } from 'lucide-react';
+import {
+  AxisDock,
+  CurrentStateTab,
+  HistoryTab,
+  AssetPerformanceTab,
+  ModelTab,
+  LoadingSpinner,
+  REGIME_TABS,
+  COMPOSITION_PRESETS,
+} from '@/components/regimes';
+import type {
+  RegimeTab,
+  RegimeModel,
+  ModelsResponse,
+  CurrentStateResponse,
+  TimeseriesResponse,
+  AssetAnalyticsResponse,
+  MetaResponse,
+  ComposeResponse,
+} from '@/components/regimes/types';
 
-const STATIC_TABS = new Set<Tab>(['methodology', 'overview']);
-const DATA_TABS = new Set<Tab>(['strategy', 'factors', 'regime']);
+export default function MacroRegimePage() {
+  useEffect(() => {
+    document.title = 'Macro Regime | Investment-X';
+  }, []);
 
-// Map new regime-strategy index names → old outlook target names
-const OUTLOOK_NAME_MAP: Record<string, string> = {
-  'ACWI': 'MSCI ACWI',
-  'Stoxx 50': 'Euro Stoxx 50',
-  'Shanghai Comp': 'Shanghai Composite',
-};
+  const [activeTab, setActiveTab] = useState<RegimeTab>('current');
 
-export default function MacroPage() {
-  useEffect(() => { document.title = 'Macro Regime Strategy | Investment-X'; }, []);
+  // ── Default selection: growth + inflation ──
+  // The page lands on the classic two-axis macro composition immediately,
+  // since it's the most common starting point for macro research. User can
+  // add/remove axes to customize. The composite is generated mechanically —
+  // states are joint-named (e.g. "Expansion+Falling") with no prior labels.
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
+    () => new Set(['growth', 'inflation']),
+  );
 
-  const { theme } = useTheme();
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
-  const [strategyIndex, setStrategyIndex] = useState<string>('ACWI');
-
-  const needsData = DATA_TABS.has(activeTab);
-  const showIndexSelector = DATA_TABS.has(activeTab);
-
-  // ── Queries ──
-  const indicesQuery = useQuery({
-    queryKey: ['regime-strategy-indices'],
-    queryFn: () => apiFetchJson<{ indices: string[] }>('/api/macro/regime-strategy/indices'),
-    staleTime: 300_000,
+  // ── Models list ──
+  const modelsQuery = useQuery({
+    queryKey: ['regime-models'],
+    queryFn: () => apiFetchJson<ModelsResponse>('/api/regimes/models'),
+    staleTime: 600_000,
   });
 
-  const backtestQuery = useQuery({
-    queryKey: ['regime-strategy-backtest', strategyIndex],
-    queryFn: () => apiFetchJson<{ index_name: string; computed_at: string; backtest: RegimeStrategyBacktest }>(
-      `/api/macro/regime-strategy/backtest?index=${encodeURIComponent(strategyIndex)}`
-    ),
-    enabled: (activeTab === 'strategy' || activeTab === 'factors' || activeTab === 'regime') && !!strategyIndex,
+  const allModels = modelsQuery.data?.models ?? [];
+
+  // Only 1D (single-metric) regimes are selectable.
+  const selectableModels = allModels.filter(
+    (m) => m.category === 'axis' || m.category === 'phase',
+  );
+
+  // ── Mode resolution ──
+  const selectedKeyList = useMemo(
+    () => Array.from(selectedKeys).sort(),
+    [selectedKeys],
+  );
+  const composeQueryKey = selectedKeyList.join(',');
+
+  const mode: 'empty' | 'single' | 'composite' =
+    selectedKeys.size === 0
+      ? 'empty'
+      : selectedKeys.size === 1
+      ? 'single'
+      : 'composite';
+
+  const singleKey = mode === 'single' ? selectedKeyList[0] : '';
+
+  // ── Compose query (composite mode only) ──
+  const composeQuery = useQuery({
+    queryKey: ['regime-compose', composeQueryKey],
+    queryFn: () =>
+      apiFetchJson<ComposeResponse>(
+        `/api/regimes/compose?keys=${encodeURIComponent(composeQueryKey)}`,
+      ),
+    enabled: mode === 'composite',
+    staleTime: 600_000,
+  });
+
+  // ── Single-mode tab queries ──
+  const currentQuery = useQuery({
+    queryKey: ['regime-current', singleKey],
+    queryFn: () =>
+      apiFetchJson<CurrentStateResponse>(`/api/regimes/${singleKey}/current`),
+    enabled: mode === 'single' && activeTab === 'current',
     staleTime: 120_000,
   });
 
-  const factorsQuery = useQuery({
-    queryKey: ['regime-strategy-factors', strategyIndex],
-    queryFn: () => apiFetchJson<{ index_name: string; computed_at: string; factors: Record<string, FactorCategory> }>(
-      `/api/macro/regime-strategy/factors?index=${encodeURIComponent(strategyIndex)}`
-    ),
-    enabled: activeTab === 'factors' && !!strategyIndex,
+  const tsQuery = useQuery({
+    queryKey: ['regime-timeseries', singleKey],
+    queryFn: () =>
+      apiFetchJson<TimeseriesResponse>(`/api/regimes/${singleKey}/timeseries`),
+    enabled: mode === 'single' && activeTab === 'history',
     staleTime: 120_000,
   });
 
-  const signalQuery = useQuery({
-    queryKey: ['regime-strategy-signal', strategyIndex],
-    queryFn: () => apiFetchJson<{ current_signal: CurrentSignalData }>(
-      `/api/macro/regime-strategy/signal?index=${encodeURIComponent(strategyIndex)}`
-    ),
-    enabled: activeTab === 'factors' && !!strategyIndex,
+  const assetsQuery = useQuery({
+    queryKey: ['regime-assets', singleKey],
+    queryFn: () =>
+      apiFetchJson<AssetAnalyticsResponse>(`/api/regimes/${singleKey}/assets`),
+    enabled: mode === 'single' && activeTab === 'assets',
     staleTime: 120_000,
   });
 
-  // Overview: summary for all indices
-  const summaryQuery = useQuery({
-    queryKey: ['regime-strategy-summary'],
-    queryFn: () => apiFetchJson<{ indices: SummaryIndex[] }>('/api/macro/regime-strategy/summary'),
-    enabled: activeTab === 'overview',
-    staleTime: 120_000,
+  // Methodology popover toggle (must be declared before metaQuery so it
+  // can be used in the `enabled` predicate without TDZ issues — React
+  // hook order is preserved because both calls are unconditional).
+  const [methodologyOpen, setMethodologyOpen] = useState(false);
+
+  const metaQuery = useQuery({
+    queryKey: ['regime-meta', singleKey],
+    queryFn: () => apiFetchJson<MetaResponse>(`/api/regimes/${singleKey}/meta`),
+    enabled: mode === 'single' && methodologyOpen,
+    staleTime: 600_000,
   });
 
-  // Regime tab: outlook probability data from old macro system
-  const outlookTarget = OUTLOOK_NAME_MAP[strategyIndex] ?? strategyIndex;
+  const activeQuery =
+    mode === 'composite'
+      ? composeQuery
+      : activeTab === 'current'
+      ? currentQuery
+      : activeTab === 'history'
+      ? tsQuery
+      : activeTab === 'assets'
+      ? assetsQuery
+      : activeTab === 'model'
+      ? metaQuery
+      : currentQuery;
 
-  const outlookQuery = useQuery({
-    queryKey: ['macro-outlook', outlookTarget],
-    queryFn: () => apiFetchJson<{ snapshot: Snapshot }>(`/api/macro/outlook?target=${encodeURIComponent(outlookTarget)}`),
-    enabled: activeTab === 'regime' && !!strategyIndex,
-    staleTime: 120_000,
-  });
+  // Methodology query — always uses the active mode's metadata
+  const methodologyMeta =
+    mode === 'composite'
+      ? composeQuery.data?.meta
+      : metaQuery.data?.meta;
 
-  const timeseriesQuery = useQuery({
-    queryKey: ['macro-timeseries', outlookTarget],
-    queryFn: () => apiFetchJson<{ timeseries: TimeseriesData }>(`/api/macro/timeseries?target=${encodeURIComponent(outlookTarget)}`),
-    enabled: activeTab === 'regime' && !!strategyIndex,
-    staleTime: 120_000,
-  });
+  // ── Effective model ──
+  const singleModel = mode === 'single'
+    ? allModels.find((m) => m.key === singleKey)
+    : undefined;
+  const composedModel = mode === 'composite' ? composeQuery.data?.model : undefined;
+  const effectiveModel = mode === 'composite' ? composedModel : singleModel;
 
-  const backtest = backtestQuery.data?.backtest ?? null;
-  const factors = factorsQuery.data?.factors ?? null;
-  const signal = signalQuery.data?.current_signal ?? null;
+  // ── Hero state extraction (works for both modes) — used for the
+  // "as of" timestamp in the header. Regime colors are applied inside
+  // sub-components, not in the shell. ──
+  const heroState =
+    mode === 'composite'
+      ? composeQuery.data?.current_state
+      : currentQuery.data?.current_state;
+
+  // ── Selection handler ──
+  const toggleKey = (key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // Selectable regime keys for preset filtering
+  const selectableKeySet = useMemo(
+    () => new Set(selectableModels.map((m) => m.key)),
+    [selectableModels],
+  );
 
   return (
-    <AppShell>
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-5 lg:px-6 py-4">
-
-        {/* Tab bar: selector | tabs | timestamp */}
-        <div className="border-b border-border/25 mb-3">
-          <div className="flex items-center gap-3 -mb-px">
-            {/* Index selector (only on data tabs) */}
-            {showIndexSelector && (
-              <select
-                value={strategyIndex}
-                onChange={(e) => setStrategyIndex(e.target.value)}
-                className="border border-border/40 rounded-md px-2.5 py-1.5 text-[11px] font-medium focus:outline-none focus:border-primary/40 text-foreground cursor-pointer shrink-0"
-                style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
+    <AppShell hideFooter>
+      <div className="page-shell">
+        {/* ── Header strip: dense terminal toolbar ── */}
+        <div className="shrink-0 border-b border-border/40 bg-[rgb(var(--surface))]/30">
+          {/* Row 1: title | model | presets | meta — single dense line on md+ */}
+          <div className="page-header">
+            <h1 className="page-header-title">MACRO REGIME</h1>
+            <div className="h-4 w-px bg-border/60" aria-hidden />
+            {effectiveModel && (
+              <span
+                className="text-[11px] font-semibold text-foreground whitespace-nowrap truncate min-w-0 max-w-[40%] sm:max-w-none"
+                title={effectiveModel.display_name}
               >
-                {(indicesQuery.data?.indices ?? []).map(idx => (
-                  <option key={idx} value={idx}>{idx}</option>
-                ))}
-              </select>
+                {effectiveModel.display_name}
+              </span>
+            )}
+            {effectiveModel && (
+              <button
+                type="button"
+                onClick={() => setMethodologyOpen((v) => !v)}
+                className="shrink-0 inline-flex items-center justify-center w-5 h-5 text-muted-foreground hover:text-foreground transition-colors"
+                title="Methodology"
+                aria-label="Open methodology"
+              >
+                <Info className="w-3 h-3" />
+              </button>
             )}
 
-            {/* Tabs */}
-            <div className="flex gap-0.5 overflow-x-auto no-scrollbar flex-1">
-              {TABS.map(tab => (
-                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                  className={`tab-link ${activeTab === tab.key ? 'active' : ''}`}>
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            {/* Presets — inline on md+, inherit scroll on mobile */}
+            {selectableModels.length > 0 && (() => {
+              const validPresets = COMPOSITION_PRESETS.filter((p) =>
+                p.keys.every((k) => selectableKeySet.has(k)),
+              );
+              if (validPresets.length === 0) return null;
+              return (
+                <div className="hidden md:flex items-center gap-0 ml-2 overflow-x-auto no-scrollbar">
+                  <span className="stat-label mr-2">Preset</span>
+                  {validPresets.map((preset, idx) => {
+                    const presetKey = preset.keys.slice().sort().join(',');
+                    const isActive = presetKey === composeQueryKey;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setSelectedKeys(new Set(preset.keys))}
+                        title={preset.description}
+                        className={`relative shrink-0 h-6 px-2 text-[9.5px] font-mono uppercase tracking-[0.06em] transition-colors whitespace-nowrap ${
+                          isActive
+                            ? 'text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        } ${idx > 0 ? 'border-l border-border/40' : ''}`}
+                      >
+                        {preset.label}
+                        {isActive && (
+                          <span
+                            className="absolute left-2 right-2 bottom-0 h-[2px] bg-accent"
+                            aria-hidden
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
-            {/* Timestamp */}
-            <div className="flex items-center gap-2 shrink-0 pb-2">
-              {backtestQuery.data?.computed_at && needsData && (
-                <span className="text-[9px] font-mono text-muted-foreground/40">
-                  {new Date(backtestQuery.data.computed_at).toLocaleString()}
-                </span>
+            {/* Right meta cluster */}
+            <div className="ml-auto flex items-center gap-3 shrink-0">
+              {mode === 'composite' && (
+                <div className="flex items-center gap-1 text-[9.5px] font-mono uppercase tracking-[0.08em] text-muted-foreground whitespace-nowrap">
+                  <Sparkles className="w-2.5 h-2.5 text-accent" />
+                  {selectedKeyList.length}-AXIS
+                </div>
+              )}
+              {heroState?.date && (
+                <div className="hidden sm:flex items-baseline gap-1.5">
+                  <span className="stat-label">AS OF</span>
+                  <span className="text-[10.5px] font-mono tabular-nums text-foreground">
+                    {heroState.date}
+                  </span>
+                </div>
               )}
             </div>
           </div>
+
+          {/* Mobile preset row — only shown below md */}
+          {selectableModels.length > 0 && (() => {
+            const validPresets = COMPOSITION_PRESETS.filter((p) =>
+              p.keys.every((k) => selectableKeySet.has(k)),
+            );
+            if (validPresets.length === 0) return null;
+            return (
+              <div className="md:hidden flex items-center gap-0 overflow-x-auto no-scrollbar border-t border-border/30 px-3">
+                {validPresets.map((preset, idx) => {
+                  const presetKey = preset.keys.slice().sort().join(',');
+                  const isActive = presetKey === composeQueryKey;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setSelectedKeys(new Set(preset.keys))}
+                      className={`relative shrink-0 h-7 px-2 text-[9.5px] font-mono uppercase tracking-[0.06em] whitespace-nowrap ${
+                        isActive ? 'text-foreground' : 'text-muted-foreground'
+                      } ${idx > 0 ? 'border-l border-border/40' : ''}`}
+                    >
+                      {preset.label}
+                      {isActive && (
+                        <span className="absolute left-2 right-2 bottom-0 h-[2px] bg-accent" aria-hidden />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* ── Axis Dock ── anchored in a sub-band rail ── */}
+          {selectableModels.length > 0 && (
+            <div className="border-t border-border/40 bg-[rgb(var(--surface))]/50 px-3 sm:px-5 lg:px-6 py-2">
+              <AxisDock
+                models={selectableModels}
+                selectedKeys={selectedKeys}
+                onToggle={toggleKey}
+                overrides={
+                  mode === 'composite'
+                    ? composeQuery.data?.current_state?.input_states
+                    : undefined
+                }
+              />
+            </div>
+          )}
         </div>
 
-        {/* Tab content */}
-        {activeTab === 'overview' ? (
-          <OverviewTab summary={summaryQuery.data?.indices ?? null} />
-        ) : activeTab === 'methodology' ? (
-          <MethodologyTab />
-        ) : needsData && backtestQuery.isLoading ? (
-          <LoadingSpinner label="Loading strategy data" />
-        ) : (
-          <>
-            {activeTab === 'strategy' && (
-              <StrategyTab backtest={backtest} isLoading={backtestQuery.isLoading} target={strategyIndex} />
-            )}
-            {activeTab === 'regime' && (
-              <RegimeStrategyRegimeTab
-                backtest={backtest} isLoading={backtestQuery.isLoading} target={strategyIndex}
-                snapshot={outlookQuery.data?.snapshot ?? null}
-                timeseries={timeseriesQuery.data?.timeseries ?? null}
-                tsLoading={timeseriesQuery.isLoading}
+        {/* ── Tab bar ── segmented monospace with vertical rules ── */}
+        <div className="shrink-0 border-b border-border/40 bg-background px-3 sm:px-5 lg:px-6 sticky top-[56px] z-20 md:static md:z-auto">
+          <div className="flex overflow-x-auto no-scrollbar">
+            {REGIME_TABS.map((tab, idx) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`relative whitespace-nowrap px-4 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-[0.10em] transition-colors ${
+                    isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                  } ${idx > 0 ? 'border-l border-border/30' : ''}`}
+                >
+                  {tab.label}
+                  {isActive && (
+                    <span className="absolute left-0 right-0 bottom-0 h-[2px] bg-accent" aria-hidden />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Tab content ── natural flow on mobile, scroll container on md+ ── */}
+        <div className="md:flex-1 md:min-h-0 md:overflow-y-auto">
+          <div className="max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4">
+            {mode === 'empty' ? (
+              <div className="h-full flex items-center justify-center py-20">
+                <div className="flex flex-col items-center gap-3 text-center max-w-md">
+                  <Sparkles className="w-6 h-6 text-muted-foreground/40" />
+                  <p className="text-[13px] font-medium text-foreground">
+                    Pick one or more regimes above
+                  </p>
+                  <p className="text-[12px] text-muted-foreground">
+                    Click any tile in the dock to view that single 1D regime,
+                    or pick 2+ to compose them on the fly. Composite states
+                    are generated mechanically from the cartesian product of
+                    each axis (e.g. growth × inflation → 4 joint states).
+                  </p>
+                </div>
+              </div>
+            ) : activeQuery.isError ? (
+              <div className="h-full flex items-center justify-center py-20">
+                <div className="flex flex-col items-center gap-3 text-center max-w-xs">
+                  <div className="w-10 h-10 rounded-[var(--radius)] bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+                    <AlertTriangle className="w-4.5 h-4.5 text-destructive" />
+                  </div>
+                  <p className="text-[13px] font-medium text-foreground">
+                    {mode === 'composite' ? 'Composition failed' : 'Failed to load regime data'}
+                  </p>
+                  <p className="text-[12px] text-muted-foreground">
+                    {(activeQuery.error as Error)?.message ??
+                      'Check your connection or trigger a refresh.'}
+                  </p>
+                </div>
+              </div>
+            ) : activeQuery.isLoading ? (
+              <LoadingSpinner
+                label={
+                  mode === 'composite'
+                    ? `Composing ${selectedKeyList.join(' × ')}`
+                    : `Loading ${REGIME_TABS.find((t) => t.key === activeTab)?.label}`
+                }
               />
+            ) : mode === 'composite' && composeQuery.data ? (
+              <>
+                {activeTab === 'current' && (
+                  <CurrentStateTab
+                    state={composeQuery.data.current_state}
+                    model={composedModel}
+                  />
+                )}
+                {activeTab === 'history' && (
+                  <HistoryTab
+                    ts={composeQuery.data.timeseries}
+                    model={composedModel}
+                  />
+                )}
+                {activeTab === 'assets' && composeQuery.data.asset_analytics && (
+                  <AssetPerformanceTab
+                    analytics={composeQuery.data.asset_analytics}
+                    model={composedModel}
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                {activeTab === 'current' && currentQuery.data && (
+                  <CurrentStateTab
+                    state={currentQuery.data.current_state}
+                    model={singleModel}
+                  />
+                )}
+                {activeTab === 'history' && tsQuery.data && (
+                  <HistoryTab ts={tsQuery.data.timeseries} model={singleModel} />
+                )}
+                {activeTab === 'assets' && assetsQuery.data && (
+                  <AssetPerformanceTab
+                    analytics={assetsQuery.data.asset_analytics}
+                    model={singleModel}
+                  />
+                )}
+              </>
             )}
-            {activeTab === 'factors' && (
-              <StrategyFactorsTab
-                factors={factors}
-                signal={signal}
-                isLoading={factorsQuery.isLoading || signalQuery.isLoading}
-                target={strategyIndex}
-              />
-            )}
-          </>
+          </div>
+        </div>
+
+        {/* ── Methodology modal ── */}
+        {methodologyOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgb(var(--background) / 0.92)' }}
+            onClick={() => setMethodologyOpen(false)}
+          >
+            <div
+              className="relative w-full max-w-3xl max-h-[85vh] bg-card border border-border/60 rounded-[var(--radius)] overflow-hidden flex flex-col"
+              style={{ boxShadow: '0 20px 60px -15px rgba(0,0,0,0.8)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="flex items-center justify-between px-5 h-11"
+                style={{ borderBottom: '1.5px solid rgb(var(--border))' }}
+              >
+                <div className="flex items-baseline gap-3">
+                  <h2 className="stat-label">Methodology</h2>
+                  {effectiveModel && (
+                    <span className="text-[11px] font-semibold text-foreground">
+                      {effectiveModel.display_name}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMethodologyOpen(false)}
+                  className="font-mono text-[14px] leading-none text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
+                  aria-label="Close methodology"
+                >
+                  [×]
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-5">
+                {methodologyMeta ? (
+                  <ModelTab meta={methodologyMeta} model={effectiveModel} />
+                ) : (
+                  <LoadingSpinner label="Loading methodology" />
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </AppShell>

@@ -51,7 +51,7 @@ export default function ColorPicker({ color, onChange }: { color: string; onChan
             onKeyDown={(e) => {
               if (e.key === 'Enter' && /^#[0-9a-fA-F]{6}$/.test(hex)) { onChange(hex); setOpen(false); }
             }}
-            className="w-full px-1.5 py-1 text-[10px] font-mono border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40"
+            className="w-full px-1.5 py-1 text-[11.5px] font-mono border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40"
             placeholder="#FF0000"
           />
         </div>

@@ -90,7 +90,7 @@ export default function NavigatorShell({
   }, [sidebarWidth]);
 
   return (
-    <div className={`h-[calc(100vh-48px)] flex overflow-hidden ${shellClassName}`}>
+    <div className={`h-[calc(100vh-56px)] flex overflow-hidden ${shellClassName}`}>
       {/* ── Sidebar ── */}
       <aside
         className={`relative shrink-0 overflow-visible border-r border-border/40 bg-card/20 flex flex-col ${sidebarClassName}`}
@@ -102,8 +102,8 @@ export default function NavigatorShell({
       >
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col w-full h-full">
         {/* Header */}
-        <div className={`h-9 px-2.5 border-b border-border/40 flex items-center justify-between shrink-0 ${sidebarHeaderClassName}`}>
-          <div className="text-[11px] font-medium tracking-wide flex items-center gap-1.5 text-muted-foreground">
+        <div className={`h-11 px-3 border-b border-border/40 flex items-center justify-between shrink-0 ${sidebarHeaderClassName}`}>
+          <div className="text-[12.5px] font-medium tracking-wide flex items-center gap-1.5 text-muted-foreground">
             {sidebarIcon}
             {sidebarLabel}
           </div>
@@ -133,8 +133,9 @@ export default function NavigatorShell({
 
       {/* ── Main area ── */}
       <section className={`min-h-0 flex-1 flex flex-col bg-background overflow-hidden ${mainSectionClassName}`}>
-        {/* Top bar */}
-        <div className={`h-9 px-2.5 border-b border-border/40 flex items-center justify-between gap-2 shrink-0 ${topBarClassName}`}>
+        {/* Top bar — matches .page-header height (44px) */}
+        <div className={`h-11 px-3 border-b border-border/40 flex items-center justify-between gap-2 shrink-0 ${topBarClassName}`}
+             style={{ background: 'rgb(var(--surface) / 0.30)' }}>
           <div className="shrink-0 flex items-center gap-1.5">
             <button
               onClick={onSidebarToggle}

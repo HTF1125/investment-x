@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiFetch, apiFetchJson } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import {
   BookOpen, WifiOff, ChevronLeft, ChevronRight, Calendar, Loader2,
-  Youtube, FileText, Rss, MessageSquare, Building2, BarChart3, Globe,
-  Volume2, VolumeX, Clock, ChevronDown,
+  Youtube, FileText, Rss, Building2, BarChart3, Globe,
+  Volume2, VolumeX, Clock, ChevronDown, Mail, Check,
 } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -21,7 +22,15 @@ interface DriveSource { title: string; url: string; file_id: string; }
 
 interface SourceCounts {
   youtube?: number; drive?: number; central_banks?: number;
-  news?: number; telegram?: number; macro_data?: number; reports?: number;
+  news?: number; macro_data?: number; reports?: number;
+}
+
+interface UpdateEntry {
+  timestamp: string;
+  type: 'full' | 'delta';
+  summary: string[];
+  changed_sections: number[];
+  price_moves: Record<string, { prev: number; curr: number; pct: number }>;
 }
 
 interface ReportData {
@@ -32,6 +41,8 @@ interface ReportData {
     drive_files?: DriveSource[];
     counts?: SourceCounts;
     translations?: Record<string, string>;
+    baseline_date?: string;
+    updates?: UpdateEntry[];
   };
   updated_at?: string | null;
 }
@@ -62,8 +73,8 @@ export function parseTranslationSections(md: string): MdSection[] {
     .map(block => {
       const lines = block.trim().split('\n');
       const raw = lines[0]?.replace(/^##\s*/, '').trim() ?? '';
-      // Strip leading "0) " or "1) " number prefix (baked into translation headings)
-      const title = raw.replace(/^\d+\)\s*/, '');
+      // Strip bold markers and leading "0) " or "1) " number prefix (baked into translation headings)
+      const title = raw.replace(/^\*{0,2}\d+\)\s*\*{0,2}\s*/, '').replace(/^\*{2}\s*/, '').replace(/\s*\*{2}$/, '');
       return { title, body: lines.slice(1).join('\n').trim() };
     })
     .filter(s => s.title && s.body);
@@ -85,13 +96,34 @@ function compactDate(dateStr: string): string {
 
 // ── Inline markdown renderer ─────────────────────────────────────────────────
 
+const DELTA_TAG_STYLES: Record<string, string> = {
+  NEW: 'bg-success/15 text-success border-success/30',
+  SHIFTED: 'bg-warning/15 text-warning border-warning/30',
+  CHANGED: 'bg-primary/15 text-primary border-primary/30',
+  CARRIED: 'bg-muted-foreground/10 text-muted-foreground/60 border-muted-foreground/20',
+  RESOLVED: 'bg-muted-foreground/10 text-muted-foreground/40 border-muted-foreground/20 line-through',
+};
+
 export function renderInline(text: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
-  const re = /\*\*([^*]+)\*\*/g;
+  // Match **bold**, [TAG], and [TAG since HH:MM] patterns
+  const re = /\*\*([^*]+)\*\*|\[(NEW|SHIFTED|CHANGED|CARRIED|RESOLVED)(?:\s+since\s+[\d:]+)?\]/g;
   let last = 0, match: RegExpExecArray | null;
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index));
-    nodes.push(<strong key={match.index} className="text-foreground font-semibold">{match[1]}</strong>);
+    if (match[1]) {
+      // Bold text
+      nodes.push(<strong key={match.index} className="text-foreground font-semibold">{match[1]}</strong>);
+    } else if (match[2]) {
+      // Delta tag
+      const tag = match[2] as string;
+      const style = DELTA_TAG_STYLES[tag] ?? '';
+      nodes.push(
+        <span key={match.index} className={`inline-flex items-center px-1.5 py-0 rounded border text-[11px] font-mono font-semibold uppercase tracking-wider align-middle mx-0.5 ${style}`}>
+          {tag}
+        </span>
+      );
+    }
     last = re.lastIndex;
   }
   if (last < text.length) nodes.push(text.slice(last));
@@ -100,17 +132,32 @@ export function renderInline(text: string): React.ReactNode[] {
 
 // ── Section renderer ─────────────────────────────────────────────────────────
 
-export function SectionBlock({ section, index, compact, isActive }: { section: MdSection; index: number; compact?: boolean; isActive?: boolean }) {
+export function SectionBlock({ section, index, compact, isActive, isChanged, priceMoves }: {
+  section: MdSection; index: number; compact?: boolean; isActive?: boolean;
+  isChanged?: boolean; priceMoves?: Record<string, { prev: number; curr: number; pct: number }>;
+}) {
   const paragraphs = section.body.split(/\n{2,}/).filter(p => p.trim());
 
+  // Determine left border style: TTS active > changed > default
+  const borderClass = isActive
+    ? 'w-[3px] bg-primary'
+    : isChanged
+      ? 'w-[3px] bg-warning'
+      : 'w-px bg-border/30';
+  const bgClass = isActive
+    ? 'bg-primary/[0.04]'
+    : isChanged
+      ? 'bg-warning/[0.03]'
+      : '';
+
   return (
-    <article className={`relative pl-4 transition-all duration-300 rounded-r-[var(--radius)] ${compact ? 'pb-4' : 'pb-6'} ${isActive ? 'bg-primary/[0.04]' : ''}`}>
-      <div className={`absolute left-0 top-0 bottom-0 transition-all duration-300 rounded-l ${isActive ? 'w-[3px] bg-primary' : 'w-px bg-border/30'}`} />
+    <article className={`relative pl-4 transition-all duration-300 rounded-r-[var(--radius)] ${compact ? 'pb-4' : 'pb-6'} ${bgClass}`}>
+      <div className={`absolute left-0 top-0 bottom-0 transition-all duration-300 rounded-l ${borderClass}`} />
       <div className="flex items-baseline gap-2.5 mb-2">
-        <span className="text-[10px] font-mono text-muted-foreground/35 tabular-nums shrink-0 select-none">
+        <span className="text-[13px] font-mono text-muted-foreground/35 tabular-nums shrink-0 select-none">
           {String(index + 1).padStart(2, '0')}
         </span>
-        <h3 className={`font-semibold uppercase tracking-[0.08em] text-muted-foreground/60 ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
+        <h3 className={`font-semibold uppercase tracking-[0.08em] text-muted-foreground/60 ${compact ? 'text-[13px]' : 'text-sm'}`}>
           {section.title}
         </h3>
       </div>
@@ -124,15 +171,26 @@ export function SectionBlock({ section, index, compact, isActive }: { section: M
             const dataRows = rows.slice(2).map(r => r.split('|').map(c => c.trim()).filter(Boolean));
             return (
               <div key={i} className="overflow-x-auto my-1">
-                <table className="w-full text-[10px] font-mono">
+                <table className="w-full text-[13px] font-mono">
                   <thead><tr className="border-b border-border/30">
                     {header.map((h, j) => <th key={j} className="px-2 py-1 text-left text-muted-foreground/40 font-medium">{h}</th>)}
                   </tr></thead>
-                  <tbody>{dataRows.map((row, ri) => (
-                    <tr key={ri} className="border-b border-border/10">
-                      {row.map((cell, ci) => <td key={ci} className="px-2 py-0.5 text-foreground/70">{renderInline(cell)}</td>)}
-                    </tr>
-                  ))}</tbody>
+                  <tbody>{dataRows.map((row, ri) => {
+                    const asset = row[0]?.trim() ?? '';
+                    const move = priceMoves?.[asset];
+                    return (
+                      <tr key={ri} className="border-b border-border/10">
+                        {row.map((cell, ci) => {
+                          // Highlight percentage columns for assets with material moves
+                          const isPctCol = ci >= 2 && cell.includes('%');
+                          const highlight = move && isPctCol
+                            ? move.pct > 0 ? 'text-success font-semibold' : 'text-destructive font-semibold'
+                            : '';
+                          return <td key={ci} className={`px-2 py-0.5 text-foreground/70 ${highlight}`}>{renderInline(cell)}</td>;
+                        })}
+                      </tr>
+                    );
+                  })}</tbody>
                 </table>
               </div>
             );
@@ -141,7 +199,7 @@ export function SectionBlock({ section, index, compact, isActive }: { section: M
           if (trimmed.match(/^[-*]\s/m)) {
             const items = trimmed.split('\n').filter(l => l.trim().startsWith('-') || l.trim().startsWith('*'));
             return (
-              <ul key={i} className={`space-y-0.5 ${compact ? 'text-[10px]' : 'text-[11px]'} text-foreground/70 leading-relaxed`}>
+              <ul key={i} className={`space-y-0.5 ${compact ? 'text-[13px]' : 'text-sm'} text-foreground/70 leading-relaxed`}>
                 {items.map((item, j) => (
                   <li key={j} className="flex gap-1.5">
                     <span className="text-muted-foreground/30 mt-[3px] shrink-0">-</span>
@@ -153,7 +211,7 @@ export function SectionBlock({ section, index, compact, isActive }: { section: M
           }
           // Paragraph
           return (
-            <p key={i} className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-foreground/70 leading-relaxed`}>
+            <p key={i} className={`${compact ? 'text-[13px]' : 'text-sm'} text-foreground/70 leading-relaxed`}>
               {renderInline(trimmed.replace(/\n/g, ' '))}
             </p>
           );
@@ -163,15 +221,74 @@ export function SectionBlock({ section, index, compact, isActive }: { section: M
   );
 }
 
+// ── Update timeline ───────────────────────────────────────────────────────
+
+function UpdateTimeline({ updates, baselineDate, compact }: {
+  updates: UpdateEntry[]; baselineDate?: string; compact?: boolean;
+}) {
+  const [expanded, setExpanded] = useState<number | null>(null);
+  if (!updates.length) return null;
+
+  // Newest first
+  const sorted = [...updates].reverse();
+
+  return (
+    <div className={`border border-border/30 rounded-[var(--radius)] bg-surface/50 ${compact ? 'mb-3' : 'mb-5'}`}>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/20">
+        <Clock className="w-2.5 h-2.5 text-muted-foreground/40" />
+        <span className="text-[11.5px] font-mono uppercase tracking-[0.12em] text-muted-foreground/40">
+          Updates vs yesterday{baselineDate ? ` (${baselineDate})` : ''}
+        </span>
+      </div>
+      <div className="divide-y divide-border/10">
+        {sorted.map((entry, i) => {
+          const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const isOpen = expanded === i;
+          return (
+            <button
+              key={i}
+              onClick={() => setExpanded(isOpen ? null : i)}
+              className="w-full text-left px-3 py-1.5 hover:bg-foreground/[0.02] transition-colors"
+            >
+              <div className="flex items-start gap-2">
+                <span className="text-[13px] font-mono text-muted-foreground/50 tabular-nums shrink-0 mt-px">{time}</span>
+                <div className="flex-1 min-w-0">
+                  {isOpen ? (
+                    <ul className="space-y-0.5">
+                      {entry.summary.map((s, j) => (
+                        <li key={j} className="text-[13px] text-foreground/60 leading-relaxed flex gap-1.5">
+                          <span className="text-muted-foreground/30 shrink-0">-</span>
+                          <span>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[13px] text-foreground/50 truncate">
+                      {entry.summary.slice(0, 2).join(' · ')}
+                      {entry.summary.length > 2 && <span className="text-muted-foreground/30"> +{entry.summary.length - 2}</span>}
+                    </p>
+                  )}
+                </div>
+                {entry.type === 'full' && (
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground/30 shrink-0 mt-0.5">full</span>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Source badges ─────────────────────────────────────────────────────────────
 
 const SOURCE_BADGES = [
-  { key: 'youtube', icon: Youtube, label: 'videos', color: 'text-rose-400/50' },
+  { key: 'youtube', icon: Youtube, label: 'videos', color: 'text-destructive/50' },
   { key: 'drive', icon: FileText, label: 'PDFs', color: 'text-primary/50' },
-  { key: 'news', icon: Rss, label: 'feeds', color: 'text-amber-400/50' },
-  { key: 'telegram', icon: MessageSquare, label: 'msgs', color: 'text-sky-400/50' },
-  { key: 'central_banks', icon: Building2, label: 'CBs', color: 'text-emerald-400/50' },
-  { key: 'macro_data', icon: BarChart3, label: 'data', color: 'text-violet-400/50' },
+  { key: 'news', icon: Rss, label: 'feeds', color: 'text-warning/50' },
+  { key: 'central_banks', icon: Building2, label: 'CBs', color: 'text-success/50' },
+  { key: 'macro_data', icon: BarChart3, label: 'data', color: 'text-primary/40' },
   { key: 'reports', icon: Globe, label: 'reports', color: 'text-primary/50' },
 ] as const;
 
@@ -184,7 +301,7 @@ export function SourceBadges({ counts, compact }: { counts: Record<string, numbe
         const Icon = b.icon;
         const n = (counts as any)[b.key];
         return (
-          <span key={b.key} className="inline-flex items-center gap-1 text-[9px] font-mono text-muted-foreground/40">
+          <span key={b.key} className="inline-flex items-center gap-1.5 text-xs font-mono text-muted-foreground/40">
             <Icon className={`w-2.5 h-2.5 ${b.color}`} />
             {n} {b.label}
           </span>
@@ -354,7 +471,7 @@ export function LangBar({ active, available, onChange, compact }: {
         <button
           key={l}
           onClick={() => onChange(l)}
-          className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all ${
+          className={`px-2.5 py-1 rounded text-[13px] font-mono transition-all ${
             l === active
               ? 'bg-foreground text-background font-bold'
               : 'text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.05]'
@@ -379,7 +496,7 @@ function DateNav({ date, hasPrev, hasNext, onPrev, onNext, compact, isPlaying, i
       <button onClick={onPrev} disabled={!hasPrev} className="btn-icon"><ChevronLeft className="w-3 h-3" /></button>
       <div className="flex items-center gap-1.5 min-w-[100px] justify-center">
         <Calendar className="w-2.5 h-2.5 text-muted-foreground/40" />
-        <span className="text-[10px] font-mono text-muted-foreground/60 tabular-nums">
+        <span className="text-[13px] font-mono text-muted-foreground/60 tabular-nums">
           {date ? (compact ? compactDate(date) : formatDate(date)) : '---'}
         </span>
       </div>
@@ -414,8 +531,8 @@ export default function Briefing({
   onToggleCollapse?: () => void;
 }) {
   const { data: reportDates = [], isLoading: datesLoading, isError: datesError } = useQuery<ReportDate[]>({
-    queryKey: ['research-reports'],
-    queryFn: () => apiFetchJson<ReportDate[]>('/api/news/reports'),
+    queryKey: ['briefings'],
+    queryFn: () => apiFetchJson<ReportDate[]>('/api/briefings').catch(() => apiFetchJson<ReportDate[]>('/api/news/reports')),
     staleTime: 120_000,
   });
 
@@ -425,8 +542,8 @@ export default function Briefing({
   const selectedDate = reportDates[dateIdx]?.date ?? null;
 
   const { data: report, isLoading: reportLoading, isError: reportError } = useQuery<ReportData>({
-    queryKey: ['research-report', selectedDate],
-    queryFn: () => apiFetchJson<ReportData>(`/api/news/reports/${selectedDate}`),
+    queryKey: ['briefing', selectedDate],
+    queryFn: () => apiFetchJson<ReportData>(`/api/briefings/${selectedDate}`).catch(() => apiFetchJson<ReportData>(`/api/news/reports/${selectedDate}`)),
     enabled: !!selectedDate,
     staleTime: 300_000,
   });
@@ -458,7 +575,69 @@ export default function Briefing({
   }, [lang, briefingSections, translations]);
 
   const sourceCounts = report?.sources?.counts ?? {};
+  const updates = useMemo(() => report?.sources?.updates ?? [], [report?.sources?.updates]);
+  const baselineDate = report?.sources?.baseline_date;
+  const latestUpdate = updates.length > 0 ? updates[updates.length - 1] : null;
+  const changedSections = useMemo(() => new Set(latestUpdate?.changed_sections ?? []), [latestUpdate]);
+  const priceMoves = latestUpdate?.price_moves ?? {};
   const tts = useTTS(activeSections, lang);
+
+  // ── Admin: send briefing as email ──────────────────────────────────────
+  const { user } = useAuth();
+  const isAdmin = !!user?.is_admin;
+  const [emailFeedback, setEmailFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!emailFeedback) return;
+    const t = setTimeout(() => setEmailFeedback(null), 4000);
+    return () => clearTimeout(t);
+  }, [emailFeedback]);
+
+  const sendEmailMutation = useMutation<{ recipients_count: number; message?: string }, Error, string>({
+    mutationFn: (date: string) =>
+      apiFetchJson<{ recipients_count: number; message?: string }>(`/api/briefings/${date}/send-email`, {
+        method: 'POST',
+      }),
+    onSuccess: (data) => {
+      setEmailFeedback({ type: 'success', text: `Queued — sent to ${data.recipients_count} admin${data.recipients_count === 1 ? '' : 's'}` });
+    },
+    onError: (e) => {
+      setEmailFeedback({ type: 'error', text: e?.message || 'Failed to send email' });
+    },
+  });
+
+  const handleSendEmail = useCallback(() => {
+    if (!selectedDate || sendEmailMutation.isPending) return;
+    if (!window.confirm(`Send briefing for ${selectedDate} to all admins?`)) return;
+    sendEmailMutation.mutate(selectedDate);
+  }, [selectedDate, sendEmailMutation]);
+
+  const EmailButton = isAdmin ? (
+    <button
+      onClick={handleSendEmail}
+      disabled={!selectedDate || sendEmailMutation.isPending}
+      className={`btn-icon transition-colors ${
+        emailFeedback?.type === 'success'
+          ? 'text-success'
+          : emailFeedback?.type === 'error'
+          ? 'text-destructive'
+          : 'text-muted-foreground/40 hover:text-foreground'
+      }`}
+      title={
+        sendEmailMutation.isPending
+          ? 'Sending...'
+          : emailFeedback?.text || 'Email briefing to admins'
+      }
+    >
+      {sendEmailMutation.isPending ? (
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+      ) : emailFeedback?.type === 'success' ? (
+        <Check className="w-3.5 h-3.5" />
+      ) : (
+        <Mail className="w-3.5 h-3.5" />
+      )}
+    </button>
+  ) : null;
 
   // ── Loading / Error / Empty ────────────────────────────────────────────
 
@@ -470,7 +649,7 @@ export default function Briefing({
     return (
       <div className="m-6 border border-border/30 rounded-[var(--radius)] bg-card p-8 flex flex-col items-center gap-3 text-center">
         <WifiOff className="w-5 h-5 text-muted-foreground/30" />
-        <p className="text-[12px] text-muted-foreground/60">Unable to load research reports</p>
+        <p className="text-[13px] text-muted-foreground/60">Unable to load briefings</p>
       </div>
     );
   }
@@ -480,7 +659,7 @@ export default function Briefing({
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <BookOpen className="w-6 h-6 mx-auto mb-2 text-muted-foreground/20" />
-          <p className="text-[12px] text-muted-foreground/50">No research reports yet</p>
+          <p className="text-[13px] text-muted-foreground/50">No briefings yet</p>
         </div>
       </div>
     );
@@ -492,47 +671,84 @@ export default function Briefing({
     <section className="h-full flex flex-col min-h-0 overflow-hidden">
       {/* Section header with inline controls */}
       {embedded ? (
-        <div className="section-header shrink-0">
-          <span className="section-title">Briefing</span>
+        <div className="section-header shrink-0 flex-wrap">
+          <span className="section-title shrink-0">Briefing</span>
           {onToggleCollapse && (
             <button onClick={onToggleCollapse} className="w-5 h-5 flex items-center justify-center rounded-full text-muted-foreground/25 hover:text-foreground/50 hover:bg-foreground/[0.06] transition-all" title={collapsed ? 'Expand' : 'Collapse'}>
               <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`} />
             </button>
           )}
-          <div className="flex-1" />
-          {/* Lang pills */}
-          {availableLangs.length > 1 && (
-            <div className="flex items-center gap-0.5 mr-1">
-              {availableLangs.map(l => (
-                <button key={l} onClick={() => setLang(l)}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition-all ${
-                    l === lang ? 'bg-foreground text-background font-bold' : 'text-muted-foreground/40 hover:text-foreground'
-                  }`}>
-                  {LANG_LABELS[l] ?? l.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          )}
-          {/* Date nav */}
-          <button onClick={goPrev} disabled={!hasPrev} className="btn-icon"><ChevronLeft className="w-3 h-3" /></button>
-          <span className="text-[10px] font-mono text-muted-foreground/60 tabular-nums min-w-[56px] text-center">
-            {selectedDate ? compactDate(selectedDate) : '---'}
-          </span>
-          <button onClick={goNext} disabled={!hasNext} className="btn-icon"><ChevronRight className="w-3 h-3" /></button>
-          {/* Updated time */}
-          {report?.updated_at && (
-            <span className="inline-flex items-center gap-1 text-muted-foreground/30 font-mono text-[10px] ml-1">
-              <Clock className="w-2.5 h-2.5" />
-              {new Date(report.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          <div className="flex items-center gap-1 ml-auto shrink-0">
+            {/* Lang pills */}
+            {availableLangs.length > 1 && (
+              <div className="flex items-center gap-0.5 mr-1">
+                {availableLangs.map(l => (
+                  <button key={l} onClick={() => setLang(l)}
+                    className={`px-2 py-0.5 rounded text-xs font-mono transition-all ${
+                      l === lang ? 'bg-foreground text-background font-bold' : 'text-muted-foreground/40 hover:text-foreground'
+                    }`}>
+                    {LANG_LABELS[l] ?? l.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Date nav */}
+            <button onClick={goPrev} disabled={!hasPrev} className="btn-icon"><ChevronLeft className="w-3 h-3" /></button>
+            <span className="text-[13px] font-mono text-muted-foreground/60 tabular-nums min-w-[56px] text-center">
+              {selectedDate ? compactDate(selectedDate) : '---'}
             </span>
-          )}
-          {/* TTS */}
-          <button onClick={tts.toggle} disabled={tts.isLoading} className={`btn-icon ml-0.5 ${tts.isPlaying ? 'text-primary' : ''}`} title={tts.isLoading ? 'Generating...' : tts.isPlaying ? 'Stop' : 'Read aloud'}>
-            {tts.isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : tts.isPlaying ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
-          </button>
+            <button onClick={goNext} disabled={!hasNext} className="btn-icon"><ChevronRight className="w-3 h-3" /></button>
+            {/* Updated time */}
+            {report?.updated_at && (
+              <span className="hidden sm:inline-flex items-center gap-1.5 text-muted-foreground/30 font-mono text-[13px] ml-1">
+                <Clock className="w-2.5 h-2.5" />
+                {new Date(report.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+            {/* TTS */}
+            <button onClick={tts.toggle} disabled={tts.isLoading} className={`btn-icon ml-0.5 ${tts.isPlaying ? 'text-primary' : ''}`} title={tts.isLoading ? 'Generating...' : tts.isPlaying ? 'Stop' : 'Read aloud'}>
+              {tts.isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : tts.isPlaying ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+            </button>
+            {/* Email (admin/owner only) */}
+            {EmailButton}
+          </div>
         </div>
       ) : !hideHeader ? (
-        <DateNav date={selectedDate} hasPrev={hasPrev} hasNext={hasNext} onPrev={goPrev} onNext={goNext} isPlaying={tts.isPlaying} isLoading={tts.isLoading} onToggleTTS={tts.toggle} />
+        <div className={`flex items-center shrink-0 ${embedded ? 'gap-1 px-2 py-1 border-b border-border/15' : 'gap-1 px-4 py-1.5 border-b border-border/25'}`}>
+          <button onClick={goPrev} disabled={!hasPrev} className="btn-icon"><ChevronLeft className="w-3 h-3" /></button>
+          <div className="flex items-center gap-1.5 min-w-[100px] justify-center">
+            <Calendar className="w-2.5 h-2.5 text-muted-foreground/40" />
+            <span className="text-[13px] font-mono text-muted-foreground/60 tabular-nums">
+              {selectedDate ? (embedded ? compactDate(selectedDate) : formatDate(selectedDate)) : '---'}
+            </span>
+          </div>
+          <button onClick={goNext} disabled={!hasNext} className="btn-icon"><ChevronRight className="w-3 h-3" /></button>
+          {availableLangs.length > 1 && (
+            <>
+              <div className="w-px h-4 bg-border/20 mx-1" />
+              <div className="flex items-center gap-0.5">
+                {availableLangs.map(l => (
+                  <button key={l} onClick={() => setLang(l)}
+                    className={`px-2 py-0.5 rounded text-xs font-mono transition-all ${
+                      l === lang ? 'bg-foreground text-background font-bold' : 'text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.05]'
+                    }`}>
+                    {LANG_LABELS[l] ?? l.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="flex-1" />
+          {tts && (
+            <button onClick={tts.toggle} disabled={tts.isLoading}
+              className={`btn-icon transition-colors ${tts.isPlaying ? 'text-primary' : 'text-muted-foreground/40 hover:text-foreground'}`}
+              title={tts.isLoading ? 'Generating...' : tts.isPlaying ? 'Stop reading' : 'Read aloud'}>
+              {tts.isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : tts.isPlaying ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            </button>
+          )}
+          {/* Email (admin/owner only) */}
+          {EmailButton}
+        </div>
       ) : null}
 
       {!collapsed ? (<div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
@@ -549,31 +765,27 @@ export default function Briefing({
             ))}
           </div>
         ) : reportError ? (
-          <div className="flex items-center justify-center py-20 text-muted-foreground/50 text-[12px] gap-2">
+          <div className="flex items-center justify-center py-20 text-muted-foreground/50 text-[13px] gap-2">
             <WifiOff className="w-3.5 h-3.5" /> Failed to load report
           </div>
         ) : report ? (
           <div key={selectedDate} className={`mx-auto animate-fade-in ${embedded ? 'px-3 py-3' : 'px-6 md:px-10 py-8 max-w-3xl'}`}>
-            {!embedded && (
-              <header className="mb-6">
-                <div className="flex items-baseline justify-between gap-4 mb-1">
-                  <h1 className="text-[11px] font-mono uppercase tracking-[0.12em] text-muted-foreground/40">Macro Intelligence Briefing</h1>
-                  <span className="text-[10px] font-mono text-muted-foreground/30 tabular-nums shrink-0">{selectedDate ? formatDate(selectedDate) : ''}</span>
-                </div>
-                <div className="h-px bg-border/30 mt-2" />
-              </header>
-            )}
-
-            {!embedded && <LangBar active={lang} available={availableLangs} onChange={setLang} />}
-
             {activeSections.length > 0 ? (
               <div>
                 {activeSections.map((s, i) => (
-                  <SectionBlock key={`${lang}-${i}`} section={s} index={i} compact={embedded} isActive={tts.activeIdx === i} />
+                  <SectionBlock
+                    key={`${lang}-${i}`}
+                    section={s}
+                    index={i}
+                    compact={embedded}
+                    isActive={tts.activeIdx === i}
+                    isChanged={lang === 'en' && changedSections.has(i)}
+                    priceMoves={lang === 'en' ? priceMoves : undefined}
+                  />
                 ))}
               </div>
             ) : (
-              <div className="py-12 text-center"><p className="text-[12px] text-muted-foreground/40">No content for this language</p></div>
+              <div className="py-12 text-center"><p className="text-[13px] text-muted-foreground/40">No content for this language</p></div>
             )}
 
             <SourceBadges counts={sourceCounts as Record<string, number | undefined>} compact={embedded} />

@@ -193,28 +193,28 @@ export default function StrategyTab({ backtest, isLoading, target }: {
           <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">
             {bestStrat ?? '-'}
           </div>
-          {bestStrat && <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">{fmt(strategies[bestStrat].sharpe)} SR</div>}
+          {bestStrat && <div className="text-[11.5px] text-muted-foreground/50 font-mono mt-0.5">{fmt(strategies[bestStrat].sharpe)} SR</div>}
         </div>
         <div className="panel-card px-3 py-2">
           <div className="stat-label mb-1">Benchmark Sharpe</div>
           <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">
             {benchmark ? fmt(benchmark.sharpe) : '-'}
           </div>
-          {benchmark && <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">{fmt(benchmark.ann_return * 100, 1)}%/yr</div>}
+          {benchmark && <div className="text-[11.5px] text-muted-foreground/50 font-mono mt-0.5">{fmt(benchmark.ann_return * 100, 1)}%/yr</div>}
         </div>
         <div className="panel-card px-3 py-2">
           <div className="stat-label mb-1">Best Alpha</div>
           <div className={`text-[14px] font-mono font-semibold tabular-nums leading-none ${bestAlpha > 0 ? 'text-success' : 'text-destructive'}`}>
             {bestAlpha > 0 ? '+' : ''}{fmt(bestAlpha * 100, 1)}%/yr
           </div>
-          <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">annualized excess</div>
+          <div className="text-[11.5px] text-muted-foreground/50 font-mono mt-0.5">annualized excess</div>
         </div>
         <div className="panel-card px-3 py-2">
           <div className="stat-label mb-1">Beating Benchmark</div>
           <div className="text-[14px] font-mono font-semibold tabular-nums text-foreground leading-none">
             {beatingBenchmark}/{stratKeys.length}
           </div>
-          <div className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">by Sharpe ratio</div>
+          <div className="text-[11.5px] text-muted-foreground/50 font-mono mt-0.5">by Sharpe ratio</div>
         </div>
       </div>
 
@@ -222,7 +222,7 @@ export default function StrategyTab({ backtest, isLoading, target }: {
       <div className="panel-card px-3 py-2">
         <SectionTitle info="Annualized walk-forward backtest performance for each category strategy vs 50/50 benchmark. Alpha = ann. excess return.">Strategy Performance</SectionTitle>
         <div className="overflow-x-auto">
-          <table className="data-table text-[11px]">
+          <table className="data-table text-[12.5px]">
             <thead>
               <tr>
                 <th className="text-left">Strategy</th>
@@ -294,7 +294,7 @@ export default function StrategyTab({ backtest, isLoading, target }: {
         <div className="panel-card px-3 py-2">
           <SectionTitle info="Year-by-year alpha (annualized excess return) for each strategy.">Yearly Alpha</SectionTitle>
           <div className="overflow-x-auto">
-            <table className="data-table text-[11px]">
+            <table className="data-table text-[12.5px]">
               <thead>
                 <tr>
                   <th className="text-left">Year</th>
@@ -309,11 +309,11 @@ export default function StrategyTab({ backtest, isLoading, target }: {
               <tbody>
                 {yearlyAlphaData.rows.map(row => (
                   <tr key={row.year}>
-                    <td className="py-1 pr-3 font-mono text-foreground text-[11px]">{row.year}</td>
+                    <td className="py-1 pr-3 font-mono text-foreground text-[12.5px]">{row.year}</td>
                     {stratKeys.map(k => {
                       const v = row.alphas[k] ?? 0;
                       return (
-                        <td key={k} className={`text-right py-1 px-1 font-mono tabular-nums text-[11px] ${v > 0 ? 'text-success' : v < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                        <td key={k} className={`text-right py-1 px-1 font-mono tabular-nums text-[12.5px] ${v > 0 ? 'text-success' : v < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                           {v > 0 ? '+' : ''}{fmt(v * 100, 1)}%
                         </td>
                       );

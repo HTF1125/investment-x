@@ -12,7 +12,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   Loader2, Plus, Trash2, RefreshCw, ChevronLeft,
-  LineChart, Edit3, Check, X, ArrowUp, ArrowDown, LayoutGrid,
+  LineChart, Edit3, Check, X, ArrowUp, ArrowDown, LayoutGrid, AlertTriangle,
 } from 'lucide-react';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
@@ -131,7 +131,7 @@ const PackChart = React.memo(function PackChart({
       if (config.title && themed.layout) {
         themed.layout.title = {
           text: config.title,
-          font: { size: 12, color: isLight ? '#020617' : '#dbeafe', family: 'Inter, sans-serif' },
+          font: { size: 12, color: isLight ? '#020617' : '#dbeafe', family: '"Space Mono", monospace' },
           x: 0.5, xanchor: 'center',
         };
       }
@@ -198,7 +198,12 @@ const PackChart = React.memo(function PackChart({
       </div>
       <div ref={containerRef} className="flex-1 min-h-0">
         {isLoading ? (
-          <div className="h-full flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-primary/30" /></div>
+          <div className="h-full flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-primary/40" />
+              <span className="stat-label text-muted-foreground/40">Loading chart</span>
+            </div>
+          </div>
         ) : figure ? (
           <ChartErrorBoundary>
             <Plot data={figure.data} layout={figure.layout}
@@ -207,7 +212,7 @@ const PackChart = React.memo(function PackChart({
               onInitialized={handlePlotInit} />
           </ChartErrorBoundary>
         ) : (
-          <div className="h-full flex items-center justify-center text-[10px] text-muted-foreground/30">No data</div>
+          <div className="h-full flex items-center justify-center text-[11.5px] text-muted-foreground/30">No data</div>
         )}
       </div>
     </div>
@@ -245,7 +250,7 @@ function PackChartGrid({
   }, [pack.charts]);
 
   // ONE batch fetch for all series-based charts
-  const { data: batchData, isLoading: batchLoading } = useQuery({
+  const { data: batchData, isLoading: batchLoading, isError: batchError } = useQuery({
     queryKey: ['pack-batch-data', pack.id, allCodes, refreshKey],
     queryFn: () => apiFetchJson<Record<string, (string | number | null)[]>>('/api/timeseries.custom', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -299,6 +304,20 @@ function PackChartGrid({
     });
   }, [pack.charts, batchData, batchLoading, codeDataMap, codeQueries, codeChartIndices]);
 
+  if (batchError && allCodes.length > 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-center max-w-xs animate-fade-in">
+          <div className="w-10 h-10 rounded-[var(--radius)] bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+            <AlertTriangle className="w-4.5 h-4.5 text-destructive" />
+          </div>
+          <p className="text-[13px] font-medium text-foreground">Failed to load chart data</p>
+          <p className="text-[12px] text-muted-foreground">The time series data could not be fetched.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (pack.charts.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -307,7 +326,7 @@ function PackChartGrid({
           <p className="text-[13px] font-medium text-muted-foreground/40">No charts in this pack</p>
           <button
             onClick={() => router.push(`/chartpack?chartpack=${pack.id}`)}
-            className="mt-3 h-7 px-3 inline-flex items-center gap-1.5 rounded-[var(--radius)] text-[11px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
+            className="mt-3 h-7 px-3 inline-flex items-center gap-1.5 rounded-[var(--radius)] text-[12.5px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
           >
             <Plus className="w-3 h-3" /> Add Chart
           </button>
@@ -353,13 +372,13 @@ export default function ChartPacksPage() {
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
 
-  const { data: packs, refetch: refetchPacks } = useQuery({
+  const { data: packs, refetch: refetchPacks, isLoading: packsLoading, isError: packsError } = useQuery({
     queryKey: ['chart-packs'],
     queryFn: () => apiFetchJson<PackSummary[]>('/api/chart-packs'),
     staleTime: 30_000,
   });
 
-  const { data: activePack, refetch: refetchPack } = useQuery({
+  const { data: activePack, refetch: refetchPack, isError: packError } = useQuery({
     queryKey: ['chart-pack', activePackId],
     queryFn: () => apiFetchJson<PackDetail>(`/api/chart-packs/${activePackId}`),
     enabled: !!activePackId,
@@ -452,15 +471,36 @@ export default function ChartPacksPage() {
     color: 'rgb(var(--foreground))',
   };
 
+  // ── VIEW: Pack detail error ──
+  if (activePackId && packError) {
+    return (
+      <AppShell hideFooter>
+        <div className="h-[calc(100vh-56px)] flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3 text-center max-w-xs animate-fade-in">
+            <div className="w-10 h-10 rounded-[var(--radius)] bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+              <AlertTriangle className="w-4.5 h-4.5 text-destructive" />
+            </div>
+            <p className="text-[13px] font-medium text-foreground">Failed to load chart pack</p>
+            <p className="text-[12px] text-muted-foreground">Check your connection and try again.</p>
+            <div className="flex items-center gap-3 mt-1">
+              <button onClick={() => refetchPack()} className="text-[12px] font-medium text-primary hover:text-primary/80 transition-colors">Retry</button>
+              <button onClick={() => setActivePackId(null)} className="text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors">Back to list</button>
+            </div>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
   // ── VIEW: Pack detail ──
   if (activePackId && activePack) {
     return (
       <AppShell hideFooter>
-        <div className="h-[calc(100vh-48px)] flex flex-col bg-background">
+        <div className="h-[calc(100vh-56px)] flex flex-col bg-background">
           <div className="shrink-0 h-9 flex items-center px-3 border-b border-border/30 gap-2">
             <button
               onClick={() => setActivePackId(null)}
-              className="flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-foreground transition-colors shrink-0"
+              className="flex items-center gap-1 text-[11.5px] text-muted-foreground/50 hover:text-foreground transition-colors shrink-0"
             >
               <ChevronLeft className="w-3 h-3" /> All Packs
             </button>
@@ -472,7 +512,7 @@ export default function ChartPacksPage() {
                   autoFocus type="text" value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false); }}
-                  className="h-6 px-1.5 text-[12px] font-medium border border-border/50 rounded-[var(--radius)] focus:outline-none focus:border-primary/40 text-foreground bg-transparent flex-1 min-w-0"
+                  className="h-6 px-1.5 text-[13px] font-medium border border-border/50 rounded-[var(--radius)] focus:outline-none focus:border-primary/40 text-foreground bg-transparent flex-1 min-w-0"
                   style={formStyle}
                 />
                 <button onClick={handleSaveName} className="w-5 h-5 flex items-center justify-center text-success hover:text-success/80"><Check className="w-3.5 h-3.5" /></button>
@@ -489,23 +529,23 @@ export default function ChartPacksPage() {
             )}
 
             {activePack.description && !editingName && (
-              <span className="text-[10px] text-muted-foreground/30 truncate hidden sm:block">{activePack.description}</span>
+              <span className="text-[11.5px] text-muted-foreground/30 truncate hidden sm:block">{activePack.description}</span>
             )}
 
             <div className="ml-auto flex items-center gap-1 shrink-0">
-              <span className="text-[9px] font-mono text-muted-foreground/30 hidden sm:block">
+              <span className="text-[11px] font-mono text-muted-foreground/30 hidden sm:block">
                 {activePack.charts.length} chart{activePack.charts.length !== 1 ? 's' : ''}
               </span>
               <button
                 onClick={handleRefresh} disabled={refreshing}
-                className="h-7 px-2 flex items-center gap-1.5 rounded-[var(--radius)] text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] transition-colors disabled:opacity-30"
+                className="h-7 px-2 flex items-center gap-1.5 rounded-[var(--radius)] text-[11.5px] font-medium text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] transition-colors disabled:opacity-30"
               >
                 <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline">Refresh</span>
               </button>
               <button
                 onClick={() => router.push(`/chartpack?chartpack=${activePack.id}`)}
-                className="h-7 px-2.5 flex items-center gap-1.5 rounded-[var(--radius)] text-[10px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
+                className="h-7 px-2.5 flex items-center gap-1.5 rounded-[var(--radius)] text-[11.5px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
               >
                 <Plus className="w-3 h-3" /> Add Chart
               </button>
@@ -528,14 +568,14 @@ export default function ChartPacksPage() {
   // ── VIEW: Pack list (default) ──
   return (
     <AppShell hideFooter>
-      <div className="h-[calc(100vh-48px)] flex flex-col bg-background">
+      <div className="h-[calc(100vh-56px)] flex flex-col bg-background">
         <div className="shrink-0 h-9 flex items-center px-4 border-b border-border/30">
           <LayoutGrid className="w-3.5 h-3.5 text-muted-foreground/40 mr-2" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground">Chart Packs</span>
+          <span className="text-[12.5px] font-semibold uppercase tracking-[0.06em] text-foreground">Chart Packs</span>
           <div className="ml-auto">
             <button
               onClick={() => setCreateModalOpen(true)}
-              className="h-7 px-2.5 flex items-center gap-1.5 rounded-[var(--radius)] text-[10px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
+              className="h-7 px-2.5 flex items-center gap-1.5 rounded-[var(--radius)] text-[11.5px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
             >
               <Plus className="w-3 h-3" /> New Pack
             </button>
@@ -543,7 +583,25 @@ export default function ChartPacksPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-          {packs && packs.length > 0 ? (
+          {packsLoading && !packs ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3 animate-fade-in">
+                <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
+                <span className="stat-label text-muted-foreground/40">Loading chart packs</span>
+              </div>
+            </div>
+          ) : packsError && !packs ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3 text-center max-w-xs animate-fade-in">
+                <div className="w-10 h-10 rounded-[var(--radius)] bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+                  <AlertTriangle className="w-4.5 h-4.5 text-destructive" />
+                </div>
+                <p className="text-[13px] font-medium text-foreground">Failed to load chart packs</p>
+                <p className="text-[12px] text-muted-foreground">Check your connection and try again.</p>
+                <button onClick={() => refetchPacks()} className="mt-1 text-[12px] font-medium text-primary hover:text-primary/80 transition-colors">Retry</button>
+              </div>
+            </div>
+          ) : packs && packs.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {packs.map((pack) => (
                 <button
@@ -563,13 +621,13 @@ export default function ChartPacksPage() {
                     </button>
                   </div>
                   {pack.description && (
-                    <p className="text-[10px] text-muted-foreground/40 mt-1 line-clamp-2">{pack.description}</p>
+                    <p className="text-[11.5px] text-muted-foreground/40 mt-1 line-clamp-2">{pack.description}</p>
                   )}
                   <div className="flex items-center gap-3 mt-3">
-                    <span className="text-[10px] font-mono text-muted-foreground/30">
+                    <span className="text-[11.5px] font-mono text-muted-foreground/30">
                       {pack.chart_count} chart{pack.chart_count !== 1 ? 's' : ''}
                     </span>
-                    <span className="text-[9px] text-muted-foreground/20">
+                    <span className="text-[11px] text-muted-foreground/20">
                       {new Date(pack.updated_at).toLocaleDateString()}
                     </span>
                   </div>
@@ -583,7 +641,7 @@ export default function ChartPacksPage() {
                 <p className="text-[13px] font-medium text-muted-foreground/40">No chart packs yet</p>
                 <button
                   onClick={() => setCreateModalOpen(true)}
-                  className="mt-3 h-7 px-3 inline-flex items-center gap-1.5 rounded-[var(--radius)] text-[11px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
+                  className="mt-3 h-7 px-3 inline-flex items-center gap-1.5 rounded-[var(--radius)] text-[12.5px] font-medium bg-foreground text-background hover:opacity-90 transition-colors"
                 >
                   <Plus className="w-3 h-3" /> Create your first pack
                 </button>
@@ -594,28 +652,28 @@ export default function ChartPacksPage() {
       </div>
 
       {createModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setCreateModalOpen(false)}>
-          <div className="bg-card border border-border/50 rounded-[var(--radius)] shadow-lg p-4 w-[360px]" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-[12px] font-semibold uppercase tracking-wider text-foreground mb-3">New Chart Pack</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60" onClick={() => setCreateModalOpen(false)}>
+          <div className="bg-card border border-border/50 rounded-[var(--radius)] shadow-2xl p-4 w-[360px]" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[13px] font-semibold uppercase tracking-wider text-foreground mb-3">New Chart Pack</h3>
             <input
               autoFocus type="text" value={newPackName}
               onChange={(e) => setNewPackName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && newPackName.trim()) handleCreatePack(); }}
               placeholder="Pack name..."
-              className="w-full px-2.5 py-1.5 text-[12px] border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
+              className="w-full px-2.5 py-1.5 text-[13px] border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
               style={formStyle}
             />
             <textarea
               value={newPackDesc} onChange={(e) => setNewPackDesc(e.target.value)}
               placeholder="Description (optional)..." rows={2}
-              className="w-full mt-2 px-2.5 py-1.5 text-[11px] border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 resize-none"
+              className="w-full mt-2 px-2.5 py-1.5 text-[12.5px] border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 resize-none"
               style={formStyle}
             />
             <div className="flex gap-2 mt-3">
-              <button onClick={() => setCreateModalOpen(false)} className="flex-1 h-7 rounded-[var(--radius)] text-[11px] font-medium border border-border/30 text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+              <button onClick={() => setCreateModalOpen(false)} className="flex-1 h-7 rounded-[var(--radius)] text-[12.5px] font-medium border border-border/30 text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
               <button
                 onClick={handleCreatePack} disabled={!newPackName.trim()}
-                className="flex-1 h-7 rounded-[var(--radius)] text-[11px] font-medium bg-foreground text-background hover:opacity-90 transition-colors disabled:opacity-30"
+                className="flex-1 h-7 rounded-[var(--radius)] text-[12.5px] font-medium bg-foreground text-background hover:opacity-90 transition-colors disabled:opacity-30"
               >
                 Create
               </button>

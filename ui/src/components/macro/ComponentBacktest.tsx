@@ -37,10 +37,10 @@ export default function ComponentBacktest({ backtest, componentKey, label, color
       </div>
       {s && s.ann_return !== undefined && (
         <div className="panel-card px-3 py-2">
-          <table className="w-full text-[11px]">
+          <table className="w-full text-[12.5px]">
             <thead><tr className="border-b border-border/40">
-              <th className="text-left py-1 pr-3 text-[9px] font-mono uppercase text-muted-foreground/50">Metric</th>
-              <th className="text-right py-1 px-1.5 text-[9px] font-mono uppercase text-muted-foreground/50">Value</th>
+              <th className="text-left py-1 pr-3 text-[11px] font-mono uppercase text-muted-foreground/50">Metric</th>
+              <th className="text-right py-1 px-1.5 text-[11px] font-mono uppercase text-muted-foreground/50">Value</th>
             </tr></thead>
             <tbody>
               <StatsRow label="Ann. Return" values={[`${fmt(s.ann_return ?? 0, 1)}%`]} />

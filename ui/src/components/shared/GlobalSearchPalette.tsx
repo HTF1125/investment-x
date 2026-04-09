@@ -27,7 +27,7 @@ const NAV_ITEMS: SearchItem[] = [
   { id: 'research', label: 'Research', description: 'Research files, wartime & stress', icon: <Radio className="w-3.5 h-3.5" />, href: '/research', section: 'Pages' },
   { id: 'macro', label: 'Macro Outlook', description: 'Regime analysis & liquidity', icon: <TrendingUp className="w-3.5 h-3.5" />, href: '/macro', section: 'Pages' },
   { id: 'whiteboard', label: 'Whiteboard', description: 'Diagrams & visual thinking', icon: <PenTool className="w-3.5 h-3.5" />, href: '/whiteboard', section: 'Pages' },
-  { id: 'admin', label: 'System Admin', description: 'Timeseries management', icon: <Settings className="w-3.5 h-3.5" />, href: '/admin/timeseries', section: 'Pages' },
+  { id: 'admin', label: 'System Admin', description: 'Timeseries management', icon: <Settings className="w-3.5 h-3.5" />, href: '/admin', section: 'Pages' },
 ];
 
 interface GlobalSearchPaletteProps {
@@ -44,33 +44,7 @@ export default function GlobalSearchPalette({ isOpen, onClose }: GlobalSearchPal
   const focusTrapRef = useFocusTrap(isOpen, onClose);
   const router = useRouter();
 
-  // Fetch chart metadata — reuses TanStack Query cache from dashboard
-  const { data: dashboardData } = useQuery<{
-    charts_by_category: Record<string, { id: string; name: string; category: string | null }[]>;
-  }>({
-    queryKey: ['dashboard-summary'],
-    queryFn: () => apiFetchJson('/api/v1/dashboard/summary?include_figures=false'),
-    staleTime: 1000 * 60 * 2,
-    enabled: isOpen,
-  });
-
-  const chartItems = useMemo<SearchItem[]>(() => {
-    if (!dashboardData?.charts_by_category) return [];
-    const items: SearchItem[] = [];
-    for (const [category, charts] of Object.entries(dashboardData.charts_by_category)) {
-      for (const chart of charts as any[]) {
-        items.push({
-          id: `chart-${chart.id}`,
-          label: chart.name,
-          description: category,
-          icon: <Activity className="w-3.5 h-3.5" />,
-          href: `/studio?chartId=${chart.id}`,
-          section: 'Charts',
-        });
-      }
-    }
-    return items;
-  }, [dashboardData]);
+  const chartItems: SearchItem[] = [];
 
   const items = useMemo(() => {
     const q = debouncedQuery.toLowerCase().trim();
@@ -174,7 +148,7 @@ export default function GlobalSearchPalette({ isOpen, onClose }: GlobalSearchPal
                 placeholder="Search pages and charts…"
                 className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground/35 font-medium"
               />
-              <kbd className="hidden sm:inline px-1.5 py-0.5 rounded border border-border/25 text-[8px] text-muted-foreground/30 font-mono">
+              <kbd className="hidden sm:inline px-1.5 py-0.5 rounded border border-border/25 text-[9.5px] text-muted-foreground/30 font-mono">
                 ESC
               </kbd>
             </div>
@@ -188,7 +162,7 @@ export default function GlobalSearchPalette({ isOpen, onClose }: GlobalSearchPal
                   <div key={group.section}>
                     {/* Section header — only show when there's a query and mixed sections */}
                     {debouncedQuery.trim() && sections.length > 1 && (
-                      <div className="px-4 pt-2.5 pb-1 text-[9px] font-mono font-semibold uppercase tracking-[0.12em] text-muted-foreground/30">
+                      <div className="px-4 pt-2.5 pb-1 text-[11px] font-mono font-semibold uppercase tracking-[0.12em] text-muted-foreground/30">
                         {group.section}
                       </div>
                     )}
@@ -210,9 +184,9 @@ export default function GlobalSearchPalette({ isOpen, onClose }: GlobalSearchPal
                           {item.icon}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-[12px] font-semibold truncate">{item.label}</div>
+                          <div className="text-[13px] font-semibold truncate">{item.label}</div>
                           {item.description && (
-                            <div className="text-[10px] text-muted-foreground/40 mt-0.5 truncate">{item.description}</div>
+                            <div className="text-[11.5px] text-muted-foreground/40 mt-0.5 truncate">{item.description}</div>
                           )}
                         </div>
                         {globalIdx === selectedIdx && (
@@ -226,9 +200,9 @@ export default function GlobalSearchPalette({ isOpen, onClose }: GlobalSearchPal
             </div>
 
             {/* Footer */}
-            <div className="px-4 py-2 border-t border-border/15 flex items-center gap-3 text-[10px] text-muted-foreground/40 font-mono">
-              <span><kbd className="px-1 py-0.5 rounded border border-border/15 text-[8px]">&#8593;&#8595;</kbd> navigate</span>
-              <span><kbd className="px-1 py-0.5 rounded border border-border/15 text-[8px]">&#8629;</kbd> go</span>
+            <div className="px-4 py-2 border-t border-border/15 flex items-center gap-3 text-[11.5px] text-muted-foreground/40 font-mono">
+              <span><kbd className="px-1 py-0.5 rounded border border-border/15 text-[9.5px]">&#8593;&#8595;</kbd> navigate</span>
+              <span><kbd className="px-1 py-0.5 rounded border border-border/15 text-[9.5px]">&#8629;</kbd> go</span>
             </div>
           </motion.div>
         </motion.div>

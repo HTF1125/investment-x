@@ -32,19 +32,19 @@ export default function SaveToPackModal({
                 key={pack.id}
                 onClick={() => onSaveToPack(pack.id)}
                 disabled={savingToPack}
-                className="w-full text-left px-3 py-2 rounded-[var(--radius)] text-[12px] font-medium text-foreground hover:bg-primary/[0.06] border border-border/30 hover:border-primary/30 transition-colors disabled:opacity-30"
+                className="w-full text-left px-3 py-2 rounded-[var(--radius)] text-[13px] font-medium text-foreground hover:bg-primary/[0.06] border border-border/30 hover:border-primary/30 transition-colors disabled:opacity-30"
               >
                 {pack.name}
               </button>
             ))}
           </div>
         ) : (
-          <p className="text-[11px] text-muted-foreground/40 py-6 text-center">
+          <p className="text-[12.5px] text-muted-foreground/40 py-6 text-center">
             No packs yet. <a href="/chartpack" className="text-primary hover:underline">Create one in Chart Packs.</a>
           </p>
         )}
         <div className="flex gap-2 mt-4">
-          <button onClick={onClose} className="flex-1 h-8 rounded-[var(--radius)] text-[11px] font-medium border border-border/40 text-muted-foreground hover:text-foreground hover:border-border/60 transition-colors">Cancel</button>
+          <button onClick={onClose} className="flex-1 h-8 rounded-[var(--radius)] text-[12.5px] font-medium border border-border/40 text-muted-foreground hover:text-foreground hover:border-border/60 transition-colors">Cancel</button>
         </div>
       </div>
     </div>

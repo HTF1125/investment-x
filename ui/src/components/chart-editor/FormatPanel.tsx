@@ -80,7 +80,7 @@ function SectionHeader({ label, open, onToggle }: { label: string; open: boolean
       className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left hover:bg-primary/[0.03] transition-colors"
     >
       {open ? <ChevronDown className="w-2.5 h-2.5 text-muted-foreground/30" /> : <ChevronRight className="w-2.5 h-2.5 text-muted-foreground/30" />}
-      <span className="text-[9px] font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground/40">{label}</span>
+      <span className="text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground/40">{label}</span>
     </button>
   );
 }
@@ -142,14 +142,14 @@ export default function FormatPanel({
           {/* Legend */}
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Legend</span>
+              <span className="text-[11px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Legend</span>
               <Toggle active={showLegend} onChange={onShowLegendChange} title="Show legend" />
             </div>
             {showLegend && (
               <select
                 value={legendPosition}
                 onChange={(e) => onLegendPositionChange(e.target.value)}
-                className="w-full mt-1 px-2 py-1 text-[10px] bg-transparent border border-border/50 rounded-md text-foreground focus:outline-none focus:border-primary/40"
+                className="w-full mt-1 px-2 py-1 text-[11.5px] bg-transparent border border-border/50 rounded-md text-foreground focus:outline-none focus:border-primary/40"
               >
                 {LEGEND_POSITIONS.map((p) => (
                   <option key={p.value} value={p.value}>{p.label}</option>
@@ -161,7 +161,7 @@ export default function FormatPanel({
           {/* Gridlines */}
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Gridlines</span>
+              <span className="text-[11px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Gridlines</span>
               <Toggle active={showGridlines} onChange={onShowGridlinesChange} title="Show gridlines" />
             </div>
             {showGridlines && (
@@ -170,7 +170,7 @@ export default function FormatPanel({
                   <button
                     key={gs.value}
                     onClick={() => onGridlineStyleChange(gs.value)}
-                    className={`h-5 px-1.5 text-[8px] font-mono font-bold rounded-[2px] transition-colors ${
+                    className={`h-5 px-1.5 text-[9.5px] font-mono font-bold rounded-[2px] transition-colors ${
                       gridlineStyle === gs.value
                         ? 'text-primary bg-primary/10'
                         : 'text-muted-foreground/30 hover:text-foreground hover:bg-primary/[0.06]'
@@ -185,17 +185,17 @@ export default function FormatPanel({
 
           {/* Zeroline */}
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Zero Line</span>
+            <span className="text-[11px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Zero Line</span>
             <Toggle active={showZeroline} onChange={onShowZerolineChange} title="Show zero line" />
           </div>
 
           {/* Title Font Size */}
           <div>
-            <span className="text-[9px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40 block mb-1">Title Size</span>
+            <span className="text-[11px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40 block mb-1">Title Size</span>
             <select
               value={titleFontSize}
               onChange={(e) => onTitleFontSizeChange(parseInt(e.target.value))}
-              className="w-full px-2 py-1 text-[10px] bg-transparent border border-border/50 rounded-md text-foreground focus:outline-none focus:border-primary/40"
+              className="w-full px-2 py-1 text-[11.5px] bg-transparent border border-border/50 rounded-md text-foreground focus:outline-none focus:border-primary/40"
             >
               {TITLE_SIZES.map((s) => (
                 <option key={s} value={s}>{s}px</option>
@@ -207,8 +207,8 @@ export default function FormatPanel({
           {hasBarSeries && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[9px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Bar Gap</span>
-                <span className="text-[9px] font-mono text-muted-foreground/30">{((bargap ?? 0.2) * 100).toFixed(0)}%</span>
+                <span className="text-[11px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Bar Gap</span>
+                <span className="text-[11px] font-mono text-muted-foreground/30">{((bargap ?? 0.2) * 100).toFixed(0)}%</span>
               </div>
               <input
                 type="range"
@@ -223,16 +223,16 @@ export default function FormatPanel({
           {/* Axis Titles */}
           {axisKeys.length > 0 && (
             <div>
-              <span className="text-[9px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40 block mb-1">Axis Titles</span>
+              <span className="text-[11px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40 block mb-1">Axis Titles</span>
               {axisKeys.map((key) => (
                 <div key={key} className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[9px] font-mono font-bold text-muted-foreground/50 w-8 shrink-0">{formatAxisLabel(key)}</span>
+                  <span className="text-[11px] font-mono font-bold text-muted-foreground/50 w-8 shrink-0">{formatAxisLabel(key)}</span>
                   <input
                     type="text"
                     value={axisTitles[key] || ''}
                     onChange={(e) => handleAxisTitleChange(key, e.target.value)}
                     placeholder="Title..."
-                    className="flex-1 min-w-0 px-2 py-1 text-[10px] bg-transparent border border-border/50 rounded-md text-foreground placeholder:text-muted-foreground/20 focus:outline-none focus:border-primary/40"
+                    className="flex-1 min-w-0 px-2 py-1 text-[11.5px] bg-transparent border border-border/50 rounded-md text-foreground placeholder:text-muted-foreground/20 focus:outline-none focus:border-primary/40"
                   />
                 </div>
               ))}
@@ -248,7 +248,7 @@ export default function FormatPanel({
       {seriesOpen && (
         <div className="px-2 pb-2">
           {series.length === 0 && (
-            <p className="text-[10px] text-muted-foreground/25 py-2">No series added</p>
+            <p className="text-[11.5px] text-muted-foreground/25 py-2">No series added</p>
           )}
           {series.map((s) => (
             <SeriesFormatRow key={s.code} series={s} onUpdate={(updates) => onUpdateSeries(s.code, updates)} />
@@ -277,7 +277,7 @@ function SeriesFormatRow({ series: s, onUpdate }: { series: FormatSeriesConfig; 
           className="w-2.5 h-2.5 rounded-full shrink-0"
           style={{ backgroundColor: s.color || '#6382ff' }}
         />
-        <span className="text-[10px] text-foreground/70 truncate flex-1 min-w-0">{s.name || s.code}</span>
+        <span className="text-[11.5px] text-foreground/70 truncate flex-1 min-w-0">{s.name || s.code}</span>
       </button>
 
       {open && (
@@ -286,14 +286,14 @@ function SeriesFormatRow({ series: s, onUpdate }: { series: FormatSeriesConfig; 
           {isLine && (
             <div>
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Markers</span>
+                <span className="text-[11px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Markers</span>
                 <Toggle active={!!s.showMarkers} onChange={(v) => onUpdate({ showMarkers: v })} title="Show markers" />
               </div>
               {s.showMarkers && (
                 <div className="mt-1 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-mono text-muted-foreground/30">Size</span>
-                    <span className="text-[9px] font-mono text-muted-foreground/30">{s.markerSize ?? 4}</span>
+                    <span className="text-[11px] font-mono text-muted-foreground/30">Size</span>
+                    <span className="text-[11px] font-mono text-muted-foreground/30">{s.markerSize ?? 4}</span>
                   </div>
                   <input
                     type="range" min={2} max={12} step={1}
@@ -306,7 +306,7 @@ function SeriesFormatRow({ series: s, onUpdate }: { series: FormatSeriesConfig; 
                       <button
                         key={ms.value}
                         onClick={() => onUpdate({ markerShape: ms.value })}
-                        className={`h-5 px-1 text-[8px] font-mono font-bold rounded-[2px] transition-colors ${
+                        className={`h-5 px-1 text-[9.5px] font-mono font-bold rounded-[2px] transition-colors ${
                           (s.markerShape || 'circle') === ms.value
                             ? 'text-primary bg-primary/10'
                             : 'text-muted-foreground/30 hover:text-foreground hover:bg-primary/[0.06]'
@@ -325,8 +325,8 @@ function SeriesFormatRow({ series: s, onUpdate }: { series: FormatSeriesConfig; 
           {isArea && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[9px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Fill Opacity</span>
-                <span className="text-[9px] font-mono text-muted-foreground/30">{s.fillOpacity ?? (s.chartType === 'stackedarea' ? 25 : 9)}%</span>
+                <span className="text-[11px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Fill Opacity</span>
+                <span className="text-[11px] font-mono text-muted-foreground/30">{s.fillOpacity ?? (s.chartType === 'stackedarea' ? 25 : 9)}%</span>
               </div>
               <input
                 type="range" min={0} max={100} step={1}
@@ -339,7 +339,7 @@ function SeriesFormatRow({ series: s, onUpdate }: { series: FormatSeriesConfig; 
 
           {/* Data Labels — for all types */}
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Data Labels</span>
+            <span className="text-[11px] font-mono uppercase tracking-[0.08em] text-muted-foreground/40">Data Labels</span>
             <Toggle active={!!s.showDataLabels} onChange={(v) => onUpdate({ showDataLabels: v })} title="Show data labels" />
           </div>
         </div>

@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { ChevronRight, Folder, FolderOpen, FileCode, FileText, Paintbrush, Layers, GitBranch, Cpu, Search } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { ChevronRight, Folder, FolderOpen, FileCode, FileText, Paintbrush, Layers, GitBranch, Cpu, Search, BookOpen, Server, Monitor, FolderTree } from 'lucide-react';
+import { apiFetchJson } from '@/lib/api';
 
 /* ── Tree data ──────────────────────────────────────────────────────────────── */
 
@@ -80,12 +83,6 @@ const TREE: TreeNode[] = [
         ]
       },
       {
-        name: 'tasks/', desc: 'Background job system', children: [
-          { name: 'TaskProvider.tsx', desc: 'Context provider \u2014 polls /api/jobs, exposes useTasks()' },
-          { name: 'TaskNotifications.tsx', desc: 'Navbar dropdown showing running/completed tasks' },
-        ]
-      },
-      {
         name: 'admin/', desc: 'Admin-only components', children: [
           { name: 'AdminLogViewer.tsx', desc: 'System log viewer' },
           { name: 'TimeseriesManager.tsx', desc: 'Series CRUD, bulk import, sync controls' },
@@ -95,9 +92,7 @@ const TREE: TreeNode[] = [
       },
       {
         name: 'dashboard/', desc: 'Dashboard page widgets', children: [
-          { name: 'Scorecards.tsx', desc: 'RRG-style asset scorecards with tactical/dynamic phases' },
           { name: 'Technicals.tsx', desc: 'Technical momentum regime chart' },
-          { name: 'MarketPulse.tsx', desc: 'Cross-asset market pulse heatmap' },
         ]
       },
       {
@@ -250,7 +245,6 @@ function TreeNodeRow({ node, depth, filter }: { node: TreeNode; depth: number; f
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={() => isDir && setOpen(!open)}
       >
-        {/* Expand chevron */}
         {isDir ? (
           <ChevronRight className={`w-3 h-3 text-muted-foreground/30 transition-transform duration-150 flex-shrink-0 ${
             (open || shouldForceOpen) ? 'rotate-90' : ''
@@ -259,7 +253,6 @@ function TreeNodeRow({ node, depth, filter }: { node: TreeNode; depth: number; f
           <span className="w-3 flex-shrink-0" />
         )}
 
-        {/* Icon */}
         {isDir ? (
           (open || shouldForceOpen)
             ? <FolderOpen className="w-3.5 h-3.5 text-primary/50 flex-shrink-0" />
@@ -274,20 +267,17 @@ function TreeNodeRow({ node, depth, filter }: { node: TreeNode; depth: number; f
           <FileText className="w-3.5 h-3.5 text-muted-foreground/30 flex-shrink-0" />
         )}
 
-        {/* Name */}
-        <span className={`text-[12px] font-mono ${isDir ? 'font-semibold text-foreground/80' : 'text-foreground/60'}`}>
+        <span className={`text-[13px] font-mono ${isDir ? 'font-semibold text-foreground/80' : 'text-foreground/60'}`}>
           {node.name}
         </span>
 
-        {/* Description */}
         {node.desc && (
-          <span className="text-[10px] text-muted-foreground/35 truncate ml-1 hidden sm:inline">
+          <span className="text-[11.5px] text-muted-foreground/35 truncate ml-1 hidden sm:inline">
             {node.desc}
           </span>
         )}
       </div>
 
-      {/* Children */}
       {isDir && (open || shouldForceOpen) && node.children?.map((child) => (
         <TreeNodeRow key={child.name} node={child} depth={depth + 1} filter={filter} />
       ))}
@@ -298,7 +288,7 @@ function TreeNodeRow({ node, depth, filter }: { node: TreeNode; depth: number; f
 /* ── Architecture cards ──────────────────────────────────────────────────────── */
 
 const PROVIDER_CHAIN = [
-  'QueryProvider', 'AuthProvider', 'ThemeProvider', 'TaskProvider', 'ErrorBoundary', 'SessionExpiredModal', '[pages]'
+  'QueryProvider', 'AuthProvider', 'ThemeProvider', 'ErrorBoundary', 'SessionExpiredModal', '[pages]'
 ];
 
 const KEY_PATTERNS = [
@@ -306,126 +296,227 @@ const KEY_PATTERNS = [
   { label: 'Charts', value: 'Plotly via react-plotly.js, themed with applyChartTheme()' },
   { label: 'Auth', value: 'JWT in HttpOnly cookies, useAuth() context' },
   { label: 'Chart DSL', value: 'Monaco editor, server-side eval with auth guard' },
-  { label: 'Background tasks', value: 'TaskProvider polls /api/jobs, navbar notifications' },
 ];
 
 const DESIGN_TOKENS = [
   { label: 'Aesthetic', value: 'Dark-first quant terminal (Koyfin/Bloomberg)' },
   { label: 'Primary', value: 'Electric blue rgb(var(--primary))' },
-  { label: 'Fonts', value: 'Inter (body) + Space Mono (code/data)' },
+  { label: 'Fonts', value: 'Space Mono (global) — unified mono-first terminal typography' },
   { label: 'Radius', value: '0.5rem (8px)' },
-  { label: 'Shadows', value: 'shadow-md max for cards, shadow-lg for modals' },
+  { label: 'Shadows', value: 'shadow-sm for cards, shadow-2xl for modals, shadow-lg for dropdowns' },
 ];
+
+/* ── Markdown doc viewer ──────────────────────────────────────────────────────── */
+
+type ArchView = 'backend' | 'frontend';
+
+function ArchitectureDocs() {
+  const [view, setView] = useState<ArchView>('backend');
+  const [docs, setDocs] = useState<{ backend: string; frontend: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    apiFetchJson<{ backend: string; frontend: string }>('/api/admin/architecture')
+      .then((data) => { if (!cancelled) { setDocs(data); setError(null); } })
+      .catch((e) => { if (!cancelled) setError(e.message ?? 'Failed to load'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="panel-card p-6 flex items-center justify-center">
+        <div className="text-[13px] text-muted-foreground/40 font-mono">Loading architecture docs...</div>
+      </div>
+    );
+  }
+
+  if (error || !docs) {
+    return (
+      <div className="panel-card p-6">
+        <div className="text-[13px] text-destructive/70 font-mono">{error ?? 'No data'}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Toggle */}
+      <div className="flex items-center gap-1 p-0.5 rounded-[var(--radius)] bg-foreground/[0.03] border border-border/20 w-fit">
+        {([
+          { id: 'backend' as ArchView, label: 'Backend (ix/)', icon: Server },
+          { id: 'frontend' as ArchView, label: 'Frontend (ui/)', icon: Monitor },
+        ]).map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setView(id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[calc(var(--radius)-2px)] text-[12px] font-semibold uppercase tracking-[0.04em] transition-colors ${
+              view === id
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground/50 hover:text-foreground/70'
+            }`}
+          >
+            <Icon className="w-3 h-3" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Markdown content */}
+      <div className="panel-card p-4 md:p-6 overflow-x-auto max-h-[calc(100vh-260px)] overflow-y-auto no-scrollbar">
+        <article className="arch-markdown">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{view === 'backend' ? docs.backend : docs.frontend}</ReactMarkdown>
+        </article>
+      </div>
+    </div>
+  );
+}
+
+/* ── Sub-tabs for system view ────────────────────────────────────────────────── */
+
+type SystemSubTab = 'tree' | 'architecture';
 
 /* ── Main component ──────────────────────────────────────────────────────────── */
 
 export default function ProjectStructure() {
   const [filter, setFilter] = useState('');
+  const [subTab, setSubTab] = useState<SystemSubTab>('architecture');
   const stats = useMemo(() => countNodes(TREE), []);
   const normalizedFilter = filter.toLowerCase().trim();
 
   return (
     <div className="space-y-4">
-      {/* ── Stats row ──────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-[var(--radius)] border border-border/30 bg-card">
-          <div className="text-center">
-            <div className="text-[15px] font-semibold font-mono text-foreground tabular-nums">{stats.folders}</div>
-            <div className="stat-label">Folders</div>
-          </div>
-          <div className="w-px h-6 bg-border/20" />
-          <div className="text-center">
-            <div className="text-[15px] font-semibold font-mono text-foreground tabular-nums">{stats.files}</div>
-            <div className="stat-label">Files</div>
-          </div>
-        </div>
-
-        <div className="flex-1" />
-
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/30" />
-          <input
-            type="text"
-            placeholder="Filter files..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="h-7 pl-7 pr-3 text-[11px] font-mono bg-background border border-border/40 rounded-[var(--radius)] text-foreground placeholder:text-muted-foreground/25 focus:outline-none focus:border-primary/40 w-48"
-          />
-        </div>
-      </div>
-
-      {/* ── File tree ──────────────────────────────────────────── */}
-      <div className="panel-card p-2 overflow-x-auto max-h-[520px] overflow-y-auto no-scrollbar">
-        <div className="min-w-[400px]">
-          <div className="flex items-center gap-1.5 px-2 py-1.5 mb-1 border-b border-border/15">
-            <Layers className="w-3 h-3 text-primary/50" />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/40">ui/src/</span>
-          </div>
-          {TREE.map((node) => (
-            <TreeNodeRow key={node.name} node={node} depth={0} filter={normalizedFilter} />
+      {/* Sub-tab toggle */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 p-0.5 rounded-[var(--radius)] bg-foreground/[0.03] border border-border/20">
+          {([
+            { id: 'architecture' as SystemSubTab, label: 'Architecture', icon: BookOpen },
+            { id: 'tree' as SystemSubTab, label: 'File Tree', icon: FolderTree },
+          ]).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setSubTab(id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[calc(var(--radius)-2px)] text-[12px] font-semibold uppercase tracking-[0.04em] transition-colors ${
+                subTab === id
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground/50 hover:text-foreground/70'
+              }`}
+            >
+              <Icon className="w-3 h-3" />
+              {label}
+            </button>
           ))}
         </div>
+
+        {/* Search (only for tree view) */}
+        {subTab === 'tree' && (
+          <div className="relative ml-auto">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/30" />
+            <input
+              type="text"
+              placeholder="Filter files..."
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="h-7 pl-7 pr-3 text-[12.5px] font-mono bg-background border border-border/40 rounded-[var(--radius)] text-foreground placeholder:text-muted-foreground/25 focus:outline-none focus:border-primary/40 w-48"
+            />
+          </div>
+        )}
       </div>
 
-      {/* ── Architecture & patterns ────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Provider chain */}
-        <div className="panel-card p-3">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <GitBranch className="w-3 h-3 text-primary/50" />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">Provider Nesting</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-1">
-            {PROVIDER_CHAIN.map((p, i) => (
-              <span key={p} className="flex items-center gap-1">
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                  p === '[pages]'
-                    ? 'bg-primary/10 text-primary/70 border border-primary/20'
-                    : 'bg-foreground/[0.04] text-foreground/60 border border-border/20'
-                }`}>
-                  {p}
-                </span>
-                {i < PROVIDER_CHAIN.length - 1 && (
-                  <ChevronRight className="w-2.5 h-2.5 text-muted-foreground/20" />
-                )}
-              </span>
-            ))}
-          </div>
-        </div>
+      {/* Architecture docs view */}
+      {subTab === 'architecture' && <ArchitectureDocs />}
 
-        {/* Design tokens */}
-        <div className="panel-card p-3">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <Paintbrush className="w-3 h-3 text-primary/50" />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">Design System</span>
-          </div>
-          <div className="space-y-1">
-            {DESIGN_TOKENS.map((t) => (
-              <div key={t.label} className="flex items-baseline gap-2">
-                <span className="text-[10px] font-mono font-semibold text-muted-foreground/40 w-16 flex-shrink-0 text-right">{t.label}</span>
-                <span className="text-[11px] text-foreground/60">{t.value}</span>
+      {/* File tree view */}
+      {subTab === 'tree' && (
+        <>
+          {/* Stats row */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-3 px-3 py-2 rounded-[var(--radius)] border border-border/30 bg-card">
+              <div className="text-center">
+                <div className="text-[15px] font-semibold font-mono text-foreground tabular-nums">{stats.folders}</div>
+                <div className="stat-label">Folders</div>
               </div>
-            ))}
+              <div className="w-px h-6 bg-border/20" />
+              <div className="text-center">
+                <div className="text-[15px] font-semibold font-mono text-foreground tabular-nums">{stats.files}</div>
+                <div className="stat-label">Files</div>
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* Key patterns */}
-        <div className="panel-card p-3 md:col-span-2">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <Cpu className="w-3 h-3 text-primary/50" />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">Key Patterns</span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
-            {KEY_PATTERNS.map((p) => (
-              <div key={p.label} className="flex items-baseline gap-2">
-                <span className="text-[10px] font-mono font-semibold text-primary/50 flex-shrink-0">{p.label}</span>
-                <span className="text-[10px] text-muted-foreground/50">{p.value}</span>
+          {/* File tree */}
+          <div className="panel-card p-2 overflow-x-auto max-h-[520px] overflow-y-auto no-scrollbar">
+            <div className="min-w-[400px]">
+              <div className="flex items-center gap-1.5 px-2 py-1.5 mb-1 border-b border-border/15">
+                <Layers className="w-3 h-3 text-primary/50" />
+                <span className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/40">ui/src/</span>
               </div>
-            ))}
+              {TREE.map((node) => (
+                <TreeNodeRow key={node.name} node={node} depth={0} filter={normalizedFilter} />
+              ))}
+            </div>
           </div>
-        </div>
-      </div>
+
+          {/* Architecture & patterns cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="panel-card p-3">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <GitBranch className="w-3 h-3 text-primary/50" />
+                <span className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">Provider Nesting</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {PROVIDER_CHAIN.map((p, i) => (
+                  <span key={p} className="flex items-center gap-1">
+                    <span className={`px-1.5 py-0.5 rounded text-[11.5px] font-mono ${
+                      p === '[pages]'
+                        ? 'bg-primary/10 text-primary/70 border border-primary/20'
+                        : 'bg-foreground/[0.04] text-foreground/60 border border-border/20'
+                    }`}>
+                      {p}
+                    </span>
+                    {i < PROVIDER_CHAIN.length - 1 && (
+                      <ChevronRight className="w-2.5 h-2.5 text-muted-foreground/20" />
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="panel-card p-3">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Paintbrush className="w-3 h-3 text-primary/50" />
+                <span className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">Design System</span>
+              </div>
+              <div className="space-y-1">
+                {DESIGN_TOKENS.map((t) => (
+                  <div key={t.label} className="flex items-baseline gap-2">
+                    <span className="text-[11.5px] font-mono font-semibold text-muted-foreground/40 w-16 flex-shrink-0 text-right">{t.label}</span>
+                    <span className="text-[12.5px] text-foreground/60">{t.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="panel-card p-3 md:col-span-2">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Cpu className="w-3 h-3 text-primary/50" />
+                <span className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">Key Patterns</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
+                {KEY_PATTERNS.map((p) => (
+                  <div key={p.label} className="flex items-baseline gap-2">
+                    <span className="text-[11.5px] font-mono font-semibold text-primary/50 flex-shrink-0">{p.label}</span>
+                    <span className="text-[11.5px] text-muted-foreground/50">{p.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

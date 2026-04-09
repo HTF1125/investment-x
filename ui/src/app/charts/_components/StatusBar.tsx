@@ -24,7 +24,7 @@ export default function StatusBar({
   onToggleCode,
 }: StatusBarProps) {
   return (
-    <div className="h-6 shrink-0 border-t border-border/20 flex items-center px-2.5 gap-3 bg-foreground/[0.015] text-[9px] font-mono text-muted-foreground/40 select-none">
+    <div className="h-6 shrink-0 border-t border-border/20 flex items-center px-2.5 gap-3 bg-foreground/[0.015] text-[11px] font-mono text-muted-foreground/40 select-none">
       {/* Workspace name */}
       {activeWorkspaceId && (
         <>

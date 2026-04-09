@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import {
   X, Check, Loader2, Play, ChevronDown, LineChart,
   PanelRightOpen, PanelRightClose, Eye, EyeOff,
   GripVertical, AlertTriangle, Table2, Terminal,
+  MousePointer2, Minus, RectangleHorizontal, Ruler, Trash2,
 } from 'lucide-react';
-import { buildChartFigure, stripThemeFromFigure, getApiCode, type AnnotationConfig } from '@/lib/buildChartFigure';
+import { buildChartFigure, stripThemeFromFigure, getApiCode, type AnnotationConfig, type DrawnShape } from '@/lib/buildChartFigure';
 import { applyChartTheme, COLORWAY } from '@/lib/chartTheme';
 import { RANGE_MAP, RANGE_PRESETS, getPresetStartDate } from '@/lib/constants';
 import { ChartErrorBoundary } from '@/components/shared/ChartErrorBoundary';
@@ -15,7 +17,14 @@ import { apiFetchJson } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Reorder } from 'framer-motion';
 
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
+const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full w-full flex items-center justify-center">
+      <Loader2 className="w-5 h-5 animate-spin text-primary/30" />
+    </div>
+  ),
+});
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
@@ -26,38 +35,37 @@ const Plot = dynamic(() => import('react-plotly.js'), {
   ),
 }) as any;
 
+// ── Monaco Error Boundary ────────────────────────────────────────────────────
+
+class MonacoErrorBoundary extends React.Component<
+  { children: React.ReactNode; code: string; onChange: (v: string) => void },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <textarea
+          className="w-full h-full resize-none bg-background text-foreground font-mono text-xs p-3 focus:outline-none"
+          value={this.props.code}
+          onChange={(e) => this.props.onChange(e.target.value)}
+          spellCheck={false}
+        />
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface SelectedSeries {
-  code: string; name: string; chartType: string; yAxis: string;
-  yAxisIndex?: number; visible: boolean; color?: string;
-  transform?: string; transformParam?: number; lineStyle?: string;
-  lineWidth?: number; paneId?: number;
-  showMarkers?: boolean; markerSize?: number; markerShape?: string;
-  fillOpacity?: number; showDataLabels?: boolean;
-}
-
-interface ChartConfig {
-  title?: string; description?: string; code?: string;
-  figure?: any; chart_id?: string;
-  series: SelectedSeries[];
-  panes?: { id: number; label: string }[];
-  annotations?: AnnotationConfig[];
-  logAxes?: (number | string)[]; invertedAxes?: string[]; pctAxes?: string[];
-  activeRange?: string; startDate?: string; endDate?: string;
-  yAxisBases?: Record<string, number>;
-  yAxisRanges?: Record<string, { min?: number; max?: number }>;
-  showRecessions?: boolean; hoverMode?: string;
-  showLegend?: boolean; legendPosition?: string;
-  showGridlines?: boolean; gridlineStyle?: string;
-  axisTitles?: Record<string, string>; titleFontSize?: number;
-  showZeroline?: boolean; bargap?: number;
-  [key: string]: any;
-}
+import type { SelectedSeries, ChartConfig } from './types';
 
 interface Props {
   config: ChartConfig; chartIndex: number; isLight: boolean;
   onSave: (updated: ChartConfig) => void; onClose: () => void;
+  saveError?: string | null;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -95,7 +103,7 @@ function SeriesRowInline({
   const [hovered, setHovered] = useState(false);
 
   return (
-    <div className={`border-b border-border/15 transition-colors ${expanded ? 'bg-foreground/[0.02]' : ''} ${series.visible === false ? 'opacity-40' : ''}`}>
+    <div className={`border-b border-border/10 transition-colors ${expanded ? 'bg-foreground/[0.03]' : ''} ${series.visible === false ? 'opacity-40' : ''}`}>
       <div
         className="flex items-center gap-1 px-2 h-7 cursor-pointer group"
         onMouseEnter={() => setHovered(true)}
@@ -108,9 +116,9 @@ function SeriesRowInline({
         <GripVertical className="w-3 h-3 text-muted-foreground/25 shrink-0 cursor-grab active:cursor-grabbing" />
         <input type="color" value={color} onChange={e => onUpdate({ color: e.target.value })}
           className="w-3.5 h-3.5 rounded cursor-pointer border-0 p-0 shrink-0" onClick={e => e.stopPropagation()} />
-        <span className="text-[11px] text-foreground truncate flex-1 min-w-0">{series.name || series.code}</span>
-        <span className="text-[8px] font-mono text-muted-foreground/40 shrink-0">{series.chartType}</span>
-        <span className={`text-[8px] font-mono font-bold shrink-0 ${(series.yAxisIndex ?? 0) > 0 ? 'text-primary' : 'text-muted-foreground/30'}`}>
+        <span className="text-[12.5px] text-foreground truncate flex-1 min-w-0">{series.name || series.code}</span>
+        <span className="text-[9.5px] font-mono text-muted-foreground/40 shrink-0">{series.chartType}</span>
+        <span className={`text-[9.5px] font-mono font-bold shrink-0 ${(series.yAxisIndex ?? 0) > 0 ? 'text-primary' : 'text-muted-foreground/30'}`}>
           Y{(series.yAxisIndex ?? 0) + 1}
         </span>
         {hovered ? (
@@ -129,7 +137,7 @@ function SeriesRowInline({
           <div className="flex items-center gap-1 flex-wrap">
             {CHART_TYPES.map(t => (
               <button key={t.key} onClick={() => onUpdate({ chartType: t.key })}
-                className={`h-[22px] px-2 rounded text-[9px] font-mono transition-colors ${
+                className={`h-[22px] px-2 rounded text-[11px] font-mono transition-colors ${
                   series.chartType === t.key ? 'bg-foreground text-background font-bold' : 'text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.05]'
                 }`}>{t.label}</button>
             ))}
@@ -138,34 +146,34 @@ function SeriesRowInline({
           <div className="flex items-center gap-1">
             {LINE_STYLES.map(st => (
               <button key={st.key} onClick={() => onUpdate({ lineStyle: st.key })}
-                className={`h-[22px] px-2 rounded text-[9px] font-mono transition-colors ${
+                className={`h-[22px] px-2 rounded text-[11px] font-mono transition-colors ${
                   (series.lineStyle || 'solid') === st.key ? 'bg-foreground text-background' : 'text-muted-foreground/35 hover:text-foreground hover:bg-foreground/[0.05]'
                 }`}>{st.label}</button>
             ))}
             <div className="w-px h-3.5 bg-border/20 mx-0.5" />
             {LINE_WIDTHS.map(w => (
               <button key={w} onClick={() => onUpdate({ lineWidth: w })}
-                className={`h-[22px] w-7 rounded text-[9px] font-mono text-center transition-colors ${
+                className={`h-[22px] w-7 rounded text-[11px] font-mono text-center transition-colors ${
                   (series.lineWidth ?? 1.5) === w ? 'bg-foreground text-background' : 'text-muted-foreground/35 hover:text-foreground hover:bg-foreground/[0.05]'
                 }`}>{w}</button>
             ))}
           </div>
           {/* Axis + Pane */}
           <div className="flex items-center gap-1">
-            <span className="text-[8px] font-mono text-muted-foreground/30 uppercase tracking-wider mr-0.5">Axis</span>
+            <span className="text-[9.5px] font-mono text-muted-foreground/30 uppercase tracking-wider mr-0.5">Axis</span>
             {[0, 1, 2].map(yi => (
               <button key={yi} onClick={() => onUpdate({ yAxisIndex: yi })}
-                className={`h-[22px] w-7 rounded text-[9px] font-mono font-bold transition-colors ${
+                className={`h-[22px] w-7 rounded text-[11px] font-mono font-bold transition-colors ${
                   (series.yAxisIndex ?? 0) === yi ? 'bg-foreground text-background' : 'text-muted-foreground/35 hover:text-foreground hover:bg-foreground/[0.05]'
                 }`}>Y{yi + 1}</button>
             ))}
             {panes.length > 1 && (
               <>
                 <div className="w-px h-3.5 bg-border/20 mx-0.5" />
-                <span className="text-[8px] font-mono text-muted-foreground/30 uppercase tracking-wider mr-0.5">Pane</span>
+                <span className="text-[9.5px] font-mono text-muted-foreground/30 uppercase tracking-wider mr-0.5">Pane</span>
                 {panes.map(p => (
                   <button key={p.id} onClick={() => onUpdate({ paneId: p.id })}
-                    className={`h-[22px] px-2 rounded text-[9px] font-mono transition-colors ${
+                    className={`h-[22px] px-2 rounded text-[11px] font-mono transition-colors ${
                       (series.paneId ?? 0) === p.id ? 'bg-foreground text-background' : 'text-muted-foreground/35 hover:text-foreground hover:bg-foreground/[0.05]'
                     }`}>P{p.id + 1}</button>
                 ))}
@@ -180,7 +188,7 @@ function SeriesRowInline({
 
 // ── Main Overlay ─────────────────────────────────────────────────────────────
 
-export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, onClose }: Props) {
+export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, onClose, saveError }: Props) {
   const [title, setTitle] = useState(config.title || '');
   const [description, setDescription] = useState(config.description || '');
   const [series, setSeries] = useState<SelectedSeries[]>(() => (config.series || []).map(s => ({ ...s })));
@@ -207,6 +215,10 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
   const [showZeroline, setShowZeroline] = useState(config.showZeroline !== false);
   const [showStats, setShowStats] = useState(false);
 
+  // Drawing tools
+  const [drawnShapes, setDrawnShapes] = useState<DrawnShape[]>(config.drawnShapes || []);
+  const [drawMode, setDrawMode] = useState<'select' | 'drawline' | 'drawrect'>('select');
+
   // Code editor
   const [code, setCode] = useState(config.code || '');
   const [codeResult, setCodeResult] = useState<Record<string, any> | null>(null);
@@ -219,29 +231,51 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [codeCollapsed, setCodeCollapsed] = useState(false);
   const [tab, setTab] = useState<Tab>('series');
+  const [rangeDropdownOpen, setRangeDropdownOpen] = useState(false);
+  const rangeDropdownRef = useRef<HTMLDivElement>(null);
+  const rangeMenuRef = useRef<HTMLDivElement>(null);
 
-  // Escape to close
+  // Escape to cancel draw mode or close
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (rangeDropdownOpen) { setRangeDropdownOpen(false); return; }
+        if (drawMode !== 'select') { setDrawMode('select'); return; }
+        onClose();
+      }
+    };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
+  }, [onClose, rangeDropdownOpen]);
+
+  // Close range dropdown on outside click
+  useEffect(() => {
+    if (!rangeDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (rangeDropdownRef.current?.contains(target)) return;
+      if (rangeMenuRef.current?.contains(target)) return;
+      setRangeDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [rangeDropdownOpen]);
 
   // ── Data ───────────────────────────────────────────────────────────────────
   // Editor always fetches live data — ignore cached config.figure so edits
   // reflect the latest time-series values.  (config.chart_id still skips
   // fetching because those are references to the Charts table, not caches.)
-  const hasCode = !!config.code?.trim();
+  const hasCode = !!code?.trim();
   const seriesCodes = useMemo(() => {
     if (hasCode || config.chart_id) return [];
-    return (config.series || []).map(s => getApiCode(s));
-  }, [hasCode, config.chart_id, config.series]);
+    return series.filter(s => s.visible !== false).map(s => getApiCode(s));
+  }, [hasCode, config.chart_id, series]);
 
   const { data: codeData, isLoading: codeLoading } = useQuery({
-    queryKey: ['pack-chart-code', chartIndex, config.code, 0],
+    queryKey: ['pack-chart-code', chartIndex, code, 0],
     queryFn: () => apiFetchJson<Record<string, any>>('/api/timeseries.exec', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: config.code }),
+      body: JSON.stringify({ code }),
     }),
     enabled: hasCode && !config.chart_id, staleTime: 120_000,
   });
@@ -253,13 +287,8 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
     }),
     enabled: seriesCodes.length > 0, staleTime: 120_000,
   });
-  const { data: lazyFigureData } = useQuery({
-    queryKey: ['chart-figure', config.chart_id],
-    queryFn: () => apiFetchJson<{ figure?: any }>(`/api/v1/dashboard/charts/${config.chart_id}/figure`),
-    enabled: !!config.chart_id && !config.figure, staleTime: 300_000,
-  });
   const rawData = codeResult || (hasCode ? codeData : batchData);
-  const lazyFigure = lazyFigureData?.figure;
+  const lazyFigure = config.figure || null;
   const dataLoading = codeLoading || batchLoading;
 
   // ── Callbacks ──────────────────────────────────────────────────────────────
@@ -286,10 +315,12 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
   }, [code]);
 
   const addAnnotation = useCallback((type: AnnotationConfig['type']) => {
-    const b: AnnotationConfig = { id: `a-${Date.now()}`, type, color: '#ef4444', paneId: 0 };
+    const today = new Date().toISOString().split('T')[0];
+    const b: AnnotationConfig = { id: `a-${Date.now()}`, type, color: 'rgb(var(--destructive))', paneId: 0 };
     if (type === 'hline') b.y = 0;
-    if (type === 'vline') b.x = new Date().toISOString().split('T')[0];
-    if (type === 'text') { b.x = new Date().toISOString().split('T')[0]; b.y = 0; b.text = ''; }
+    if (type === 'vline') b.x = today;
+    if (type === 'text') { b.x = today; b.y = 0; b.text = ''; }
+    if (type === 'measure') { b.x = '2020-02-01'; b.y = 0; b.x2 = '2020-04-01'; b.y2 = 0; b.color = 'rgb(var(--primary))'; }
     setAnnotations(p => [...p, b]);
   }, []);
   const updateAnnotation = useCallback((id: string, u: Partial<AnnotationConfig>) => setAnnotations(p => p.map(a => a.id === id ? { ...a, ...u } : a)), []);
@@ -305,6 +336,34 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
   const handleRangePreset = useCallback((label: string, months: number) => {
     setActiveRange(label); setStartDate(getPresetStartDate(months)); setEndDate('');
   }, []);
+
+  // ── Drawing tools — capture shapes from Plotly relayout events ──
+  // Track how many shapes are system-generated (year lines, recessions, annotations)
+  // so we can distinguish user-drawn shapes from programmatic ones.
+  const systemShapeCountRef = useRef(0);
+
+  const handleRelayout = useCallback((event: any) => {
+    if (!event) return;
+    // When Plotly fires relayout with the full shapes array (after user draws),
+    // extract only the new shapes beyond what our system generated.
+    if (event['shapes'] && Array.isArray(event['shapes'])) {
+      const allShapes = event['shapes'] as any[];
+      const systemCount = systemShapeCountRef.current;
+      // User-drawn shapes are appended after system shapes
+      const newShapes = allShapes.slice(systemCount);
+      if (newShapes.length > 0 || drawnShapes.length > 0) {
+        const userShapes: DrawnShape[] = newShapes.map((s: any) => ({
+          type: s.type || 'line',
+          x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1,
+          xref: s.xref, yref: s.yref,
+          line: s.line ? { color: s.line.color, width: s.line.width, dash: s.line.dash } : undefined,
+          fillcolor: s.fillcolor, opacity: s.opacity,
+        }));
+        setDrawnShapes(userShapes);
+      }
+    }
+  }, [drawnShapes.length]);
+
 
   // ── Build figure ───────────────────────────────────────────────────────────
   const resolvedSeries = useMemo(() => {
@@ -338,9 +397,18 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
       logAxes, yAxisBases: config.yAxisBases || {}, yAxisRanges, invertedAxes, pctAxes,
       isLight, title, startDate: computedStartDate, endDate,
       showRecessions, hoverMode: hoverMode as 'x unified' | 'closest' | 'x',
-      showLegend, showGridlines, showZeroline,
+      showLegend, showGridlines, showZeroline, drawnShapes,
     });
-  }, [lazyFigure, rawData, visibleSeries, resolvedSeries, panes, annotations, logAxes, invertedAxes, pctAxes, yAxisRanges, isLight, title, computedStartDate, endDate, showRecessions, hoverMode, showLegend, showGridlines, showZeroline]);
+  }, [lazyFigure, rawData, visibleSeries, resolvedSeries, panes, annotations, logAxes, invertedAxes, pctAxes, yAxisRanges, isLight, title, computedStartDate, endDate, showRecessions, hoverMode, showLegend, showGridlines, showZeroline, drawnShapes]);
+
+  // Update system shape count whenever figure changes so relayout handler
+  // can distinguish system shapes from user-drawn shapes.
+  useEffect(() => {
+    if (figure?.layout?.shapes) {
+      const totalShapes = figure.layout.shapes.length;
+      systemShapeCountRef.current = totalShapes - drawnShapes.length;
+    }
+  }, [figure, drawnShapes.length]);
 
   // ── Plot resize ──
   const plotContainerRef = useRef<HTMLDivElement>(null);
@@ -380,13 +448,14 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
     // can render this chart instantly on next load without fetching data.
     let cachedFigure: { data: any[]; layout: any } | undefined;
     if (rawData && !config.chart_id) {
+      // Build with compact: true so the cached figure matches pack card display
       const built = buildChartFigure({
         rawData, series: visibleSeries, allSeries: resolvedSeries, panes, annotations,
         logAxes, yAxisBases: config.yAxisBases || {}, yAxisRanges, invertedAxes, pctAxes,
-        isLight: false, title: title.trim() || undefined,
+        isLight: false, title: undefined, compact: true,
         startDate: computedStartDate, endDate,
         showRecessions, hoverMode: hoverMode as any,
-        showLegend, showGridlines, showZeroline,
+        showLegend, showGridlines, showZeroline, drawnShapes,
       });
       if (built) cachedFigure = stripThemeFromFigure(built);
     }
@@ -401,10 +470,11 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
       yAxisRanges: Object.keys(yAxisRanges).length > 0 ? yAxisRanges : undefined,
       activeRange, startDate, endDate,
       showRecessions, hoverMode, showLegend, showGridlines, showZeroline,
+      drawnShapes: drawnShapes.length > 0 ? drawnShapes : undefined,
       figure: cachedFigure,
       figureCachedAt: cachedFigure ? new Date().toISOString() : undefined,
     });
-  }, [config, title, description, code, resolvedSeries, panes, annotations, logAxes, invertedAxes, pctAxes, yAxisRanges, activeRange, startDate, endDate, showRecessions, hoverMode, showLegend, showGridlines, showZeroline, onSave, rawData, visibleSeries, computedStartDate, isLight]);
+  }, [config, title, description, code, resolvedSeries, panes, annotations, logAxes, invertedAxes, pctAxes, yAxisRanges, activeRange, startDate, endDate, showRecessions, hoverMode, showLegend, showGridlines, showZeroline, drawnShapes, onSave, rawData, visibleSeries, computedStartDate, isLight]);
 
   const fs = { colorScheme: isLight ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' } as const;
 
@@ -422,60 +492,94 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
 
   // -- RENDER --
   return (
-    <div className="fixed inset-0 top-[48px] z-[90] bg-background flex flex-col items-center">
+    <div className="fixed inset-0 top-[56px] z-[90] bg-background flex flex-col items-center">
       <div className="w-full max-w-[1440px] flex flex-col flex-1 min-h-0">
 
       {/* COMMAND BAR */}
-      <div className="shrink-0 h-9 flex items-center gap-0 px-1.5 border-b border-border/30 bg-background overflow-x-auto">
+      <div className="shrink-0 h-10 flex items-center gap-0 px-2 border-b border-border/30 bg-foreground/[0.04] overflow-x-auto">
         {/* Back button */}
         <button onClick={onClose}
-          className="h-[26px] px-2 flex items-center gap-1 rounded-[var(--radius)] text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.04] transition-colors shrink-0 mr-1"
-          title="Back to pack"
-          aria-label="Back to pack">
-          <ChevronDown className="w-3 h-3 rotate-90" />
-          <span className="text-[10px] font-mono">Pack</span>
+          className="btn-icon shrink-0 mr-1 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
+          title="Close (Esc)"
+          aria-label="Close (Esc)">
+          <ChevronDown className="w-3.5 h-3.5 rotate-90" />
         </button>
 
         <div className="w-px h-5 bg-border/20 mx-0.5 shrink-0" />
 
         {/* Title */}
         <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Chart title"
-          className="min-w-[100px] max-w-[200px] w-auto h-[26px] px-2 text-[13px] font-semibold bg-transparent border border-transparent hover:border-border/30 focus:border-border/40 rounded-[var(--radius)] text-foreground focus:outline-none transition-colors" />
+          className="min-w-[100px] max-w-[220px] w-auto h-7 px-2.5 text-[14px] font-semibold bg-transparent border border-transparent hover:border-border/30 focus:border-primary/30 rounded-[var(--radius)] text-foreground focus:outline-none transition-colors" style={fs} />
 
-        <div className="w-px h-5 bg-border/20 mx-1 shrink-0 hidden sm:block" />
+        <div className="w-px h-5 bg-border/20 mx-1 shrink-0" />
 
-        {/* Date presets — hidden on very small screens */}
-        <div className="hidden sm:flex items-center gap-0.5 shrink-0">
-          {toolbarPresets.map(p => (
-            <button key={p.label} onClick={() => handleRangePreset(p.label, p.months)}
-              className={`h-[22px] px-1.5 rounded-[3px] text-[10px] font-mono shrink-0 transition-colors ${
-                activeRange === p.label ? 'bg-foreground text-background' : 'text-muted-foreground/40 hover:text-foreground'
-              }`}>{p.label}</button>
-          ))}
+        {/* Period dropdown */}
+        <div ref={rangeDropdownRef} className="shrink-0">
+          <button
+            onClick={() => setRangeDropdownOpen(p => !p)}
+            className="h-7 px-2.5 flex items-center gap-1.5 rounded-[var(--radius)] border border-border/30 hover:border-border/50 bg-foreground/[0.03] transition-colors"
+          >
+            <span className="text-[12.5px] font-mono font-semibold text-foreground tabular-nums">{activeRange || 'Range'}</span>
+            <ChevronDown className={`w-3 h-3 text-muted-foreground/40 transition-transform duration-150 ${rangeDropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {rangeDropdownOpen && typeof document !== 'undefined' && createPortal(
+            <div
+              ref={rangeMenuRef}
+              className="fixed z-[9999] w-[90px] rounded-[var(--radius)] border border-border/40 bg-popover shadow-lg py-1 overflow-y-auto no-scrollbar"
+              style={(() => {
+                const r = rangeDropdownRef.current?.querySelector('button')?.getBoundingClientRect();
+                if (!r) return { top: 0, left: 0, display: 'none' } as React.CSSProperties;
+                const maxH = window.innerHeight - r.bottom - 8;
+                return { top: r.bottom + 4, left: r.left, maxHeight: Math.max(120, maxH) } as React.CSSProperties;
+              })()}
+            >
+              {toolbarPresets.map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => { handleRangePreset(p.label, p.months); setRangeDropdownOpen(false); }}
+                  className={`w-full text-left px-2.5 py-1 text-[11.5px] font-mono transition-colors ${
+                    activeRange === p.label
+                      ? 'text-foreground bg-foreground/[0.08] font-bold'
+                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.04]'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )}
         </div>
 
         {/* Date inputs — hidden on small screens */}
         <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setActiveRange(''); }}
-          className="hidden md:block h-[22px] w-[95px] px-1 text-[10px] font-mono border border-border/30 rounded-[3px] focus:outline-none focus:border-primary/40 shrink-0 ml-1" style={fs} />
-        <span className="hidden md:block text-[10px] text-muted-foreground/30 mx-0.5 shrink-0">{'\u2014'}</span>
+          className="hidden md:block h-7 w-[100px] px-1.5 text-[11.5px] font-mono tabular-nums border border-border/50 rounded-[var(--radius)] focus:outline-none focus:border-primary/40 shrink-0 ml-1" style={fs} />
+        <span className="hidden md:block text-[11.5px] text-muted-foreground/30 mx-0.5 shrink-0">{'\u2014'}</span>
         <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setActiveRange(''); }}
-          className="hidden md:block h-[22px] w-[95px] px-1 text-[10px] font-mono border border-border/30 rounded-[3px] focus:outline-none focus:border-primary/40 shrink-0" style={fs} />
+          className="hidden md:block h-7 w-[100px] px-1.5 text-[11.5px] font-mono tabular-nums border border-border/50 rounded-[var(--radius)] focus:outline-none focus:border-primary/40 shrink-0" style={fs} />
 
         <div className="flex-1 min-w-[8px]" />
 
         {/* Loading */}
         {(dataLoading || codeRunning) && <Loader2 className="w-3 h-3 animate-spin text-primary/40 shrink-0 mr-1" />}
 
+        {/* Save error indicator */}
+        {saveError && (
+          <span className="text-[11px] font-mono text-destructive shrink-0 max-w-[200px] truncate" title={saveError}>
+            {saveError}
+          </span>
+        )}
+
         {/* Save + Close — always visible */}
-        <button onClick={handleSave} className="h-[22px] px-2 flex items-center gap-1 rounded-[3px] bg-foreground text-background text-[9px] font-mono font-medium hover:opacity-90 transition-colors shrink-0"
+        <button onClick={handleSave} className={`btn-primary shrink-0 ${saveError ? '!bg-destructive !text-destructive-foreground hover:!bg-destructive/90' : ''}`}
           aria-label="Save chart">
-          <Check className="w-2.5 h-2.5" /> Save
+          <Check className="w-3.5 h-3.5" /> {saveError ? 'Retry' : 'Save'}
         </button>
         <button onClick={() => setRightSidebarOpen(p => !p)}
-          className="w-7 h-7 flex items-center justify-center rounded-[var(--radius)] text-muted-foreground/30 hover:text-foreground hover:bg-foreground/[0.04] transition-colors shrink-0"
+          className="btn-icon text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] shrink-0"
           title={rightSidebarOpen ? 'Hide panel' : 'Show panel'}
           aria-label={rightSidebarOpen ? 'Hide panel' : 'Show panel'}>
-          {rightSidebarOpen ? <PanelRightClose className="w-3.5 h-3.5" /> : <PanelRightOpen className="w-3.5 h-3.5" />}
+          {rightSidebarOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
         </button>
       </div>
 
@@ -485,24 +589,49 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
         {/* CENTER COLUMN */}
         <div className="flex-1 flex flex-col min-h-0 min-w-0">
 
-          {/* Chart */}
+          {/* Chart + floating draw toolbar */}
           <div ref={plotContainerRef} className="flex-1 min-h-0 relative">
+            {/* ── Floating draw toolbar ── */}
+            {figure && drawMode !== 'select' && (
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 px-2 py-1 rounded-[var(--radius)] border border-border/40 bg-card shadow-lg">
+                <span className="text-[11px] font-mono text-muted-foreground/50 mr-1 uppercase tracking-wider">
+                  {drawMode === 'drawline' ? 'Draw line' : 'Draw rect'}
+                </span>
+                <div className="w-px h-3.5 bg-border/20 mx-0.5" />
+                <button onClick={() => setDrawMode('select')}
+                  className="h-5 px-2 text-[11px] font-mono text-muted-foreground/50 hover:text-foreground rounded transition-colors">
+                  Esc to cancel
+                </button>
+              </div>
+            )}
+
             {dataLoading ? (
               <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary/30" /></div>
             ) : figure ? (
               <ChartErrorBoundary>
-                <Plot data={figure.data} layout={{ ...figure.layout, autosize: true }}
-                  config={{ responsive: true, displayModeBar: false, displaylogo: false, scrollZoom: true }}
+                <Plot data={figure.data} layout={{
+                    ...figure.layout, autosize: true,
+                    dragmode: drawMode === 'select' ? 'zoom' : drawMode,
+                    newshape: { line: { color: isLight ? '#0f1118' : '#e1e6f0', width: 1.5, dash: 'solid' }, fillcolor: 'rgba(99,130,255,0.08)' },
+                  }}
+                  config={{
+                    responsive: true, displaylogo: false, scrollZoom: true,
+                    displayModeBar: false,
+                    edits: { shapePosition: true },
+                  }}
                   style={{ width: '100%', height: '100%' }}
                   onInitialized={(_: any, gd: HTMLElement) => { plotGraphDivRef.current = gd; }}
+                  onRelayout={handleRelayout}
                 />
               </ChartErrorBoundary>
             ) : (
               <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <LineChart className="w-10 h-10 mx-auto text-muted-foreground/10 mb-3" />
-                  <p className="text-[14px] text-foreground/30 font-medium">Write code to load data</p>
-                  <p className="text-[11px] text-muted-foreground/20 mt-1">Write a Python expression below and press Run</p>
+                <div className="text-center max-w-[280px]">
+                  <div className="w-14 h-14 mx-auto rounded-[var(--radius)] border border-border/20 bg-card flex items-center justify-center mb-4">
+                    <LineChart className="w-6 h-6 text-muted-foreground/15" />
+                  </div>
+                  <p className="text-[14px] text-foreground/40 font-semibold">Write code to load data</p>
+                  <p className="text-[12.5px] text-muted-foreground/25 mt-2 leading-relaxed">Write a Python expression in the editor below and press <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.04] text-[11.5px] font-mono text-muted-foreground/40">Run</kbd></p>
                 </div>
               </div>
             )}
@@ -510,14 +639,14 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
 
           {/* Stats */}
           {showStats && stats.length > 0 && (
-            <div className="shrink-0 border-t border-border/20 max-h-[100px] overflow-y-auto no-scrollbar text-[9px] font-mono">
+            <div className="shrink-0 border-t border-border/20 max-h-[100px] overflow-y-auto no-scrollbar text-[11px] font-mono">
               <div className="flex items-center gap-0 px-2 py-0.5 border-b border-border/20 bg-foreground/[0.02]">
                 <span className="w-3 shrink-0" />
-                <span className="flex-1 text-[8px] uppercase tracking-[0.1em] text-muted-foreground/40 font-semibold">{'\u2014'}</span>
-                <span className="w-[50px] text-right text-[8px] text-muted-foreground/40 font-semibold shrink-0">Last</span>
-                <span className="w-[42px] text-right text-[8px] text-muted-foreground/40 font-semibold shrink-0">{'\u0394'}%</span>
-                <span className="w-[42px] text-right text-[8px] text-muted-foreground/40 font-semibold shrink-0">Lo</span>
-                <span className="w-[42px] text-right text-[8px] text-muted-foreground/40 font-semibold shrink-0">Hi</span>
+                <span className="flex-1 text-[9.5px] uppercase tracking-[0.1em] text-muted-foreground/40 font-semibold">{'\u2014'}</span>
+                <span className="w-[50px] text-right text-[9.5px] text-muted-foreground/40 font-semibold shrink-0">Last</span>
+                <span className="w-[42px] text-right text-[9.5px] text-muted-foreground/40 font-semibold shrink-0">{'\u0394'}%</span>
+                <span className="w-[42px] text-right text-[9.5px] text-muted-foreground/40 font-semibold shrink-0">Lo</span>
+                <span className="w-[42px] text-right text-[9.5px] text-muted-foreground/40 font-semibold shrink-0">Hi</span>
               </div>
               {stats.map((row, i) => (
                 <div key={row.code} className={`flex items-center gap-0 px-2 py-0.5 border-b border-border/8 ${i % 2 === 1 ? 'bg-foreground/[0.01]' : ''}`}>
@@ -537,43 +666,45 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
           {/* Code Editor — collapsible */}
           <div className="shrink-0 border-t border-border/30 flex flex-col">
             <div
-              className="h-7 flex items-center px-2.5 border-b border-border/30 gap-2 bg-card select-none cursor-pointer"
+              className="section-header h-8 gap-2 select-none cursor-pointer"
               onClick={() => setCodeCollapsed(p => !p)}
             >
               <ChevronDown className={`w-3 h-3 text-muted-foreground/40 transition-transform duration-150 shrink-0 ${codeCollapsed ? '-rotate-90' : ''}`} />
-              <span className="text-[10px] font-mono text-muted-foreground/50">Python</span>
-              {codeError && <span className="text-[9px] font-mono text-destructive truncate flex-1 min-w-0" title={codeError}>{codeError}</span>}
-              {!codeError && <span className="text-[9px] text-muted-foreground/20 flex-1 min-w-0">{'\u2303\u21B5'} Run</span>}
+              <span className="subsection-title">Python</span>
+              {codeError && <span className="text-[11px] font-mono text-destructive truncate flex-1 min-w-0" title={codeError}>{codeError}</span>}
+              {!codeError && <span className="text-[11px] text-muted-foreground/25 flex-1 min-w-0">{'\u2303\u21B5'} Run</span>}
               <button onClick={(e) => { e.stopPropagation(); setShowStats(p => !p); }}
-                className={`h-5 px-1.5 rounded-[3px] text-[8px] font-mono transition-colors ${showStats ? 'text-primary' : 'text-muted-foreground/25 hover:text-foreground'}`}>Stats</button>
+                className={`btn-toolbar h-6 px-1.5 text-[10px] ${showStats ? '!text-primary !border-primary/30' : ''}`}>Stats</button>
               <button onClick={(e) => { e.stopPropagation(); runCode(); }} disabled={!code.trim() || codeRunning}
-                className="h-5 px-2 rounded-[3px] text-[9px] font-medium bg-foreground text-background hover:opacity-90 transition-colors disabled:opacity-30 shrink-0 flex items-center gap-1 justify-center">
+                className="btn-primary h-6 px-2.5 text-[11px] shrink-0">
                 {codeRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Run
               </button>
             </div>
             {!codeCollapsed && (
               <>
-                <div style={{ height: `${editorHeight}px` }}>
-                  <MonacoEditor
-                    height={`${editorHeight}px`}
-                    language="python"
-                    theme={isLight ? 'vs' : 'vs-dark'}
-                    value={code}
-                    onChange={(v) => { setCode(v || ''); setCodeError(null); }}
-                    beforeMount={(monaco) => {
-                      import('@/lib/monacoCompletions').then(({ registerIxCompletions }) => registerIxCompletions(monaco));
-                    }}
-                    onMount={(editor) => {
-                      editor.addAction({ id: 'run-code', label: 'Run', keybindings: [2048 | 3], run: () => runCode() });
-                    }}
-                    options={{
-                      minimap: { enabled: false }, lineNumbers: 'on', wordWrap: 'on',
-                      scrollBeyondLastLine: false, overviewRulerLanes: 0, hideCursorInOverviewRuler: true,
-                      renderLineHighlight: 'none', fontSize: 12, fontFamily: 'var(--font-mono), monospace',
-                      padding: { top: 8, bottom: 8 }, scrollbar: { vertical: 'auto', horizontal: 'hidden' },
-                      suggestOnTriggerCharacters: true, quickSuggestions: true,
-                    }}
-                  />
+                <div className="border-b border-border/30" style={{ height: `${editorHeight}px` }}>
+                  <MonacoErrorBoundary code={code} onChange={(v) => { setCode(v); setCodeError(null); }}>
+                    <MonacoEditor
+                      height={`${editorHeight}px`}
+                      language="python"
+                      theme={isLight ? 'vs' : 'vs-dark'}
+                      value={code}
+                      onChange={(v) => { setCode(v || ''); setCodeError(null); }}
+                      beforeMount={(monaco) => {
+                        import('@/lib/monacoCompletions').then(({ registerIxCompletions }) => registerIxCompletions(monaco));
+                      }}
+                      onMount={(editor) => {
+                        editor.addAction({ id: 'run-code', label: 'Run', keybindings: [2048 | 3], run: () => runCode() });
+                      }}
+                      options={{
+                        minimap: { enabled: false }, lineNumbers: 'on', wordWrap: 'on',
+                        scrollBeyondLastLine: false, overviewRulerLanes: 0, hideCursorInOverviewRuler: true,
+                        renderLineHighlight: 'none', fontSize: 12, fontFamily: 'var(--font-mono), monospace',
+                        padding: { top: 8, bottom: 8 }, scrollbar: { vertical: 'auto', horizontal: 'hidden' },
+                        suggestOnTriggerCharacters: true, quickSuggestions: true,
+                      }}
+                    />
+                  </MonacoErrorBoundary>
                 </div>
                 <div className="h-1 cursor-row-resize bg-border/20 hover:bg-primary/20 transition-colors"
                   onMouseDown={(e) => {
@@ -589,7 +720,7 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
             <div className="shrink-0 px-3 py-1 border-t border-border/[0.08]">
               <input type="text" value={description} onChange={e => setDescription(e.target.value)}
                 placeholder="Description: what does this chart show?"
-                className="w-full h-5 text-[9px] font-mono text-muted-foreground/50 bg-transparent border-0 focus:outline-none focus:text-foreground placeholder:text-muted-foreground/20 transition-colors" />
+                className="w-full h-5 text-[11px] font-mono text-muted-foreground/50 bg-transparent border-0 focus:outline-none focus:text-foreground placeholder:text-muted-foreground/20 transition-colors" />
             </div>
           </div>
         </div>
@@ -614,16 +745,15 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
           )}
           <div className="flex flex-col h-full overflow-hidden border-l border-border/30" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
             {/* Tabs */}
-            <div className="shrink-0 h-8 border-b border-border/20 flex items-center px-0.5 gap-0">
+            <div className="shrink-0 h-9 border-b border-border/30 flex items-center px-1 gap-0 bg-foreground/[0.02]">
               {(['series', 'annotate', 'settings'] as Tab[]).map(t => {
                 const labels: Record<Tab, string> = { series: 'Series', annotate: 'Annotate', settings: 'Settings' };
                 const badge = t === 'series' && resolvedSeries.length > 0 ? resolvedSeries.length : t === 'annotate' && annotations.length > 0 ? annotations.length : null;
                 return (
                   <button key={t} onClick={() => setTab(t)}
-                    className={`h-8 px-2 text-[9px] font-semibold uppercase tracking-[0.06em] transition-colors relative ${tab === t ? 'text-foreground' : 'text-muted-foreground/30 hover:text-foreground'}`}>
+                    className={`tab-link h-9 px-2.5 ${tab === t ? 'active text-foreground' : 'text-muted-foreground/40 hover:text-foreground'}`}>
                     {labels[t]}
-                    {badge != null && <span className="ml-0.5 text-primary/60">{badge}</span>}
-                    {tab === t && <span className="absolute bottom-0 left-1.5 right-1.5 h-[2px] bg-foreground rounded-full" />}
+                    {badge != null && <span className="ml-1 text-primary/60 text-[11px] font-mono">{badge}</span>}
                   </button>
                 );
               })}
@@ -635,7 +765,7 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
               <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
                   {resolvedSeries.length === 0 ? (
-                    <div className="px-3 py-8 text-center"><p className="text-[10px] text-muted-foreground/25">Run code to load series</p></div>
+                    <div className="px-3 py-8 text-center"><p className="text-[11.5px] text-muted-foreground/25">Run code to load series</p></div>
                   ) : (
                     <Reorder.Group axis="y" values={resolvedSeries} onReorder={(v) => setSeries(v as SelectedSeries[])} as="div">
                       {resolvedSeries.map((s, i) => (
@@ -648,8 +778,8 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
                 </div>
                 {/* Axis controls */}
                 {axisKeys.length > 0 && (
-                  <div className="shrink-0 border-t border-border/20 px-2 py-1.5 bg-foreground/[0.015]">
-                    <span className="stat-label mb-1 block">Axes</span>
+                  <div className="shrink-0 border-t border-border/20 px-2.5 py-2 bg-foreground/[0.02]">
+                    <span className="subsection-title mb-1.5 block">Axes</span>
                     <div className="space-y-0.5">
                       {axisKeys.map(key => {
                         const [paneId, yAxisIndex] = key.split('-').map(Number);
@@ -657,17 +787,17 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
                         const range = yAxisRanges[key] || {};
                         return (
                           <div key={key} className="flex items-center gap-0.5">
-                            <span className="text-[8px] font-mono font-bold text-muted-foreground/50 w-6 shrink-0">{label}</span>
+                            <span className="text-[10px] font-mono font-bold text-muted-foreground/50 w-7 shrink-0">{label}</span>
                             <button onClick={() => toggleLogAxis(key)}
-                              className={`h-[18px] px-1 text-[8px] font-mono font-bold rounded-[3px] transition-colors shrink-0 ${logAxes.has(key) ? 'bg-foreground text-background' : 'text-muted-foreground/25 hover:text-foreground'}`}>LOG</button>
+                              className={`h-6 px-1.5 text-[10px] font-mono font-bold rounded-[var(--radius)] transition-colors shrink-0 ${logAxes.has(key) ? 'bg-foreground text-background' : 'text-muted-foreground/30 hover:text-foreground hover:bg-foreground/[0.05]'}`}>LOG</button>
                             <button onClick={() => toggleInvertAxis(key)}
-                              className={`h-[18px] px-1 text-[8px] font-mono font-bold rounded-[3px] transition-colors shrink-0 ${invertedAxes.has(key) ? 'bg-foreground text-background' : 'text-muted-foreground/25 hover:text-foreground'}`}>INV</button>
+                              className={`h-6 px-1.5 text-[10px] font-mono font-bold rounded-[var(--radius)] transition-colors shrink-0 ${invertedAxes.has(key) ? 'bg-foreground text-background' : 'text-muted-foreground/30 hover:text-foreground hover:bg-foreground/[0.05]'}`}>INV</button>
                             <button onClick={() => togglePctAxis(key)}
-                              className={`h-[18px] w-5 text-[8px] font-mono font-bold rounded-[3px] transition-colors shrink-0 ${pctAxes.has(key) ? 'bg-foreground text-background' : 'text-muted-foreground/25 hover:text-foreground'}`}>%</button>
+                              className={`h-6 w-6 text-[10px] font-mono font-bold rounded-[var(--radius)] transition-colors shrink-0 ${pctAxes.has(key) ? 'bg-foreground text-background' : 'text-muted-foreground/30 hover:text-foreground hover:bg-foreground/[0.05]'}`}>%</button>
                             <input type="number" value={range.min ?? ''} onChange={e => setYAxisRange(key, 'min', e.target.value)}
-                              className="w-[42px] h-[18px] px-1 text-[8px] font-mono text-center border border-border/25 rounded-[3px] bg-background text-foreground focus:outline-none focus:border-primary/40" placeholder="min" step="any" />
+                              className="w-[44px] h-6 px-1 text-[10px] font-mono tabular-nums text-center border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40" placeholder="min" step="any" style={fs} />
                             <input type="number" value={range.max ?? ''} onChange={e => setYAxisRange(key, 'max', e.target.value)}
-                              className="w-[42px] h-[18px] px-1 text-[8px] font-mono text-center border border-border/25 rounded-[3px] bg-background text-foreground focus:outline-none focus:border-primary/40" placeholder="max" step="any" />
+                              className="w-[44px] h-6 px-1 text-[10px] font-mono tabular-nums text-center border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40" placeholder="max" step="any" style={fs} />
                           </div>
                         );
                       })}
@@ -676,11 +806,11 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
                 )}
                 {/* Pane controls */}
                 {panes.length > 1 && (
-                  <div className="shrink-0 border-t border-border/20 px-2 py-1 flex flex-wrap items-center gap-1 bg-foreground/[0.015]">
-                    <span className="stat-label">Panes</span>
+                  <div className="shrink-0 border-t border-border/20 px-2.5 py-1.5 flex flex-wrap items-center gap-1 bg-foreground/[0.02]">
+                    <span className="subsection-title mr-1">Panes</span>
                     {panes.map(p => (
                       <div key={p.id} className="flex items-center gap-0.5 bg-card border border-border/30 rounded-[3px] pl-1.5 pr-0.5 h-[18px]">
-                        <span className="text-[9px] font-mono text-muted-foreground/60">{p.label}</span>
+                        <span className="text-[11px] font-mono text-muted-foreground/60">{p.label}</span>
                         <button onClick={() => setPanes(prev => prev.length <= 1 ? prev : prev.filter(x => x.id !== p.id))}
                           className="w-3.5 h-3.5 flex items-center justify-center text-muted-foreground/20 hover:text-destructive transition-colors">
                           <X className="w-2.5 h-2.5" />
@@ -696,94 +826,228 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
 
             {/* Annotate tab */}
             {tab === 'annotate' && (
-              <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="stat-label">Add Annotation</span>
-                  <div className="flex items-center gap-0.5">
-                    <button onClick={() => addAnnotation('hline')} className="h-[20px] px-1.5 text-[9px] font-mono font-medium text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.04] rounded-[3px] transition-colors">H-Line</button>
-                    <button onClick={() => addAnnotation('vline')} className="h-[20px] px-1.5 text-[9px] font-mono font-medium text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.04] rounded-[3px] transition-colors">V-Line</button>
-                    <button onClick={() => addAnnotation('text')} className="h-[20px] px-1.5 text-[9px] font-mono font-medium text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.04] rounded-[3px] transition-colors">Text</button>
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {/* ── Drawing tools ── */}
+                <div className="px-2.5 py-2.5 border-b border-border/20">
+                  <span className="subsection-title block mb-2">Drawing Tools</span>
+                  <div className="grid grid-cols-3 gap-1">
+                    {([
+                      { mode: 'select' as const, icon: MousePointer2, label: 'Select' },
+                      { mode: 'drawline' as const, icon: Minus, label: 'Line' },
+                      { mode: 'drawrect' as const, icon: RectangleHorizontal, label: 'Rect' },
+                    ] as const).map(({ mode, icon: Icon, label }) => (
+                      <button key={mode} onClick={() => setDrawMode(mode)}
+                        className={`flex flex-col items-center gap-0.5 py-1.5 rounded-[var(--radius)] transition-all ${
+                          drawMode === mode
+                            ? 'bg-foreground text-background shadow-sm'
+                            : 'text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.05]'
+                        }`}>
+                        <Icon className="w-3.5 h-3.5" />
+                        <span className="text-[9.5px] font-mono font-semibold">{label}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div className="space-y-1">
-                  {annotations.map(a => (
-                    <div key={a.id} className="flex items-center gap-1.5 py-1 px-1.5 rounded-[var(--radius)] bg-foreground/[0.015] border border-border/10 group/a">
-                      <input type="color" value={a.color} onChange={e => updateAnnotation(a.id, { color: e.target.value })} className="w-4 h-4 rounded cursor-pointer border-0 p-0 shrink-0" />
-                      <span className="text-[9px] font-mono text-muted-foreground/50 shrink-0 w-5">{a.type === 'hline' ? 'H' : a.type === 'vline' ? 'V' : 'T'}</span>
-                      {a.type === 'hline' && <input type="number" value={a.y ?? 0} onChange={e => updateAnnotation(a.id, { y: parseFloat(e.target.value) || 0 })}
-                        className="w-14 h-5 px-1 text-[10px] font-mono text-center border border-border/30 rounded-[3px] bg-background text-foreground focus:outline-none" step="any" />}
-                      {a.type === 'vline' && <>
-                        <input type="date" value={a.x || ''} onChange={e => updateAnnotation(a.id, { x: e.target.value })}
-                          className="h-5 px-1 text-[9px] font-mono border border-border/30 rounded-[3px] bg-background text-foreground focus:outline-none flex-1 min-w-0" style={fs} />
-                        <input type="text" value={a.text || ''} placeholder="Lbl" onChange={e => updateAnnotation(a.id, { text: e.target.value })}
-                          className="w-10 h-5 px-1 text-[9px] font-mono border border-border/30 rounded-[3px] bg-background text-foreground focus:outline-none" />
-                      </>}
-                      {a.type === 'text' && <input type="text" value={a.text || ''} placeholder="Text" onChange={e => updateAnnotation(a.id, { text: e.target.value })}
-                        className="flex-1 min-w-0 h-5 px-1 text-[9px] font-mono border border-border/30 rounded-[3px] bg-background text-foreground focus:outline-none" />}
-                      <button onClick={() => removeAnnotation(a.id)}
-                        className="w-4 h-4 flex items-center justify-center text-muted-foreground/15 hover:text-destructive opacity-0 group-hover/a:opacity-100 transition-all shrink-0">
-                        <X className="w-2.5 h-2.5" />
+
+                {/* Drawn shapes count + clear */}
+                {drawnShapes.length > 0 && (
+                  <div className="px-2.5 py-2 border-b border-border/20 flex items-center justify-between">
+                    <span className="text-[11px] font-mono tabular-nums text-muted-foreground/40">
+                      {drawnShapes.length} drawn shape{drawnShapes.length > 1 ? 's' : ''}
+                    </span>
+                    <button onClick={() => setDrawnShapes([])}
+                      className="btn-toolbar h-6 text-[10px] !text-destructive/60 !border-destructive/20 hover:!text-destructive hover:!border-destructive/30 flex items-center gap-1">
+                      <Trash2 className="w-3 h-3" /> Clear all
+                    </button>
+                  </div>
+                )}
+
+                {/* ── Annotations list ── */}
+                <div className="px-2.5 py-2.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="subsection-title">Annotations</span>
+                    <span className="text-[11px] font-mono text-muted-foreground/30 tabular-nums">{annotations.length}</span>
+                  </div>
+
+                  {/* Add annotation buttons */}
+                  <div className="grid grid-cols-4 gap-1 mb-3">
+                    {([
+                      { type: 'hline' as const, label: 'H-Line' },
+                      { type: 'vline' as const, label: 'V-Line' },
+                      { type: 'text' as const, label: 'Note' },
+                      { type: 'measure' as const, label: 'Range' },
+                    ] as const).map(({ type, label }) => (
+                      <button key={type}
+                        onClick={() => addAnnotation(type)}
+                        className="btn-toolbar justify-center text-[10px] border-border/20 hover:border-border/40">
+                        + {label}
                       </button>
-                    </div>
-                  ))}
-                  {annotations.length === 0 && <p className="text-[10px] text-muted-foreground/25 py-3 text-center">No annotations yet</p>}
+                    ))}
+                  </div>
+
+                  {/* Annotation entries */}
+                  <div className="space-y-1.5">
+                    {annotations.map(a => {
+                      const typeLabel = a.type === 'hline' ? 'Horizontal' : a.type === 'vline' ? 'Vertical' : a.type === 'measure' ? 'Measure' : 'Note';
+                      const typeIcon = a.type === 'hline' ? '━' : a.type === 'vline' ? '┃' : a.type === 'measure' ? '↕' : '¶';
+                      return (
+                        <div key={a.id} className="rounded-[var(--radius)] border border-border/20 bg-foreground/[0.02] overflow-hidden group/a hover:border-border/40 transition-colors">
+                          {/* Header */}
+                          <div className="flex items-center gap-1.5 px-2 py-1.5">
+                            <input type="color" value={a.color} onChange={e => updateAnnotation(a.id, { color: e.target.value })}
+                              className="w-3.5 h-3.5 rounded-sm cursor-pointer border-0 p-0 shrink-0" />
+                            <span className="text-[11.5px] font-mono text-foreground/60 shrink-0">{typeIcon}</span>
+                            <span className="text-[11.5px] font-semibold text-foreground/70 flex-1 min-w-0 truncate">{typeLabel}</span>
+                            <button onClick={() => removeAnnotation(a.id)}
+                              className="w-4 h-4 flex items-center justify-center text-muted-foreground/15 hover:text-destructive opacity-0 group-hover/a:opacity-100 transition-all shrink-0">
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                          {/* Controls */}
+                          <div className="px-2 pb-1.5 flex items-center gap-1">
+                            {a.type === 'hline' && (
+                              <>
+                                <span className="form-label shrink-0">Y</span>
+                                <input type="number" value={a.y ?? 0} onChange={e => updateAnnotation(a.id, { y: parseFloat(e.target.value) || 0 })}
+                                  className="flex-1 h-7 px-1.5 text-[11.5px] font-mono tabular-nums text-center border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40" step="any" style={fs} />
+                              </>
+                            )}
+                            {a.type === 'vline' && (
+                              <>
+                                <input type="date" value={a.x || ''} onChange={e => updateAnnotation(a.id, { x: e.target.value })}
+                                  className="flex-1 h-7 px-1.5 text-[11px] font-mono border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40 min-w-0" style={fs} />
+                                <input type="text" value={a.text || ''} placeholder="Label" onChange={e => updateAnnotation(a.id, { text: e.target.value })}
+                                  className="w-[50px] h-7 px-1.5 text-[11px] font-mono border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40 shrink-0" style={fs} />
+                              </>
+                            )}
+                            {a.type === 'text' && (
+                              <input type="text" value={a.text || ''} placeholder="Enter note text..." onChange={e => updateAnnotation(a.id, { text: e.target.value })}
+                                className="flex-1 h-7 px-1.5 text-[11px] font-mono border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40 min-w-0" style={fs} />
+                            )}
+                            {a.type === 'measure' && (
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="grid grid-cols-2 gap-1">
+                                  <div>
+                                    <span className="form-label text-[8px]">Start</span>
+                                    <input type="date" value={a.x || ''} onChange={e => updateAnnotation(a.id, { x: e.target.value })}
+                                      className="w-full h-6 px-1 text-[11px] font-mono border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40" style={fs} />
+                                  </div>
+                                  <div>
+                                    <span className="form-label text-[8px]">End</span>
+                                    <input type="date" value={a.x2 || ''} onChange={e => updateAnnotation(a.id, { x2: e.target.value })}
+                                      className="w-full h-6 px-1 text-[11px] font-mono border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40" style={fs} />
+                                  </div>
+                                  <div>
+                                    <span className="form-label text-[8px]">From</span>
+                                    <input type="number" value={a.y ?? ''} onChange={e => updateAnnotation(a.id, { y: parseFloat(e.target.value) || 0 })}
+                                      className="w-full h-6 px-1 text-[11px] font-mono tabular-nums border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40" step="any" style={fs} />
+                                  </div>
+                                  <div>
+                                    <span className="form-label text-[8px]">To</span>
+                                    <input type="number" value={a.y2 ?? ''} onChange={e => updateAnnotation(a.id, { y2: parseFloat(e.target.value) || 0 })}
+                                      className="w-full h-6 px-1 text-[11px] font-mono tabular-nums border border-border/50 rounded-[var(--radius)] bg-background text-foreground focus:outline-none focus:border-primary/40" step="any" style={fs} />
+                                  </div>
+                                </div>
+                                {a.y != null && a.y2 != null && a.y !== 0 && (
+                                  <div className="flex items-center gap-2 text-[11px] font-mono font-bold tabular-nums pt-0.5 border-t border-border/10">
+                                    <span className={a.y2 >= a.y ? 'text-success' : 'text-destructive'}>
+                                      {a.y2 >= a.y ? '+' : ''}{((a.y2 - a.y) / Math.abs(a.y) * 100).toFixed(1)}%
+                                    </span>
+                                    <span className="text-muted-foreground/40">
+                                      {a.y2 >= a.y ? '+' : ''}{(a.y2 - a.y).toFixed(2)}
+                                    </span>
+                                    {a.x && a.x2 && (
+                                      <span className="text-muted-foreground/30">
+                                        {Math.round((new Date(a.x2).getTime() - new Date(a.x).getTime()) / 86400000)}d
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {annotations.length === 0 && (
+                      <div className="py-6 text-center">
+                        <Ruler className="w-5 h-5 mx-auto text-muted-foreground/10 mb-2" />
+                        <p className="text-[11.5px] text-muted-foreground/25">No annotations yet</p>
+                        <p className="text-[11px] text-muted-foreground/15 mt-1">Add levels, markers, or notes</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
             {/* Settings tab */}
             {tab === 'settings' && (
-              <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2 space-y-3">
-                {/* Recession shading */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-[9px] font-mono font-semibold text-muted-foreground/40 uppercase tracking-wider block">Recession Shading</span>
-                    <span className="text-[8px] text-muted-foreground/25">NBER recession bands</span>
-                  </div>
-                  <button onClick={() => setShowRecessions(p => !p)}
-                    className={`w-[22px] h-[22px] flex items-center justify-center rounded-[var(--radius)] transition-colors ${showRecessions ? 'bg-primary/15 text-primary' : 'text-muted-foreground/25 hover:text-foreground'}`}>
-                    <div className={`w-2.5 h-2.5 rounded-full border-2 transition-colors ${showRecessions ? 'border-primary bg-primary' : 'border-muted-foreground/25'}`} />
-                  </button>
-                </div>
-
-                {/* Hover mode */}
-                <div>
-                  <span className="text-[9px] font-mono font-semibold text-muted-foreground/40 uppercase tracking-wider block mb-1.5">Hover Mode</span>
-                  <div className="flex items-center gap-0.5">
-                    {([['x unified', 'X Unified'], ['closest', 'Closest'], ['x', 'X']] as const).map(([val, label]) => (
-                      <button key={val} onClick={() => setHoverMode(val)}
-                        className={`h-[22px] px-2 rounded-[3px] text-[9px] font-mono transition-colors ${
-                          hoverMode === val ? 'bg-foreground text-background' : 'text-muted-foreground/35 hover:text-foreground'
-                        }`}>{label}</button>
-                    ))}
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {/* Overlays section */}
+                <div className="px-2.5 py-2 border-b border-border/20">
+                  <span className="subsection-title block mb-2.5">Overlays</span>
+                  {/* Recession shading */}
+                  <div className="flex items-center justify-between py-1">
+                    <div>
+                      <span className="form-label block">Recession Shading</span>
+                      <span className="text-[9.5px] text-muted-foreground/30">NBER recession bands</span>
+                    </div>
+                    <button onClick={() => setShowRecessions(p => !p)}
+                      className={`w-7 h-7 flex items-center justify-center rounded-[var(--radius)] transition-colors ${showRecessions ? 'bg-primary/15 text-primary' : 'text-muted-foreground/25 hover:text-foreground hover:bg-foreground/[0.04]'}`}>
+                      <div className={`w-3 h-3 rounded-full border-2 transition-colors ${showRecessions ? 'border-primary bg-primary' : 'border-muted-foreground/30'}`} />
+                    </button>
                   </div>
                 </div>
 
-                {/* Legend */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-mono font-semibold text-muted-foreground/40 uppercase tracking-wider">Legend</span>
-                  <button onClick={() => setShowLegend(p => !p)}
-                    className={`w-[22px] h-[22px] flex items-center justify-center rounded-[var(--radius)] transition-colors ${showLegend ? 'bg-primary/15 text-primary' : 'text-muted-foreground/25 hover:text-foreground'}`}>
-                    <div className={`w-2.5 h-2.5 rounded-full border-2 transition-colors ${showLegend ? 'border-primary bg-primary' : 'border-muted-foreground/25'}`} />
-                  </button>
+                {/* Interaction section */}
+                <div className="px-2.5 py-2 border-b border-border/20">
+                  <span className="subsection-title block mb-2.5">Interaction</span>
+                  {/* Hover mode */}
+                  <div className="mb-2">
+                    <span className="form-label block mb-1.5">Hover Mode</span>
+                    <div className="flex items-center gap-1">
+                      {([['x unified', 'X Unified'], ['closest', 'Closest'], ['x', 'X']] as const).map(([val, label]) => (
+                        <button key={val} onClick={() => setHoverMode(val)}
+                          className={`btn-toolbar ${
+                            hoverMode === val ? '!bg-foreground !text-background !border-foreground' : ''
+                          }`}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Gridlines */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-mono font-semibold text-muted-foreground/40 uppercase tracking-wider">Gridlines</span>
-                  <button onClick={() => setShowGridlines(p => !p)}
-                    className={`w-[22px] h-[22px] flex items-center justify-center rounded-[var(--radius)] transition-colors ${showGridlines ? 'bg-primary/15 text-primary' : 'text-muted-foreground/25 hover:text-foreground'}`}>
-                    <div className={`w-2.5 h-2.5 rounded-full border-2 transition-colors ${showGridlines ? 'border-primary bg-primary' : 'border-muted-foreground/25'}`} />
-                  </button>
-                </div>
+                {/* Display section */}
+                <div className="px-2.5 py-2">
+                  <span className="subsection-title block mb-2.5">Display</span>
+                  <div className="space-y-2">
+                    {/* Legend */}
+                    <div className="flex items-center justify-between">
+                      <span className="form-label">Legend</span>
+                      <button onClick={() => setShowLegend(p => !p)}
+                        className={`w-7 h-7 flex items-center justify-center rounded-[var(--radius)] transition-colors ${showLegend ? 'bg-primary/15 text-primary' : 'text-muted-foreground/25 hover:text-foreground hover:bg-foreground/[0.04]'}`}>
+                        <div className={`w-3 h-3 rounded-full border-2 transition-colors ${showLegend ? 'border-primary bg-primary' : 'border-muted-foreground/30'}`} />
+                      </button>
+                    </div>
 
-                {/* Zero line */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-mono font-semibold text-muted-foreground/40 uppercase tracking-wider">Zero Line</span>
-                  <button onClick={() => setShowZeroline(p => !p)}
-                    className={`w-[22px] h-[22px] flex items-center justify-center rounded-[var(--radius)] transition-colors ${showZeroline ? 'bg-primary/15 text-primary' : 'text-muted-foreground/25 hover:text-foreground'}`}>
-                    <div className={`w-2.5 h-2.5 rounded-full border-2 transition-colors ${showZeroline ? 'border-primary bg-primary' : 'border-muted-foreground/25'}`} />
-                  </button>
+                    {/* Gridlines */}
+                    <div className="flex items-center justify-between">
+                      <span className="form-label">Gridlines</span>
+                      <button onClick={() => setShowGridlines(p => !p)}
+                        className={`w-7 h-7 flex items-center justify-center rounded-[var(--radius)] transition-colors ${showGridlines ? 'bg-primary/15 text-primary' : 'text-muted-foreground/25 hover:text-foreground hover:bg-foreground/[0.04]'}`}>
+                        <div className={`w-3 h-3 rounded-full border-2 transition-colors ${showGridlines ? 'border-primary bg-primary' : 'border-muted-foreground/30'}`} />
+                      </button>
+                    </div>
+
+                    {/* Zero line */}
+                    <div className="flex items-center justify-between">
+                      <span className="form-label">Zero Line</span>
+                      <button onClick={() => setShowZeroline(p => !p)}
+                        className={`w-7 h-7 flex items-center justify-center rounded-[var(--radius)] transition-colors ${showZeroline ? 'bg-primary/15 text-primary' : 'text-muted-foreground/25 hover:text-foreground hover:bg-foreground/[0.04]'}`}>
+                        <div className={`w-3 h-3 rounded-full border-2 transition-colors ${showZeroline ? 'border-primary bg-primary' : 'border-muted-foreground/30'}`} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -792,15 +1056,17 @@ export default function ChartEditOverlay({ config, chartIndex, isLight, onSave, 
       </div>
 
       {/* Status bar */}
-      <div className="h-6 shrink-0 border-t border-border/20 flex items-center px-2.5 gap-3 bg-foreground/[0.015] text-[9px] font-mono text-muted-foreground/40 select-none">
-        <span>{resolvedSeries.length > 0 ? `${resolvedSeries.length} series` : 'No series'}</span>
-        <div className="w-px h-3 bg-border/20" />
-        <span>{dataLoading || codeRunning ? 'Loading...' : 'Ready'}</span>
+      <div className="h-7 shrink-0 border-t border-border/20 flex items-center px-3 gap-3 bg-card/30 text-[11px] font-mono text-muted-foreground/35 select-none">
+        <span className={dataLoading || codeRunning ? 'text-primary/50' : ''}>
+          {dataLoading || codeRunning ? 'Loading\u2026' : resolvedSeries.length > 0 ? `${resolvedSeries.length} series` : 'No series'}
+        </span>
+        <div className="w-px h-3 bg-border/15" />
+        <span>{dataLoading || codeRunning ? '' : 'Ready'}</span>
         <div className="flex-1" />
         <span className="text-muted-foreground/20">
-          <kbd className="px-0.5">^{'\u21B5'}</kbd> Run
-          {' '}
-          <kbd className="px-0.5">Esc</kbd> Close
+          <kbd className="px-1 py-0.5 rounded bg-foreground/[0.04] text-[9.5px]">{'\u2303\u21B5'}</kbd> Run
+          <span className="mx-1.5">{'\u00B7'}</span>
+          <kbd className="px-1 py-0.5 rounded bg-foreground/[0.04] text-[9.5px]">Esc</kbd> Close
         </span>
       </div>
       </div>

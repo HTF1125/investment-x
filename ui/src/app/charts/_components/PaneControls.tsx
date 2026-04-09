@@ -16,7 +16,7 @@ export default function PaneControls({ panes, onRemovePane }: PaneControlsProps)
       <span className="stat-label">Panes</span>
       {panes.map((p) => (
         <div key={p.id} className="flex items-center gap-0.5 bg-card border border-border/30 rounded-[3px] pl-1.5 pr-0.5 h-[18px]">
-          <span className="text-[9px] font-mono text-muted-foreground/60">{p.label}</span>
+          <span className="text-[11px] font-mono text-muted-foreground/60">{p.label}</span>
           <button onClick={() => onRemovePane(p.id)} className="w-3.5 h-3.5 flex items-center justify-center text-muted-foreground/20 hover:text-destructive transition-colors">
             <X className="w-2.5 h-2.5" />
           </button>

@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   LogOut, LogIn,
   Menu, X, ChevronDown,
-  Sun, Moon, Users, Search,
+  Sun, Moon, Search, Settings,
 } from 'lucide-react';
 
 import { useTheme } from '@/context/ThemeContext';
@@ -27,10 +27,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/chartpack', label: 'ChartPack' },
   { href: '/research', label: 'Research' },
   { href: '/macro', label: 'Macro' },
-  { href: '/screener', label: 'Screener' },
   { href: '/whiteboard', label: 'Whiteboard' },
-  { href: '/datatool', label: 'Data Tools' },
-  { href: '/admin/timeseries', label: 'System', adminOnly: true },
+  { href: '/admin', label: 'System', adminOnly: true },
 ];
 
 /* ── NavLink ───────────────────────────────────────────────────────────── */
@@ -43,7 +41,7 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
     <Link
       href={href}
       aria-current={isActive ? 'page' : undefined}
-      className={`relative px-2.5 py-1 text-[11px] font-semibold tracking-[0.05em] uppercase whitespace-nowrap rounded-[var(--radius)] transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background ${
+      className={`relative px-2.5 py-1 text-[11px] font-mono font-bold tracking-[0.14em] uppercase whitespace-nowrap transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
         isActive
           ? 'text-foreground'
           : 'text-muted-foreground hover:text-foreground'
@@ -51,7 +49,7 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
     >
       {children}
       {isActive && (
-        <span className="absolute left-1.5 right-1.5 -bottom-[7px] h-[2px] rounded-full bg-foreground" />
+        <span className="absolute left-2.5 right-2.5 -bottom-[7px] h-[2px] bg-accent" />
       )}
     </Link>
   );
@@ -150,7 +148,7 @@ function OverflowNav({ links }: { links: NavItem[] }) {
           <span
             key={link.href}
             data-nav-measure
-            className="px-2.5 py-1 text-[11px] font-semibold tracking-[0.05em] uppercase whitespace-nowrap"
+            className="px-2.5 py-1 text-[11px] font-mono font-bold tracking-[0.14em] uppercase whitespace-nowrap"
           >
             {link.label}
           </span>
@@ -170,16 +168,16 @@ function OverflowNav({ links }: { links: NavItem[] }) {
             aria-label="More pages"
             aria-haspopup="true"
             aria-expanded={moreOpen}
-            className={`relative flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold tracking-[0.05em] uppercase rounded-[var(--radius)] transition-all duration-150 whitespace-nowrap cursor-pointer ${
+            className={`relative flex items-center gap-1 px-2.5 py-1 text-[11px] font-mono font-bold tracking-[0.14em] uppercase transition-colors duration-150 whitespace-nowrap cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
               moreOpen || overflowHasActive
                 ? 'text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            More
+            MORE
             <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${moreOpen ? 'rotate-180' : ''}`} />
             {overflowHasActive && !moreOpen && (
-              <span className="absolute left-1.5 right-1.5 -bottom-[7px] h-[2px] rounded-full bg-foreground" />
+              <span className="absolute left-2.5 right-2.5 -bottom-[7px] h-[2px] bg-accent" />
             )}
           </button>
 
@@ -198,7 +196,7 @@ function OverflowNav({ links }: { links: NavItem[] }) {
                     <Link
                       key={link.href}
                       href={link.href}
-                      className={`block px-3 py-2 rounded-[calc(var(--radius)-2px)] text-[11px] font-semibold uppercase tracking-[0.05em] transition-all duration-150 ${
+                      className={`block px-3 py-2 rounded-[calc(var(--radius)-2px)] text-[11px] font-mono font-bold uppercase tracking-[0.14em] transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
                         isActive
                           ? 'text-foreground bg-foreground/[0.07]'
                           : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
@@ -231,15 +229,15 @@ function LiveBadge() {
   }, []);
 
   return (
-    <div className="hidden xl:flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius)] border border-border/20 bg-foreground/[0.02]" role="status" aria-label="Live data active">
+    <div className="hidden xl:flex items-center gap-2 px-2.5 h-7 border border-border/40" role="status" aria-label="Live data active">
       <div className="flex items-center gap-1.5">
-        <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" aria-hidden="true" />
-        <span className="text-success text-[9px] font-bold uppercase tracking-[0.1em]">Live</span>
+        <div className="w-1.5 h-1.5 rounded-full bg-success" aria-hidden="true" />
+        <span className="text-success text-[10px] font-mono font-bold uppercase tracking-[0.12em]">LIVE</span>
       </div>
-      <span className="w-px h-3 bg-border/40" />
-      {tz && <span className="text-muted-foreground/40 tracking-wide font-mono text-[9px]">{tz}</span>}
+      <span className="page-header-divider" />
+      {tz && <span className="text-muted-foreground text-[10px] font-mono uppercase tracking-[0.08em]">{tz}</span>}
       {time && (
-        <span className="text-foreground/70 font-mono text-[10px] tabular-nums">{time}</span>
+        <span className="text-foreground text-[11px] font-mono tabular-nums">{time}</span>
       )}
     </div>
   );
@@ -251,12 +249,12 @@ function SearchTrigger({ onClick, className = '' }: { onClick: () => void; class
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 h-7 pl-2.5 pr-2 rounded-[var(--radius)] border border-border/30 bg-foreground/[0.03] hover:bg-primary/[0.07] hover:border-primary/20 text-muted-foreground/50 hover:text-muted-foreground transition-all duration-150 group focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background ${className}`}
+      className={`flex items-center gap-2 h-7 pl-2.5 pr-2 border border-border/40 hover:border-border hover:bg-foreground/[0.03] text-muted-foreground hover:text-foreground transition-colors duration-150 group focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${className}`}
       aria-label="Search (Ctrl+K)"
     >
-      <Search className="w-3.5 h-3.5" />
-      <span className="text-[11px] font-medium tracking-wide">Search</span>
-      <kbd className="ml-0.5 px-1.5 py-0.5 rounded border border-border/40 text-[9px] font-mono text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors leading-tight">
+      <Search className="w-3 h-3" />
+      <span className="text-[10px] font-mono font-semibold uppercase tracking-[0.10em]">SEARCH</span>
+      <kbd className="ml-0.5 px-1.5 h-4 inline-flex items-center border border-border/60 text-[9.5px] font-mono text-muted-foreground group-hover:text-foreground transition-colors">
         ⌘K
       </kbd>
     </button>
@@ -289,15 +287,15 @@ function UserMenu() {
         aria-label="User menu"
         aria-haspopup="true"
         aria-expanded={open}
-        className={`flex items-center gap-1.5 h-7 pl-1 pr-2 rounded-[var(--radius)] border transition-all duration-150 ${
+        className={`flex items-center gap-1.5 h-7 pl-1 pr-2 rounded-[var(--radius)] border transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background ${
           open ? 'bg-foreground/[0.06] border-border/40' : 'border-transparent hover:bg-foreground/[0.04] hover:border-border/25'
         }`}
       >
-        <div className="w-5 h-5 rounded-[calc(var(--radius)-2px)] bg-primary/20 text-primary flex items-center justify-center text-[9px] font-bold shrink-0 border border-primary/20">
+        <div className="w-5 h-5 rounded-[calc(var(--radius)-2px)] bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 border border-primary/20">
           {initials}
         </div>
-        <span className="hidden sm:block text-[11px] font-medium text-foreground/80 leading-none">
-          {user?.first_name || 'User'}
+        <span className="hidden sm:block text-[10px] font-mono font-semibold uppercase tracking-[0.10em] text-foreground leading-none">
+          {user?.first_name || 'USER'}
         </span>
         <ChevronDown className={`hidden sm:block w-3 h-3 text-muted-foreground/40 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -313,34 +311,42 @@ function UserMenu() {
           >
             <div className="px-3 py-3 border-b border-border/20">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-[calc(var(--radius)-1px)] bg-primary/15 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 border border-primary/20">
+                <div className="w-8 h-8 rounded-[calc(var(--radius)-1px)] bg-primary/15 text-primary flex items-center justify-center text-[12.5px] font-bold shrink-0 border border-primary/20">
                   {initials}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-semibold text-foreground truncate leading-tight">
+                  <div className="text-[13px] font-semibold text-foreground truncate leading-tight">
                     {user?.first_name} {user?.last_name}
                   </div>
-                  <div className="text-[10px] text-muted-foreground/40 truncate mt-0.5 font-mono">{user?.email}</div>
+                  <div className="text-[11.5px] text-muted-foreground/40 truncate mt-0.5 font-mono">{user?.email}</div>
                 </div>
                 {isRealAdmin && !viewAsUser && (
-                  <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded-[3px] shrink-0">
+                  <span className="text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded-[3px] shrink-0">
                     Admin
                   </span>
                 )}
                 {isRealAdmin && viewAsUser && (
-                  <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-foreground/[0.06] text-muted-foreground border border-border/30 rounded-[3px] shrink-0">
+                  <span className="text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-foreground/[0.06] text-muted-foreground border border-border/30 rounded-[3px] shrink-0">
                     User
                   </span>
                 )}
               </div>
             </div>
             <div className="p-1">
+              <Link
+                href="/settings"
+                onClick={() => setOpen(false)}
+                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-[calc(var(--radius)-2px)] text-[10px] font-mono font-semibold uppercase tracking-[0.10em] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              >
+                <Settings className="w-3 h-3" />
+                SETTINGS
+              </Link>
               <button
                 onClick={() => { setOpen(false); logout(); }}
-                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-[calc(var(--radius)-2px)] text-[11px] font-medium text-muted-foreground/70 hover:text-destructive hover:bg-destructive/[0.06] transition-all duration-150"
+                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-[calc(var(--radius)-2px)] text-[10px] font-mono font-semibold uppercase tracking-[0.10em] text-muted-foreground hover:text-destructive hover:bg-destructive/[0.06] transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                Sign out
+                <LogOut className="w-3 h-3" />
+                SIGN OUT
               </button>
             </div>
           </motion.div>
@@ -379,7 +385,7 @@ function MobileNavLink({ href, children }: { href: string; children: React.React
   return (
     <Link
       href={href}
-      className={`px-3 py-2 rounded-[var(--radius)] text-[11px] font-semibold uppercase tracking-[0.05em] transition-all duration-150 ${
+      className={`px-3 py-2 rounded-[var(--radius)] text-[11px] font-mono font-bold uppercase tracking-[0.14em] transition-colors duration-150 ${
         isActive
           ? 'text-foreground bg-foreground/[0.07]'
           : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
@@ -393,7 +399,7 @@ function MobileNavLink({ href, children }: { href: string; children: React.React
 /* ── Main Navbar ───────────────────────────────────────────────────────── */
 
 export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) {
-  const { user, logout, isAuthenticated, viewAsUser, toggleViewAsUser } = useAuth();
+  const { user, logout, isAuthenticated, viewAsUser } = useAuth();
   const { theme } = useTheme();
   const isRealAdmin = !!user && (user.role === 'owner' || user.role === 'admin' || user.is_admin);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -416,8 +422,8 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
   );
 
   return (
-    <nav aria-label="Main navigation" className="fixed top-0 left-0 right-0 z-[100] h-[48px] bg-background border-b border-border/30">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-5 h-full flex items-center gap-3 sm:gap-4">
+    <nav aria-label="Main navigation" className="fixed top-0 left-0 right-0 z-[100] h-[56px] bg-background border-b border-border/40">
+      <div className="max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-6 h-full flex items-center gap-3 sm:gap-4">
 
         {/* Logo */}
         <Link href="/" className="shrink-0 mr-1 sm:mr-2">
@@ -426,7 +432,7 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
             alt="Investment-X"
             width={160}
             height={16}
-            className="h-[13px] w-auto"
+            className="h-[18px] w-auto"
             priority
             unoptimized
           />
@@ -457,21 +463,6 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
 
           <span className="hidden sm:flex items-center gap-1.5">
             <ThemeToggle />
-            {isRealAdmin && (
-              <button
-                onClick={toggleViewAsUser}
-                className={`btn-icon ${
-                  viewAsUser
-                    ? 'text-primary bg-primary/10'
-                    : ''
-                }`}
-                title={viewAsUser ? 'Exit user view' : 'View as user'}
-                aria-label={viewAsUser ? 'Exit user view' : 'View as user'}
-                aria-pressed={viewAsUser}
-              >
-                <Users className="w-3.5 h-3.5" />
-              </button>
-            )}
           </span>
 
           <div className="w-px h-3.5 bg-border/30 mx-1.5 hidden sm:block" />
@@ -481,9 +472,9 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
           ) : (
             <Link
               href="/login"
-              className="h-7 px-3.5 bg-foreground text-background rounded-[var(--radius)] text-[11px] font-semibold uppercase tracking-[0.05em] inline-flex items-center hover:opacity-85 transition-opacity duration-150"
+              className="h-7 px-3 bg-foreground text-background text-[10px] font-mono font-bold uppercase tracking-[0.12em] inline-flex items-center hover:opacity-85 transition-opacity duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
             >
-              Sign in
+              SIGN IN
             </Link>
           )}
 
@@ -510,7 +501,7 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="md:hidden fixed inset-0 top-[48px] bg-black/20 z-[80]"
+              className="md:hidden fixed inset-0 top-[56px] bg-black/20 z-[80]"
               onClick={() => setMenuOpen(false)}
               aria-hidden="true"
             />
@@ -523,7 +514,7 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
               transition={{ duration: 0.12 }}
               role="navigation"
               aria-label="Mobile navigation"
-              className="md:hidden absolute top-[48px] left-0 right-0 bg-background border-b border-border/30 px-3 py-2 flex flex-col gap-0.5 shadow-md z-[90]"
+              className="md:hidden absolute top-[56px] left-0 right-0 bg-background border-b border-border/40 px-3 py-2 flex flex-col gap-0.5 shadow-md z-[90]"
             >
               {filteredLinks.map(link => (
                 <MobileNavLink key={link.href} href={link.href}>{link.label}</MobileNavLink>
@@ -532,18 +523,18 @@ export default function Navbar({ onOpenSearch }: { onOpenSearch?: () => void }) 
                 {isAuthenticated ? (
                   <button
                     onClick={logout}
-                    className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius)] text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground hover:text-destructive hover:bg-destructive/[0.06] transition-all w-full"
+                    className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius)] text-[11px] font-mono font-bold uppercase tracking-[0.14em] text-muted-foreground hover:text-destructive hover:bg-destructive/[0.06] transition-colors w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                   >
-                    <LogOut className="w-3.5 h-3.5" />
-                    Sign out
+                    <LogOut className="w-3 h-3" />
+                    SIGN OUT
                   </button>
                 ) : (
                   <Link
                     href="/login"
-                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-foreground text-background rounded-[var(--radius)] text-[11px] font-semibold uppercase tracking-[0.05em]"
+                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-foreground text-background text-[11px] font-mono font-bold uppercase tracking-[0.14em] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                   >
-                    <LogIn className="w-3.5 h-3.5" />
-                    Sign in
+                    <LogIn className="w-3 h-3" />
+                    SIGN IN
                   </Link>
                 )}
               </div>

@@ -183,7 +183,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
 
   const plotConfig = React.useMemo(() => ({
     responsive: true,
-    displayModeBar: interactive ? ('hover' as const) : (false as const),
+    displayModeBar: false as const,
     displaylogo: false,
     scrollZoom: interactive ? scrollZoom : false,
     modeBarButtonsToRemove: ['select2d', 'lasso2d', 'sendDataToCloud'] as Plotly.ModeBarDefaultButtons[],
@@ -239,11 +239,13 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
           >
             {!plotRenderError ? (
               <Plot
-                key={`${id}-${plotRetryNonce}`}
+                key={`${id}-${theme}-${plotRetryNonce}`}
                 data={figure.data}
                 layout={plotLayout}
                 config={plotConfig}
                 style={plotStyle}
+                useResizeHandler
+                revision={plotRetryNonce}
                 onInitialized={handleInitialized as (figure: Record<string, unknown>, gd: HTMLElement) => void}
                 onError={handleError}
                 onHover={handleHover}
@@ -253,7 +255,7 @@ export default function Chart({ id, initialFigure, copySignal = 0, onHoverData, 
             ) : (
               <div role="alert" className="h-full w-full flex flex-col items-center justify-center gap-2 p-4 text-center">
                 <div className="text-xs text-destructive font-semibold">Chart Render Error</div>
-                <div className="text-[11px] text-muted-foreground">{plotRenderError}</div>
+                <div className="text-[12.5px] text-muted-foreground">{plotRenderError}</div>
                 <button
                   type="button"
                   onClick={() => {

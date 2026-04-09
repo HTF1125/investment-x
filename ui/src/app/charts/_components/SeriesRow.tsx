@@ -51,12 +51,12 @@ export default function SeriesRow({
             defaultValue={series.name}
             onBlur={(e) => { onUpdate({ name: e.target.value || series.code }); setEditingName(false); }}
             onKeyDown={(e) => { if (e.key === 'Enter') { onUpdate({ name: (e.target as HTMLInputElement).value || series.code }); setEditingName(false); } if (e.key === 'Escape') setEditingName(false); }}
-            className="flex-1 min-w-0 text-[11px] text-foreground bg-transparent border-b border-primary/40 focus:outline-none px-0 py-0"
+            className="flex-1 min-w-0 text-[12.5px] text-foreground bg-transparent border-b border-primary/40 focus:outline-none px-0 py-0"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
           <span
-            className="text-[11px] text-foreground truncate flex-1 min-w-0"
+            className="text-[12.5px] text-foreground truncate flex-1 min-w-0"
             title={`${series.name}${series.name !== series.code ? ` (${series.code})` : ''} — double-click to rename`}
             onDoubleClick={(e) => { e.stopPropagation(); setEditingName(true); }}
           >
@@ -65,10 +65,10 @@ export default function SeriesRow({
           </span>
         )}
 
-        <span className="text-[8px] font-mono text-muted-foreground/40 shrink-0">{chartTypeLabel}</span>
+        <span className="text-[9.5px] font-mono text-muted-foreground/40 shrink-0">{chartTypeLabel}</span>
 
         <span
-          className={`text-[8px] font-mono font-bold shrink-0 ${
+          className={`text-[9.5px] font-mono font-bold shrink-0 ${
             (series.yAxisIndex ?? 0) > 0 ? 'text-primary' : 'text-muted-foreground/30'
           }`}
         >
@@ -105,7 +105,7 @@ export default function SeriesRow({
               <button
                 key={t.key}
                 onClick={() => onUpdate({ chartType: t.key })}
-                className={`h-[22px] px-2 rounded text-[9px] font-mono transition-colors ${
+                className={`h-[22px] px-2 rounded text-[11px] font-mono transition-colors ${
                   series.chartType === t.key
                     ? 'bg-foreground text-background font-bold'
                     : 'text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.05]'
@@ -122,7 +122,7 @@ export default function SeriesRow({
               <button
                 key={st.key}
                 onClick={() => onUpdate({ lineStyle: st.key })}
-                className={`h-[22px] px-2 rounded text-[9px] font-mono transition-colors ${
+                className={`h-[22px] px-2 rounded text-[11px] font-mono transition-colors ${
                   (series.lineStyle || 'solid') === st.key
                     ? 'bg-foreground text-background'
                     : 'text-muted-foreground/35 hover:text-foreground hover:bg-foreground/[0.05]'
@@ -137,7 +137,7 @@ export default function SeriesRow({
               <button
                 key={w}
                 onClick={() => onUpdate({ lineWidth: w })}
-                className={`h-[22px] w-7 rounded text-[9px] font-mono text-center transition-colors ${
+                className={`h-[22px] w-7 rounded text-[11px] font-mono text-center transition-colors ${
                   (series.lineWidth ?? 1.5) === w
                     ? 'bg-foreground text-background'
                     : 'text-muted-foreground/35 hover:text-foreground hover:bg-foreground/[0.05]'
@@ -150,12 +150,12 @@ export default function SeriesRow({
 
           {/* Axis + Pane */}
           <div className="flex items-center gap-1">
-            <span className="text-[8px] font-mono text-muted-foreground/30 uppercase tracking-wider mr-0.5">Axis</span>
+            <span className="text-[9.5px] font-mono text-muted-foreground/30 uppercase tracking-wider mr-0.5">Axis</span>
             {[0, 1, 2].map((yi) => (
               <button
                 key={yi}
                 onClick={() => onUpdate({ yAxisIndex: yi })}
-                className={`h-[22px] w-7 rounded text-[9px] font-mono font-bold transition-colors ${
+                className={`h-[22px] w-7 rounded text-[11px] font-mono font-bold transition-colors ${
                   (series.yAxisIndex ?? 0) === yi
                     ? 'bg-foreground text-background'
                     : 'text-muted-foreground/35 hover:text-foreground hover:bg-foreground/[0.05]'
@@ -167,12 +167,12 @@ export default function SeriesRow({
             {panes.length > 1 && (
               <>
                 <div className="w-px h-3.5 bg-border/20 mx-0.5" />
-                <span className="text-[8px] font-mono text-muted-foreground/30 uppercase tracking-wider mr-0.5">Pane</span>
+                <span className="text-[9.5px] font-mono text-muted-foreground/30 uppercase tracking-wider mr-0.5">Pane</span>
                 {panes.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => onUpdate({ paneId: p.id })}
-                    className={`h-[22px] px-2 rounded text-[9px] font-mono transition-colors ${
+                    className={`h-[22px] px-2 rounded text-[11px] font-mono transition-colors ${
                       (series.paneId ?? 0) === p.id
                         ? 'bg-foreground text-background'
                         : 'text-muted-foreground/35 hover:text-foreground hover:bg-foreground/[0.05]'

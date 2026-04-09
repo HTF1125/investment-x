@@ -1,87 +1,101 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    /* ── Dark Theme (Default) — Deep navy, electric blue accent ──────── */
-    --background: 8 10 16;
-    --foreground: 205 215 230;
+    /* ── Dark Theme (Default) — Steel terminal, platinum + amber ────── */
+    --background: 14 16 20;
+    --foreground: 218 222 228;
 
-    --card: 12 14 22;
-    --card-foreground: 205 215 230;
-    --popover: 12 14 22;
-    --popover-foreground: 205 215 230;
-    --primary: 99 130 255;
-    --primary-foreground: 255 255 255;
-    --secondary: 16 18 28;
-    --secondary-foreground: 205 215 230;
-    --muted: 16 18 28;
-    --muted-foreground: 140 148 175;
-    --accent: 99 130 255;
-    --accent-foreground: 255 255 255;
-    --destructive: 245 80 80;
+    --card: 20 23 28;
+    --card-foreground: 218 222 228;
+    --popover: 20 23 28;
+    --popover-foreground: 218 222 228;
+    --primary: 198 204 214;
+    --primary-foreground: 14 16 20;
+    --secondary: 26 30 36;
+    --secondary-foreground: 218 222 228;
+    --muted: 26 30 36;
+    --muted-foreground: 128 136 148;
+    --accent: 224 168 72;
+    --accent-foreground: 14 16 20;
+    --destructive: 214 86 86;
     --destructive-foreground: 255 255 255;
-    --success: 63 185 80;
+    --success: 72 168 110;
     --success-foreground: 255 255 255;
-    --warning: 210 153 34;
-    --warning-foreground: 255 255 255;
-    --border: 45 50 72;
-    --input: 45 50 72;
-    --ring: 99 130 255;
+    --warning: 216 162 64;
+    --warning-foreground: 14 16 20;
+    --border: 48 54 64;
+    --input: 48 54 64;
+    --ring: 198 204 214;
 
     --radius: 0.5rem;
 
     /* Glass */
-    --glass-bg: rgba(255, 255, 255, 0.02);
-    --glass-border: rgba(255, 255, 255, 0.04);
-    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    --glass-bg: rgba(218, 222, 228, 0.02);
+    --glass-border: rgba(218, 222, 228, 0.04);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 
     /* Surface (for layered cards) */
-    --surface: 16 18 28;
+    --surface: 26 30 36;
+
+    /* Regime ambient glow */
+    --regime-bull-glow: rgba(72, 168, 110, 0.04);
+    --regime-bear-glow: rgba(214, 86, 86, 0.04);
+    --regime-neutral-glow: rgba(216, 162, 64, 0.03);
   }
 
   html.light {
     --background: 248 247 244;
-    --foreground: 18 20 28;
+    --foreground: 24 28 36;
 
     --card: 255 254 251;
-    --card-foreground: 18 20 28;
+    --card-foreground: 24 28 36;
     --popover: 255 254 251;
-    --popover-foreground: 18 20 28;
-    --primary: 50 80 210;
+    --popover-foreground: 24 28 36;
+    --primary: 40 48 64;
     --primary-foreground: 255 255 255;
-    --secondary: 242 241 238;
-    --secondary-foreground: 18 20 28;
-    --muted: 242 241 238;
-    --muted-foreground: 70 68 62;
-    --accent: 50 80 210;
+    --secondary: 240 238 232;
+    --secondary-foreground: 24 28 36;
+    --muted: 240 238 232;
+    --muted-foreground: 86 94 108;
+    --accent: 168 112 24;
     --accent-foreground: 255 255 255;
-    --destructive: 220 55 55;
+    --destructive: 184 48 48;
     --destructive-foreground: 255 255 255;
-    --success: 26 127 55;
+    --success: 32 112 56;
     --success-foreground: 255 255 255;
-    --warning: 154 103 0;
+    --warning: 158 104 8;
     --warning-foreground: 255 255 255;
-    --border: 195 192 182;
-    --input: 195 192 182;
-    --ring: 50 80 210;
+    --border: 196 198 202;
+    --input: 196 198 202;
+    --ring: 40 48 64;
 
-    --glass-bg: rgba(255, 255, 255, 0.8);
-    --glass-border: rgba(18, 20, 28, 0.06);
-    --glass-shadow: 0 2px 16px rgba(18, 20, 28, 0.04);
+    --glass-bg: rgba(255, 254, 251, 0.85);
+    --glass-border: rgba(24, 28, 36, 0.06);
+    --glass-shadow: 0 2px 16px rgba(24, 28, 36, 0.05);
 
-    --surface: 242 241 238;
+    --surface: 240 238 232;
+
+    --regime-bull-glow: rgba(32, 112, 56, 0.035);
+    --regime-bear-glow: rgba(184, 48, 48, 0.035);
+    --regime-neutral-glow: rgba(158, 104, 8, 0.025);
   }
 
   body {
     background-color: rgb(var(--background));
     color: rgb(var(--foreground));
-    font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+    /* Global mono-first typography: Space Mono via --font-mono. Every
+       element inherits this unless overridden. See chartTheme.ts for the
+       matching Plotly font config. */
+    font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo,
+                 Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    font-feature-settings: 'cv01', 'cv02';
   }
 }
 
@@ -95,7 +109,7 @@
   /* Glass card — flat elevated card */
   .glass-card {
     background: rgb(var(--card));
-    border: 1px solid rgb(var(--border) / 0.4);
+    border: 1px solid rgb(var(--border) / 0.5);
     border-radius: var(--radius);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   }
@@ -111,33 +125,128 @@
   /* ── Typographic utilities ─────────────────────────────────────────── */
 
   .stat-label {
-    @apply text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground;
+    @apply text-[10.5px] font-mono font-semibold uppercase tracking-[0.12em] text-muted-foreground;
   }
 
   .page-title {
-    @apply text-base font-semibold text-foreground tracking-[-0.02em];
+    @apply text-lg font-semibold text-foreground tracking-[-0.02em];
+  }
+
+  /* ── Unified page layout primitives ─────────────────────────────────
+   *
+   * These classes define the canonical page structure. Every route under
+   * `ui/src/app/*` should compose them inside `AppShell hideFooter` so
+   * header heights, paddings, max-widths, and scroll containers stay
+   * consistent across the application.
+   *
+   * Layout contract:
+   *   <AppShell hideFooter>
+   *     <div className="page-shell">
+   *       <div className="page-header"> ...title + controls... </div>
+   *       <div className="page-content">
+   *         <div className="page-container"> ...main content... </div>
+   *       </div>
+   *     </div>
+   *   </AppShell>
+   */
+
+  .page-shell {
+    /* Mobile: natural flow — the whole document body scrolls. Fixed-height
+       split-scroll is a desktop ergonomic that breaks on small screens when
+       any header band (e.g. the AxisDock on /macro) grows taller than its
+       slice of the viewport, clipping controls below it.
+       sm+ (≥640px): fixed height with internal scroll regions. */
+    @apply min-h-[calc(100vh-56px)] flex flex-col bg-background;
+    @apply sm:h-[calc(100vh-56px)] sm:overflow-hidden;
+  }
+
+  .page-header {
+    @apply shrink-0 h-11 flex items-center gap-3 border-b border-border/40
+           px-3 sm:px-5 lg:px-6;
+    background: rgb(var(--surface) / 0.30);
+  }
+
+  .page-header-title {
+    @apply text-[11px] uppercase tracking-[0.14em] font-mono font-bold
+           text-foreground whitespace-nowrap;
+  }
+
+  .page-content {
+    /* Mobile: content flows naturally inside the body-scrolled page-shell.
+       sm+: content gets its own scroll region. */
+    @apply flex-1 min-h-0;
+    @apply sm:overflow-y-auto;
+  }
+
+  .page-container {
+    @apply max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-6 py-4;
+  }
+
+  /* Full-bleed variant for pages that manage their own padding internally
+     (e.g. split views, custom sidebars). Still enforces the shell height. */
+  .page-container-bleed {
+    @apply max-w-[1600px] mx-auto;
+  }
+
+  /* Segmented monospace tab bar — matches the macro page tab row.
+     Use inside a .page-shell, directly under the .page-header:
+       <div className="page-tabs">
+         <button className="page-tab page-tab-active">Overview</button>
+         <button className="page-tab">History</button>
+       </div>
+     Active state: add `page-tab-active` (amber underline + foreground text).
+     Successive `.page-tab` buttons automatically get a left divider. */
+
+  .page-tabs {
+    @apply shrink-0 border-b border-border/40 px-3 sm:px-5 lg:px-6
+           flex items-center overflow-x-auto no-scrollbar;
+  }
+
+  .page-tab {
+    @apply relative flex items-center gap-1.5 whitespace-nowrap
+           px-3 py-2.5 text-[10px] font-mono font-semibold uppercase
+           tracking-[0.10em] text-muted-foreground hover:text-foreground
+           transition-colors;
+  }
+  .page-tab + .page-tab {
+    @apply border-l border-border/30;
+  }
+  .page-tab-active {
+    @apply text-foreground;
+  }
+  .page-tab-active::after {
+    content: '';
+    @apply absolute left-0 right-0 bottom-0 h-[2px] bg-accent;
+  }
+
+  /* A thin vertical rule for separating header items — same weight as
+     the macro header's `<div className="w-px h-3 bg-border/60" />`. */
+  .page-header-divider {
+    @apply w-px h-3 bg-border/60 shrink-0;
   }
 
   /* ── Card utilities ────────────────────────────────────────────────── */
 
   .panel-card {
-    @apply rounded-[var(--radius)] border border-border/40 bg-card shadow-sm;
+    @apply rounded-[var(--radius)] border border-border/50 bg-card shadow-sm;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
   /* ── Tab link — underline indicator ────────────────────────────────── */
 
   .tab-link {
-    @apply relative whitespace-nowrap px-3 py-2.5 text-[11.5px] font-medium
+    @apply relative whitespace-nowrap px-3 py-2.5 text-[13px] font-medium
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-1 focus-visible:ring-offset-background
            transition-all duration-150;
   }
   .tab-link[aria-selected='true'],
   .tab-link.active {
-    @apply text-primary;
+    @apply text-foreground;
   }
   .tab-link.active::after,
   .tab-link[aria-selected='true']::after {
     content: '';
-    @apply absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-primary;
+    @apply absolute bottom-0 left-3 right-3 h-[2px] bg-accent;
   }
   .tab-link:not([aria-selected='true']):not(.active) {
     @apply text-muted-foreground hover:text-foreground;
@@ -146,10 +255,10 @@
   /* ── Toolbar button — compact action trigger ───────────────────────── */
 
   .btn-toolbar {
-    @apply h-8 px-2.5 rounded-[var(--radius)] border border-border/40 text-[11px] font-medium
+    @apply h-8 px-3 rounded-[var(--radius)] border border-border/40 text-[12.5px] font-medium
            text-muted-foreground hover:text-foreground hover:bg-primary/[0.06] hover:border-primary/25
            focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background
-           inline-flex items-center gap-1.5
+           inline-flex items-center gap-1.5 active:scale-[0.98]
            transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
@@ -171,7 +280,7 @@
   /* ── Button variants ─────────────────────────────────────────────── */
 
   .btn-primary {
-    @apply h-8 px-3.5 rounded-[var(--radius)] bg-primary text-primary-foreground text-[11px] font-semibold
+    @apply h-9 px-4 rounded-[var(--radius)] bg-primary text-primary-foreground text-[12.5px] font-semibold
            inline-flex items-center justify-center gap-1.5
            hover:opacity-90 active:scale-[0.98]
            focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background
@@ -179,15 +288,15 @@
   }
 
   .btn-secondary {
-    @apply h-8 px-3.5 rounded-[var(--radius)] border border-border/50 bg-transparent text-foreground text-[11px] font-medium
+    @apply h-9 px-4 rounded-[var(--radius)] border border-border/50 bg-transparent text-foreground text-[12.5px] font-medium
            inline-flex items-center justify-center gap-1.5
-           hover:bg-primary/[0.06] hover:border-primary/25
+           hover:bg-primary/[0.06] hover:border-primary/25 active:scale-[0.98]
            focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-1 focus:ring-offset-background
            transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
   .btn-danger {
-    @apply h-8 px-3.5 rounded-[var(--radius)] border border-destructive/20 bg-destructive/[0.06] text-destructive text-[11px] font-medium
+    @apply h-9 px-4 rounded-[var(--radius)] border border-destructive/20 bg-destructive/[0.06] text-destructive text-[12.5px] font-medium
            inline-flex items-center justify-center gap-1.5
            hover:bg-destructive/10 hover:border-destructive/40
            focus:outline-none focus:ring-2 focus:ring-destructive/25 focus:ring-offset-1 focus:ring-offset-background
@@ -197,27 +306,27 @@
   /* ── Section containers ─────────────────────────────────────────────── */
 
   .dashboard-section {
-    @apply rounded-[var(--radius)] border border-border/30 bg-card shadow-sm;
+    @apply rounded-[var(--radius)] border border-border/50 bg-card shadow-sm;
   }
 
   .section-header {
-    @apply flex items-center gap-2 px-3 py-2 border-b border-border/20
-           bg-foreground/[0.02] select-none overflow-x-hidden;
+    @apply flex items-center gap-2 px-3.5 py-2.5 border-b border-border/30
+           bg-foreground/[0.04] select-none overflow-x-hidden;
   }
 
   .section-title {
-    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground;
+    @apply text-[12.5px] font-semibold uppercase tracking-[0.06em] text-foreground;
   }
 
   /* ── Form controls ──────────────────────────────────────────────────── */
 
   .form-label {
-    @apply text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground pl-0.5;
+    @apply text-[11.5px] font-mono uppercase tracking-[0.10em] text-muted-foreground pl-0.5;
   }
 
   .form-input {
-    @apply w-full px-3 h-9 bg-background border border-border/50 rounded-[var(--radius)]
-           text-[13px] text-foreground
+    @apply w-full px-3 h-10 bg-background border border-border/50 rounded-[var(--radius)]
+           text-sm text-foreground
            focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/25
            transition-all duration-150
            placeholder:text-muted-foreground/50 hover:border-border/70;
@@ -226,29 +335,29 @@
   /* ── Data table cells ───────────────────────────────────────────────── */
 
   .table-cell-data {
-    @apply font-mono text-[10px] tabular-nums text-foreground/80;
+    @apply font-mono text-[11.5px] tabular-nums text-foreground/80;
   }
 
   .table-cell-positive {
-    @apply font-mono text-[10px] tabular-nums text-success font-semibold;
+    @apply font-mono text-[11.5px] tabular-nums text-success font-semibold;
   }
 
   .table-cell-negative {
-    @apply font-mono text-[10px] tabular-nums text-destructive font-semibold;
+    @apply font-mono text-[11.5px] tabular-nums text-destructive font-semibold;
   }
 
   .table-cell-neutral {
-    @apply font-mono text-[10px] tabular-nums text-muted-foreground;
+    @apply font-mono text-[11.5px] tabular-nums text-muted-foreground;
   }
 
   /* ── Sub-section dividers (within dashboard-section) ────────────────── */
 
   .subsection-header {
-    @apply flex items-center gap-2 px-3 py-1.5 text-[9px];
+    @apply flex items-center gap-2 px-3 py-1.5 text-[11px];
   }
 
   .subsection-title {
-    @apply text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground whitespace-nowrap;
+    @apply text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground whitespace-nowrap;
   }
 
 }
@@ -366,8 +475,8 @@ html.light .auth-grid-bg {
 /* ── Headings ──────────────────────────────────────────────────────────── */
 
 h1, h2, h3, h4 {
-  font-family: var(--font-body), system-ui, sans-serif;
-  letter-spacing: -0.02em;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  letter-spacing: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -824,4 +933,196 @@ html.light .report-editor-shell {
 
 html.light .report-cover {
   background: rgb(var(--card) / 0.7);
+}
+
+/* ── Tiptap Editor (report slide blocks) ──────────────────────────────── */
+
+.tiptap-wrapper .tiptap-content {
+  color: rgb(var(--foreground));
+  font-family: var(--font-mono), ui-monospace, monospace;
+  line-height: 1.65;
+}
+
+.tiptap-wrapper .tiptap-content > * + * {
+  margin-top: 0.5rem;
+}
+
+.tiptap-wrapper .tiptap-content p {
+  margin-bottom: 0.25rem;
+}
+
+.tiptap-wrapper .tiptap-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgb(var(--muted-foreground) / 0.3);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.tiptap-wrapper .tiptap-content strong {
+  font-weight: 700;
+}
+
+.tiptap-wrapper .tiptap-content em {
+  font-style: italic;
+}
+
+.tiptap-wrapper .tiptap-content ul,
+.tiptap-wrapper .tiptap-content ol {
+  padding-left: 1.2rem;
+  margin: 0.25rem 0;
+}
+
+.tiptap-wrapper .tiptap-content ul {
+  list-style-type: disc;
+}
+
+.tiptap-wrapper .tiptap-content ol {
+  list-style-type: decimal;
+}
+
+.tiptap-wrapper .tiptap-content li {
+  margin-bottom: 0.15rem;
+}
+
+.tiptap-wrapper .tiptap-content li p {
+  margin-bottom: 0;
+}
+
+/* ── Architecture markdown ─────────────────────────────────────────────────── */
+
+.arch-markdown {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: rgb(var(--foreground) / 0.75);
+}
+
+.arch-markdown h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: rgb(var(--foreground));
+  margin: 0 0 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgb(var(--border) / 0.25);
+}
+
+.arch-markdown h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: rgb(var(--foreground) / 0.9);
+  margin: 1.75rem 0 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgb(var(--border) / 0.15);
+}
+
+.arch-markdown h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: rgb(var(--foreground) / 0.85);
+  margin: 1.25rem 0 0.4rem;
+}
+
+.arch-markdown h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgb(var(--primary));
+  margin: 1rem 0 0.3rem;
+  font-family: var(--font-mono);
+}
+
+.arch-markdown p {
+  margin: 0.4rem 0;
+}
+
+.arch-markdown ul, .arch-markdown ol {
+  margin: 0.3rem 0;
+  padding-left: 1.25rem;
+}
+
+.arch-markdown li {
+  margin: 0.15rem 0;
+}
+
+.arch-markdown li::marker {
+  color: rgb(var(--muted-foreground) / 0.3);
+}
+
+.arch-markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background: rgb(var(--foreground) / 0.06);
+  color: rgb(var(--primary));
+}
+
+.arch-markdown pre {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: rgb(var(--foreground) / 0.04);
+  border: 1px solid rgb(var(--border) / 0.15);
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.arch-markdown pre code {
+  padding: 0;
+  background: none;
+  color: rgb(var(--foreground) / 0.7);
+  font-size: inherit;
+}
+
+.arch-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 12.5px;
+}
+
+.arch-markdown th {
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgb(var(--muted-foreground) / 0.5);
+  border-bottom: 1px solid rgb(var(--border) / 0.3);
+}
+
+.arch-markdown td {
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid rgb(var(--border) / 0.1);
+  color: rgb(var(--foreground) / 0.65);
+}
+
+.arch-markdown tr:hover td {
+  background: rgb(var(--foreground) / 0.02);
+}
+
+.arch-markdown strong {
+  font-weight: 600;
+  color: rgb(var(--foreground) / 0.85);
+}
+
+.arch-markdown hr {
+  border: none;
+  border-top: 1px solid rgb(var(--border) / 0.15);
+  margin: 1.25rem 0;
+}
+
+.arch-markdown blockquote {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid rgb(var(--primary) / 0.3);
+  background: rgb(var(--primary) / 0.04);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: rgb(var(--foreground) / 0.7);
+}
+
+.arch-markdown blockquote p {
+  margin: 0;
 }

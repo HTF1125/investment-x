@@ -141,7 +141,7 @@ export default function CommandBar({
           <button
             key={p.label}
             onClick={() => onRangePreset(p.label, p.months)}
-            className={`h-[22px] px-1.5 rounded-[3px] text-[10px] font-mono shrink-0 transition-colors ${
+            className={`h-[22px] px-1.5 rounded-[3px] text-[11.5px] font-mono shrink-0 transition-colors ${
               activeRange === p.label
                 ? 'bg-foreground text-background'
                 : 'text-muted-foreground/40 hover:text-foreground'
@@ -157,16 +157,16 @@ export default function CommandBar({
         type="date"
         value={startDate}
         onChange={(e) => onStartDateChange(e.target.value)}
-        className="h-[22px] w-[95px] px-1 text-[10px] font-mono border border-border/30 rounded-[3px] focus:outline-none focus:border-primary/40 shrink-0 ml-1"
+        className="h-[22px] w-[95px] px-1 text-[11.5px] font-mono border border-border/30 rounded-[3px] focus:outline-none focus:border-primary/40 shrink-0 ml-1"
         style={formStyle}
         title="Start"
       />
-      <span className="text-[10px] text-muted-foreground/30 mx-0.5 shrink-0">{'\u2014'}</span>
+      <span className="text-[11.5px] text-muted-foreground/30 mx-0.5 shrink-0">{'\u2014'}</span>
       <input
         type="date"
         value={endDate}
         onChange={(e) => onEndDateChange(e.target.value)}
-        className="h-[22px] w-[95px] px-1 text-[10px] font-mono border border-border/30 rounded-[3px] focus:outline-none focus:border-primary/40 shrink-0"
+        className="h-[22px] w-[95px] px-1 text-[11.5px] font-mono border border-border/30 rounded-[3px] focus:outline-none focus:border-primary/40 shrink-0"
         style={formStyle}
         title="End"
       />
@@ -176,7 +176,7 @@ export default function CommandBar({
       {/* Toggle buttons */}
       <button
         onClick={onToggleRecessions}
-        className={`h-[22px] px-1.5 rounded-[3px] text-[10px] font-mono font-medium shrink-0 transition-colors ${
+        className={`h-[22px] px-1.5 rounded-[3px] text-[11.5px] font-mono font-medium shrink-0 transition-colors ${
           showRecessions ? 'text-primary' : 'text-muted-foreground/40 hover:text-foreground'
         }`}
         title="NBER recession shading"
@@ -185,7 +185,7 @@ export default function CommandBar({
       </button>
       <button
         onClick={onToggleRebase}
-        className={`h-[22px] px-1.5 rounded-[3px] text-[10px] font-mono font-medium shrink-0 transition-colors ${
+        className={`h-[22px] px-1.5 rounded-[3px] text-[11.5px] font-mono font-medium shrink-0 transition-colors ${
           allRebased ? 'text-primary' : 'text-muted-foreground/40 hover:text-foreground'
         }`}
         title="Rebase / index all series to 100"
@@ -194,7 +194,7 @@ export default function CommandBar({
       </button>
       <button
         onClick={onCycleHoverMode}
-        className="h-[22px] px-1.5 rounded-[3px] text-[10px] font-mono font-medium shrink-0 text-muted-foreground/40 hover:text-foreground transition-colors"
+        className="h-[22px] px-1.5 rounded-[3px] text-[11.5px] font-mono font-medium shrink-0 text-muted-foreground/40 hover:text-foreground transition-colors"
         title={`Hover mode: ${hoverMode}`}
       >
         {hoverModeLabel}
@@ -224,14 +224,14 @@ export default function CommandBar({
           title="Back to pack"
         >
           <ChevronLeft className="w-3 h-3" />
-          <span className="text-[10px] font-mono">PACK</span>
+          <span className="text-[11.5px] font-mono">PACK</span>
         </button>
       )}
       {packEditCtx && (
         <button
           onClick={onUpdatePackChart}
           disabled={savingToPack}
-          className="h-[26px] px-2.5 flex items-center gap-1 rounded-[var(--radius)] bg-foreground text-background text-[10px] font-mono font-medium hover:opacity-90 transition-colors disabled:opacity-30 shrink-0 mr-1"
+          className="h-[26px] px-2.5 flex items-center gap-1 rounded-[var(--radius)] bg-foreground text-background text-[11.5px] font-mono font-medium hover:opacity-90 transition-colors disabled:opacity-30 shrink-0 mr-1"
         >
           {savingToPack ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
           Update
@@ -241,7 +241,7 @@ export default function CommandBar({
         <button
           onClick={onAddChartToPack}
           disabled={savingToPack || seriesCount === 0}
-          className="h-[26px] px-2.5 flex items-center gap-1 rounded-[var(--radius)] bg-foreground text-background text-[10px] font-mono font-medium hover:opacity-90 transition-colors disabled:opacity-30 shrink-0 mr-1"
+          className="h-[26px] px-2.5 flex items-center gap-1 rounded-[var(--radius)] bg-foreground text-background text-[11.5px] font-mono font-medium hover:opacity-90 transition-colors disabled:opacity-30 shrink-0 mr-1"
         >
           {savingToPack ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
           Add to Pack
@@ -270,27 +270,27 @@ export default function CommandBar({
           <div className="absolute right-0 top-full mt-1 bg-card border border-border/50 rounded-[var(--radius)] shadow-lg z-50 py-1 min-w-[180px]">
             <button
               onClick={() => { onCopyPng(); setActionsMenuOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11px] font-mono text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] font-mono text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
             >
               <Copy className="w-3.5 h-3.5" /> {copyState === 'done' ? 'Copied!' : 'Copy PNG'}
             </button>
             <button
               onClick={() => { onDownloadCsv(); setActionsMenuOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11px] font-mono text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] font-mono text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
             >
               <Download className="w-3.5 h-3.5" /> Download CSV
             </button>
             <div className="border-t border-border/15 my-1" />
             <button
               onClick={() => { onSaveWorkspace(); setActionsMenuOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11px] font-mono text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] font-mono text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
             >
               <Save className="w-3.5 h-3.5" /> Save Workspace
             </button>
             {seriesCount > 0 && (
               <button
                 onClick={() => { onSaveToPackOpen(); setActionsMenuOpen(false); }}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11px] font-mono text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] font-mono text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
               >
                 <FolderOpen className="w-3.5 h-3.5" /> Save to Pack
               </button>
@@ -306,7 +306,7 @@ export default function CommandBar({
                   <div key={ws.id} className="flex items-center gap-1 px-3 py-1 hover:bg-foreground/[0.04] transition-colors group/ws">
                     <button
                       onClick={() => { onLoadWorkspace(ws.id); setActionsMenuOpen(false); }}
-                      className="flex-1 text-left text-[11px] font-mono text-muted-foreground hover:text-foreground truncate"
+                      className="flex-1 text-left text-[12.5px] font-mono text-muted-foreground hover:text-foreground truncate"
                     >
                       {ws.name}
                     </button>
@@ -326,7 +326,7 @@ export default function CommandBar({
                 <div className="border-t border-border/15 my-1" />
                 <button
                   onClick={() => { onClearAll(); setActionsMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[11px] font-mono text-destructive/70 hover:text-destructive hover:bg-destructive/[0.06] transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] font-mono text-destructive/70 hover:text-destructive hover:bg-destructive/[0.06] transition-colors"
                 >
                   <RotateCcw className="w-3.5 h-3.5" /> Clear All
                 </button>
