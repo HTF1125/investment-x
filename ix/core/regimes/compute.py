@@ -1,0 +1,647 @@
+"""Generic regime compute + serialization.
+
+``RegimeComputer`` is the base pipeline that runs any :class:`Regime`
+subclass and serializes the result into the shape expected by the
+``regime_snapshot`` DB table.
+
+All public regimes are 1D and use this generic pipeline. Multi-axis
+composites are generated on demand by ``ix.core.regimes.compose``,
+not by computer subclasses.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from ix.db.conn import Session
+from ix.db.models import RegimeSnapshot, regime_fingerprint
+
+from .base import Regime
+from .registry import RegimeRegistration
+
+log = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Default asset universes by regime family
+# ─────────────────────────────────────────────────────────────────────
+
+#: Broad macro universe — default for regimes that don't declare their own.
+DEFAULT_ASSET_TICKERS: dict[str, str] = {
+    "SPY": "SPY US EQUITY:PX_LAST",   # US large cap
+    "IWM": "IWM US EQUITY:PX_LAST",   # US small cap
+    "EFA": "EFA US EQUITY:PX_LAST",   # Developed ex-US
+    "EEM": "EEM US EQUITY:PX_LAST",   # Emerging markets
+    "TLT": "TLT US EQUITY:PX_LAST",   # Long Treasuries
+    "IEF": "IEF US EQUITY:PX_LAST",   # Intermediate Treasuries
+    "TIP": "TIP US EQUITY:PX_LAST",   # TIPS
+    "HYG": "HYG US EQUITY:PX_LAST",   # High yield credit
+    "GLD": "GLD US EQUITY:PX_LAST",   # Gold
+    "DBC": "DBC US EQUITY:PX_LAST",   # Broad commodities
+    "BIL": "BIL US EQUITY:PX_LAST",   # T-bills (risk-free proxy)
+}
+
+
+def _load_asset_prices(tickers: dict[str, str]) -> pd.DataFrame:
+    """Load monthly price series for the given ticker universe.
+
+    Args:
+        tickers: ``{display_name: db_code}`` mapping.
+
+    Returns:
+        DataFrame indexed by month-end dates, columns = display names.
+        Empty DataFrame if no tickers load successfully.
+    """
+    from ix.db.query import Series as DbSeries
+
+    out: dict[str, pd.Series] = {}
+    for display, code in tickers.items():
+        try:
+            s = DbSeries(code)
+            if not s.empty:
+                out[display] = s.resample("ME").last()
+        except Exception as exc:
+            log.warning("Asset price load failed for %s (%s): %s", display, code, exc)
+
+    return pd.DataFrame(out) if out else pd.DataFrame()
+
+
+def compute_asset_analytics(
+    df: pd.DataFrame,
+    states: list[str],
+    tickers: dict[str, str] | None = None,
+) -> dict | None:
+    """Compute per-regime asset performance analytics.
+
+    Generic per-regime asset performance: returns, vol, sharpe, win-rate,
+    drawdown for each regime state. Used by all 1D regime computers.
+
+    Args:
+        df: Regime build() output with a state column (H_Dominant or Dominant).
+        states: List of regime state names.
+        tickers: Asset universe (display name → DB code). Defaults to the
+            broad macro universe if None.
+
+    Returns:
+        Asset analytics JSONB dict matching the frontend's AssetAnalytics
+        interface, or None if prices can't be loaded or the state column
+        is missing. Always includes an empty ``liquidity_splits`` key for
+        frontend compatibility.
+    """
+    if tickers is None:
+        tickers = DEFAULT_ASSET_TICKERS
+
+    try:
+        prices = _load_asset_prices(tickers)
+    except Exception as exc:
+        log.warning("Asset analytics: price load failed: %s", exc)
+        return None
+
+    if prices.empty:
+        log.warning("Asset analytics: no prices loaded")
+        return None
+
+    rets = prices.pct_change().dropna(how="all")
+
+    state_col = "H_Dominant" if "H_Dominant" in df.columns else "Dominant"
+    if state_col not in df.columns:
+        return None
+
+    aligned_all = rets.join(df[state_col].rename("regime"), how="inner").dropna(subset=["regime"])
+    aligned = aligned_all[aligned_all["regime"].isin(states)]
+
+    if aligned.empty:
+        return None
+
+    asset_cols = [t for t in prices.columns if t in aligned.columns]
+    if not asset_cols:
+        return None
+
+    # Use BIL as risk-free proxy if present; else zero
+    bil_rf = aligned["BIL"] if "BIL" in aligned.columns else pd.Series(0.0, index=aligned.index)
+
+    # ── Per-regime stats ────────────────────────────────────────────
+    per_regime_stats: dict[str, dict] = {}
+    for regime in states:
+        mask = aligned["regime"] == regime
+        r_data = aligned.loc[mask]
+        assets_list: list[dict] = []
+
+        for t in asset_cols:
+            r = r_data[t].dropna()
+            rf = bil_rf.reindex(r.index).fillna(0.0)
+            n = len(r)
+
+            if n < 3:
+                assets_list.append({
+                    "ticker": t, "ann_ret": None, "ann_vol": None,
+                    "sharpe": None, "win_rate": None, "max_dd": None,
+                    "worst_mo": None, "best_mo": None, "months": n,
+                })
+                continue
+
+            ann_ret = float(r.mean()) * 12
+            ann_vol = float(r.std()) * float(np.sqrt(12))
+            exc_ret = float((r - rf).mean()) * 12
+            sharpe = exc_ret / ann_vol if ann_vol > 1e-9 else 0.0
+            win_rt = float((r > 0).mean())
+            cum = (1 + r).cumprod()
+            max_dd = float((cum / cum.cummax() - 1).min())
+
+            assets_list.append({
+                "ticker": t,
+                "ann_ret": _safe_float(ann_ret),
+                "ann_vol": _safe_float(ann_vol),
+                "sharpe": _safe_float(sharpe),
+                "win_rate": _safe_float(win_rt),
+                "max_dd": _safe_float(max_dd),
+                "worst_mo": _safe_float(r.min()),
+                "best_mo": _safe_float(r.max()),
+                "months": n,
+            })
+
+        per_regime_stats[regime] = {
+            "months": int(mask.sum()),
+            "assets": assets_list,
+        }
+
+    # ── Regime counts ───────────────────────────────────────────────
+    total = len(aligned_all)
+    regime_counts: dict[str, dict] = {}
+    for regime in states:
+        n = int((aligned["regime"] == regime).sum())
+        regime_counts[regime] = {
+            "months": n,
+            "pct": (n / total * 100) if total > 0 else 0.0,
+        }
+
+    # ── Expected returns (probability-weighted from current state) ──
+    expected_returns: dict[str, float] = {}
+    prob_cols = [f"P_{s}" for s in states]
+    last_valid = df.dropna(subset=prob_cols, how="all")
+    if not last_valid.empty:
+        last = last_valid.iloc[-1]
+        s_probs = {
+            s: _safe_float(last.get(f"S_P_{s}", last.get(f"P_{s}")), 0.0) or 0.0
+            for s in states
+        }
+        for t in asset_cols:
+            exp_ret = 0.0
+            total_p = 0.0
+            for regime in states:
+                r = aligned.loc[aligned["regime"] == regime, t].dropna()
+                if len(r) >= 3:
+                    p = s_probs[regime]
+                    exp_ret += p * (float(r.mean()) * 12)
+                    total_p += p
+            if total_p > 0:
+                expected_returns[t] = _safe_float(exp_ret / total_p) or 0.0
+
+    # ── Small sample regimes (< 12 months of data) ──────────────────
+    small_sample = [
+        r for r in states
+        if len(aligned[aligned["regime"] == r]) < 12
+    ]
+
+    # ── Regime separation quality (Cohen's d + Welch t-test per asset) ──
+    # Measures how well the regime classification divides forward returns
+    # for each asset. Cohen's d is the standardized mean difference between
+    # the best and worst states, scale-free and comparable across assets:
+    #   d < 0.1  = noise
+    #   d 0.1-0.2 = weak
+    #   d 0.2-0.5 = meaningful (actionable in finance context)
+    #   d 0.5-1.0 = strong
+    #   d > 1.0  = exceptional
+    # Welch's t-test provides the p-value for "is best ≠ worst significant".
+    regime_separation = _compute_regime_separation(aligned, asset_cols, states)
+
+    return {
+        "per_regime_stats": per_regime_stats,
+        "regime_counts": regime_counts,
+        "expected_returns": expected_returns,
+        "small_sample_regimes": small_sample,
+        "regime_separation": regime_separation,
+        "liquidity_splits": {},  # Reserved for future cross-regime splits
+        "tickers": asset_cols,
+    }
+
+
+def _compute_regime_separation(
+    aligned: pd.DataFrame,
+    asset_cols: list[str],
+    states: list[str],
+) -> dict[str, dict]:
+    """Compute Cohen's d (best vs worst) + Welch t-test per asset.
+
+    For each asset:
+      1. Group monthly returns by regime state
+      2. Find the best-return state and worst-return state
+      3. Compute Cohen's d = (mean_best - mean_worst) / pooled_std
+      4. Compute Welch's t-test p-value for best ≠ worst
+      5. Compute η² across ALL states for backward-compat reference
+
+    Cohen's d is scale-free and fair across 2-state and 4-state regimes
+    (unlike η² which is bounded lower for fewer-state classifiers).
+
+    Cohen's d thresholds for financial returns (not Cohen's original
+    psychology-calibrated thresholds):
+      d < 0.1  → noise
+      d 0.1-0.2 → weak but real
+      d 0.2-0.5 → meaningful (actionable)
+      d 0.5-1.0 → strong
+      d > 1.0  → exceptional
+
+    Returns:
+        {ticker: {
+            cohens_d: float,      # |mean_best - mean_worst| / pooled_std
+            p_value: float,       # Welch t-test p, best vs worst
+            best_state: str,      # name of highest-mean state
+            worst_state: str,     # name of lowest-mean state
+            eta_sq: float,        # ANOVA η² across all states (reference)
+            n: int,               # total observations
+        }}
+    """
+    from scipy.stats import ttest_ind, f as f_dist
+
+    result: dict[str, dict] = {}
+    for t in asset_cols:
+        # Collect per-state return arrays
+        state_data: dict[str, np.ndarray] = {}
+        for state in states:
+            g = aligned.loc[aligned["regime"] == state, t].dropna().values
+            if len(g) >= 3:
+                state_data[state] = g
+
+        if len(state_data) < 2:
+            result[t] = {
+                "cohens_d": None, "p_value": None,
+                "best_state": None, "worst_state": None,
+                "eta_sq": None, "n": 0,
+            }
+            continue
+
+        # Find best and worst states by mean
+        means = {s: float(g.mean()) for s, g in state_data.items()}
+        best_name = max(means, key=means.get)
+        worst_name = min(means, key=means.get)
+
+        best_values = state_data[best_name]
+        worst_values = state_data[worst_name]
+        n1, n2 = len(best_values), len(worst_values)
+
+        # Cohen's d with pooled standard deviation
+        s1_sq = float(best_values.var(ddof=1)) if n1 >= 2 else 0.0
+        s2_sq = float(worst_values.var(ddof=1)) if n2 >= 2 else 0.0
+        pooled_var = ((n1 - 1) * s1_sq + (n2 - 1) * s2_sq) / max(n1 + n2 - 2, 1)
+        pooled_std = float(np.sqrt(pooled_var)) if pooled_var > 0 else 0.0
+
+        if pooled_std < 1e-12:
+            cohens_d = None
+        else:
+            cohens_d = (means[best_name] - means[worst_name]) / pooled_std
+
+        # Welch's t-test for best vs worst (unequal variance, sample-size aware)
+        try:
+            _, p_welch = ttest_ind(best_values, worst_values, equal_var=False)
+        except Exception:
+            p_welch = None
+
+        # Also compute η² across ALL states as a backward-compat reference
+        all_obs = np.concatenate(list(state_data.values()))
+        n_total = len(all_obs)
+        k = len(state_data)
+        grand_mean = float(all_obs.mean())
+        ss_between = sum(
+            len(g) * (float(g.mean()) - grand_mean) ** 2
+            for g in state_data.values()
+        )
+        ss_within = sum(
+            float(((g - g.mean()) ** 2).sum())
+            for g in state_data.values()
+        )
+        ss_total = ss_between + ss_within
+        eta_sq = ss_between / ss_total if ss_total > 1e-12 else 0.0
+
+        result[t] = {
+            "cohens_d": _safe_float(cohens_d),
+            "p_value": _safe_float(p_welch),
+            "best_state": best_name,
+            "worst_state": worst_name,
+            "eta_sq": _safe_float(eta_sq),
+            "n": int(n_total),
+        }
+
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Serialization helpers
+# ─────────────────────────────────────────────────────────────────────
+
+def _safe_float(val: Any, fallback: float | None = None) -> float | None:
+    """Convert to float, returning fallback for NaN/None/inf."""
+    if val is None:
+        return fallback
+    try:
+        f = float(val)
+        if np.isnan(f) or np.isinf(f):
+            return fallback
+        return f
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _series_to_list(s: pd.Series) -> list:
+    """Convert a pandas Series to a JSON-safe list (NaN → None)."""
+    if s is None or s.empty:
+        return []
+    return [None if pd.isna(v) else _safe_float(v) for v in s.values]
+
+
+def _dates_to_list(idx: pd.DatetimeIndex) -> list[str]:
+    """ISO date strings for a DatetimeIndex."""
+    if idx is None or len(idx) == 0:
+        return []
+    return [d.strftime("%Y-%m-%d") for d in idx]
+
+
+def _prob_dict(row: pd.Series, states: list[str], prefix: str = "P_") -> dict[str, float]:
+    """Extract state probabilities from a DataFrame row."""
+    return {
+        s: _safe_float(row.get(f"{prefix}{s}"), 0.0)
+        for s in states
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Generic computer
+# ─────────────────────────────────────────────────────────────────────
+
+
+class RegimeComputer:
+    """Generic compute pipeline for any standalone Regime subclass.
+
+    Used by all 1D regimes. Multi-axis composites are generated on
+    demand by ``ix.core.regimes.compose`` and do not subclass this.
+    """
+
+    def __init__(self, registration: RegimeRegistration):
+        self.reg = registration
+
+    def compute(self, params: dict) -> dict:
+        """Run the regime pipeline and return the full JSONB payload.
+
+        Returns a dict with keys matching RegimeSnapshot columns:
+        ``current_state``, ``timeseries``, ``strategy``, ``asset_analytics``, ``meta``.
+        """
+        if self.reg.regime_class is None:
+            raise ValueError(
+                f"Regime '{self.reg.key}' has no regime_class — "
+                f"it needs a custom computer_class."
+            )
+
+        regime: Regime = self.reg.regime_class()
+        df = regime.build(
+            z_window=params.get("z_window", 36),
+            sensitivity=params.get("sensitivity", 1.0),
+            smooth_halflife=params.get("smooth_halflife", 4),
+            confirm_months=params.get("confirm_months", 3),
+        )
+
+        if df.empty:
+            raise RuntimeError(f"Regime '{self.reg.key}' built an empty DataFrame")
+
+        # Auto-compute asset analytics using the registration's declared
+        # asset universe (or the default broad universe if none declared).
+        try:
+            asset_analytics = compute_asset_analytics(
+                df,
+                states=self.reg.states,
+                tickers=self.reg.asset_tickers,
+            )
+        except Exception as exc:
+            log.warning("Asset analytics computation failed for '%s': %s",
+                        self.reg.key, exc)
+            asset_analytics = None
+
+        return {
+            "current_state": self.serialize_current_state(df),
+            "timeseries": self.serialize_timeseries(df),
+            "strategy": None,
+            "asset_analytics": asset_analytics,
+            "meta": self.serialize_meta(),
+        }
+
+    # ── Serialization methods (overridable) ─────────────────────────
+
+    def serialize_current_state(self, df: pd.DataFrame) -> dict:
+        """Serialize the latest month into a snapshot dict."""
+        states = self.reg.states
+        dimensions = self.reg.dimensions
+
+        # Find last row with valid composite data
+        key_col = f"{dimensions[0]}_Z"
+        if key_col not in df.columns:
+            return {"date": None, "error": "No composite data"}
+
+        filtered = df.dropna(subset=[key_col])
+        if filtered.empty:
+            return {"date": None, "error": "No valid rows"}
+
+        last = filtered.iloc[-1]
+        last_date = filtered.index[-1]
+
+        # Dominant state
+        dominant = str(last.get("S_Dominant", last.get("Dominant", states[0])))
+        confirmed = str(last.get("H_Dominant", dominant))
+        dom_prob = _safe_float(
+            last.get(f"S_P_{dominant}", last.get(f"P_{dominant}")),
+            0.0,
+        )
+
+        # Dimensions
+        dim_data = {}
+        for dim in dimensions:
+            z = _safe_float(last.get(f"{dim}_Z"), 0.0)
+            p = _safe_float(last.get(f"{dim}_P"), 0.5)
+            prefix = dim[0].lower() + "_"
+            components = []
+            for col in last.index:
+                if col.startswith(prefix) and col != "g_Claims4WMA":
+                    val = _safe_float(last.get(col))
+                    if val is not None:
+                        components.append({
+                            "name": col.replace(prefix, ""),
+                            "z": val,
+                        })
+            direction = self._direction_label(dim, z)
+            dim_data[dim] = {
+                "z": z,
+                "p": p,
+                "direction": direction,
+                "score": int(_safe_float(last.get(f"{dim}_Score"), 0) or 0),
+                "total": int(_safe_float(last.get(f"{dim}_Total"), len(components)) or len(components)),
+                "components": components,
+            }
+
+        return {
+            "date": last_date.strftime("%Y-%m"),
+            "dominant": dominant,
+            "dominant_probability": dom_prob,
+            "confirmed": confirmed,
+            "conviction": _safe_float(last.get("Conviction"), 50.0),
+            "months_in_regime": int(_safe_float(last.get("Months_In_Regime"), 1) or 1),
+            "probabilities": {
+                s: _safe_float(last.get(f"S_P_{s}", last.get(f"P_{s}")), 0.0)
+                for s in states
+            },
+            "dimensions": dim_data,
+        }
+
+    def serialize_timeseries(self, df: pd.DataFrame) -> dict:
+        """Serialize the full history for History + Indicators pages."""
+        states = self.reg.states
+        dimensions = self.reg.dimensions
+
+        # Clip history to 2000-01-01 — pre-2000 data is sparse and out of scope
+        df = df.loc["2000-01-01":].copy()
+        dates = _dates_to_list(df.index)
+
+        composites = {}
+        for dim in dimensions:
+            z_col = f"{dim}_Z"
+            if z_col in df.columns:
+                composites[z_col] = _series_to_list(df[z_col])
+
+        probs = {}
+        smoothed_probs = {}
+        for s in states:
+            if f"P_{s}" in df.columns:
+                probs[s] = _series_to_list(df[f"P_{s}"])
+            if f"S_P_{s}" in df.columns:
+                smoothed_probs[s] = _series_to_list(df[f"S_P_{s}"])
+
+        # All individual indicators (g_*, i_*, l_*, m_*)
+        indicators = {}
+        for col in df.columns:
+            if col[:2] in ("g_", "i_", "l_", "m_"):
+                indicators[col] = _series_to_list(df[col])
+
+        dominant = (
+            df["S_Dominant"].fillna("").astype(str).tolist()
+            if "S_Dominant" in df.columns else []
+        )
+        confirmed = (
+            df["H_Dominant"].fillna("").astype(str).tolist()
+            if "H_Dominant" in df.columns else []
+        )
+        conviction = (
+            _series_to_list(df["Conviction"]) if "Conviction" in df.columns else []
+        )
+
+        return {
+            "dates": dates,
+            "composites": composites,
+            "probabilities": probs,
+            "smoothed_probabilities": smoothed_probs,
+            "dominant": dominant,
+            "confirmed": confirmed,
+            "conviction": conviction,
+            "indicators": indicators,
+        }
+
+    def serialize_meta(self) -> dict:
+        """Return methodology + colors + documentation."""
+        return {
+            "model_name": self.reg.display_name,
+            "description": self.reg.description,
+            "states": self.reg.states,
+            "dimensions": self.reg.dimensions,
+            "color_map": self.reg.color_map,
+            "dimension_colors": self.reg.dimension_colors,
+            "methodology": {
+                "z_score": "25% level + 75% ROC blend",
+                "sigmoid_mapping": "logistic function maps z → probability (0-1)",
+                "confirmation_filter": "3-month consecutive requirement for regime change",
+                "ema_smoothing": "Exponential moving average on probabilities (halflife=4)",
+            },
+        }
+
+    # ── Helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _direction_label(dim: str, z: float) -> str:
+        pos_neg = {
+            "Growth":    ("Expanding", "Contracting"),
+            "Inflation": ("Rising",    "Falling"),
+            "Liquidity": ("Easing",    "Tightening"),
+        }
+        pos, neg = pos_neg.get(dim, ("Positive", "Negative"))
+        return pos if z >= 0 else neg
+
+    # ── Persistence ──────────────────────────────────────────────────
+
+    def save(self, params: dict, payload: dict) -> str:
+        """Upsert the computed payload into the regime_snapshot table.
+
+        Returns the fingerprint of the saved row.
+        """
+        fp = regime_fingerprint(self.reg.key, params)
+        now = datetime.now(timezone.utc)
+
+        with Session() as session:
+            existing = session.get(RegimeSnapshot, fp)
+            if existing is None:
+                row = RegimeSnapshot(
+                    fingerprint=fp,
+                    regime_type=self.reg.key,
+                    computed_at=now,
+                    parameters=params,
+                    current_state=payload["current_state"],
+                    timeseries=payload["timeseries"],
+                    strategy=payload.get("strategy"),
+                    asset_analytics=payload.get("asset_analytics"),
+                    meta=payload.get("meta"),
+                )
+                session.add(row)
+            else:
+                existing.computed_at = now
+                existing.parameters = params
+                existing.current_state = payload["current_state"]
+                existing.timeseries = payload["timeseries"]
+                existing.strategy = payload.get("strategy")
+                existing.asset_analytics = payload.get("asset_analytics")
+                existing.meta = payload.get("meta")
+            session.commit()
+
+        log.info("Saved regime snapshot: %s", fp)
+        return fp
+
+    def compute_and_save(self, params: dict | None = None) -> str:
+        """Run compute() + save() in one call. Returns the fingerprint."""
+        params = params or self.reg.default_params
+        payload = self.compute(params)
+        return self.save(params, payload)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Entry point
+# ─────────────────────────────────────────────────────────────────────
+
+
+def compute_regime(key: str, params: dict | None = None) -> str:
+    """Compute and save any registered regime by key.
+
+    Returns the fingerprint of the saved snapshot.
+    """
+    from .registry import get_regime
+
+    reg = get_regime(key)
+    computer_cls = reg.computer_class or RegimeComputer
+    computer = computer_cls(reg)
+    return computer.compute_and_save(params)
