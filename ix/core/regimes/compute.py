@@ -220,12 +220,25 @@ def compute_asset_analytics(
     # Welch's t-test provides the p-value for "is best ≠ worst significant".
     regime_separation = _compute_regime_separation(aligned, asset_cols, states)
 
+    # ── State-distribution balance ──────────────────────────────────
+    # How evenly the regime spreads observations across declared states.
+    # Exposes normalized Shannon entropy + usable-state ratio so the
+    # frontend can display a "balanced / skewed / concentrated" badge
+    # alongside the per-asset Cohen's d table. See balance.py.
+    from .balance import compute_state_balance, state_balance_dict
+    try:
+        balance = compute_state_balance(aligned["regime"], states)
+        balance_payload = state_balance_dict(balance)
+    except Exception:
+        balance_payload = None
+
     return {
         "per_regime_stats": per_regime_stats,
         "regime_counts": regime_counts,
         "expected_returns": expected_returns,
         "small_sample_regimes": small_sample,
         "regime_separation": regime_separation,
+        "state_balance": balance_payload,
         "liquidity_splits": {},  # Reserved for future cross-regime splits
         "tickers": asset_cols,
     }

@@ -165,6 +165,40 @@ class MultiDimRegimeAnalyzer:
         s = self.joint_states(use_confirmed=use_confirmed)
         return None if s.empty else str(s.iloc[-1])
 
+    def state_balance(
+        self,
+        *,
+        use_confirmed: bool = True,
+        sample_floor: int = 30,
+    ):
+        """Distribution diagnostics for the joint states.
+
+        Returns a :class:`ix.core.regimes.balance.StateBalance` with:
+
+        * ``entropy_normalized`` — Shannon entropy / log(n_declared),
+          in [0, 1]. 1.0 = perfectly uniform; near 0 = concentrated on
+          one state.
+        * ``effective_states`` — ``exp(entropy)`` equivalent uniform count.
+        * ``usable_ratio`` — fraction of declared joint states whose
+          observation count clears ``sample_floor`` (default 30 = T1.3).
+        * ``counts`` / ``frequencies`` — per-state observations.
+        * ``verdict`` — one of ``balanced`` / ``skewed`` / ``concentrated``
+          / ``degenerate``.
+
+        A cartesian composition with low usable_ratio means most of the
+        joint state space is orphaned with too few observations to trust
+        (e.g. ``cb_surprise × vol_term`` posts ``entropy ≈ 0.79`` but
+        ``usable_ratio = 0.33`` because 4 of 6 joint states fall below
+        the T1.3 floor — the cb_surprise tails collapse under
+        multiplication).
+        """
+        from .balance import compute_state_balance
+        return compute_state_balance(
+            self.joint_states(use_confirmed=use_confirmed),
+            self.states,
+            sample_floor=sample_floor,
+        )
+
     # ── Distributional stats ─────────────────────────────────────────
 
     def state_frequencies(self, *, use_confirmed: bool = True) -> pd.Series:

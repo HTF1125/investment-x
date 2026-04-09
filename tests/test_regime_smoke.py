@@ -25,6 +25,7 @@ import unittest
 import pandas as pd
 
 from ix.core.regimes import list_regimes, get_phase_pair
+from ix.core.regimes.balance import compute_state_balance
 from ix.core.regimes.registry import RegimeRegistration
 
 
@@ -137,6 +138,49 @@ class RegimeSmokeTests(unittest.TestCase):
             self.skipTest(
                 f"{len(skipped)}/{len(self.regimes)} regimes skipped (DB "
                 f"unavailable): {', '.join(skipped)}"
+            )
+
+    def test_state_balance_is_computed(self) -> None:
+        """compute_state_balance should return a sane StateBalance for
+        every registered regime's H_Dominant series.
+
+        Checks the metric is computable, returns the expected verdict set,
+        and that entropy/usable_ratio are in bounds. Does NOT require any
+        specific verdict — a regime can be "concentrated" and still pass
+        (e.g. cb_surprise which has tail-concentrated states); this test
+        only asserts the metric is well-formed."""
+        skipped: list[str] = []
+        VALID_VERDICTS = {"balanced", "skewed", "concentrated", "degenerate"}
+        for reg in self.regimes:
+            with self.subTest(regime=reg.key):
+                df = _try_build(reg)
+                if df is None:
+                    skipped.append(reg.key)
+                    continue
+                h = df["H_Dominant"].dropna()
+                if h.empty:
+                    continue
+
+                bal = compute_state_balance(h, reg.states)
+                self.assertIn(
+                    bal.verdict, VALID_VERDICTS,
+                    f"{reg.key}: verdict {bal.verdict!r} not in {VALID_VERDICTS}",
+                )
+                self.assertGreaterEqual(bal.entropy_normalized, 0.0)
+                self.assertLessEqual(bal.entropy_normalized, 1.0 + 1e-9)
+                self.assertGreaterEqual(bal.usable_ratio, 0.0)
+                self.assertLessEqual(bal.usable_ratio, 1.0 + 1e-9)
+                self.assertEqual(bal.n_declared, len(reg.states))
+                self.assertLessEqual(bal.n_observed, bal.n_declared)
+                # Sum of per-state counts equals n_total
+                self.assertEqual(
+                    sum(bal.counts.values()), bal.n_total,
+                    f"{reg.key}: counts do not sum to n_total",
+                )
+
+        if skipped:
+            self.skipTest(
+                f"{len(skipped)}/{len(self.regimes)} regimes skipped (DB unavailable)"
             )
 
     def test_phase_pairs_are_mutual(self) -> None:

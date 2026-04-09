@@ -43,6 +43,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from .balance import StateBalance, compute_state_balance
 from .compose import build_joint_states
 from .compute import _compute_regime_separation, _load_asset_prices
 from .registry import get_regime
@@ -85,6 +86,10 @@ class CompositionValidationResult:
     # T1.4 bar is ``spread / target_vol_ann >= 0.25``. See STANDARD.md §3.1.
     target_vol_ann: Optional[float] = None
     vol_normalized_spread: Optional[float] = None
+
+    # State-distribution balance — how evenly the (joint) regime's
+    # observations spread across declared states. See balance.py.
+    state_balance: Optional["StateBalance"] = None
 
     # Independence audit: KL(empirical || independent product)
     kl_divergence: Optional[float] = None
@@ -287,6 +292,16 @@ def validate_composition(
     if len(keys) >= 2:
         kl_div = _kl_vs_independence(built_dfs, regs, axis_order=keys)
 
+    # ── State-distribution balance ──────────────────────────────────
+    # How evenly does the (joint) regime spread observations across its
+    # declared states? Computed on the aligned+labeled series (after
+    # warmup skip + data-lag shift) so it reflects the history actually
+    # used in the spread measurement.
+    try:
+        balance = compute_state_balance(aligned["regime"], states)
+    except Exception:
+        balance = None
+
     return CompositionValidationResult(
         keys=keys,
         target=target,
@@ -301,6 +316,7 @@ def validate_composition(
         worst_state=sep["worst_state"],
         target_vol_ann=target_vol_ann,
         vol_normalized_spread=vol_normalized_spread,
+        state_balance=balance,
         kl_divergence=kl_div,
         subsample_first_spread=first_spread,
         subsample_second_spread=second_spread,

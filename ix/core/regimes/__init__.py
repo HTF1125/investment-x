@@ -59,6 +59,7 @@ from .registry import (
 from .compute import RegimeComputer, compute_regime
 from .analyzer import MultiDimRegimeAnalyzer
 from .sensitivity import SensitivityAuditResult, audit_regime_sensitivity
+from .balance import StateBalance, compute_state_balance
 
 __all__ = [
     "Regime",
@@ -106,4 +107,7 @@ __all__ = [
     # parameter sensitivity audit
     "SensitivityAuditResult",
     "audit_regime_sensitivity",
+    # state-distribution balance
+    "StateBalance",
+    "compute_state_balance",
 ]
