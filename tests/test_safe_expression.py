@@ -1,6 +1,6 @@
 import unittest
 
-from ix.utils.safe_expression import (
+from ix.common.security.safe_expression import (
     EVALUATION_EXPRESSION_CONTEXT,
     TIMESERIES_EXPRESSION_CONTEXT,
     UnsafeExpressionError,

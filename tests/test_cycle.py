@@ -4,7 +4,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
-from ix.core.quantitative.statistics import Cycle
+from ix.common.data.statistics import Cycle
 
 
 class CycleTests(unittest.TestCase):
@@ -13,7 +13,7 @@ class CycleTests(unittest.TestCase):
         values = np.sin(np.linspace(0, 6 * np.pi, 120)) * 10 + 50
         series = pd.Series(values, index=index)
 
-        with patch("ix.core.quantitative.statistics.curve_fit", side_effect=RuntimeError("boom")):
+        with patch("ix.common.data.statistics.curve_fit", side_effect=RuntimeError("boom")):
             result = Cycle(series)
 
         self.assertEqual(len(result), len(series))

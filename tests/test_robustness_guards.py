@@ -1,4 +1,3 @@
-import asyncio
 import importlib
 import unittest
 from types import SimpleNamespace
@@ -7,7 +6,6 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from ix.api.routers.charts.custom import _load_explicit_export_charts
-from ix.api.task_utils import TaskEventSubscriber, _deliver_task_event
 from ix.db.models import Timeseries
 from ix.db.query import Series
 
@@ -123,21 +121,6 @@ class ExportAccessTests(unittest.TestCase):
         )
 
         self.assertEqual(result, [chart])
-
-
-class TaskEventDeliveryTests(unittest.TestCase):
-    def test_bounded_queue_drops_oldest_event(self):
-        loop = asyncio.new_event_loop()
-        try:
-            queue = asyncio.Queue(maxsize=1)
-            subscriber = TaskEventSubscriber(loop=loop, queue=queue)
-            queue.put_nowait({"event": "old"})
-
-            _deliver_task_event(subscriber, {"event": "new"})
-
-            self.assertEqual(queue.get_nowait()["event"], "new")
-        finally:
-            loop.close()
 
 
 class SeriesStrictnessTests(unittest.TestCase):

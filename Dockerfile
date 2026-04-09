@@ -1,16 +1,4 @@
-# Stage 1: Build frontend static export
-FROM node:20-slim AS frontend-builder
-
-WORKDIR /app/ui
-COPY ui/package*.json ./
-RUN npm ci
-COPY ui/ ./
-
-ENV NEXT_PUBLIC_API_URL=
-ENV NEXT_BUILD_MODE=export
-RUN npm run build
-
-# Stage 2: Build Python dependencies
+# Stage 1: Build Python dependencies
 FROM python:3.12-slim AS backend-builder
 
 WORKDIR /app
@@ -31,7 +19,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Stage 3: Runtime image
+# Stage 2: Runtime image
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -67,9 +55,6 @@ RUN groupadd --gid 1000 appuser && \
 
 # Copy backend code
 COPY --chown=appuser:appuser . .
-
-# Copy frontend static export
-COPY --from=frontend-builder --chown=appuser:appuser /app/ui/out /app/static
 
 USER appuser
 

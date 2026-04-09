@@ -1,6 +1,6 @@
 import unittest
 
-from ix.utils.safe_custom_code import (
+from ix.common.security.safe_custom_code import (
     SAFE_CUSTOM_CHART_BUILTINS,
     UnsafeCustomChartCodeError,
     validate_custom_chart_code,
