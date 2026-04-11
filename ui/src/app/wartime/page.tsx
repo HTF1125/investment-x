@@ -3,9 +3,10 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type Plotly from 'plotly.js';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import PageSkeleton from '@/components/layout/PageSkeleton';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { apiFetchJson } from '@/lib/api';
 import { applyChartTheme } from '@/lib/chartTheme';
 import { useTheme } from '@/context/ThemeContext';
@@ -809,10 +810,7 @@ function WartimePlot({
       <div ref={plotRef} className="h-full w-full" />
       {isRendering && !plotError && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/70">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
-            <span className="text-[12.5px] text-muted-foreground/50 tracking-widest uppercase">Loading Chart</span>
-          </div>
+          <LoadingSpinner label="Loading Chart" size="section" />
         </div>
       )}
       {plotError && (
@@ -1113,7 +1111,7 @@ function WartimePageContent() {
   const LangToggle = (
     <button
       onClick={() => setLang(l => l === 'en' ? 'ko' : 'en')}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors bg-background"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius)] border border-border/50 text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors bg-background"
     >
       <span className="text-base leading-none">🌐</span>
       {t.langToggle}
@@ -1124,12 +1122,7 @@ function WartimePageContent() {
   if (isLoading) {
     return (
       <AppShell hideFooter>
-        <div className="h-[calc(100vh-56px)] flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 animate-spin text-primary/60" />
-            <span className="text-[13px] text-muted-foreground/60 tracking-widest uppercase">{t.loading}</span>
-          </div>
-        </div>
+        <LoadingSpinner label={t.loading} size="page" />
       </AppShell>
     );
   }
@@ -1163,7 +1156,7 @@ function WartimePageContent() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {LangToggle}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-destructive/30 bg-destructive/[0.06]">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius)] border border-destructive/30 bg-destructive/[0.06]">
               <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
               <span className="text-[12.5px] font-medium text-destructive">{t.analysisDate}</span>
             </div>

@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { apiFetchJson } from '@/lib/api';
 import { applyChartTheme } from '@/lib/chartTheme';
 import { useTheme } from '@/context/ThemeContext';
@@ -827,10 +828,7 @@ function WartimePlot({
       <div ref={plotRef} className="h-full w-full" />
       {isRendering && !plotError && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/70">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
-            <span className="text-[12.5px] text-muted-foreground/50 tracking-widest uppercase">Loading Chart</span>
-          </div>
+          <LoadingSpinner label="Loading Chart" size="section" />
         </div>
       )}
       {plotError && (
@@ -877,15 +875,15 @@ function SpxStatsTable({ stats, t, lang }: { stats: SpxStat[]; t: TShape; lang: 
             const isCurrent = r.conflict.includes('Current');
             const isCovid   = r.conflict.includes('2020');
             return (
-              <tr key={i} className={`border-b border-border/25 transition-colors hover:bg-primary/[0.04] ${isCurrent ? 'bg-red-500/[0.06]' : isCovid ? 'bg-amber-500/[0.04]' : ''}`}>
-                <td className={`py-1.5 pr-3 ${isCurrent ? 'text-red-500 font-medium' : isCovid ? 'text-amber-500' : 'text-foreground'}`}>{nameOf(r.conflict)}</td>
+              <tr key={i} className={`border-b border-border/25 transition-colors hover:bg-primary/[0.04] ${isCurrent ? 'bg-destructive/[0.06]' : isCovid ? 'bg-warning/[0.04]' : ''}`}>
+                <td className={`py-1.5 pr-3 ${isCurrent ? 'text-destructive font-medium' : isCovid ? 'text-warning' : 'text-foreground'}`}>{nameOf(r.conflict)}</td>
                 <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{r.start_date}</td>
-                <td className={`py-1.5 px-2 text-right tabular-nums ${r.mdd < -0.15 ? 'text-red-500' : r.mdd < -0.07 ? 'text-amber-500' : 'text-emerald-500'}`}>{absLow(r.mdd)}</td>
+                <td className={`py-1.5 px-2 text-right tabular-nums ${r.mdd < -0.15 ? 'text-destructive' : r.mdd < -0.07 ? 'text-warning' : 'text-emerald-500'}`}>{absLow(r.mdd)}</td>
                 <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{r.days_to_bottom}d</td>
                 <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">
                   {r.recovery_days !== null ? `${r.recovery_days}d` : t.notRecovered}
                 </td>
-                <td className={`py-1.5 pl-2 text-right tabular-nums ${r.final_return >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(r.final_return)}</td>
+                <td className={`py-1.5 pl-2 text-right tabular-nums ${r.final_return >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{pct(r.final_return)}</td>
               </tr>
             );
           })}
@@ -915,13 +913,13 @@ function CommodityStatsTable({ stats, t, lang }: { stats: CommodityStat[]; t: TS
             const isCurrent = r.conflict.includes('Current');
             const isCovid   = r.conflict.includes('2020');
             return (
-              <tr key={i} className={`border-b border-border/25 transition-colors hover:bg-primary/[0.04] ${isCurrent ? 'bg-red-500/[0.06]' : isCovid ? 'bg-amber-500/[0.04]' : ''}`}>
-                <td className={`py-1.5 pr-3 ${isCurrent ? 'text-red-500 font-medium' : isCovid ? 'text-amber-500' : 'text-foreground'}`}>{nameOf(r.conflict)}</td>
+              <tr key={i} className={`border-b border-border/25 transition-colors hover:bg-primary/[0.04] ${isCurrent ? 'bg-destructive/[0.06]' : isCovid ? 'bg-warning/[0.04]' : ''}`}>
+                <td className={`py-1.5 pr-3 ${isCurrent ? 'text-destructive font-medium' : isCovid ? 'text-warning' : 'text-foreground'}`}>{nameOf(r.conflict)}</td>
                 <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{r.start_date}</td>
-                <td className={`py-1.5 px-2 text-right tabular-nums ${r.peak_gain >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(r.peak_gain)}</td>
+                <td className={`py-1.5 px-2 text-right tabular-nums ${r.peak_gain >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{pct(r.peak_gain)}</td>
                 <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{r.days_to_peak}d</td>
-                <td className="py-1.5 px-2 text-right text-amber-500 tabular-nums">{absLow(r.mdd)}</td>
-                <td className={`py-1.5 pl-2 text-right tabular-nums ${r.final_return >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(r.final_return)}</td>
+                <td className="py-1.5 px-2 text-right text-warning tabular-nums">{absLow(r.mdd)}</td>
+                <td className={`py-1.5 pl-2 text-right tabular-nums ${r.final_return >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{pct(r.final_return)}</td>
               </tr>
             );
           })}
@@ -950,8 +948,8 @@ function HorizonStatsTable({ rows, t }: { rows: HorizonStat[]; t: TShape }) {
           {rows.map((row) => (
             <tr key={row.day} className="border-b border-border/25 transition-colors hover:bg-primary/[0.04]">
               <td className="py-1.5 pr-3 text-foreground tabular-nums">{row.day}d</td>
-              <td className={`py-1.5 px-2 text-right tabular-nums ${(row.mean ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.mean)}</td>
-              <td className={`py-1.5 px-2 text-right tabular-nums ${(row.median ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.median)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${(row.mean ?? 0) >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{pct(row.mean)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${(row.median ?? 0) >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{pct(row.median)}</td>
               <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{row.std !== null ? `${(row.std * 100).toFixed(1)}%` : 'N/A'}</td>
               <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">
                 {row.p25 !== null && row.p75 !== null ? `${pct(row.p25)} / ${pct(row.p75)}` : 'N/A'}
@@ -991,8 +989,8 @@ function CurrentComparisonTable({
           {rows.map(({ asset, stat }) => (
             <tr key={asset} className="border-b border-border/25 transition-colors hover:bg-primary/[0.04]">
               <td className="py-1.5 pr-3 text-foreground">{asset}</td>
-              <td className={`py-1.5 px-2 text-right tabular-nums ${(stat.current_return ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(stat.current_return)}</td>
-              <td className={`py-1.5 px-2 text-right tabular-nums ${(stat.hist_median ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(stat.hist_median)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${(stat.current_return ?? 0) >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{pct(stat.current_return)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${(stat.hist_median ?? 0) >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{pct(stat.hist_median)}</td>
               <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">
                 {stat.hist_p25 !== null && stat.hist_p75 !== null ? `${pct(stat.hist_p25)} / ${pct(stat.hist_p75)}` : 'N/A'}
               </td>
@@ -1028,9 +1026,9 @@ function AnaloguesTable({ rows, t, lang }: { rows: AnalogueRow[]; t: TShape; lan
           {rows.map((row) => (
             <tr key={row.conflict} className="border-b border-border/25 transition-colors hover:bg-primary/[0.04]">
               <td className="py-1.5 pr-3 text-foreground">{nameOf(row.conflict)}</td>
-              <td className={`py-1.5 px-2 text-right tabular-nums ${row.matched_return >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.matched_return)}</td>
-              <td className={`py-1.5 px-2 text-right tabular-nums ${row.full_return >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{pct(row.full_return)}</td>
-              <td className="py-1.5 px-2 text-right text-amber-500 tabular-nums">{absLow(row.matched_mdd)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${row.matched_return >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{pct(row.matched_return)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums ${row.full_return >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{pct(row.full_return)}</td>
+              <td className="py-1.5 px-2 text-right text-warning tabular-nums">{absLow(row.matched_mdd)}</td>
               <td className="py-1.5 px-2 text-right text-muted-foreground tabular-nums">{(row.path_rmse * 100).toFixed(2)}%</td>
               <td className="py-1.5 pl-2 text-right text-muted-foreground tabular-nums">{row.path_corr !== null ? row.path_corr.toFixed(2) : 'N/A'}</td>
             </tr>
@@ -1129,7 +1127,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
   const LangToggle = (
     <button
       onClick={() => setLang(l => l === 'en' ? 'ko' : 'en')}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors bg-background"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius)] border border-border/50 text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors bg-background"
     >
       <span className="text-base leading-none">🌐</span>
       {t.langToggle}
@@ -1143,10 +1141,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
     return (
       <Wrapper>
         <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground/40" />
-            <span className="text-[11.5px] font-mono text-muted-foreground/50 uppercase tracking-wider">{t.loading}</span>
-          </div>
+          <LoadingSpinner label={t.loading} size="section" />
         </div>
       </Wrapper>
     );
@@ -1179,9 +1174,9 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {LangToggle}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/[0.06]">
-              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[12.5px] font-medium text-red-500">{t.analysisDate}</span>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius)] border border-destructive/30 bg-destructive/[0.06]">
+              <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+              <span className="text-[12.5px] font-medium text-destructive">{t.analysisDate}</span>
             </div>
           </div>
         </div>
@@ -1366,8 +1361,8 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
                     <td className="py-2.5 px-4 font-medium text-foreground">{row.flag} {row.country}</td>
                     <td className="py-2.5 px-4">
                       <span className={`text-[11.5px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
-                        row.stance === 'Vulnerable'  ? 'bg-red-500/10 text-red-500' :
-                        row.stance === 'Buffered'    ? 'bg-amber-500/10 text-amber-500' :
+                        row.stance === 'Vulnerable'  ? 'bg-destructive/10 text-destructive' :
+                        row.stance === 'Buffered'    ? 'bg-warning/10 text-warning' :
                         'bg-emerald-500/10 text-emerald-600'
                       }`}>
                         {row.stanceKo}
@@ -1384,7 +1379,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
         {/* ── Iran Live Snapshot ─────────────────────────────────────────── */}
         <section className="space-y-3">
           <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
             {t.iranTitle}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
@@ -1442,11 +1437,11 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
               </div>
               <p className="text-[13px] text-muted-foreground/60 mt-3 leading-relaxed">{t.bullText}</p>
             </div>
-            <div className="panel-card p-5 border-red-500/30 bg-red-500/[0.04]">
-              <div className="text-[11.5px] font-mono uppercase tracking-widest text-red-500 mb-2">{t.bearLabel}</div>
+            <div className="panel-card p-5 border-destructive/30 bg-destructive/[0.04]">
+              <div className="text-[11.5px] font-mono uppercase tracking-widest text-destructive mb-2">{t.bearLabel}</div>
               <div className="text-[13px] text-muted-foreground/70 mb-3">{t.bearAnalogues}</div>
               <div className="space-y-1.5 text-[13px] text-foreground/90">
-                <div className="flex justify-between"><span>{t.rowExpectedDrawdown}</span><span className="text-red-500 font-medium">{t.bearDrawdown}</span></div>
+                <div className="flex justify-between"><span>{t.rowExpectedDrawdown}</span><span className="text-destructive font-medium">{t.bearDrawdown}</span></div>
                 <div className="flex justify-between"><span>{t.rowRecoveryTimeline}</span><span className="text-amber-600 dark:text-amber-400 font-medium">{t.bearRecovery}</span></div>
                 <div className="flex justify-between"><span>{t.row200dReturn}</span><span className="text-amber-600 dark:text-amber-400 font-medium">{t.bear200d}</span></div>
               </div>
@@ -1481,7 +1476,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
                 <tr className="border-b border-border/50">
                   <th className="text-left py-2.5 px-4 text-muted-foreground/70 font-medium">{t.monThMetric}</th>
                   <th className="text-left py-2.5 px-4 text-emerald-600 dark:text-emerald-400 font-medium">{t.monThBull}</th>
-                  <th className="text-left py-2.5 px-4 text-red-500 font-medium">{t.monThBear}</th>
+                  <th className="text-left py-2.5 px-4 text-destructive font-medium">{t.monThBear}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1489,7 +1484,7 @@ export function WartimeContent({ embedded = false }: { embedded?: boolean }) {
                   <tr key={i} className="border-b border-border/25 hover:bg-primary/[0.04]">
                     <td className="py-2.5 px-4 font-medium text-foreground">{row.metric}</td>
                     <td className="py-2.5 px-4 text-emerald-600 dark:text-emerald-400">{row.bull}</td>
-                    <td className="py-2.5 px-4 text-red-500">{row.bear}</td>
+                    <td className="py-2.5 px-4 text-destructive">{row.bear}</td>
                   </tr>
                 ))}
               </tbody>

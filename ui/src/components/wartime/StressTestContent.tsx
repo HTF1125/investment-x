@@ -5,7 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@/context/ThemeContext';
 import { applyChartTheme } from '@/lib/chartTheme';
 import { apiFetchJson } from '@/lib/api';
-import { Activity, TrendingDown, TrendingUp, BarChart3, Zap, AlertTriangle, Loader2 } from 'lucide-react';
+import { Activity, TrendingDown, TrendingUp, BarChart3, Zap, AlertTriangle } from 'lucide-react';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ const fmt = (v: number | null | undefined, suffix = '%') => {
 const cellColor = (v: number | null | undefined) => {
   if (v === null || v === undefined) return 'text-muted-foreground/40';
   if (v > 0) return 'text-emerald-500';
-  if (v < 0) return 'text-red-500';
+  if (v < 0) return 'text-destructive';
   return 'text-muted-foreground';
 };
 
@@ -223,9 +224,9 @@ function StressTable({ events, horizons, averages, returnLabel, onRowClick, sele
         <tbody>
           {events.map((ev, idx) => {
             const isSelected = selectedRows?.has(ev.date);
-            const rowBg = ev.isCurrent ? 'bg-red-500/[0.06]' : ev.highlight === 'warn' ? 'bg-amber-500/[0.04]' : isSelected ? 'bg-primary/[0.06]' : 'hover:bg-primary/[0.04]';
-            const dateCls = ev.isCurrent ? 'text-red-500 font-semibold bg-red-500/[0.06]' : ev.highlight === 'warn' ? 'text-amber-500 bg-amber-500/[0.04]' : isSelected ? 'text-primary bg-primary/[0.06]' : 'text-foreground bg-background';
-            const causeCls = ev.isCurrent ? 'text-red-500' : ev.highlight === 'warn' ? 'text-amber-500' : 'text-muted-foreground';
+            const rowBg = ev.isCurrent ? 'bg-destructive/[0.06]' : ev.highlight === 'warn' ? 'bg-warning/[0.04]' : isSelected ? 'bg-primary/[0.06]' : 'hover:bg-primary/[0.04]';
+            const dateCls = ev.isCurrent ? 'text-destructive font-semibold bg-destructive/[0.06]' : ev.highlight === 'warn' ? 'text-warning bg-warning/[0.04]' : isSelected ? 'text-primary bg-primary/[0.06]' : 'text-foreground bg-background';
+            const causeCls = ev.isCurrent ? 'text-destructive' : ev.highlight === 'warn' ? 'text-warning' : 'text-muted-foreground';
             return (
               <tr key={`${ev.date}-${idx}`} onClick={() => onRowClick?.(ev.date)}
                 className={`border-b border-border/25 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${rowBg}`}>
@@ -241,7 +242,7 @@ function StressTable({ events, horizons, averages, returnLabel, onRowClick, sele
           <tr className="border-t-2 border-border/50 bg-primary/[0.04]">
             <td className="px-3 py-1.5 font-mono font-semibold text-foreground sticky left-0 bg-primary/[0.04] z-10">Avg</td>
             <td className="px-3 py-1.5 text-muted-foreground font-medium">Excl. current</td>
-            <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-500">{fmt(avgInitial)}</td>
+            <td className="px-3 py-1.5 text-right font-mono font-semibold text-destructive">{fmt(avgInitial)}</td>
             {horizons.map(h => <td key={h} className={`px-3 py-1.5 text-right font-mono font-semibold ${cellColor(averages[h])}`}>{fmt(averages[h])}</td>)}
           </tr>
         </tbody>
@@ -304,7 +305,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
           <select
             value={selectedIndex}
             onChange={(e) => { setSelectedIndex(e.target.value); setSelectedCB(new Set()); }}
-            className="border border-border/50 rounded-lg px-2.5 py-1 text-[12.5px] focus:outline-none focus:border-primary/40 text-foreground cursor-pointer"
+            className="border border-border/50 rounded-[var(--radius)] px-2.5 py-1 text-[12.5px] focus:outline-none focus:border-primary/40 text-foreground cursor-pointer"
             style={{ colorScheme: theme === 'light' ? 'light' : 'dark', backgroundColor: 'rgb(var(--background))', color: 'rgb(var(--foreground))' }}
           >
             {(targetsQuery.data?.targets ?? []).map(t => (
@@ -331,9 +332,8 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
 
       {/* Loading state */}
       {stressQuery.isLoading && (
-        <div className="panel-card p-12 flex flex-col items-center justify-center text-center gap-3">
-          <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
-          <p className="text-[12.5px] text-muted-foreground">Computing stress test for {selectedIndex}...</p>
+        <div className="panel-card p-12">
+          <LoadingSpinner label={`Computing stress test for ${selectedIndex}`} size="section" />
         </div>
       )}
 
@@ -418,7 +418,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
                         return (
                           <button key={ev.date} onClick={() => toggleCB(ev.date)}
                             className={`h-6 px-2 rounded text-[11.5px] font-mono border transition-colors ${
-                              active ? (ev.isCurrent ? 'border-red-500/50 bg-red-500/10 text-red-500' : 'border-primary/50 bg-primary/10 text-primary')
+                              active ? (ev.isCurrent ? 'border-destructive/50 bg-destructive/10 text-destructive' : 'border-primary/50 bg-primary/10 text-primary')
                                 : 'border-border/40 text-muted-foreground/60 hover:text-foreground hover:border-border'
                             }`}>{ev.date.slice(0, 4)} {ev.cause}</button>
                         );
@@ -447,7 +447,7 @@ export function StressTestContent({ embedded = false }: { embedded?: boolean }) 
                           <li key={i} className="flex items-start gap-2"><span className="text-emerald-500 mt-0.5">+</span><span>{t}</span></li>
                         ))}
                         {data.insights.caution.map((t, i) => (
-                          <li key={i} className="flex items-start gap-2"><span className="text-amber-500 mt-0.5">!</span><span>{t}</span></li>
+                          <li key={i} className="flex items-start gap-2"><span className="text-warning mt-0.5">!</span><span>{t}</span></li>
                         ))}
                       </ul>
                     </div>
