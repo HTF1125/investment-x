@@ -10,12 +10,12 @@ Built-in 1D regimes:
 * :class:`InflationRegime`  — Rising / Falling
 * :class:`LiquidityRegime`  — Easing / Tightening
 * :class:`CreditLevelRegime` / :class:`CreditTrendRegime`
-* :class:`DollarLevelRegime` / :class:`DollarTrendRegime`
+* :class:`DollarTrendRegime`
 
 Usage::
 
     from ix.core.regimes import LiquidityRegime
-    liq = LiquidityRegime().build(z_window=36, sensitivity=1.0, confirm_months=2)
+    liq = LiquidityRegime().build(z_window=36, sensitivity=1.0, smooth_halflife=3)
 """
 
 from .base import Regime, load_series, zscore, zscore_ism, zscore_roc, sigmoid, LW, RW
@@ -36,7 +36,6 @@ from .flow import (
 from .markets import (
     CreditLevelRegime,
     CreditTrendRegime,
-    DollarLevelRegime,
     DollarTrendRegime,
     CommodityCycleRegime,
 )
@@ -76,7 +75,6 @@ __all__ = [
     # markets
     "CreditLevelRegime",
     "CreditTrendRegime",
-    "DollarLevelRegime",
     "DollarTrendRegime",
     "CommodityCycleRegime",
     # risk

@@ -71,7 +71,7 @@ def _lookup_snapshot(db: SessionType, key: str) -> RegimeSnapshot:
 @router.get("/regimes/models")
 @_limiter.limit("60/minute")
 def list_models(request: Request, _user=Depends(get_optional_user)):
-    """List all registered regime models."""
+    """List all registered regime models with embedded quality snapshot."""
     models = []
     for reg in list_regimes():
         models.append({
@@ -82,6 +82,7 @@ def list_models(request: Request, _user=Depends(get_optional_user)):
             "dimensions": reg.dimensions,
             "has_strategy": reg.has_strategy,
             "category": reg.category,
+            "phase_pair": reg.phase_pair,
             "color_map": reg.color_map,
             "dimension_colors": reg.dimension_colors,
             "state_descriptions": reg.state_descriptions,
@@ -90,6 +91,8 @@ def list_models(request: Request, _user=Depends(get_optional_user)):
     return {"models": models}
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Universal quality snapshot
 # ─────────────────────────────────────────────────────────────────────
 # Dynamic regime composition (axis × axis)
 # ─────────────────────────────────────────────────────────────────────
@@ -142,6 +145,58 @@ def compose_regimes_endpoint(
         )
 
     _COMPOSE_CACHE[cache_key] = result
+    return result
+
+
+# ── Ensemble endpoint ──────────────────────────────────────────────
+_ENSEMBLE_CACHE: dict[str, dict] = {}
+
+
+@router.get("/regimes/ensemble")
+@_limiter.limit("10/minute")
+def ensemble_endpoint(
+    request: Request,
+    universe: str = "broad",
+    _user=Depends(get_optional_user),
+):
+    """IC-weighted multi-regime ensemble backtest.
+
+    Combines ALL registered regimes optimally per asset using walk-forward
+    IC-weighted signal combination.  Expensive on first call (~15-45s);
+    cached in-process after.
+
+    Query params:
+        universe: ``"broad"`` (11 ETFs, default) or ``"equity"``
+                  (SPY/IWM/EFA/EEM + BIL).
+
+    Returns a StrategyData-compatible dict plus ensemble-specific metadata
+    (``current_weights``, ``regime_drivers``, ``ensemble_meta``).
+    """
+    from ix.core.regimes.compute import UNIVERSE_PRESETS
+
+    if universe not in UNIVERSE_PRESETS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown universe '{universe}'. Choose from: {list(UNIVERSE_PRESETS.keys())}",
+        )
+
+    if universe in _ENSEMBLE_CACHE:
+        return _ENSEMBLE_CACHE[universe]
+
+    try:
+        from ix.core.regimes.ensemble import compute_ensemble_strategy
+        result = compute_ensemble_strategy(tickers=UNIVERSE_PRESETS[universe])
+    except Exception as e:
+        logger.exception("Ensemble computation failed for universe=%s", universe)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ensemble computation failed: {type(e).__name__}: {e}",
+        )
+
+    if result is None:
+        raise HTTPException(status_code=500, detail="Ensemble returned no data")
+
+    _ENSEMBLE_CACHE[universe] = result
     return result
 
 

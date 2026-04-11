@@ -2,7 +2,7 @@
 
 Lets a user pick 2+ single-metric regimes (any axis or phase regime) and
 get a composite regime computed on the fly. The composite uses joint state
-assignment: at each timestep, take H_Dominant from each input regime and
+assignment: at each timestep, take Dominant from each input regime and
 combine them. The result is rendered through the same JSONB shape as a
 normal regime snapshot.
 
@@ -44,6 +44,7 @@ from .base import Regime
 from .compute import (
     DEFAULT_ASSET_TICKERS,
     compute_asset_analytics,
+    compute_regime_strategy,
     _safe_float,
     _series_to_list,
     _dates_to_list,
@@ -127,18 +128,25 @@ def build_joint_states(
     }
     display_name = " × ".join(qualified_dims) + " (custom)"
 
-    # Common month-end index across all input regimes
-    common_index = built_dfs[axis_order[0]].index
+    # Union of all axes' month-end indices so the composite extends to
+    # the latest date of ANY input regime. Axes with shorter data are
+    # forward-filled so their last known state carries through. This
+    # prevents composed regimes from showing zeros/blanks when one axis
+    # publishes a month ahead of another (e.g. daily market data vs
+    # lagged monthly economic data).
+    union_index = built_dfs[axis_order[0]].index
     for k in axis_order[1:]:
-        common_index = common_index.intersection(built_dfs[k].index)
-    if len(common_index) == 0:
+        union_index = union_index.union(built_dfs[k].index)
+    if len(union_index) == 0:
         raise ValueError(
             f"Composing {axis_order} produced no overlapping observations"
         )
 
-    composite_df = pd.DataFrame(index=common_index)
+    composite_df = pd.DataFrame(index=union_index)
 
-    # Joint hard + smoothed probability for each combo (independence assumed)
+    # Joint hard + smoothed probability for each combo (independence assumed).
+    # Each axis's probability is reindexed to the union index with ffill so
+    # that axes with shorter data carry their last known probability forward.
     for combo in joint_combos:
         joint_name = state_map[combo]
         s_prob: pd.Series | None = None
@@ -148,11 +156,11 @@ def build_joint_states(
             s_col = f"S_P_{state}"
             h_col = f"P_{state}"
             if s_col not in df.columns or h_col not in df.columns:
-                s_prob = pd.Series(0.0, index=common_index)
-                h_prob = pd.Series(0.0, index=common_index)
+                s_prob = pd.Series(0.0, index=union_index)
+                h_prob = pd.Series(0.0, index=union_index)
                 break
-            s_series = df[s_col].reindex(common_index)
-            h_series = df[h_col].reindex(common_index)
+            s_series = df[s_col].reindex(union_index, method="ffill")
+            h_series = df[h_col].reindex(union_index, method="ffill")
             s_prob = s_series if s_prob is None else s_prob * s_series
             h_prob = h_series if h_prob is None else h_prob * h_series
         composite_df[f"S_P_{joint_name}"] = s_prob
@@ -166,12 +174,10 @@ def build_joint_states(
             f"Composing {axis_order} produced no usable joint observations"
         )
 
-    # H_Dominant = argmax of smoothed joint probabilities
+    # Dominant = argmax of smoothed joint probabilities
     prob_matrix = composite_df[s_prob_cols].copy()
     prob_matrix.columns = composite_states
-    composite_df["H_Dominant"] = prob_matrix.idxmax(axis=1)
-    composite_df["S_Dominant"] = composite_df["H_Dominant"]
-    composite_df["Dominant"] = composite_df["H_Dominant"]
+    composite_df["Dominant"] = prob_matrix.idxmax(axis=1)
 
     # Conviction = max smoothed joint probability * 100
     composite_df["Conviction"] = prob_matrix.max(axis=1) * 100.0
@@ -180,7 +186,7 @@ def build_joint_states(
     streak: list[int] = []
     prev = None
     cnt = 0
-    for v in composite_df["H_Dominant"]:
+    for v in composite_df["Dominant"]:
         if v == prev:
             cnt += 1
         else:
@@ -401,8 +407,7 @@ def compose_regimes(
         df = regime.build(
             z_window=params.get("z_window", 96),
             sensitivity=params.get("sensitivity", 2.0),
-            smooth_halflife=params.get("smooth_halflife", 2),
-            confirm_months=params.get("confirm_months", 3),
+            smooth_halflife=params.get("smooth_halflife", 3),
         )
         if df.empty:
             raise ValueError(f"Regime '{reg.key}' built an empty DataFrame")
@@ -427,7 +432,7 @@ def compose_regimes(
     s_prob_cols = [f"S_P_{s}" for s in composite_states]
 
     # ── Multi-horizon Markov forward projections ──────────────────
-    # Build a transition matrix from the historical H_Dominant sequence
+    # Build a transition matrix from the historical Dominant sequence
     # (with Laplace smoothing), then project the latest smoothed joint
     # probability vector forward at 1, 3, 6, and 12 month horizons by
     # raising the transition matrix to the corresponding power.
@@ -438,7 +443,7 @@ def compose_regimes(
     # steady-state distribution and lets the frontend show meaningful
     # delta arrows.
     dom_seq = [
-        v for v in composite_df["H_Dominant"].dropna()
+        v for v in composite_df["Dominant"].dropna()
         if v in composite_states
     ]
     forward_probabilities: dict[str, float] | None = None
@@ -509,10 +514,22 @@ def compose_regimes(
             composite_df,
             states=composite_states,
             tickers=asset_tickers,
+            signal_col=None,  # No single Z-score for composites; IC skipped
         )
     except Exception as exc:
         log.warning("Compose: asset analytics failed: %s", exc)
         asset_analytics = None
+
+    # ── Strategy backtest ─────────────────────────────────────────
+    try:
+        strategy = compute_regime_strategy(
+            composite_df,
+            states=composite_states,
+            tickers=asset_tickers,
+        )
+    except Exception as exc:
+        log.warning("Compose: strategy backtest failed: %s", exc)
+        strategy = None
 
     # ── Build the synthesized model metadata ───────────────────────
     # `dimensions` and `dimension_colors` use the QUALIFIED dim names
@@ -540,7 +557,7 @@ def compose_regimes(
         ),
         "states": composite_states,
         "dimensions": composite_dimensions,
-        "has_strategy": False,
+        "has_strategy": strategy is not None,
         "category": "composite",
         "color_map": color_map,
         "dimension_colors": composite_dimension_colors,
@@ -551,13 +568,13 @@ def compose_regimes(
     # ── Serialize current_state (latest row) ───────────────────────
     last = composite_df.iloc[-1]
     last_date = composite_df.index[-1]
-    dom = str(last["H_Dominant"])
+    dom = str(last["Dominant"])
 
     # Pull top driving indicators per axis from each input regime's df.
     # We use the regime instance's authoritative `_dimension_prefixes()`
     # map (e.g. {"Level": "lv_"}) instead of guessing the first letter,
     # which is wrong for Level/Trend axes. We also use the input regime's
-    # *own* H_Dominant state as the direction label so credit_level shows
+    # *own* Dominant state as the direction label so credit_level shows
     # "Tight"/"Wide" (its declared states), not a made-up "High"/"Low".
     #
     # We also build `input_states[k]` so the frontend's AxisDock can show
@@ -585,10 +602,7 @@ def compose_regimes(
 
         # Direction label = the input regime's per-axis state derived
         # from the SAME smoothed probabilities that the joint state was
-        # built from (argmax of S_P_<state> at last_date). Using
-        # H_Dominant directly would disagree with the joint name when
-        # confirmation lag desyncs the input regime's hard state from
-        # its own soft probabilities.
+        # built from (argmax of S_P_<state> at last_date).
         s_prob_pairs = [
             (s, _safe_float(src_last.get(f"S_P_{s}"), 0.0) or 0.0)
             for s in reg.states
@@ -640,8 +654,7 @@ def compose_regimes(
         # Walk back from last_date counting consecutive months where the
         # smoothed argmax stays equal to the current `direction`. This
         # gives a months-in-state count consistent with the value the
-        # dim card shows (P_max at last_date), instead of the standalone
-        # H_Dominant streak which can be desynced by confirmation lag.
+        # dim card shows (P_max at last_date).
         months_in_state = 0
         try:
             history_idx = src_df.loc[:last_date].index
@@ -698,18 +711,18 @@ def compose_regimes(
     # ── Regime stats for current state ──────────────────────────────
     # Frequency: how often this exact joint state has occurred since the
     # composite has data. Avg duration: average run length when it appears.
-    # Both come from the historical H_Dominant column we already built.
-    h_series = composite_df["H_Dominant"].dropna()
-    total_months = int(len(h_series))
-    cur_state_months = int((h_series == dom).sum())
+    # Both come from the historical Dominant column we already built.
+    s_series = composite_df["Dominant"].dropna()
+    total_months = int(len(s_series))
+    cur_state_months = int((s_series == dom).sum())
     cur_state_pct = (cur_state_months / total_months * 100) if total_months > 0 else 0.0
 
-    # Average run length: walk through H_Dominant, collect run lengths
+    # Average run length: walk through Dominant, collect run lengths
     # for the current state, take the mean.
     run_lengths: list[int] = []
     cur_run = 0
     cur_val: str | None = None
-    for v in h_series:
+    for v in s_series:
         if v == cur_val:
             cur_run += 1
         else:
@@ -896,7 +909,6 @@ def compose_regimes(
         "date": last_date.strftime("%Y-%m"),
         "dominant": dom,
         "dominant_probability": probabilities.get(dom, 0.0),
-        "confirmed": dom,
         "conviction": cur_conviction_val,
         "months_in_regime": int(last.get("Months_In_Regime", 1) or 1),
         "probabilities": probabilities,
@@ -932,15 +944,12 @@ def compose_regimes(
     timeseries = {
         "dates": dates,
         "composites": composites_ts,
-        "probabilities": probs,
+        "raw_probabilities": probs,
+        "probabilities": probs,  # legacy alias
         "smoothed_probabilities": smoothed_probs,
         "dominant": (
-            df_2000["S_Dominant"].fillna("").astype(str).tolist()
-            if "S_Dominant" in df_2000.columns else []
-        ),
-        "confirmed": (
-            df_2000["H_Dominant"].fillna("").astype(str).tolist()
-            if "H_Dominant" in df_2000.columns else []
+            df_2000["Dominant"].fillna("").astype(str).tolist()
+            if "Dominant" in df_2000.columns else []
         ),
         "conviction": (
             _series_to_list(df_2000["Conviction"])
@@ -963,7 +972,7 @@ def compose_regimes(
             "color_map": color_map,
             "dimension_colors": model["dimension_colors"],
             "methodology": {
-                "composition": "joint state assignment from input regimes' H_Dominant",
+                "composition": "joint state assignment from input regimes' smoothed dominant state",
                 "state_naming": (
                     "mechanical 'Axis1State+Axis2State' from cartesian product "
                     "of input regimes' states"
@@ -972,6 +981,5 @@ def compose_regimes(
                 "input_regimes": ", ".join(keys),
             },
         },
-        # Empty placeholders to match the standard snapshot shape
-        "strategy": None,
+        "strategy": strategy,
     }

@@ -149,7 +149,7 @@ def compute_state_balance(
     Parameters
     ----------
     states_series:
-        Time-indexed series of regime state labels (e.g. ``H_Dominant``
+        Time-indexed series of regime state labels (e.g. ``Dominant``
         from a regime's ``build()`` output, or ``MultiDimRegimeAnalyzer.
         joint_states()``). NaNs are dropped automatically.
     declared_states:

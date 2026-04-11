@@ -7,22 +7,25 @@ carrying the deprecated 2-axis wrapper class.
 Both loaders return ``{prefixed_name: z-scored series}`` dicts keyed with
 ``g_*`` (growth) and ``i_*`` (inflation) prefixes. Indicators use a
 25% level z-score + 75% ROC z-score blend. Inflation indicators use
-structural anchors (2.5% CPI, 3.5% wages, 0% commodities) instead of
-rolling means so cycle regime reads are stable through disinflation eras.
+structural anchors (2.5% CPI, 0% commodities) instead of rolling means
+so cycle regime reads are stable through disinflation eras.
 
 Indicators
 ----------
-Growth (9, one ``m_*`` monitor-only)
-    g_InitialClaims · g_ISMNewOrders · g_OECDCLI · g_LEI
-    g_Payrolls · g_CLIDiffusion · g_Permits · g_ISM_NO_Inv
+Growth (2 composite, 2 monitor-only)
+    g_LEI · g_CLIDiffusion
     m_ISMServices (monitor-only)
     g_Claims4WMA (loaded but excluded from composite)
+    Dropped (IC decomposition 2026-04-10):
+        g_InitialClaims (post IC -0.070), g_Payrolls (post IC -0.015),
+        g_Permits (post IC -0.023), g_ISMNewOrders, g_OECDCLI, g_ISM_NO_Inv
 
-Inflation (8)
-    i_ISMPricesPaid (anchor 50) · i_CPI3MAnn (anchor 2.5%)
-    i_Breakeven (anchor 2.5%)   · i_PCECore (anchor 2.5%)
-    i_MedianCPI (anchor 2.5%)   · i_Wages (anchor 3.5%)
-    i_WTI (anchor 0%)           · i_Commodities (anchor 0%)
+Inflation (2)
+    i_Breakeven (anchor 2.5%) · i_Commodities (anchor 0%)
+    Dropped (IC decomposition 2026-04-10):
+        i_ISMPricesPaid (post IC -0.026), i_WTI (post IC -0.036),
+        i_PCECore (pre IC -0.040), i_Wages (pre IC -0.038),
+        i_CPI3MAnn, i_MedianCPI
 """
 
 from __future__ import annotations
@@ -63,20 +66,18 @@ def load_growth_indicators(z_window: int) -> dict[str, pd.Series]:
 
     rows: dict[str, pd.Series] = {}
 
+    # [DROPPED from composite: g_InitialClaims — post IC -0.070 (DYING).
+    #  Positive full IC +0.025 but sign-flipped post-2010. Claims data
+    #  is still loaded as monitor-only via g_Claims4WMA below.]
     ic_weekly_raw = DbSeries("ICSA")
+
+    # Claims 4WMA nowcast — monitor-only, excluded from composite
     ic = (
         ic_weekly_raw.resample("ME").last()
         if not ic_weekly_raw.empty
         else pd.Series(dtype=float)
     )
     if not ic.empty:
-        ic_inv = -ic
-        rows["g_InitialClaims"] = (
-            zscore(ic_inv, z_window) * LW
-            + zscore_roc(ic_inv, z_window, use_pct=False) * RW
-        ).rename("g_InitialClaims")
-
-        # Claims 4WMA nowcast — monitor-only, excluded from composite
         try:
             ic_4wma = -ic_weekly_raw.rolling(4, min_periods=2).mean()
             ic_4wma_m = ic_4wma.resample("ME").last()
@@ -86,21 +87,6 @@ def load_growth_indicators(z_window: int) -> dict[str, pd.Series]:
         except Exception as exc:
             log.warning("Claims 4WMA nowcast failed: %s", exc)
 
-    ism_no = load_series("ISMNOR_M:PX_LAST", lag=1)
-    if not ism_no.empty:
-        ism_no_3ma = ism_no.rolling(3, min_periods=1).mean()
-        rows["g_ISMNewOrders"] = (
-            zscore_ism(ism_no_3ma, z_window) * LW
-            + zscore_roc(ism_no_3ma, z_window, use_pct=False) * RW
-        ).rename("g_ISMNewOrders")
-
-    oecd = load_series("USA.LOLITOAA.STSA", lag=1)
-    if not oecd.empty:
-        rows["g_OECDCLI"] = (
-            zscore(oecd, z_window) * LW
-            + zscore_roc(oecd, z_window, use_pct=True) * RW
-        ).rename("g_OECDCLI")
-
     lei = load_series("USSLIND", lag=1)
     if not lei.empty:
         rows["g_LEI"] = (
@@ -108,13 +94,9 @@ def load_growth_indicators(z_window: int) -> dict[str, pd.Series]:
             + zscore_roc(lei, z_window, use_pct=True) * RW
         ).rename("g_LEI")
 
-    nfp = load_series("PAYEMS", lag=1)
-    if not nfp.empty:
-        nfp_yoy = nfp.pct_change(12, fill_method=None) * 100
-        rows["g_Payrolls"] = (
-            zscore(nfp_yoy, z_window) * LW
-            + zscore_roc(nfp_yoy, z_window, use_pct=False) * RW
-        ).rename("g_Payrolls")
+    # [DROPPED: g_Payrolls — post IC -0.015 (DYING). Full IC +0.051 but
+    #  sign-flipped post-2010. Payrolls YoY is too lagging in modern
+    #  cycle — labor data is covered by the dedicated LaborRegime.]
 
     # ISM Services — monitor only (m_ prefix)
     ism_svc = load_series("ISMNMI_NM:PX_LAST", lag=1)
@@ -140,23 +122,13 @@ def load_growth_indicators(z_window: int) -> dict[str, pd.Series]:
     except Exception as exc:
         log.warning("CLI Diffusion load failed: %s", exc)
 
-    # Building Permits
-    permit = load_series("PERMIT", lag=1)
-    if not permit.empty:
-        rows["g_Permits"] = (
-            zscore(permit, z_window) * LW
-            + zscore_roc(permit, z_window, use_pct=True) * RW
-        ).rename("g_Permits")
+    # [DROPPED: g_Permits — post IC -0.023 (DYING). Full IC only +0.026.
+    #  Building permits are now covered by the dedicated HousingRegime.]
 
-    # ISM New Orders − Inventories spread
-    ism_inv = load_series("ISMINV_M:PX_LAST", lag=1)
-    if not ism_no.empty and not ism_inv.empty:
-        no_inv = ism_no.reindex(ism_inv.index, method="ffill") - ism_inv
-        no_inv_3ma = no_inv.rolling(3, min_periods=1).mean()
-        rows["g_ISM_NO_Inv"] = (
-            zscore(no_inv_3ma, z_window) * LW
-            + zscore_roc(no_inv_3ma, z_window, use_pct=False) * RW
-        ).rename("g_ISM_NO_Inv")
+    # [DROPPED: g_CFNAI — individual IC passes (full +0.087, pre +0.147,
+    #  post +0.013) but COMPOSITE IC worsens when added (full -0.007,
+    #  post -0.049). Likely correlated with CLIDiffusion, diluting the
+    #  stronger signal without adding information.]
 
     return rows
 
@@ -166,34 +138,20 @@ def load_inflation_indicators(z_window: int) -> dict[str, pd.Series]:
 
     All inflation indicators use STRUCTURAL ANCHORS instead of rolling mean:
       - ISM Prices Paid: anchored at 50 (expansion/contraction threshold)
-      - CPI 3M Ann.:    anchored at 2.5% (Fed target + buffer)
       - 5Y Breakeven:   anchored at 2.5%
       - PCE Core YoY:   anchored at 2.5%
-      - Median CPI YoY: anchored at 2.5%
       - Wages YoY:      anchored at 3.5%
       - WTI/BCOM YoY:   anchored at 0%
     This eliminates the rolling-mean drift problem (where 3% CPI reads as
     "below average" because the 2021-22 spike inflated the rolling mean).
+
+    Dropped (negative IC@1M vs CL1 target): CPI 3M Ann., Median CPI YoY.
     """
     rows: dict[str, pd.Series] = {}
 
-    # ISM Prices Paid — anchored at 50
-    ism_pr = load_series("ISMPRI_M:PX_LAST", lag=1)
-    if not ism_pr.empty:
-        rows["i_ISMPricesPaid"] = (
-            zscore_ism(ism_pr, z_window) * LW
-            + zscore_roc(ism_pr, z_window, use_pct=False) * RW
-        ).rename("i_ISMPricesPaid")
-
-    # CPI — anchored at 2.5%
-    cpi_raw = load_series("USPR1980783:PX_LAST", lag=1)
-    if not cpi_raw.empty:
-        cpi_3m = cpi_raw.pct_change(3, fill_method=None).mul(400)
-        cpi_yoy = cpi_raw.pct_change(12, fill_method=None).mul(100)
-        rows["i_CPI3MAnn"] = (
-            zscore_anchored(cpi_3m, INFLATION_ANCHOR, z_window) * LW
-            + zscore_anchored(cpi_yoy, INFLATION_ANCHOR, z_window) * RW
-        ).rename("i_CPI3MAnn")
+    # [DROPPED: i_ISMPricesPaid — post IC -0.026 (DYING). Full IC +0.039
+    #  but sign-flipped post-2010 against CL1 6M target. ISM prices paid
+    #  is manufacturing-focused and has lost predictive power for oil.]
 
     # 5Y Breakeven inflation expectations — anchored at 2.5%
     be = load_series("T5YIE:PX_LAST")
@@ -203,45 +161,19 @@ def load_inflation_indicators(z_window: int) -> dict[str, pd.Series]:
             + zscore_roc(be, z_window, use_pct=False) * RW
         ).rename("i_Breakeven")
 
-    # PCE Core YoY — Fed's preferred measure, anchored at 2.5%
-    pce = load_series("PCEPILFE", lag=1)
-    if not pce.empty:
-        pce_yoy = pce.pct_change(12, fill_method=None) * 100
-        rows["i_PCECore"] = (
-            zscore_anchored(pce_yoy, INFLATION_ANCHOR, z_window) * LW
-            + zscore_roc(pce_yoy, z_window, use_pct=False) * RW
-        ).rename("i_PCECore")
+    # [DROPPED: i_PCECore — pre IC -0.040, full IC +0.007 (NOISE).
+    #  PCE Core YoY is too lagging for commodity (CL1) forward returns.
+    #  The Fed-preferred measure matters for rates, not oil.]
 
-    # Cleveland Fed Median CPI YoY — trimmed-mean measure that removes outliers
-    # and captures persistent (non-transitory) inflation. Anchored at 2.5%.
-    med_cpi = load_series("MEDCPIM158SFRBCLE", lag=1)
-    if not med_cpi.empty:
-        # MEDCPIM158SFRBCLE is reported as MoM % change → annualize via rolling 12m sum
-        med_cpi_yoy = med_cpi.rolling(12, min_periods=12).sum()
-        rows["i_MedianCPI"] = (
-            zscore_anchored(med_cpi_yoy, INFLATION_ANCHOR, z_window) * LW
-            + zscore_roc(med_cpi_yoy, z_window, use_pct=False) * RW
-        ).rename("i_MedianCPI")
+    # [DROPPED: i_Wages — pre IC -0.038, full IC +0.029. Wages YoY is
+    #  a lagging indicator with poor pre-2010 signal for commodity forwards.
+    #  Wage-price spiral dynamics operate on 12-24M horizon, too slow for
+    #  the 6M CL1 target.]
 
-    # Average Hourly Earnings YoY — wage-price spiral signal. Anchored at 3.5%
-    # (productivity ~1.5% + inflation target ~2% ≈ wage equilibrium).
-    wages = load_series("AHETPI", lag=1)
-    if not wages.empty:
-        wage_yoy = wages.pct_change(12, fill_method=None) * 100
-        rows["i_Wages"] = (
-            zscore_anchored(wage_yoy, WAGE_ANCHOR, z_window) * LW
-            + zscore_roc(wage_yoy, z_window, use_pct=False) * RW
-        ).rename("i_Wages")
-
-    # WTI Crude Oil YoY — energy inflation pulse, leading indicator for headline CPI.
-    # Anchored at 0% (zero YoY change = no commodity inflation).
-    wti = load_series("CL1 Comdty:PX_LAST", lag=0)
-    if not wti.empty:
-        wti_yoy = wti.pct_change(12, fill_method=None) * 100
-        rows["i_WTI"] = (
-            zscore_anchored(wti_yoy, COMMODITY_ANCHOR, z_window) * LW
-            + zscore_roc(wti_yoy, z_window, use_pct=False) * RW
-        ).rename("i_WTI")
+    # [DROPPED: i_WTI — post IC -0.036 (DYING). Full IC only +0.021.
+    #  WTI YoY is circular with the CL1 target (oil predicting oil).
+    #  The broader i_Commodities (BCOM) captures energy without
+    #  the circularity problem.]
 
     # Bloomberg Commodity Index YoY — broad commodity basket (energy, metals, ags).
     # Captures broader inflation pressure than oil alone. Anchored at 0%.

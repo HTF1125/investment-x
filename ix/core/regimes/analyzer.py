@@ -65,7 +65,7 @@ class MultiDimRegimeAnalyzer:
     params:
         Optional build params shared by every input regime. Defaults to the
         first regime's ``default_params``. Supported keys: ``z_window``,
-        ``sensitivity``, ``smooth_halflife``, ``confirm_months``.
+        ``sensitivity``, ``smooth_halflife``.
     """
 
     def __init__(self, keys: list[str], params: Optional[dict] = None) -> None:
@@ -106,8 +106,7 @@ class MultiDimRegimeAnalyzer:
             df = regime.build(
                 z_window=params.get("z_window", 96),
                 sensitivity=params.get("sensitivity", 2.0),
-                smooth_halflife=params.get("smooth_halflife", 2),
-                confirm_months=params.get("confirm_months", 3),
+                smooth_halflife=params.get("smooth_halflife", 3),
             )
             if df.empty:
                 raise ValueError(f"Regime '{reg.key}' built an empty DataFrame")
@@ -142,33 +141,25 @@ class MultiDimRegimeAnalyzer:
 
     # ── State timeseries ─────────────────────────────────────────────
 
-    def joint_states(self, *, use_confirmed: bool = True) -> pd.Series:
-        """Return the dominant joint state as a labelled time series.
-
-        Args:
-            use_confirmed: If ``True`` (default), use the confirmation-filtered
-                labels (``H_Dominant``). If ``False``, use the raw smoothed
-                labels (``S_Dominant``) — reacts earlier, more whipsaw.
-        """
+    def joint_states(self) -> pd.Series:
+        """Return the dominant joint state as a labelled time series."""
         df = self.composite_df
-        col = "H_Dominant" if use_confirmed and "H_Dominant" in df.columns else "S_Dominant"
-        if col not in df.columns:
+        if "Dominant" not in df.columns:
             raise RuntimeError(
-                f"composite_df is missing '{col}' — joint build may have failed."
+                "composite_df is missing 'Dominant' — joint build may have failed."
             )
-        out = df[col].dropna()
+        out = df["Dominant"].dropna()
         out.name = "joint_state"
         return out
 
-    def current_state(self, *, use_confirmed: bool = True) -> Optional[str]:
+    def current_state(self) -> Optional[str]:
         """Latest joint state label, or ``None`` if the series is empty."""
-        s = self.joint_states(use_confirmed=use_confirmed)
+        s = self.joint_states()
         return None if s.empty else str(s.iloc[-1])
 
     def state_balance(
         self,
         *,
-        use_confirmed: bool = True,
         sample_floor: int = 30,
     ):
         """Distribution diagnostics for the joint states.
@@ -194,20 +185,20 @@ class MultiDimRegimeAnalyzer:
         """
         from .balance import compute_state_balance
         return compute_state_balance(
-            self.joint_states(use_confirmed=use_confirmed),
+            self.joint_states(),
             self.states,
             sample_floor=sample_floor,
         )
 
     # ── Distributional stats ─────────────────────────────────────────
 
-    def state_frequencies(self, *, use_confirmed: bool = True) -> pd.Series:
+    def state_frequencies(self) -> pd.Series:
         """Proportion of time each joint state has been active.
 
         Index is the full set of joint states (zero entries included so every
         combination is visible). Sums to 1.0 over the observed history.
         """
-        s = self.joint_states(use_confirmed=use_confirmed)
+        s = self.joint_states()
         counts = s.value_counts()
         total = float(counts.sum())
         if total == 0:
@@ -216,7 +207,7 @@ class MultiDimRegimeAnalyzer:
         freq.name = "frequency"
         return freq
 
-    def state_durations(self, *, use_confirmed: bool = True) -> pd.DataFrame:
+    def state_durations(self) -> pd.DataFrame:
         """Descriptive stats of consecutive-run lengths per joint state.
 
         Returns a DataFrame indexed by joint state with columns ``count``
@@ -225,7 +216,7 @@ class MultiDimRegimeAnalyzer:
         Run lengths are measured in the composite_df's native frequency
         (monthly for the built-in regimes).
         """
-        s = self.joint_states(use_confirmed=use_confirmed)
+        s = self.joint_states()
         if s.empty:
             return pd.DataFrame(
                 columns=["count", "mean", "median", "min", "max", "total"],
@@ -263,14 +254,14 @@ class MultiDimRegimeAnalyzer:
                 })
         return pd.DataFrame(rows, index=self.states)
 
-    def transition_matrix(self, *, use_confirmed: bool = True) -> pd.DataFrame:
+    def transition_matrix(self) -> pd.DataFrame:
         """Empirical 1-step transition matrix P(next | current).
 
         Rows are the current joint state, columns are the next period's
         joint state. Rows sum to 1.0 when the state has been observed; an
         unobserved row is all zeros.
         """
-        s = self.joint_states(use_confirmed=use_confirmed)
+        s = self.joint_states()
         if len(s) < 2:
             return pd.DataFrame(0.0, index=self.states, columns=self.states)
 
@@ -293,7 +284,6 @@ class MultiDimRegimeAnalyzer:
         returns: pd.Series,
         *,
         diagnostic: bool = False,
-        use_confirmed: bool = True,
         periods_per_year: int = 12,
     ) -> pd.DataFrame:
         """Aggregate a return series by joint state — DIAGNOSTIC ONLY.
@@ -322,8 +312,6 @@ class MultiDimRegimeAnalyzer:
                 speed bump, not a lock — it forces the caller to acknowledge
                 they understand the in-sample contamination before looking
                 at the numbers.
-            use_confirmed: Use ``H_Dominant`` (confirmed) vs ``S_Dominant``
-                (raw smoothed) for the state column.
             periods_per_year: Annualization factor. Defaults to 12 (monthly).
 
         Returns:
@@ -351,7 +339,7 @@ class MultiDimRegimeAnalyzer:
                 "instead. If you understand this and want a sanity-check "
                 "read, call with diagnostic=True."
             )
-        state_s = self.joint_states(use_confirmed=use_confirmed)
+        state_s = self.joint_states()
         if returns.empty or state_s.empty:
             return pd.DataFrame(
                 columns=["n", "freq", "mean", "std", "cagr", "vol", "sharpe", "hit", "cum"],

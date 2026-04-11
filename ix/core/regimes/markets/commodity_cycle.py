@@ -31,10 +31,9 @@ States
   Global demand weakening. Forward SPY 3m: negative, defensive
   sectors outperform.
 
-Indicators (3, all cc_*)
+Indicators (2, all cc_*)
     cc_CopperGold     — Copper/Gold ratio 6M momentum
-    cc_OilMomentum    — WTI crude 12-1 month momentum
-    cc_IndMetals      — Bloomberg Industrial Metals sub-index vs 200DMA
+    cc_Copper_6M      — Copper 6M momentum (IC +0.105, stable pre/post)
 
 Publication lag: zero (futures markets).
 Target: SPY 3M fwd. Locked. Coincident mapping.
@@ -75,25 +74,17 @@ class CommodityCycleRegime(Regime):
                 "cc_CopperGold"
             )
 
-        # 2. cc_OilMomentum — WTI 12-minus-1 month momentum (skip latest
-        #    month to avoid short-term noise, classic 12-1 momentum).
-        oil = _load("CL1 COMDTY:PX_LAST")
-        if not oil.empty:
-            mom = oil.shift(1).pct_change(11) * 100.0
-            rows["cc_OilMomentum"] = zscore(mom, z_window).rename("cc_OilMomentum")
+        # [DROPPED: cc_XME — post IC -0.030 (DYING). Full IC only +0.007.
+        #  XME vs 200DMA is too noisy — mining equities have stock-specific
+        #  risk that dilutes the commodity cycle signal. CopperGold alone
+        #  is cleaner (full IC +0.040, pre +0.126, post +0.055).]
 
-        # 3. cc_XME — SPDR S&P Metals & Mining ETF vs 200DMA.
-        #    Proxy for industrial metals exposure (primary constituents are
-        #    copper / steel / aluminum miners). Positive = above 200DMA,
-        #    negative = below. Captures broad cyclical commodity trend
-        #    independent of energy. XME is the most liquid proxy in the DB
-        #    for the Bloomberg Industrial Metals sub-index (BCOMIN) which
-        #    is not seeded.
-        xme = _load("XME US EQUITY:PX_LAST")
-        if not xme.empty:
-            sma200 = xme.rolling(10).mean()  # 10 month-end periods ≈ 200 trading days
-            deviation = (xme / sma200.replace(0, pd.NA) - 1.0) * 100.0
-            rows["cc_XME"] = zscore(deviation, z_window).rename("cc_XME")
+        # 2. cc_Copper_6M — Copper 6-month momentum. Industrial bellwether.
+        #    IC: full +0.105, pre +0.090, post +0.139 — stable and strong.
+        if not cop.empty:
+            rows["cc_Copper_6M"] = zscore(
+                cop.pct_change(6, fill_method=None) * 100.0, z_window
+            ).rename("cc_Copper_6M")
 
         if not rows:
             log.warning(

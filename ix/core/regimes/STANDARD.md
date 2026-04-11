@@ -105,7 +105,7 @@ After the class compiles and loads data cleanly, it must pass these in `ix/core/
 
 Vol normalization divides the spread by the target asset's annualized volatility over the same walk-forward test window, yielding a **Sharpe delta** between the best and worst states. The 0.25 floor is calibrated so that a WTI-anchored regime needs ≈ 8–10% raw spread (WTI vol ≈ 35%) while a TLT-anchored regime needs only ≈ 3% raw spread (TLT vol ≈ 12%). Same information content, same bar.
 
-**Parameter sensitivity (T1.7).** A regime that posts a great spread at its declared defaults but collapses under ±25% perturbation of ``(z_window, sensitivity, smooth_halflife, confirm_months)`` has been tuned to a local minimum, not to a structural signal. The ``audit_regime_sensitivity()`` utility in ``ix.core.regimes.sensitivity`` sweeps a 3–4 value grid around each parameter and returns one of three verdicts:
+**Parameter sensitivity (T1.7).** A regime that posts a great spread at its declared defaults but collapses under ±25% perturbation of ``(z_window, sensitivity, smooth_halflife)`` has been tuned to a local minimum, not to a structural signal. The ``audit_regime_sensitivity()`` utility in ``ix.core.regimes.sensitivity`` sweeps a 3-value grid around each parameter and returns one of three verdicts:
 
 - **robust** — ≥ 80% of grid cells maintain ≥ 80% of the default spread AND no sign flips.
 - **sensitive** — no sign flips but ≥ 20% of cells fall below 80% of default. Shipping is allowed; the description field must disclose the sensitivity.

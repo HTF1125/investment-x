@@ -175,33 +175,24 @@ class Regime(ABC):
         z_window: int = 36,
         sensitivity: float = 1.0,
         smooth_halflife: int = 4,
-        confirm_months: int = 3,
-        use_confirmed: bool = True,
         exclude: set[str] | None = None,
     ) -> pd.Series:
         """Return the regime state as a text time series.
-
-        Args:
-            use_confirmed: If ``True`` (default), return the confirmation-filtered
-                labels (``H_Dominant``). If ``False``, return the raw smoothed
-                labels (``S_Dominant``).
 
         Returns:
             ``pd.Series`` with ``DatetimeIndex`` and string values
             (e.g. ``"Goldilocks"``, ``"Easing"``).
         """
-        df = self.build(z_window, sensitivity, smooth_halflife, confirm_months, exclude=exclude)
-        col = "H_Dominant" if use_confirmed else "S_Dominant"
-        if col not in df.columns:
-            col = "Dominant"
-        return df[col].dropna().rename(self.name)
+        df = self.build(z_window, sensitivity, smooth_halflife, exclude=exclude)
+        if "Dominant" not in df.columns:
+            return pd.Series(dtype=str, name=self.name)
+        return df["Dominant"].dropna().rename(self.name)
 
     def build(
         self,
         z_window: int = 36,
         sensitivity: float = 1.0,
         smooth_halflife: int = 4,
-        confirm_months: int = 3,
         exclude: set[str] | None = None,
     ) -> pd.DataFrame:
         """Run the full regime classification pipeline.
@@ -220,8 +211,8 @@ class Regime(ABC):
         * Individual indicator z-scores (``g_*``, ``i_*``, ``l_*``, ``m_*``).
         * Composite z-scores per dimension (``{Dim}_Z``).
         * Sigmoid probabilities per dimension (``{Dim}_P``).
-        * State probabilities (``P_{State}``), raw and smoothed (``S_P_{State}``).
-        * ``Dominant``, ``H_Dominant``, ``S_Dominant`` labels.
+        * State probabilities (``P_{State}``) and smoothed (``S_P_{State}``).
+        * ``Dominant`` — argmax of the smoothed state probabilities.
         * ``Conviction`` score (0–100).
         * Score / Total counts per dimension.
         """
@@ -240,7 +231,12 @@ class Regime(ABC):
                 if c.startswith(prefix) and c not in exclude
             ]
             if parts:
-                df[f"{dim}_Z"] = pd.concat(parts, axis=1).mean(axis=1)
+                # mean(axis=1) skips NaN per-indicator — if 2 of 3 published,
+                # the composite is the mean of those 2. Then ffill so the last
+                # known composite carries forward into months where no indicators
+                # have published yet. This ensures every regime always has a
+                # current state, even if its data lags by a month.
+                df[f"{dim}_Z"] = pd.concat(parts, axis=1).mean(axis=1).ffill()
 
         # 3. Sigmoid probabilities per dimension
         dim_probs: dict[str, pd.Series] = {}
@@ -260,14 +256,7 @@ class Regime(ABC):
         if not all(c in df.columns for c in prob_cols):
             return df.sort_index()
 
-        # 5. Dominant state (raw)
-        dom_raw = df[prob_cols].idxmax(axis=1).str.replace("P_", "", regex=False)
-        df["Dominant"] = dom_raw
-
-        # 6. Confirmation filter
-        df["H_Dominant"] = self._confirm(dom_raw, confirm_months)
-
-        # 7. EMA smoothing
+        # 5. EMA smoothing on state probabilities
         if smooth_halflife > 1:
             for col in prob_cols:
                 df[f"S_{col}"] = df[col].ewm(halflife=smooth_halflife).mean()
@@ -279,11 +268,18 @@ class Regime(ABC):
             for col in prob_cols:
                 df[f"S_{col}"] = df[col]
 
-        # S_Dominant
+        # 6. Dominant state = argmax of smoothed probabilities.
+        #    NA-safe: compute idxmax only on rows with a non-NA probability
+        #    so pandas ≥ 2.1 doesn't warn (and eventually raise) on all-NA rows.
         s_cols = [f"S_P_{s}" for s in self.states]
-        df["S_Dominant"] = (
-            df[s_cols].idxmax(axis=1).str.replace("S_P_", "", regex=False)
-        )
+        s_prob_df = df[s_cols]
+        valid_s = s_prob_df.dropna(how="all")
+        if not valid_s.empty:
+            df["Dominant"] = (
+                valid_s.idxmax(axis=1)
+                .str.replace("S_P_", "", regex=False)
+                .reindex(df.index)
+            )
 
         # Conviction: 0 at uniform baseline, 100 at full certainty
         n_states = len(self.states)
@@ -293,13 +289,14 @@ class Regime(ABC):
         ).clip(0, 100)
 
         # Regime streak counter
-        dom = df["S_Dominant"].ffill()
-        streak, prev, streaks = 0, None, []
-        for v in dom:
-            streak = 1 if v != prev else streak + 1
-            prev = v
-            streaks.append(streak)
-        df["Months_In_Regime"] = streaks
+        if "Dominant" in df.columns:
+            dom = df["Dominant"].ffill()
+            streak, prev, streaks = 0, None, []
+            for v in dom:
+                streak = 1 if v != prev else streak + 1
+                prev = v
+                streaks.append(streak)
+            df["Months_In_Regime"] = streaks
 
         # Score / Total per dimension (count of positive indicators)
         for dim in self.dimensions:
@@ -319,29 +316,3 @@ class Regime(ABC):
     def _dimension_prefixes(self) -> dict[str, str]:
         """Map dimension name → indicator prefix (default: first letter + _)."""
         return {dim: dim[0].lower() + "_" for dim in self.dimensions}
-
-    @staticmethod
-    def _confirm(dom: pd.Series, n: int) -> pd.Series:
-        """N-month confirmation filter.
-
-        A new state must appear for ``n`` consecutive months before it is
-        accepted. This eliminates single-month noise flips while preserving
-        genuine multi-month transitions.
-        """
-        result: list[str | None] = []
-        confirmed: str | None = None
-        pending: str | None = None
-        cnt = 0
-        for v in dom:
-            if v == confirmed:
-                pending, cnt = None, 0
-                result.append(confirmed)
-            elif v == pending:
-                cnt += 1
-                if cnt >= n:
-                    confirmed, pending, cnt = pending, None, 0
-                result.append(confirmed if confirmed else v)
-            else:
-                pending, cnt = v, 1
-                result.append(confirmed if confirmed else v)
-        return pd.Series(result, index=dom.index)

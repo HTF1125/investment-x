@@ -76,6 +76,14 @@ class RegimeRegistration:
     # e.g. credit cycle → HYG/LQD/EMB, dollar cycle → EEM/EFA/GLD.
     asset_tickers: Optional[dict[str, str]] = None
 
+    # Validation target — the asset and horizon this regime was designed to
+    # predict.  The quality audit validates at this horizon, not at a
+    # universal 1-month window.  DB code must match a ``load_series()``
+    # compatible key.  ``horizon_months`` is the FORWARD-return window in
+    # months (e.g. 3 = regime state at t predicts asset return [t, t+3M]).
+    target: Optional[str] = None            # e.g. "SPY US EQUITY:PX_LAST"
+    horizon_months: int = 3                 # default 3-month forward
+
     # Presentation
     color_map: dict[str, str] = field(default_factory=dict)       # state → hex
     dimension_colors: dict[str, str] = field(default_factory=dict)
@@ -147,9 +155,13 @@ _DIMENSION_COLORS = {
 
 _DEFAULT_PARAMS = {
     "z_window": 96,      # 8 years — covers a full business cycle
-    "sensitivity": 2.0,   # 2× decisiveness vs default 1.0
-    "smooth_halflife": 2, # light smoothing — decisive enough to read, stable enough to trade
-    "confirm_months": 3,
+    "sensitivity": 2.0,  # 2× decisiveness vs default 1.0
+    # Halflife is the sole noise-control knob (confirmation filter removed
+    # 2026-04-11). Per-regime overrides below were picked by
+    # scripts/pick_halflife_per_regime.py which sweeps hl ∈ {2..8} and selects
+    # the value that keeps flips/yr ≤ prior baseline AND maximizes state
+    # separation against each regime's declared forward-return target.
+    "smooth_halflife": 3,
 }
 
 
@@ -161,8 +173,9 @@ def _register_builtins() -> None:
     of registered axis regimes.
     """
     from .flow.liquidity import LiquidityRegime
+    from .flow.global_liquidity import GlobalLiquidityRegime
     from .markets.credit import CreditLevelRegime, CreditTrendRegime
-    from .markets.dollar import DollarLevelRegime, DollarTrendRegime
+    from .markets.dollar import DollarTrendRegime
     from .fundamentals.growth import GrowthRegime
     from .fundamentals.inflation import InflationRegime
     from .flow.yield_curve import YieldCurveRegime
@@ -178,37 +191,92 @@ def _register_builtins() -> None:
     from .markets.commodity_cycle import CommodityCycleRegime
     from .risk.dispersion import DispersionRegime
     from .fundamentals.cb_surprise import CBSurpriseRegime
+    from .fundamentals.housing import HousingRegime
 
     # 1. LiquidityRegime (2 states) — AXIS regime, composable
-    # Rebuilt 2026-04-09 as a pure central-bank quantity regime (G4 balance
-    # sheets, Fed net liquidity, TGA drawdown, credit impulse). Previous
-    # version mixed HY/IG/DXY/curve signals that double-counted credit_level,
-    # dollar_level and yield_curve.
+    # Rebuilt 2026-04-10 as US-focused CB quantity + private credit regime.
+    # 5 indicators across 3 channels: CB Quantity (FedAssets_YoY, FedNetLiq_6M),
+    # Treasury Plumbing (TGA_Drawdown), Credit Channel (CreditImpulse,
+    # BankLoans_3M). Previous version used G4 BS + Fed Assets + NetLiq 3M +
+    # TGA + CreditImpulse — G4 and NetLiq_3M were redundant. Private credit
+    # (BankLoans_3M) added per Howell/Peccatiello research on the credit channel.
+    # Global CB cycle now captured by separate global_liquidity regime.
     register_regime(RegimeRegistration(
         key="liquidity",
         display_name="Liquidity (Easing × Tightening)",
         description=(
-            "2-state central-bank liquidity regime — G4 balance sheet YoY, "
-            "Fed assets YoY, Fed net liquidity 3M, TGA drawdown, credit "
-            "impulse. Target: SPY 3M fwd (0.60 vol-normalized spread). "
-            "Pair with liquidity_impulse to reconstruct the full "
-            "level × impulse cycle."
+            "2-state US liquidity regime — Fed assets YoY, TGA drawdown, "
+            "credit impulse, bank C&I loans 3M growth, Fed net liquidity 6M "
+            "change. Three channels: CB quantity, Treasury plumbing, private "
+            "credit. Target: SPY 3M fwd (0.88 vol-normalized spread). "
+            "Pair with global_liquidity for the full domestic × global cycle."
         ),
         states=["Easing", "Tightening"],
         dimensions=["Liquidity"],
         regime_class=LiquidityRegime,
-        default_params={**_DEFAULT_PARAMS, "confirm_months": 2},
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 2},
         has_strategy=False,
         category="axis",
-        phase_pair="liquidity_impulse",
+        phase_pair="global_liquidity",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         color_map=_LIQUIDITY_COLORS.copy(),
         dimension_colors={"Liquidity": _DIMENSION_COLORS["Liquidity"]},
+        state_descriptions={
+            "Easing": (
+                "US liquidity easing — Fed balance sheet expanding, private "
+                "credit growing (C&I loans rising), TGA drawing down "
+                "(injecting reserves), credit impulse positive. Bullish "
+                "for US equities and credit."
+            ),
+            "Tightening": (
+                "US liquidity tightening — Fed contracting (QT), bank "
+                "lending slowing, TGA refilling (draining reserves), "
+                "credit impulse negative. Headwind for risk assets."
+            ),
+        },
     ))
 
-    # 5a. DollarLevelRegime (2-state Strong/Weak from absolute level)
-    # AXIS regime — composable. Combine with `dollar_trend` to recreate
-    # the original 4-state dollar cycle, or compose with growth/inflation
-    # for cross-asset views.
+    # 1b. GlobalLiquidityRegime (2 states) — AXIS regime, composable
+    # New 2026-04-10. Captures the non-US CB cycle that drives EM equities,
+    # commodities, and cross-border flows. Uses G4 BS YoY, Cross Border
+    # Capital 13-CB index, Howell's 65-month cycle oscillator, and credit
+    # impulse as a domestic anchor.
+    register_regime(RegimeRegistration(
+        key="global_liquidity",
+        display_name="Global Liquidity (Easing × Tightening)",
+        description=(
+            "2-state global CB liquidity regime — G4 balance sheet YoY, "
+            "Cross Border Capital 13-CB index YoY, global liquidity cycle "
+            "oscillator, credit impulse. Target: EEM 3M fwd. Captures the "
+            "global CB cycle that drives EM, commodities, and cross-border "
+            "flows. Pair with liquidity for domestic × global composition."
+        ),
+        states=["Easing", "Tightening"],
+        dimensions=["GlobalLiquidity"],
+        regime_class=GlobalLiquidityRegime,
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 2},
+        has_strategy=False,
+        category="axis",
+        phase_pair="liquidity",
+        target="EEM US EQUITY:PX_LAST",
+        horizon_months=3,
+        color_map=_LIQUIDITY_COLORS.copy(),
+        dimension_colors={"GlobalLiquidity": "#4895B0"},
+        state_descriptions={
+            "Easing": (
+                "Global CB liquidity easing — G4 balance sheets expanding, "
+                "13-CB aggregate rising, Howell cycle in up-phase. Tailwind "
+                "for EM equities, commodities, gold, and duration assets."
+            ),
+            "Tightening": (
+                "Global CB liquidity tightening — G4 balance sheets "
+                "contracting (coordinated QT), global cycle in down-phase. "
+                "Headwind for EM, commodities. Dollar strength typical."
+            ),
+        },
+    ))
+
     _DOLLAR_ASSET_TICKERS = {
         # Dollar-sensitive universe: EM-heavy, commodities, DM equity
         "EEM": "EEM US EQUITY:PX_LAST",   # EM equities (most dollar-sensitive)
@@ -220,49 +288,24 @@ def _register_builtins() -> None:
         "HYG": "HYG US EQUITY:PX_LAST",   # HY credit
         "BIL": "BIL US EQUITY:PX_LAST",   # Cash
     }
-    register_regime(RegimeRegistration(
-        key="dollar_level",
-        display_name="Dollar Level (Strong × Weak)",
-        description=(
-            "2-state dollar level regime — z-score of DXY + Trade-Weighted "
-            "USD baskets vs rolling 8y history. Target: EEM 6M fwd. "
-            "Compose with dollar_trend to reconstruct the 4-state cycle."
-        ),
-        states=["Strong", "Weak"],
-        dimensions=["Level"],
-        regime_class=DollarLevelRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
-        has_strategy=False,
-        category="axis",
-        phase_pair="dollar_trend",
-        asset_tickers=_DOLLAR_ASSET_TICKERS,
-        color_map={
-            "Strong": "#ef5350",  # red — strong dollar = bearish for EM
-            "Weak":   "#22c55e",  # green — weak dollar = bullish for EM
-        },
-        dimension_colors={"Level": "#ef5350"},
-        state_descriptions={
-            "Strong": "Dollar above rolling history — EM/commodity headwind",
-            "Weak":   "Dollar below rolling history — EM/commodity tailwind",
-        },
-    ))
 
-    # 5b. DollarTrendRegime (2-state Appreciating/Depreciating from 3M ROC)
+    # 5. DollarTrendRegime (2-state Appreciating/Depreciating from 3M ROC)
     register_regime(RegimeRegistration(
         key="dollar_trend",
         display_name="Dollar Trend (Appreciating × Depreciating)",
         description=(
             "2-state dollar trend regime — 3M absolute change z-score of "
             "DXY + Trade-Weighted USD baskets. Target: EEM 6M fwd. "
-            "Captures the turning-point signal — best paired with dollar_level."
+            "Captures the dollar rate-of-change turning-point signal. Target: EEM 6M fwd."
         ),
         states=["Appreciating", "Depreciating"],
         dimensions=["Trend"],
         regime_class=DollarTrendRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 5},
         has_strategy=False,
         category="axis",
-        phase_pair="dollar_level",
+        target="EEM US EQUITY:PX_LAST",
+        horizon_months=6,
         asset_tickers=_DOLLAR_ASSET_TICKERS,
         color_map={
             "Appreciating": "#ef5350",  # red — rising dollar
@@ -300,10 +343,12 @@ def _register_builtins() -> None:
         states=["Wide", "Tight"],
         dimensions=["Level"],
         regime_class=CreditLevelRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 4},
         has_strategy=False,
         category="axis",
         phase_pair="credit_trend",
+        target="HYG US EQUITY:PX_LAST",
+        horizon_months=6,
         asset_tickers=_CREDIT_ASSET_TICKERS,
         color_map={
             "Wide":  "#ef5350",  # red — wide spreads = stress
@@ -328,10 +373,12 @@ def _register_builtins() -> None:
         states=["Widening", "Tightening"],
         dimensions=["Trend"],
         regime_class=CreditTrendRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 2},
         has_strategy=False,
         category="axis",
         phase_pair="credit_level",
+        target="HYG US EQUITY:PX_LAST",
+        horizon_months=6,
         asset_tickers=_CREDIT_ASSET_TICKERS,
         color_map={
             "Widening":   "#ef5350",  # red — spreads rising = stress
@@ -361,9 +408,14 @@ def _register_builtins() -> None:
         states=["Expansion", "Contraction"],
         dimensions=["Growth"],
         regime_class=GrowthRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        # hl=2 chosen to minimize fwd-spread regression vs the old H_Dominant
+        # label; the confirm filter had been doing real separation work here,
+        # see scripts/_halflife_recommendations.csv. Revisit if indicators improve.
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 2},
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers={
             # Growth-sensitive universe: cyclicals + defensives
             "SPY": "SPY US EQUITY:PX_LAST",   # US large cap
@@ -403,9 +455,11 @@ def _register_builtins() -> None:
         states=["Rising", "Falling"],
         dimensions=["Inflation"],
         regime_class=InflationRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 5},
         has_strategy=False,
         category="axis",
+        target="CL1 Comdty:PX_LAST",
+        horizon_months=6,
         asset_tickers={
             # Inflation-sensitive universe: commodities, real assets, TIPS
             "GLD": "GLD US EQUITY:PX_LAST",   # Gold
@@ -430,10 +484,8 @@ def _register_builtins() -> None:
     ))
 
     # 8. YieldCurveRegime (2-state slope regime, Steep × Flat)
-    # TIER 1 6/6 PASS — spread +6.37% on SPY 12M fwd, p=0.0003, perm p=0.001,
-    # sign-consistent across 2010 split. Robustness 4/4. Custom z_window=60 (5y)
-    # matches the FCI-regime convention. Best state = Flat (mean reversion —
-    # same contrarian turning-point pattern as credit/dollar/inflation).
+    # Validated at SPY 6M: spread +8.6%, voln=0.59, p=0.0004, d=0.41.
+    # Custom z_window=60 (5y) matches FCI-regime convention.
     register_regime(RegimeRegistration(
         key="yield_curve",
         display_name="Yield Curve (Steep × Flat)",
@@ -441,7 +493,7 @@ def _register_builtins() -> None:
             "2-state yield-curve slope regime — pure level z-score of "
             "3m10y, 2s10s, 5s30s Treasury slopes vs rolling 5y history. "
             "Estrella & Mishkin canonical recession leading indicator. "
-            "Target: SPY 12M fwd, Tier 1 6/6 (spread +6.37%, p<0.001). "
+            "Target: SPY 6M fwd (voln=0.59, p<0.001, d=0.41). "
             "Best state = Flat (post-inversion recovery rally)."
         ),
         states=["Steep", "Flat"],
@@ -450,11 +502,12 @@ def _register_builtins() -> None:
         default_params={
             "z_window": 60,        # 5y — FCI-regime convention
             "sensitivity": 2.0,
-            "smooth_halflife": 2,
-            "confirm_months": 3,
+            "smooth_halflife": 3,
         },
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=12,
         asset_tickers={
             # Yield-curve sensitive: cyclicals + duration + safe haven
             "SPY": "SPY US EQUITY:PX_LAST",   # US large cap (locked target)
@@ -478,29 +531,26 @@ def _register_builtins() -> None:
     ))
 
     # 9. RealRatesRegime (2-state real interest rate level, High × Low)
-    # TIER 2 FULL PASS on iteration 1 — spread +14.45% on GC1 COMDTY 12M fwd,
-    # p<0.0001, Cohen's d +0.888, DD avoidance 80.6%, OOS stable (+5.63/+20.28
-    # sign-consistent). 4 indicators blended: TIPS 10Y/5Y (post-2003), Cleveland
-    # Fed HPR 1Y (post-1982), synthetic 10Y (nominal − CPI YoY, post-1954).
-    # Same contrarian turning-point pattern as credit/dollar/yield curve: High
-    # real rates today → Fed pivot → real rate drop → gold rally 12M forward.
+    # Validated at GC1 6M: spread +13.3%, voln=0.82, p<0.0001, d=0.60.
     register_regime(RegimeRegistration(
         key="real_rates",
         display_name="Real Rates (High × Low)",
         description=(
             "2-state real interest rate level regime — pure level z-score of "
             "TIPS 10Y/5Y, Cleveland Fed 1Y real rate, and synthetic 10Y "
-            "(nominal − CPI YoY) vs rolling 8y history. Target: GC1 COMDTY "
-            "12M fwd, Tier 2 5/5 (spread +14.45%, p<0.0001, d=0.888). "
+            "(nominal - CPI YoY) vs rolling 8y history. Target: GC1 COMDTY "
+            "6M fwd (voln=0.82, p<0.0001, d=0.60). "
             "Best state = High (contrarian turning point — restrictive real "
             "rates precede Fed pivot → real rate drop → gold rally)."
         ),
         states=["High", "Low"],
         dimensions=["RealRates"],
         regime_class=RealRatesRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 2},
         has_strategy=False,
         category="axis",
+        target="GC1 Comdty:PX_LAST",
+        horizon_months=12,
         asset_tickers={
             # Real-rate-sensitive universe: gold, duration, TIPS, inflation hedges
             "GLD": "GLD US EQUITY:PX_LAST",   # Gold (locked target proxy)
@@ -583,9 +633,13 @@ def _register_builtins() -> None:
         states=["Complacent", "Stressed"],
         dimensions=["VolTerm"],
         regime_class=VolatilityTermStructureRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        # hl=2 — halflife sweep showed spread collapses at higher values;
+        # keep minimum smoothing for this high-frequency vol signal.
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 2},
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers=_MACRO_ASSET_TICKERS,
         color_map={
             "Complacent": "#E0A848",  # amber — warning, not actionable
@@ -611,9 +665,11 @@ def _register_builtins() -> None:
         states=["Broad", "Narrow"],
         dimensions=["Breadth"],
         regime_class=BreadthRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 8},
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers=_MACRO_ASSET_TICKERS,
         color_map={
             "Broad":  "#48A86E",
@@ -642,6 +698,8 @@ def _register_builtins() -> None:
         default_params=_DEFAULT_PARAMS.copy(),
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers=_MACRO_ASSET_TICKERS,
         color_map={
             "Accelerating": "#48A86E",
@@ -671,6 +729,8 @@ def _register_builtins() -> None:
         default_params=_DEFAULT_PARAMS.copy(),
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers=_MACRO_ASSET_TICKERS,
         color_map={
             "ExtremeLong":  "#D65656",  # red — contrarian bearish
@@ -701,6 +761,8 @@ def _register_builtins() -> None:
         default_params=_DEFAULT_PARAMS.copy(),
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers=_MACRO_ASSET_TICKERS,
         color_map={
             "RiskOn":  "#48A86E",
@@ -714,6 +776,9 @@ def _register_builtins() -> None:
     ))
 
     # 15. LiquidityImpulseRegime — US quantity-based liquidity
+    # NOTE: largely superseded by the rebuilt LiquidityRegime (which now
+    # includes FedNetLiq_6M and BankLoans_3M). Kept for backward
+    # compatibility but no longer phase-paired with liquidity.
     register_regime(RegimeRegistration(
         key="liquidity_impulse",
         display_name="Liquidity Impulse (Expanding × Contracting)",
@@ -721,16 +786,20 @@ def _register_builtins() -> None:
             "2-state US liquidity quantity regime — 3M change in Fed balance "
             "sheet, TGA (inverted), RRP (inverted), and net liquidity "
             "aggregate. US-specific, not Global M2. Target: SPY 3M fwd. "
-            "Paired with `liquidity` (level) to capture the full level × "
-            "impulse cycle."
+            "Largely superseded by the rebuilt `liquidity` regime."
         ),
         states=["Expanding", "Contracting"],
         dimensions=["Impulse"],
         regime_class=LiquidityImpulseRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        # hl=4 — signal is intrinsically noisy (raw flip rate ~2.5/yr).
+        # The confirm filter had been masking the noise before 2026-04-11.
+        # Further work: revisit indicator selection to reduce source noise.
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 4},
         has_strategy=False,
         category="axis",
-        phase_pair="liquidity",
+        phase_pair=None,
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers=_MACRO_ASSET_TICKERS,
         color_map={
             "Expanding":   "#48A86E",
@@ -757,9 +826,11 @@ def _register_builtins() -> None:
         states=["Tight", "Deteriorating"],
         dimensions=["Labor"],
         regime_class=LaborRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 8},
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=6,
         asset_tickers=_MACRO_ASSET_TICKERS,
         color_map={
             "Tight":         "#48A86E",
@@ -786,9 +857,11 @@ def _register_builtins() -> None:
         states=["Reflation", "Deflation"],
         dimensions=["Commodity"],
         regime_class=CommodityCycleRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 8},
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers=_COMMODITY_ASSET_TICKERS,
         color_map={
             "Reflation": "#48A86E",
@@ -815,9 +888,11 @@ def _register_builtins() -> None:
         states=["MacroDriven", "StockPicking", "Crisis"],
         dimensions=["Dispersion"],
         regime_class=DispersionRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 5},
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers=_MACRO_ASSET_TICKERS,
         color_map={
             "MacroDriven":  "#7D8596",  # slate — macro dominates, no stock picking
@@ -838,16 +913,12 @@ def _register_builtins() -> None:
         display_name="CB Surprise (Dovish × Neutral × Hawkish)",
         description=(
             "3-state central bank policy surprise regime — z-score of "
-            "30-day change in 1y OIS, 2y OIS, and terminal rate spread. "
-            "Shortest-horizon regime in the registry. Target: SPY 1M fwd. "
-            "Fast-decaying signal. **Exceptional multi-asset Cohen's d "
-            "standalone**: BIL 0.86, IEF 0.78, TLT 0.66, TIP 0.63, HYG 0.61, "
-            "DBC 0.56, GLD 0.53 — the strongest rate/duration regime in the "
-            "registry. Best composed with `dispersion` (joint median |d|=0.61, "
-            "IEF joint d=3.27) or `liquidity` (joint median |d|=0.53, 7 "
-            "strong assets). DO NOT compose with tail-concentrated regimes "
-            "like `vol_term` — the joint collapses Dovish/Hawkish tails "
-            "below n=30 and destroys the standalone signal."
+            "30-day change in 2y/1y Treasury yields, SOFR, and 2y-FF "
+            "terminal spread. Target: SPY 3M fwd. Fast signal with 1-3M "
+            "transmission horizon (p=0.011, d=0.58, voln=1.18 at SPY 3M). "
+            "Also strong on duration: IEF 3M d=0.70, TLT 3M d=0.62. "
+            "Best composed with `dispersion` or `liquidity`. DO NOT compose "
+            "with `vol_term` — joint collapses tail states below n=30."
         ),
         states=["Dovish", "Neutral", "Hawkish"],
         dimensions=["CBSurprise"],
@@ -855,11 +926,14 @@ def _register_builtins() -> None:
         default_params={
             "z_window": 60,    # 5y — policy regimes are shorter
             "sensitivity": 2.0,
-            "smooth_halflife": 1,  # minimal smoothing — signal is fast
-            "confirm_months": 1,
+            # hl=3 — sweep showed 3x improvement in SPY fwd-3m spread
+            # (+5.2% → +19.0%) vs the prior hl=1 + confirm_months=1 setup.
+            "smooth_halflife": 3,
         },
         has_strategy=False,
         category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=3,
         asset_tickers=_MACRO_ASSET_TICKERS,
         color_map={
             "Dovish":  "#48A86E",
@@ -871,6 +945,49 @@ def _register_builtins() -> None:
             "Dovish":  "OIS path has moved LOWER than expected over 30 days — yields falling more than priced. Tailwind for equities 1M fwd.",
             "Neutral": "OIS in line with pre-meeting expectations — no surprise signal.",
             "Hawkish": "OIS path has moved HIGHER than expected — yields rising more than priced. Headwind for equities 1M fwd.",
+        },
+    ))
+
+    # 20. HousingRegime — Leamer housing cycle (2 states)
+    register_regime(RegimeRegistration(
+        key="housing",
+        display_name="Housing Cycle (Expansion × Contraction)",
+        description=(
+            "2-state US housing cycle regime — z-score of 12M change in "
+            "housing starts, building permits, and new single-family home "
+            "sales. Target: SPY 6M fwd (voln=0.85, p<0.0001, d=0.61). "
+            "Leamer (2007) 'Housing IS the business cycle' — residential "
+            "investment is the most cyclical GDP component and leads equity "
+            "drawdowns by 2-4 quarters. Orthogonal to growth (|rho|=0.41). "
+            "Excluded Case-Shiller YoY (wrong sign) and mortgage rates "
+            "(near-zero IC)."
+        ),
+        states=["Expansion", "Contraction"],
+        dimensions=["Housing"],
+        regime_class=HousingRegime,
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 8},
+        has_strategy=False,
+        category="axis",
+        target="SPY US EQUITY:PX_LAST",
+        horizon_months=12,
+        asset_tickers={
+            "SPY": "SPY US EQUITY:PX_LAST",   # primary target, broad equity
+            "IWM": "IWM US EQUITY:PX_LAST",   # small caps (housing-sensitive domestic)
+            "XHB": "XHB US EQUITY:PX_LAST",   # homebuilders (direct exposure)
+            "HYG": "HYG US EQUITY:PX_LAST",   # credit (housing→credit channel)
+            "TLT": "TLT US EQUITY:PX_LAST",   # long duration (rate expectations)
+            "IEF": "IEF US EQUITY:PX_LAST",   # intermediate duration
+            "GLD": "GLD US EQUITY:PX_LAST",   # hedge
+            "BIL": "BIL US EQUITY:PX_LAST",   # risk-free proxy
+        },
+        color_map={
+            "Expansion":   "#22c55e",
+            "Contraction": "#ef5350",
+        },
+        dimension_colors={"Housing": "#22c55e"},
+        state_descriptions={
+            "Expansion":   "Housing starts, permits, and new-home sales accelerating over 12M. Residential investment adding to GDP. Historically SPY Sharpe 1.3 over 12M.",
+            "Contraction": "Housing flows decelerating over 12M — permits falling, starts weakening. Leading indicator for equity drawdowns per Leamer (2007). Historically SPY Sharpe 0.25 over 12M.",
         },
     ))
 

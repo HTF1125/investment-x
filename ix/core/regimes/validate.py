@@ -14,17 +14,17 @@ exposes how wrong the independence assumption is for the chosen combination.
 
 Walk-forward correctness
 ------------------------
-The regime pipeline is fully *causal*: rolling z-scores, EMA smoothing, and
-the N-month confirmation filter all only reference past observations. As a
-result, the H_Dominant value at month *t* in a full-history build IS exactly
-the decision that would have been made at month *t* with only data ≤ *t*.
-We do NOT need to truncate-and-rebuild per month.
+The regime pipeline is fully *causal*: rolling z-scores and EMA smoothing
+only reference past observations. As a result, the Dominant value at
+month *t* in a full-history build IS exactly the decision that would have
+been made at month *t* with only data ≤ *t*. We do NOT need to truncate-
+and-rebuild per month.
 
 What we DO need:
 
 * **Publication lag**: the decision at month-end *t* can only be acted on at
   *t + data_lag_months* (default 1 month for typical macro data release
-  cadence). The validator shifts H_Dominant forward by ``data_lag_months``
+  cadence). The validator shifts Dominant forward by ``data_lag_months``
   before aligning with forward returns.
 * **Target/indicator decoupling**: if the target asset is one of the regime's
   own constituent indicators (e.g. inflation regime → WTI), the relevant
@@ -164,8 +164,7 @@ def validate_composition(
         df = regime.build(
             z_window=params.get("z_window", 96),
             sensitivity=params.get("sensitivity", 2.0),
-            smooth_halflife=params.get("smooth_halflife", 2),
-            confirm_months=params.get("confirm_months", 3),
+            smooth_halflife=params.get("smooth_halflife", 3),
             exclude=exclude_indicators,
         )
         if df.empty:
@@ -177,9 +176,8 @@ def validate_composition(
         df = built_dfs[keys[0]]
         states = list(regs[0].states)
         composite_df = df.copy()
-        # Normalize column names so the rest of the pipeline is uniform
-        if "H_Dominant" not in composite_df.columns:
-            raise ValueError(f"Regime '{keys[0]}' produced no H_Dominant column")
+        if "Dominant" not in composite_df.columns:
+            raise ValueError(f"Regime '{keys[0]}' produced no Dominant column")
     else:
         joint = build_joint_states(built_dfs, regs, axis_order=keys)
         composite_df = joint.composite_df
@@ -198,18 +196,18 @@ def validate_composition(
 
     # ── Align regime decision with forward return ───────────────────
     # Decision at month-end t is acted on at t + data_lag_months.
-    # We shift H_Dominant forward by lag so the value at month T represents
+    # We shift Dominant forward by lag so the value at month T represents
     # the regime that was *actionable* on T, then align with fwd_ret which
     # at T measures the return [T, T+H].
-    h_dom = composite_df["H_Dominant"].copy()
+    dom = composite_df["Dominant"].copy()
     if data_lag_months > 0:
-        h_dom = h_dom.shift(data_lag_months)
+        dom = dom.shift(data_lag_months)
 
     # Drop training warmup
-    if train_window > 0 and len(h_dom) > train_window:
-        h_dom = h_dom.iloc[train_window:]
+    if train_window > 0 and len(dom) > train_window:
+        dom = dom.iloc[train_window:]
 
-    aligned = pd.DataFrame({"regime": h_dom, "target": fwd_ret}).dropna()
+    aligned = pd.DataFrame({"regime": dom, "target": fwd_ret}).dropna()
     aligned = aligned[aligned["regime"].isin(states)]
 
     if aligned.empty:
@@ -376,8 +374,9 @@ def _kl_vs_independence(
     marginals joint probability is meaningfully wrong for this combination
     and a copula or empirical-joint approach would do better.
 
-    Computed on the H_Dominant (hard) state sequence of each input regime,
-    aligned on the common index. Smoothing constant 1e-9 prevents log(0).
+    Computed on the Dominant (smoothed) state sequence of each input
+    regime, aligned on the common index. Smoothing constant 1e-9 prevents
+    log(0).
     """
     common = built_dfs[axis_order[0]].index
     for k in axis_order[1:]:
@@ -388,7 +387,7 @@ def _kl_vs_independence(
     # Per-axis dominant state series, aligned
     cols: dict[str, pd.Series] = {}
     for k in axis_order:
-        s = built_dfs[k]["H_Dominant"].reindex(common).dropna()
+        s = built_dfs[k]["Dominant"].reindex(common).dropna()
         if s.empty:
             return None
         cols[k] = s

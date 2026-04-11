@@ -16,7 +16,8 @@ States
   empirical drawdown precursor.
 
 Indicators (3, all yc_*)
-    yc_3m10y     — 10Y - 3M Treasury (Estrella canonical, longest history)
+    yc_3m10y     — 10Y - 3M Treasury (Estrella chow did you upgrade the front-end 
+    anonical, longest history)
     yc_2s10s     — 10Y - 2Y Treasury (modern bond-market focus)
     yc_5s30s     — 30Y - 5Y Treasury (long-end / term-premium component)
 
@@ -44,7 +45,7 @@ Justification: Estrella & Mishkin (NY Fed) calibrate the recession probability
 Calibration
 -----------
 Locked params (registered defaults): z_window=60, sensitivity=2.0,
-smooth_halflife=2, confirm_months=3. The 60-month (5-year) z-window matches
+smooth_halflife=3. The 60-month (5-year) z-window matches
 the financial-conditions regime convention from the SKILL.md (vs the 96-month
 default for slow macro regimes) — yield curve slope cycles run ~3-5 years.
 
@@ -86,19 +87,6 @@ class YieldCurveRegime(Regime):
 
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
-
-        # 3m10y — Estrella canonical recession leading indicator (since 1953/1975)
-        t10 = _load("TRYUS10Y:PX_YTM")
-        t3m = _load("TRYUS3M:PX_YTM")
-        if not t10.empty and not t3m.empty:
-            slope_3m10y = t10.reindex(t3m.index, method="ffill") - t3m
-            rows["yc_3m10y"] = zscore(slope_3m10y, z_window).rename("yc_3m10y")
-
-        # 2s10s — modern bond-market standard (since 1986)
-        t2y = _load("TRYUS2Y:PX_YTM")
-        if not t10.empty and not t2y.empty:
-            slope_2s10s = t10.reindex(t2y.index, method="ffill") - t2y
-            rows["yc_2s10s"] = zscore(slope_2s10s, z_window).rename("yc_2s10s")
 
         # 5s30s — long-end term-premium component (since 1977)
         t5y = _load("TRYUS5Y:PX_YTM")

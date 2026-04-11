@@ -65,7 +65,7 @@ Target SPY @ 12M → GC1 COMDTY @ 12M (locked):
 Calibration
 -----------
 Default params: z_window=96 (8y — real rate cycles are slow, ~5-8y),
-sensitivity=2.0, smooth_halflife=2, confirm_months=3.
+sensitivity=2.0, smooth_halflife=2.
 
 Source
 ------
@@ -135,6 +135,11 @@ class RealRatesRegime(Regime):
             nom10_m = nom10.resample("ME").last() if nom10.index.freq != "ME" else nom10
             synth = nom10_m - cpi_yoy.reindex(nom10_m.index, method="ffill")
             rows["rr_Synth10Y"] = zscore(synth, z_window).rename("rr_Synth10Y")
+
+        # [DROPPED: rr_FedFunds — individual IC passes (full +0.097, pre +0.013,
+        #  post +0.292) but COMPOSITE IC worsens when added (full -0.033,
+        #  pre -0.079). Fed funds level is too correlated with TIPS yields,
+        #  diluting the cleaner market-based real rate signals.]
 
         return rows
 

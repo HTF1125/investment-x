@@ -112,11 +112,15 @@ def _load_level_indicators(z_window: int) -> dict[str, pd.Series]:
 
 
 def _load_trend_indicators(z_window: int) -> dict[str, pd.Series]:
-    """3-month absolute ROC z-scores for the same dollar baskets.
+    """3-month absolute ROC z-scores for dollar trend.
+
+    Reduced to DXY only after IC decomposition showed TWUSD and TWUSD_AFE
+    had strongly negative pre-2010 IC vs EEM (pre IC -0.18 and -0.25
+    respectively). DXY alone has pre IC +0.019, post IC +0.049 — both
+    positive across subsamples.
 
     3M wins on raw spread (7.8%) and DD avoidance (89%) per the original
-    Tier 1 sweep. Longer trends increase persistence but dilute the
-    turning-point signal that drives forward-return separation.
+    Tier 1 sweep.
     """
     rows: dict[str, pd.Series] = {}
 
@@ -125,71 +129,16 @@ def _load_trend_indicators(z_window: int) -> dict[str, pd.Series]:
         dxy = dxy_daily.resample("ME").last()
         rows["tr_DXY"] = zscore_roc(dxy, z_window, use_pct=False).rename("tr_DXY")
 
-    twusd_daily = _load("DTWEXBGS")
-    if not twusd_daily.empty:
-        twusd = twusd_daily.resample("ME").last()
-        rows["tr_TWUSD"] = zscore_roc(
-            twusd, z_window, use_pct=False
-        ).rename("tr_TWUSD")
+    # [DROPPED: tr_TWUSD — pre IC -0.182 (DROP). Full IC -0.011.
+    #  Trade-weighted broad USD has compositional drift pre-2010 that
+    #  confounds the EM-equity signal. DXY is cleaner.]
 
-    twusd_afe_daily = _load("DTWEXAFEGS")
-    if not twusd_afe_daily.empty:
-        twusd_afe = twusd_afe_daily.resample("ME").last()
-        rows["tr_TWUSD_AFE"] = zscore_roc(
-            twusd_afe, z_window, use_pct=False
-        ).rename("tr_TWUSD_AFE")
+    # [DROPPED: tr_TWUSD_AFE — pre IC -0.247 (DROP). Full IC -0.062.
+    #  Advanced-economy FX basket is even worse pre-2010. The AFE
+    #  weighting overloads EUR/JPY which dominated pre-2010 dollar
+    #  moves but had weak EM transmission.]
 
     return rows
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DollarLevelRegime — 2-state Strong/Weak from absolute level
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class DollarLevelRegime(Regime):
-    """2-state dollar level regime (Strong vs Weak vs basis-year 100).
-
-    Target & justification: EEM US EQUITY @ 6M forward return. An anchored
-    z-score of DXY + trade-weighted USD baskets vs the basis-year value
-    of 100 captures structural dollar richness/cheapness without drifting
-    with the cycle itself. A rolling 8y z-score fails because an 8y
-    window is roughly one dollar cycle — the rolling mean converges to
-    whatever the dollar has been doing recently, so "Strong" stops firing
-    after a decade of strength. The anchored version fires whenever the
-    dollar is meaningfully above/below its structural reference,
-    preserving the mean-reverting forward-return signal.
-    """
-
-    name = "DollarLevel"
-    dimensions = ["Level"]
-    states = ["Strong", "Weak"]
-
-    # ── Indicators ───────────────────────────────────────────────────────
-
-    def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
-        return _load_level_indicators(z_window)
-
-    # ── Composite overrides ──────────────────────────────────────────────
-
-    def _dimension_prefixes(self) -> dict[str, str]:
-        return {"Level": "lv_"}
-
-    # ── State probabilities ──────────────────────────────────────────────
-
-    def _state_probabilities(
-        self, dim_probs: dict[str, pd.Series]
-    ) -> dict[str, pd.Series]:
-        """Map Level probability to 2 dollar level states.
-
-        Level_P high → dollar STRONG (above rolling history)
-        Level_P low  → dollar WEAK
-        """
-        lv = dim_probs["Level"]
-        return {
-            "P_Strong": lv,
-            "P_Weak":   1.0 - lv,
-        }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

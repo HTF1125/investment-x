@@ -64,34 +64,45 @@ class LaborRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # 1. lb_Claims4WMA — Initial jobless claims, 4-week MA. Inverted
-        #    sign: falling claims = tight labor market = positive z.
-        claims = _load("ICSA")
-        if not claims.empty:
-            claims_4w = claims.rolling(4).mean()
-            rows["lb_Claims4WMA"] = zscore(-claims_4w, z_window).rename("lb_Claims4WMA")
+        # [DROPPED: lb_Claims4WMA — post IC -0.111 (DYING). Full IC +0.011.
+        #  Claims 4WMA is too noisy as a standalone labor indicator for SPY.
+        #  Claims data is covered by GrowthRegime monitor-only channel.]
 
-        # 2. lb_UE_Trend — Sahm rule proxy. 3-month average unemployment
-        #    MINUS 12-month trailing minimum. When this goes above 0.5 the
-        #    Sahm rule has triggered. Inverted: rising Sahm measure =
-        #    deteriorating labor market = negative z.
-        ue = _load("UNRATE", lag=1)  # 1-month publication lag
-        if not ue.empty:
-            ue_3m = ue.rolling(3).mean()
-            ue_12m_min = ue.rolling(12).min()
-            sahm = ue_3m - ue_12m_min
-            rows["lb_UE_Trend"] = zscore(-sahm, z_window).rename("lb_UE_Trend")
+        # [DROPPED: lb_UE_Trend — post IC -0.099 (DYING). Full IC +0.003.
+        #  The Sahm proxy only fires 1-2x per decade and the single post-2010
+        #  firing (COVID 2020) was a V-recovery with strong forward returns,
+        #  inverting the expected signal. Replaced by lb_HiresRate which
+        #  has more granular cycle information.]
 
-        # 3. lb_UE_Level — raw unemployment rate, INVERTED. Low level =
-        #    tight labor = positive z.
-        if not ue.empty:
-            rows["lb_UE_Level"] = zscore(-ue, z_window).rename("lb_UE_Level")
+        # [DROPPED: lb_UE_Level — post IC -0.096 (DYING). Full IC +0.013.
+        #  Raw unemployment level is too slow-moving and has structural
+        #  drift (COVID spike distorted the rolling z-score).]
 
-        # 4. lb_LFPR — labor force participation rate. Rising LFPR =
-        #    workers re-entering = strong labor market.
-        lfpr = _load("CIVPART", lag=1)
-        if not lfpr.empty:
-            rows["lb_LFPR"] = zscore(lfpr, z_window).rename("lb_LFPR")
+        # [DROPPED: lb_LFPR — post IC -0.012 (DYING). Full IC +0.027.
+        #  LFPR has a multi-decade secular decline that overwhelms the
+        #  cyclical signal. Not reliably predictive for SPY 3M.]
+
+        # 1. lb_HiresRate — JOLTS hires rate, 12M diff. Rising hires =
+        #    expanding labor demand. Pre IC +0.018, post IC +0.022 — both
+        #    positive across subsamples unlike claims/UE/LFPR.
+        hires = _load("JTSHIR", lag=1)
+        if not hires.empty:
+            rows["lb_HiresRate"] = zscore(hires.diff(12), z_window).rename(
+                "lb_HiresRate"
+            )
+
+        # 2. lb_NFPAccel — Payrolls acceleration (3M diff of 12M YoY).
+        #    Captures whether job growth is accelerating or decelerating.
+        #    Pre IC +0.076, post IC +0.087 — strong and stable.
+        #    Unlike raw payrolls level (which has structural drift),
+        #    the acceleration signal is cycle-neutral.
+        nfp = _load("PAYEMS", lag=1)
+        if not nfp.empty:
+            nfp_yoy = nfp.pct_change(12, fill_method=None) * 100
+            nfp_accel = nfp_yoy.diff(3)
+            rows["lb_NFPAccel"] = zscore(nfp_accel, z_window).rename(
+                "lb_NFPAccel"
+            )
 
         if not rows:
             log.warning(

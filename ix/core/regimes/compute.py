@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy.stats import spearmanr
 
 from ix.db.conn import Session
 from ix.db.models import RegimeSnapshot, regime_fingerprint
@@ -46,6 +47,21 @@ DEFAULT_ASSET_TICKERS: dict[str, str] = {
     "BIL": "BIL US EQUITY:PX_LAST",   # T-bills (risk-free proxy)
 }
 
+#: Equity-only universe — regional equity rotation + cash fallback.
+EQUITY_ASSET_TICKERS: dict[str, str] = {
+    "SPY": "SPY US EQUITY:PX_LAST",   # US large cap
+    "IWM": "IWM US EQUITY:PX_LAST",   # US small cap
+    "EFA": "EFA US EQUITY:PX_LAST",   # Developed ex-US
+    "EEM": "EEM US EQUITY:PX_LAST",   # Emerging markets
+    "BIL": "BIL US EQUITY:PX_LAST",   # T-bills (cash fallback)
+}
+
+#: Named universe presets for the ensemble endpoint.
+UNIVERSE_PRESETS: dict[str, dict[str, str]] = {
+    "broad": DEFAULT_ASSET_TICKERS,
+    "equity": EQUITY_ASSET_TICKERS,
+}
+
 
 def _load_asset_prices(tickers: dict[str, str]) -> pd.DataFrame:
     """Load monthly price series for the given ticker universe.
@@ -71,10 +87,78 @@ def _load_asset_prices(tickers: dict[str, str]) -> pd.DataFrame:
     return pd.DataFrame(out) if out else pd.DataFrame()
 
 
+def compute_signal_ic(
+    signal: pd.Series,
+    prices: pd.DataFrame,
+    asset_cols: list[str],
+    horizon_months: int,
+    data_lag_months: int = 1,
+    warmup_months: int = 120,
+) -> dict[str, dict]:
+    """Compute Spearman IC between a regime signal and each asset's forward return.
+
+    IC = rank correlation between the regime's composite Z-score (lagged by
+    ``data_lag_months`` to respect publication delay) and the asset's realised
+    forward ``horizon_months``-month return.
+
+    Args:
+        signal: Regime composite Z-score series (monthly, same index as prices).
+        prices: Asset price DataFrame (columns = display tickers).
+        asset_cols: Which columns in *prices* to evaluate.
+        horizon_months: Forward-return window in months.
+        data_lag_months: Publication lag applied to the signal (default 1).
+        warmup_months: Skip first N months (rolling z-score warmup).
+
+    Returns:
+        ``{ticker: {ic, ic_pvalue, n, horizon}}`` dict.  Empty dict if signal
+        is unusable.
+    """
+    if signal.dropna().empty or len(signal) < warmup_months + 30:
+        return {}
+
+    # Lag signal to respect publication delay
+    sig = signal.shift(data_lag_months)
+
+    result: dict[str, dict] = {}
+    for ticker in asset_cols:
+        if ticker not in prices.columns:
+            continue
+        px = prices[ticker].dropna()
+        if px.empty:
+            continue
+
+        # Forward H-month return
+        fwd_ret = px.pct_change(horizon_months).shift(-horizon_months)
+
+        # Align, skip warmup, drop NAs
+        merged = pd.concat([sig.rename("signal"), fwd_ret.rename("fwd")], axis=1)
+        merged = merged.iloc[warmup_months:]
+        merged = merged.dropna()
+
+        if len(merged) < 30:
+            result[ticker] = {
+                "ic": None, "ic_pvalue": None,
+                "n": len(merged), "horizon": horizon_months,
+            }
+            continue
+
+        rho, pval = spearmanr(merged["signal"], merged["fwd"])
+        result[ticker] = {
+            "ic": _safe_float(rho),
+            "ic_pvalue": _safe_float(pval),
+            "n": len(merged),
+            "horizon": horizon_months,
+        }
+
+    return result
+
+
 def compute_asset_analytics(
     df: pd.DataFrame,
     states: list[str],
     tickers: dict[str, str] | None = None,
+    signal_col: str | None = None,
+    horizon_months: int = 3,
 ) -> dict | None:
     """Compute per-regime asset performance analytics.
 
@@ -82,10 +166,14 @@ def compute_asset_analytics(
     drawdown for each regime state. Used by all 1D regime computers.
 
     Args:
-        df: Regime build() output with a state column (H_Dominant or Dominant).
+        df: Regime build() output with a Dominant state column.
         states: List of regime state names.
         tickers: Asset universe (display name → DB code). Defaults to the
             broad macro universe if None.
+        signal_col: Column name for the regime's composite Z-score (e.g.
+            ``"Growth_Z"``).  When provided, Spearman IC is computed for
+            each asset at the regime's designed horizon.
+        horizon_months: Forward-return window for IC computation.
 
     Returns:
         Asset analytics JSONB dict matching the frontend's AssetAnalytics
@@ -108,7 +196,7 @@ def compute_asset_analytics(
 
     rets = prices.pct_change().dropna(how="all")
 
-    state_col = "H_Dominant" if "H_Dominant" in df.columns else "Dominant"
+    state_col = "Dominant"
     if state_col not in df.columns:
         return None
 
@@ -232,15 +320,293 @@ def compute_asset_analytics(
     except Exception:
         balance_payload = None
 
+    # ── Signal IC (Spearman) per asset ───────────────────────────────
+    # Rank correlation between the regime's composite Z-score and each
+    # asset's forward H-month return. Only computed when signal_col is
+    # provided (1D regimes); composites pass None and skip this.
+    signal_ic: dict[str, dict] | None = None
+    if signal_col and signal_col in df.columns:
+        signal_ic = compute_signal_ic(
+            signal=df[signal_col],
+            prices=prices,
+            asset_cols=asset_cols,
+            horizon_months=horizon_months,
+        )
+
     return {
         "per_regime_stats": per_regime_stats,
         "regime_counts": regime_counts,
         "expected_returns": expected_returns,
         "small_sample_regimes": small_sample,
         "regime_separation": regime_separation,
+        "signal_ic": signal_ic,
         "state_balance": balance_payload,
         "liquidity_splits": {},  # Reserved for future cross-regime splits
         "tickers": asset_cols,
+    }
+
+
+def compute_regime_strategy(
+    df: pd.DataFrame,
+    states: list[str],
+    tickers: dict[str, str] | None = None,
+    warmup_months: int = 60,
+    lag_months: int = 1,
+    num_assets: int = 5,
+    cash_ticker: str = "BIL",
+) -> dict | None:
+    """Walk-forward regime-based asset allocation backtest.
+
+    At each month *t* (after *warmup_months*):
+
+    1. Observe the confirmed regime state at *t - lag_months*.
+    2. Using an expanding window (months 0 .. t), compute mean annualised
+       return per asset **in the observed state**.
+    3. Pick the top *num_assets* assets with positive expected return;
+       allocate proportional to their expected return.
+    4. If no asset has positive expected return, hold cash (0 %).
+
+    Compares against:
+    - **Equal-weight universe**: 1/N across all assets every month.
+    - **SPY buy-and-hold**: 100 % SPY.
+
+    Returns a dict matching the frontend ``StrategyData`` interface, or
+    ``None`` if there is insufficient data.
+    """
+    if tickers is None:
+        tickers = DEFAULT_ASSET_TICKERS
+
+    try:
+        prices = _load_asset_prices(tickers)
+    except Exception as exc:
+        log.warning("Strategy: price load failed: %s", exc)
+        return None
+
+    if prices.empty:
+        return None
+
+    rets = prices.pct_change().dropna(how="all")
+
+    state_col = "Dominant"
+    if state_col not in df.columns:
+        return None
+
+    aligned = rets.join(df[state_col].rename("regime"), how="inner").dropna(subset=["regime"])
+    aligned = aligned[aligned["regime"].isin(states)]
+
+    asset_cols = [t for t in prices.columns if t != cash_ticker and t in aligned.columns]
+    all_cols = [t for t in prices.columns if t in aligned.columns]
+    if not asset_cols or len(aligned) < warmup_months + 12:
+        return None
+
+    has_spy = "SPY" in aligned.columns
+    has_cash = cash_ticker in aligned.columns
+    cost_bps = 10  # round-trip commission in basis points
+
+    # ── Walk-forward loop ──────────────────────────────────────────
+    wf_rets: list[float] = []
+    ew_rets: list[float] = []
+    spy_rets: list[float] = []
+    wf_dates: list[str] = []
+    regime_dates: list[str] = []
+    regime_labels: list[str] = []
+    allocation_history: dict[str, dict[str, float]] = {}  # state -> latest weights
+    holdings_history: list[dict[str, float]] = []  # per-month weights
+    prev_weights: dict[str, float] = {}
+
+    idx = aligned.index
+    for pos in range(warmup_months + lag_months, len(idx)):
+        t = idx[pos]
+        lagged_pos = pos - lag_months
+        if lagged_pos < warmup_months:
+            continue
+
+        current_state = str(aligned.iloc[lagged_pos]["regime"])
+        regime_dates.append(t.strftime("%Y-%m-%d"))
+        regime_labels.append(current_state)
+
+        # Expanding window: all data up to (not including) current month
+        history = aligned.iloc[:pos]
+        in_state = history[history["regime"] == current_state]
+
+        # Excess return vs unconditional mean (expanding window).
+        # "Which assets benefit from knowing we're in this state?"
+        excess_rets: dict[str, float] = {}
+        for ticker in asset_cols:
+            r_state = in_state[ticker].dropna()
+            r_all = history[ticker].dropna()
+            if len(r_state) >= 3 and len(r_all) >= 12:
+                state_mean = float(r_state.mean()) * 12
+                uncond_mean = float(r_all.mean()) * 12
+                excess_rets[ticker] = state_mean - uncond_mean
+
+        # Top N with positive excess return, allocate proportional.
+        # If NO asset has positive excess → 100% cash (BIL).
+        positive = {k: v for k, v in excess_rets.items() if v > 0}
+        sorted_pos = sorted(positive.items(), key=lambda x: x[1], reverse=True)
+        top_n = sorted_pos[:num_assets]
+
+        if top_n:
+            total_excess = sum(v for _, v in top_n)
+            weights = {ticker: exc / total_excess for ticker, exc in top_n}
+        else:
+            weights = {cash_ticker: 1.0} if has_cash else {}
+
+        allocation_history[current_state] = weights
+        holdings_history.append(weights)
+
+        # Turnover cost: sum of absolute weight changes × cost_bps / 10_000
+        turnover = sum(
+            abs(weights.get(t, 0.0) - prev_weights.get(t, 0.0))
+            for t in set(list(weights.keys()) + list(prev_weights.keys()))
+        )
+        txn_cost = turnover * cost_bps / 10_000
+        prev_weights = weights
+
+        # Portfolio return this month (net of transaction cost).
+        # Use 0.0 for any ticker with missing data (e.g., BIL before 2007).
+        row = aligned.iloc[pos]
+        month_ret = sum(
+            w * (float(row[ticker]) if ticker in row.index and pd.notna(row[ticker]) else 0.0)
+            for ticker, w in weights.items()
+        ) - txn_cost
+        wf_rets.append(month_ret)
+
+        # Equal-weight benchmark
+        valid_rets = [float(aligned.iloc[pos][c]) for c in all_cols if pd.notna(aligned.iloc[pos][c])]
+        ew_rets.append(np.mean(valid_rets) if valid_rets else 0.0)
+
+        # SPY buy-and-hold
+        spy_rets.append(float(aligned.iloc[pos]["SPY"]) if has_spy else 0.0)
+
+        wf_dates.append(t.strftime("%Y-%m-%d"))
+
+    if len(wf_rets) < 12:
+        return None
+
+    # ── Build equity curves ────────────────────────────────────────
+    def build_equity(monthly_rets: list[float]) -> list[float]:
+        eq = [1.0]
+        for r in monthly_rets:
+            eq.append(eq[-1] * (1 + r))
+        return eq
+
+    def build_drawdown(equity: list[float]) -> list[float]:
+        peak = equity[0]
+        dd = []
+        for v in equity:
+            if v > peak:
+                peak = v
+            dd.append(v / peak - 1 if peak > 0 else 0.0)
+        return dd
+
+    def build_stats(monthly_rets: list[float], equity: list[float]) -> dict:
+        n = len(monthly_rets)
+        if n < 2:
+            return {"cagr": 0.0, "ann_vol": 0.0, "sharpe": 0.0, "max_dd": 0.0, "months": n}
+        arr = np.array(monthly_rets)
+        cagr = (equity[-1] / equity[0]) ** (12 / n) - 1 if equity[0] > 0 else 0.0
+        ann_vol = float(arr.std()) * float(np.sqrt(12))
+        sharpe = cagr / ann_vol if ann_vol > 1e-9 else 0.0
+        dd = build_drawdown(equity)
+        max_dd = min(dd)
+        return {
+            "cagr": _safe_float(cagr) or 0.0,
+            "ann_vol": _safe_float(ann_vol) or 0.0,
+            "sharpe": _safe_float(sharpe) or 0.0,
+            "max_dd": _safe_float(max_dd) or 0.0,
+            "months": n,
+        }
+
+    wf_eq = build_equity(wf_rets)
+    ew_eq = build_equity(ew_rets)
+    spy_eq = build_equity(spy_rets)
+
+    # Dates for equity (one extra point for the initial $1)
+    eq_dates = [wf_dates[0]] + wf_dates
+
+    # ── Yearly returns ─────────────────────────────────────────────
+    yearly: list[dict] = []
+    year_groups: dict[int, list[tuple[float, float, float]]] = {}
+    for i, d in enumerate(wf_dates):
+        yr = int(d[:4])
+        if yr not in year_groups:
+            year_groups[yr] = []
+        year_groups[yr].append((wf_rets[i], ew_rets[i], spy_rets[i]))
+
+    for yr in sorted(year_groups.keys()):
+        rows = year_groups[yr]
+        wf_yr = float(np.prod([1 + r for r, _, _ in rows]) - 1)
+        ew_yr = float(np.prod([1 + r for _, r, _ in rows]) - 1)
+        sp_yr = float(np.prod([1 + r for _, _, r in rows]) - 1)
+        yearly.append({
+            "year": yr,
+            "wf_best": _safe_float(wf_yr) or 0.0,
+            "diversified": _safe_float(ew_yr) or 0.0,
+            "spy": _safe_float(sp_yr) or 0.0,
+            "wf_alpha": _safe_float(wf_yr - sp_yr) or 0.0,
+            "div_alpha": _safe_float(ew_yr - sp_yr) or 0.0,
+        })
+
+    # ── Allocation templates (latest weights per state) ────────────
+    templates: dict[str, dict[str, float]] = {}
+    for state in states:
+        if state in allocation_history:
+            templates[state] = {
+                k: _safe_float(v) or 0.0
+                for k, v in allocation_history[state].items()
+            }
+        else:
+            templates[state] = {}
+
+    return {
+        "start_date": wf_dates[0] if wf_dates else None,
+        "end_date": wf_dates[-1] if wf_dates else None,
+        "months": len(wf_rets),
+        "wf_lookback": warmup_months,
+        "num_assets": num_assets,
+        "lag_months": lag_months,
+        "models": {
+            "wf_best_asset": {
+                "label": "WF Top-5 (regime)",
+                "description": "Walk-forward top-5 assets by regime state, proportional allocation",
+                "dates": eq_dates,
+                "equity": [_safe_float(v) or 0.0 for v in wf_eq],
+                "drawdown": [_safe_float(v) or 0.0 for v in build_drawdown(wf_eq)],
+                "stats": build_stats(wf_rets, wf_eq),
+            },
+            "diversified": {
+                "label": "EW Universe",
+                "description": "Equal-weight all assets (benchmark)",
+                "dates": eq_dates,
+                "equity": [_safe_float(v) or 0.0 for v in ew_eq],
+                "drawdown": [_safe_float(v) or 0.0 for v in build_drawdown(ew_eq)],
+                "stats": build_stats(ew_rets, ew_eq),
+            },
+            "spy_bnh": {
+                "label": "SPY Buy & Hold",
+                "description": "100% SPY buy-and-hold (benchmark)",
+                "dates": eq_dates,
+                "equity": [_safe_float(v) or 0.0 for v in spy_eq],
+                "drawdown": [_safe_float(v) or 0.0 for v in build_drawdown(spy_eq)],
+                "stats": build_stats(spy_rets, spy_eq),
+            },
+        },
+        "regime_history": {
+            "dates": regime_dates,
+            "regimes": regime_labels,
+        },
+        "yearly_returns": yearly,
+        "allocation_templates": templates,
+        "assets": asset_cols + ([cash_ticker] if has_cash and cash_ticker not in asset_cols else []),
+        "holdings_history": {
+            "dates": wf_dates,
+            "holdings": [
+                {k: _safe_float(v) or 0.0 for k, v in h.items()}
+                for h in holdings_history
+            ],
+        },
+        "cost_bps": cost_bps,
     }
 
 
@@ -423,7 +789,6 @@ class RegimeComputer:
             z_window=params.get("z_window", 36),
             sensitivity=params.get("sensitivity", 1.0),
             smooth_halflife=params.get("smooth_halflife", 4),
-            confirm_months=params.get("confirm_months", 3),
         )
 
         if df.empty:
@@ -431,21 +796,40 @@ class RegimeComputer:
 
         # Auto-compute asset analytics using the registration's declared
         # asset universe (or the default broad universe if none declared).
+        # Determine signal column for IC computation — first dimension's Z
+        signal_col = (
+            f"{self.reg.dimensions[0]}_Z"
+            if self.reg.dimensions else None
+        )
+
         try:
             asset_analytics = compute_asset_analytics(
                 df,
                 states=self.reg.states,
                 tickers=self.reg.asset_tickers,
+                signal_col=signal_col,
+                horizon_months=self.reg.horizon_months,
             )
         except Exception as exc:
             log.warning("Asset analytics computation failed for '%s': %s",
                         self.reg.key, exc)
             asset_analytics = None
 
+        try:
+            strategy = compute_regime_strategy(
+                df,
+                states=self.reg.states,
+                tickers=self.reg.asset_tickers,
+            )
+        except Exception as exc:
+            log.warning("Strategy computation failed for '%s': %s",
+                        self.reg.key, exc)
+            strategy = None
+
         return {
             "current_state": self.serialize_current_state(df),
             "timeseries": self.serialize_timeseries(df),
-            "strategy": None,
+            "strategy": strategy,
             "asset_analytics": asset_analytics,
             "meta": self.serialize_meta(),
         }
@@ -453,11 +837,21 @@ class RegimeComputer:
     # ── Serialization methods (overridable) ─────────────────────────
 
     def serialize_current_state(self, df: pd.DataFrame) -> dict:
-        """Serialize the latest month into a snapshot dict."""
+        """Serialize the latest month into a snapshot dict.
+
+        Always shows the most recent available data for each regime.
+        If the latest month has partial data (some indicators published,
+        others not yet), we still show the last row where the composite
+        Z was valid. This prevents composed regimes from showing
+        zeros/blanks when one axis publishes ahead of another.
+        """
         states = self.reg.states
         dimensions = self.reg.dimensions
 
-        # Find last row with valid composite data
+        # Find last row with valid composite data — forward-fill first
+        # so the last known state carries through even if the very latest
+        # month has NaN composite (e.g., monthly macro data hasn't published
+        # yet but daily market data has a new row).
         key_col = f"{dimensions[0]}_Z"
         if key_col not in df.columns:
             return {"date": None, "error": "No composite data"}
@@ -466,12 +860,14 @@ class RegimeComputer:
         if filtered.empty:
             return {"date": None, "error": "No valid rows"}
 
+        # Use the actual last date from the full DataFrame (not the filtered one)
+        # so the "as of" date reflects the latest data available, even if we
+        # forward-fill the composite from an earlier month.
         last = filtered.iloc[-1]
-        last_date = filtered.index[-1]
+        last_date = df.index[-1] if not df.empty else filtered.index[-1]
 
         # Dominant state
-        dominant = str(last.get("S_Dominant", last.get("Dominant", states[0])))
-        confirmed = str(last.get("H_Dominant", dominant))
+        dominant = str(last.get("Dominant", states[0]))
         dom_prob = _safe_float(
             last.get(f"S_P_{dominant}", last.get(f"P_{dominant}")),
             0.0,
@@ -506,7 +902,6 @@ class RegimeComputer:
             "date": last_date.strftime("%Y-%m"),
             "dominant": dominant,
             "dominant_probability": dom_prob,
-            "confirmed": confirmed,
             "conviction": _safe_float(last.get("Conviction"), 50.0),
             "months_in_regime": int(_safe_float(last.get("Months_In_Regime"), 1) or 1),
             "probabilities": {
@@ -546,12 +941,8 @@ class RegimeComputer:
                 indicators[col] = _series_to_list(df[col])
 
         dominant = (
-            df["S_Dominant"].fillna("").astype(str).tolist()
-            if "S_Dominant" in df.columns else []
-        )
-        confirmed = (
-            df["H_Dominant"].fillna("").astype(str).tolist()
-            if "H_Dominant" in df.columns else []
+            df["Dominant"].fillna("").astype(str).tolist()
+            if "Dominant" in df.columns else []
         )
         conviction = (
             _series_to_list(df["Conviction"]) if "Conviction" in df.columns else []
@@ -560,10 +951,12 @@ class RegimeComputer:
         return {
             "dates": dates,
             "composites": composites,
-            "probabilities": probs,
+            "raw_probabilities": probs,
             "smoothed_probabilities": smoothed_probs,
+            # Legacy alias — kept so old cached snapshots and the
+            # compose endpoint (which reads "probabilities") still work.
+            "probabilities": probs,
             "dominant": dominant,
-            "confirmed": confirmed,
             "conviction": conviction,
             "indicators": indicators,
         }
@@ -580,8 +973,7 @@ class RegimeComputer:
             "methodology": {
                 "z_score": "25% level + 75% ROC blend",
                 "sigmoid_mapping": "logistic function maps z → probability (0-1)",
-                "confirmation_filter": "3-month consecutive requirement for regime change",
-                "ema_smoothing": "Exponential moving average on probabilities (halflife=4)",
+                "ema_smoothing": "Exponential moving average on state probabilities (halflife-tuned per regime)",
             },
         }
 

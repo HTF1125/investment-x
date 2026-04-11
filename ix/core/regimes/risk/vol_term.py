@@ -92,14 +92,11 @@ class VolatilityTermStructureRegime(Regime):
         ratio = (vix3m / vix.replace(0, pd.NA)).astype(float)
         rows["v_TermSlope"] = zscore(ratio, z_window).rename("v_TermSlope")
 
-        # 2. v_TermChange3M — 3-month absolute change in the ratio.
-        #    Catches the inflection signal when contango is collapsing
-        #    toward backwardation (or vice versa). Adds sample balance
-        #    to the Stressed state — the slope-only variant has too few
-        #    Stressed observations to pass T1.3.
-        rows["v_TermChange3M"] = zscore(ratio.diff(3), z_window).rename(
-            "v_TermChange3M"
-        )
+        # [DROPPED: v_TermChange3M — pre IC -0.043 (inverted basis).
+        #  The 3M change in term structure ratio adds noise pre-2010
+        #  where the VIX3M data starts (2006) leaving only 3.5 years of
+        #  pre-2010 history. TermSlope alone is cleaner: pre +0.144,
+        #  post +0.109 (inverted IC, matching the contrarian design).]
 
         return rows
 

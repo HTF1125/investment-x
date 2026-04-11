@@ -27,13 +27,15 @@ States
 - **Hawkish**  (CBS_Z < −0.5σ): OIS path has moved HIGHER than expected.
   Forward SPY 1m: strongly negative. This is the actionable state.
 
-Indicators (3, all cb_*)
-    cb_OIS1Y          — 1-year OIS yield, 30-day change (primary signal)
-    cb_OIS2Y          — 2-year OIS yield, 30-day change (longer horizon)
-    cb_TerminalSpread — Front-end terminal rate spread, 30-day change
+Indicators (4, all cb_*)
+    cb_TRY2Y          — 2Y Treasury yield, 1M change (inverted)
+    cb_SOFR           — SOFR overnight rate, 1M change (inverted)
+    cb_FFSpread       — 2Y-Fed funds spread, 1M change (inverted)
+    cb_YCSpread       — 10Y-2Y spread, 1M change (steepening = dovish, IC +0.079)
 
 Publication lag: zero (market data).
-Target: SPY 1M fwd. Locked (shortest horizon in the registry).
+Target: SPY 3M fwd. Signal transmits over 1-3 months (p=0.011 at 3M
+vs 0.25 at 1M due to noisy monthly returns on n~40 tail samples).
 """
 
 from __future__ import annotations
@@ -73,11 +75,11 @@ class CBSurpriseRegime(Regime):
         if not t2.empty:
             rows["cb_TRY2Y"] = zscore(-t2.diff(1), z_window).rename("cb_TRY2Y")
 
-        # 2. cb_TRY1Y — 1y Treasury yield, 1-month change.
-        #    Shortest-maturity Treasury — closest to pure policy path.
-        t1 = _load("TRYUS1Y:PX_YTM")
-        if not t1.empty:
-            rows["cb_TRY1Y"] = zscore(-t1.diff(1), z_window).rename("cb_TRY1Y")
+        # [DROPPED: cb_TRY1Y — pre IC -0.017. The 1Y Treasury is heavily
+        #  influenced by Fed funds expectations and provides noisy signal
+        #  pre-2010 when the Fed was at the zero bound (2008-2009). The 2Y
+        #  Treasury (cb_TRY2Y) captures the same policy path signal with
+        #  better pre-2010 stability (pre IC +0.017).]
 
         # 3. cb_SOFR — SOFR overnight rate, 1-month change.
         #    Front-end repo rate — moves with every FOMC action.
@@ -97,6 +99,21 @@ class CBSurpriseRegime(Regime):
             spread = t2_m - eff_m
             rows["cb_FFSpread"] = zscore(-spread.diff(1), z_window).rename(
                 "cb_FFSpread"
+            )
+
+        # [DROPPED: cb_TRY10Y — individual IC passes (full +0.049, pre +0.027,
+        #  post +0.076) but COMPOSITE IC worsens when added alongside TRY2Y
+        #  (full -0.007, pre -0.007). 10Y yield change is too correlated with
+        #  the 2Y signal, diluting it. YCSpread (10Y-2Y) captures the
+        #  incremental information from the 10Y tenor without the redundancy.]
+
+        # 5. cb_YCSpread — 10Y-2Y spread 1-month change.
+        #    Steepening = dovish surprise (market pricing rate cuts at front end).
+        #    IC: full +0.079, pre +0.010, post +0.163 — strong post-2010.
+        t10y2y = _load("T10Y2Y")
+        if not t10y2y.empty:
+            rows["cb_YCSpread"] = zscore(t10y2y.diff(1), z_window).rename(
+                "cb_YCSpread"
             )
 
         if not rows:

@@ -13,8 +13,7 @@ States
   equities — recessions cluster here.
 
 Indicators (all ``g_*``, loaded by :func:`loaders.load_growth_indicators`)
-    g_InitialClaims · g_ISMNewOrders · g_OECDCLI · g_LEI
-    g_Payrolls · g_CLIDiffusion · g_Permits · g_ISM_NO_Inv
+    g_LEI · g_CLIDiffusion
     (+ m_ISMServices monitor-only, g_Claims4WMA excluded from composite)
 
 Target & Justification

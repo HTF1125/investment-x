@@ -1,11 +1,11 @@
 """Parameter sensitivity audit for registered regimes.
 
-Sweeps the 4 core regime build parameters (``z_window``, ``sensitivity``,
-``smooth_halflife``, ``confirm_months``) around each regime's registered
-defaults and measures how much the walk-forward forward-return spread
-changes. A **fragile** regime whose Tier-1 spread collapses under small
-parameter perturbations has almost certainly been overfit to the default
-tuning and should be treated as a research prototype, not production.
+Sweeps the 3 core regime build parameters (``z_window``, ``sensitivity``,
+``smooth_halflife``) around each regime's registered defaults and measures
+how much the walk-forward forward-return spread changes. A **fragile**
+regime whose Tier-1 spread collapses under small parameter perturbations
+has almost certainly been overfit to the default tuning and should be
+treated as a research prototype, not production.
 
 The audit runs :func:`ix.core.regimes.validate.validate_composition` for
 every grid point, so every measurement is walk-forward and carries no
@@ -61,9 +61,9 @@ class SensitivityAuditResult:
     """Parameter-sensitivity audit output for a single regime + target.
 
     The ``grid`` DataFrame has one row per ``(z_window, sensitivity,
-    smooth_halflife, confirm_months)`` combination and columns for the
-    walk-forward spread, Cohen's d, Welch p, and best/worst state names.
-    Grid points where the validator failed are recorded with ``NaN``.
+    smooth_halflife)`` combination and columns for the walk-forward
+    spread, Cohen's d, Welch p, and best/worst state names. Grid points
+    where the validator failed are recorded with ``NaN``.
     """
 
     regime_key: str
@@ -167,31 +167,26 @@ class SensitivityAuditResult:
 
 
 def _default_grid(defaults: dict, fraction: float = 0.25) -> dict[str, list]:
-    """Build a ±fraction grid around each of the 4 core build params.
+    """Build a ±fraction grid around each of the 3 core build params.
 
     The ``z_window`` and ``smooth_halflife`` params are integers; the grid
     rounds to the nearest integer and deduplicates. ``sensitivity`` is a
-    float; the grid uses 3 points (low / mid / high). ``confirm_months``
-    uses 3 integer points (mid-1 / mid / mid+1 or a wider step if the
-    default is large).
+    float; the grid uses 3 points (low / mid / high).
     """
     z = int(defaults.get("z_window", 96))
     s = float(defaults.get("sensitivity", 2.0))
-    h = int(defaults.get("smooth_halflife", 2))
-    c = int(defaults.get("confirm_months", 3))
+    h = int(defaults.get("smooth_halflife", 3))
 
     z_grid = sorted({max(12, int(round(z * (1 - fraction)))), z,
                      int(round(z * (1 + fraction)))})
     s_grid = sorted({round(s * (1 - fraction), 3), round(s, 3),
                      round(s * (1 + fraction), 3)})
     h_grid = sorted({max(1, h - 1), h, h + 1})
-    c_grid = sorted({max(1, c - 1), c, c + 1})
 
     return {
         "z_window": z_grid,
         "sensitivity": s_grid,
         "smooth_halflife": h_grid,
-        "confirm_months": c_grid,
     }
 
 
@@ -213,12 +208,11 @@ def audit_regime_sensitivity(
 ) -> SensitivityAuditResult:
     """Run a parameter-sensitivity audit for a single regime vs a target.
 
-    Sweeps the 4 core build parameters around the regime's registered
+    Sweeps the 3 core build parameters around the regime's registered
     defaults (by default ±25% on ``z_window`` and ``sensitivity``, ±1 on
-    the integer smoothing/confirmation counts) and runs
-    :func:`validate_composition` at every grid point. The walk-forward
-    forward-return spread is recorded per cell and summarized into a
-    verdict.
+    ``smooth_halflife``) and runs :func:`validate_composition` at every
+    grid point. The walk-forward forward-return spread is recorded per
+    cell and summarized into a verdict.
 
     Args:
         regime_key: Registered regime key (must be a 1D axis or phase
@@ -227,8 +221,8 @@ def audit_regime_sensitivity(
             ``"SPY US EQUITY:PX_LAST"``).
         horizon_months: Forward-return horizon.
         fraction: Fractional perturbation applied to ``z_window`` and
-            ``sensitivity``. Default 0.25 (±25%). Smoothing and
-            confirmation counts use ±1 step regardless of this value.
+            ``sensitivity``. Default 0.25 (±25%). ``smooth_halflife``
+            uses a ±1 step regardless of this value.
         grid_override: Replace the automatic grid with an explicit
             ``{param: [values]}`` dict. Any missing param falls back to
             the registered default.
@@ -256,7 +250,6 @@ def audit_regime_sensitivity(
         grid_spec["z_window"],
         grid_spec["sensitivity"],
         grid_spec["smooth_halflife"],
-        grid_spec["confirm_months"],
     ))
 
     # ── Default-params baseline ──────────────────────────────────────
@@ -278,19 +271,17 @@ def audit_regime_sensitivity(
 
     # ── Grid sweep ───────────────────────────────────────────────────
     rows: list[dict] = []
-    for z, s, h, c in combos:
+    for z, s, h in combos:
         params = dict(defaults)
         params.update(
             z_window=int(z),
             sensitivity=float(s),
             smooth_halflife=int(h),
-            confirm_months=int(c),
         )
         row: dict = {
             "z_window": int(z),
             "sensitivity": float(s),
             "smooth_halflife": int(h),
-            "confirm_months": int(c),
             "spread": np.nan,
             "cohens_d": np.nan,
             "welch_p": np.nan,

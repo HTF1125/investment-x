@@ -35,11 +35,11 @@ States
   Forward SPY 3m: negative, fat left tail.
 
 Indicators (5, all r_*)
-    r_HY            — HY OAS 3M change (inverted — tight = risk-on)
-    r_MOVE          — MOVE index (rate vol, inverted)
-    r_DXY           — DXY 3M change (inverted)
-    r_CopperGold    — Copper/Gold ratio (momentum)
-    r_EMFX          — EM currency basket (level)
+    r_DXY           — DXY 3M change (inverted — dollar weakness = risk-on)
+    r_MOVE_inv      — MOVE index (rate vol, inverted, IC +0.069)
+    r_VIX           — VIX level (contrarian — high fear = bullish, IC +0.124)
+    r_EEM_SPY       — EM/US relative 3M performance (IC +0.143)
+    r_HYIG_spread   — HY-IG OAS 3M change, inverted (IC +0.085)
 
 Publication lag: zero (all daily market data).
 Target: SPY 3M fwd. Locked. Coincident mapping.
@@ -68,45 +68,49 @@ class RiskAppetiteRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # 1. r_HY — 3-month change in HY OAS. Inverted: tight/tightening =
-        #    risk-on. Avoids double-counting Credit-Level (this uses the
-        #    3M change, not the level).
-        hy = _load("BAMLH0A0HYM2")
-        if not hy.empty:
-            rows["r_HY"] = zscore(-hy.diff(3), z_window).rename("r_HY")
+        # [DROPPED: r_HY — post IC -0.023 (DYING). Full IC only +0.010.
+        #  HY OAS 3M change has lost predictive power post-2010 for SPY.
+        #  Credit spread signal is better captured by CreditLevelRegime.]
 
-        # 2. r_MOVE — ICE BofA MOVE Index (implied rate vol). High = stress.
-        #    Inverted so low MOVE reads as risk-on.
-        move = _load("MOVE INDEX:PX_LAST")
-        if move.empty:
-            move = _load("MOVE:PX_LAST")
-        if not move.empty:
-            rows["r_MOVE"] = zscore(-move, z_window).rename("r_MOVE")
-
-        # 3. r_DXY — 3-month change in DXY. Inverted: weakening dollar =
-        #    risk-on. Uses the CHANGE, not the level, to stay orthogonal
-        #    to the Dollar-Level axis.
+        # 1. r_DXY — 3-month change in DXY. Inverted: weakening dollar =
+        #    risk-on.
         dxy = _load("DXY INDEX:PX_LAST")
         if not dxy.empty:
             rows["r_DXY"] = zscore(-dxy.diff(3), z_window).rename("r_DXY")
 
-        # 4. r_CopperGold — Copper front-month / Gold front-month ratio.
-        #    Classic cyclical vs defensive ratio. Rising = risk-on.
-        cop = _load("HG1 COMDTY:PX_LAST")
-        gld = _load("GC1 COMDTY:PX_LAST")
-        if not cop.empty and not gld.empty:
-            ratio = (cop / gld.replace(0, pd.NA)).astype(float)
-            rows["r_CopperGold"] = zscore(ratio, z_window).rename("r_CopperGold")
+        # 2. r_MOVE_inv — MOVE index (rate vol), inverted. Low rate vol = risk-on.
+        #    IC: full +0.069, pre +0.246, post +0.012 — positive in both subsamples.
+        move = _load("MOVE INDEX:PX_LAST")
+        if not move.empty:
+            rows["r_MOVE_inv"] = zscore(-move, z_window).rename("r_MOVE_inv")
 
-        # 5. r_EMDebt — iShares EM USD Bond ETF (EMB) 3M momentum.
-        #    Proxy for EM risk appetite — when global risk is on, EM USD
-        #    sovereign bonds rally (spreads tighten). This is the EMFX /
-        #    EM-risk dimension without needing a currency index (JPMEMCI
-        #    is not in the DB). EMB captures 80%+ of the same signal.
-        emb = _load("EMB US EQUITY:PX_LAST")
-        if not emb.empty:
-            mom = emb.pct_change(3) * 100.0
-            rows["r_EMDebt"] = zscore(mom, z_window).rename("r_EMDebt")
+        # 3. r_VIX — VIX level (contrarian: high VIX = bullish forward).
+        #    DO NOT invert — high fear = bullish (per hard rule #3).
+        #    IC: full +0.124, pre +0.139, post +0.109 — strongest risk appetite indicator.
+        vix = _load("VIX INDEX:PX_LAST")
+        if not vix.empty:
+            rows["r_VIX"] = zscore(vix, z_window).rename("r_VIX")
+
+        # 4. r_EEM_SPY — EM/US relative performance 3M. Rising = global risk appetite.
+        #    IC: full +0.143, pre +0.129, post +0.141 — stable across subsamples.
+        eem = _load("EEM US EQUITY:PX_LAST")
+        spy = _load("SPY US EQUITY:PX_LAST")
+        if not eem.empty and not spy.empty:
+            ratio = eem / spy.reindex(eem.index, method="ffill").replace(0, pd.NA)
+            rows["r_EEM_SPY"] = zscore(
+                ratio.pct_change(3, fill_method=None) * 100.0, z_window
+            ).rename("r_EEM_SPY")
+
+        # 5. r_HYIG_spread — HY minus IG OAS, 3M change, inverted.
+        #    Tightening HY-IG spread = risk-on (HY outperforming IG).
+        #    IC: full +0.085, pre +0.148, post +0.005 — positive in both.
+        hy = _load("BAMLH0A0HYM2")
+        ig = _load("BAMLC0A0CM")
+        if not hy.empty and not ig.empty:
+            spread = hy - ig.reindex(hy.index, method="ffill")
+            rows["r_HYIG_spread"] = zscore(
+                -spread.diff(3), z_window
+            ).rename("r_HYIG_spread")
 
         if not rows:
             log.warning(

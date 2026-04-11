@@ -62,17 +62,7 @@ class EarningsRevisionsRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # 1. e_RBI_1M — Revision Breadth Index, 1-month window.
-        #    (# up-revisions − # down-revisions) / (# up + # down)
-        #    across SPX constituents. Primary fast-acting signal.
-        up_1m = _load("SPX INDEX:EARNINGS_REVISION_UP_1M")
-        do_1m = _load("SPX INDEX:EARNINGS_REVISION_DO_1M")
-        if not up_1m.empty and not do_1m.empty:
-            total = (up_1m + do_1m).replace(0, pd.NA).astype(float)
-            rbi = (up_1m - do_1m) / total
-            rows["e_RBI_1M"] = zscore(rbi, z_window).rename("e_RBI_1M")
-
-        # 2. e_FY1_1M — FactSet cumulative FY1 EPS estimate up-revisions
+        # 1. e_FY1_1M — FactSet cumulative FY1 EPS estimate up-revisions
         #    minus down-revisions over the trailing 1 month. A forward-
         #    looking version of RBI — when the forward FY1 estimate is
         #    being revised up more than down, forward returns are stronger.
@@ -82,16 +72,6 @@ class EarningsRevisionsRegime(Regime):
             total = (fy1_up_1m + fy1_do_1m).replace(0, pd.NA).astype(float)
             breadth = (fy1_up_1m - fy1_do_1m) / total
             rows["e_FY1_1M"] = zscore(breadth, z_window).rename("e_FY1_1M")
-
-        # 3. e_FY1_3M — Same FactSet signal over 3 months. Slower-moving,
-        #    confirms the 1M signal. When 1M and 3M agree, the signal is
-        #    high-conviction; when they disagree the regime sits neutral.
-        fy1_up_3m = _load("SPX INDEX:FMA_COS_UP_EPS_FY1_3M")
-        fy1_do_3m = _load("SPX INDEX:FMA_COS_DOWN_EPS_FY1_3M")
-        if not fy1_up_3m.empty and not fy1_do_3m.empty:
-            total = (fy1_up_3m + fy1_do_3m).replace(0, pd.NA).astype(float)
-            breadth_3m = (fy1_up_3m - fy1_do_3m) / total
-            rows["e_FY1_3M"] = zscore(breadth_3m, z_window).rename("e_FY1_3M")
 
         if not rows:
             log.warning(

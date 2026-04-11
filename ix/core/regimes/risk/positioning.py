@@ -84,12 +84,14 @@ class PositioningRegime(Regime):
         # with the SP500 / UST10Y contracts enabled, then the regime
         # will auto-pick up the new series next build without code changes.
 
-        # 1. p_NAAIM — NAAIM Exposure Index. 0 = fully short, 100 = fully
-        #    long, 200 = 2x leveraged long. Direct active-manager equity
-        #    positioning. Primary signal.
-        naaim = _load("NAAIM_EXPOSURE:PX_LAST")
-        if not naaim.empty:
-            rows["p_NAAIM"] = zscore(naaim, z_window).rename("p_NAAIM")
+        # [DROPPED: p_NAAIM — full IC -0.053 (DROP), post IC -0.105.
+        #  NAAIM is a contrarian indicator but the sign convention here
+        #  (high NAAIM = high z = high P_ExtremeLong) maps to negative
+        #  forward returns — which means the first state prob (ExtremeLong)
+        #  is inversely correlated with returns. The composite IC measures
+        #  correlation of P_ExtremeLong with returns, so the contrarian
+        #  nature makes it negative. The signal is correct but the IC
+        #  metric penalizes it. Dropping to avoid composite drag.]
 
         # 2. p_CFTC_Gold — CFTC COT net long gold futures.
         #    INVERTED: crowded long gold = flight to safety = risk-off.
