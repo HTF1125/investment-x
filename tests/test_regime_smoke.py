@@ -4,7 +4,7 @@ Each registered 1D regime is instantiated and built once with its default
 parameters. The build output is asserted to:
 
   * be a non-empty monthly ``pd.DataFrame``
-  * expose the required pipeline columns (``H_Dominant``, ``Dominant``,
+  * expose the required pipeline columns (``Dominant``, ``Dominant``,
     per-state ``P_*`` probabilities, per-dimension ``{Dim}_Z`` composites)
   * contain only registered state labels in the dominant column
   * have a monotonic, ascending DatetimeIndex
@@ -51,8 +51,7 @@ def _try_build(reg: RegimeRegistration) -> pd.DataFrame | None:
         return regime.build(
             z_window=reg.default_params.get("z_window", 96),
             sensitivity=reg.default_params.get("sensitivity", 2.0),
-            smooth_halflife=reg.default_params.get("smooth_halflife", 2),
-            confirm_months=reg.default_params.get("confirm_months", 3),
+            smooth_halflife=reg.default_params.get("smooth_halflife", 3),
         )
     except _SKIP_ERRORS as exc:
         msg = str(exc).lower()
@@ -76,7 +75,7 @@ class RegimeSmokeTests(unittest.TestCase):
     def test_every_regime_builds(self) -> None:
         """Each registered regime must build into a DataFrame with the
         standard pipeline columns present and only declared states in
-        ``H_Dominant``."""
+        ``Dominant``."""
         skipped: list[str] = []
         for reg in self.regimes:
             with self.subTest(regime=reg.key):
@@ -105,7 +104,7 @@ class RegimeSmokeTests(unittest.TestCase):
                 )
 
                 # Required pipeline columns
-                required = {"Dominant", "H_Dominant", "Conviction"}
+                required = {"Dominant", "Conviction"}
                 missing = required - set(df.columns)
                 self.assertFalse(
                     missing,
@@ -127,11 +126,11 @@ class RegimeSmokeTests(unittest.TestCase):
                     )
 
                 # Dominant labels must be a subset of declared states
-                dom_labels = set(df["H_Dominant"].dropna().unique())
+                dom_labels = set(df["Dominant"].dropna().unique())
                 unknown = dom_labels - set(reg.states)
                 self.assertFalse(
                     unknown,
-                    f"{reg.key}: H_Dominant contains undeclared states {unknown}",
+                    f"{reg.key}: Dominant contains undeclared states {unknown}",
                 )
 
         if skipped:
@@ -142,7 +141,7 @@ class RegimeSmokeTests(unittest.TestCase):
 
     def test_state_balance_is_computed(self) -> None:
         """compute_state_balance should return a sane StateBalance for
-        every registered regime's H_Dominant series.
+        every registered regime's Dominant series.
 
         Checks the metric is computable, returns the expected verdict set,
         and that entropy/usable_ratio are in bounds. Does NOT require any
@@ -157,7 +156,7 @@ class RegimeSmokeTests(unittest.TestCase):
                 if df is None:
                     skipped.append(reg.key)
                     continue
-                h = df["H_Dominant"].dropna()
+                h = df["Dominant"].dropna()
                 if h.empty:
                     continue
 

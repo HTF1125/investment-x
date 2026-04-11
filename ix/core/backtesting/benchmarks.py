@@ -1,0 +1,35 @@
+import numpy as np
+import pandas as pd
+
+from ix.common.date import today
+from ix.db.query import Series
+
+
+def ConstantReturnBenchmark(
+    annual_return: float = 0.01, start: str = "2000-1-1", end: str | None = None
+):
+    if end is None:
+        end = today().strftime("%Y-%m-%d")
+    dates = pd.date_range(start=start, end=end, freq="D")
+    n_days = len(dates)
+    daily_return = (1 + annual_return) ** (1 / 365) - 1
+    cumulative_returns = np.cumprod(np.full(n_days, 1 + daily_return))
+    benchmark_series = pd.Series(
+        data=100 * cumulative_returns, index=dates, name="Benchmark"
+    )
+    return benchmark_series
+
+
+def MezzAlpha():
+    d = ConstantReturnBenchmark(0.02).pct_change().mul(0.70)
+    b = (
+        Series("KOSPI Index:PX_LAST")
+        .resample("D")
+        .last()
+        .ffill()
+        .pct_change()
+        .mul(0.30)
+    )
+    x = (d + b).add(1).cumprod()
+    x.name = "MezzAlpha"
+    return x.dropna()

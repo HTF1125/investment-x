@@ -7,12 +7,45 @@ Given any target index, finds:
   4. Recovery curves rebased to T0=100
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
 from ix.db.query import Series
-from ix.core.macro.config import TARGET_INDICES
 from ix.common import get_logger
+
+
+# ─── Target index registry ────────────────────────────────────────────────────
+
+
+@dataclass
+class TargetIndex:
+    """Metadata for a tradeable equity index used as stress-test target."""
+
+    name: str
+    ticker: str
+    region: str
+    currency: str = ""
+    has_sectors: bool = False
+
+
+TARGET_INDICES: dict[str, TargetIndex] = {
+    "MSCI ACWI": TargetIndex("MSCI ACWI", "ACWI US EQUITY:PX_LAST", "global", currency="DXY INDEX:PX_LAST"),
+    "KOSPI": TargetIndex("KOSPI", "KOSPI INDEX:PX_LAST", "korea", currency="USDKRW CURNCY:PX_LAST", has_sectors=True),
+    "S&P 500": TargetIndex("S&P 500", "SPX INDEX:PX_LAST", "us", currency="DXY INDEX:PX_LAST", has_sectors=True),
+    "Nasdaq 100": TargetIndex("Nasdaq 100", "CCMP INDEX:PX_LAST", "us", currency="DXY INDEX:PX_LAST", has_sectors=True),
+    "Nikkei 225": TargetIndex("Nikkei 225", "NKY INDEX:PX_LAST", "japan", currency="USDJPY CURNCY:PX_LAST"),
+    "Euro Stoxx 50": TargetIndex("Euro Stoxx 50", "SX5E INDEX:PX_LAST", "europe", currency="EURUSD CURNCY:PX_LAST"),
+    "MSCI EM": TargetIndex("MSCI EM", "891800:FG_TOTAL_RET_IDX", "em", currency="DXY INDEX:PX_LAST"),
+    "Shanghai Composite": TargetIndex("Shanghai Composite", "SHCOMP INDEX:PX_LAST", "china", currency="USDCNY CURNCY:PX_LAST"),
+    "DAX": TargetIndex("DAX", "DAX INDEX:PX_LAST", "europe", currency="EURUSD CURNCY:PX_LAST"),
+    "FTSE 100": TargetIndex("FTSE 100", "UKX INDEX:PX_LAST", "europe", currency="GBPUSD CURNCY:PX_LAST"),
+    "Hang Seng": TargetIndex("Hang Seng", "HSI INDEX:PX_LAST", "china", currency="USDHKD CURNCY:PX_LAST"),
+    "KOSDAQ": TargetIndex("KOSDAQ", "KOSDAQ:PX_LAST", "korea", currency="USDKRW CURNCY:PX_LAST", has_sectors=True),
+    "Gold": TargetIndex("Gold", "IAU US EQUITY:PX_LAST", "global", currency="DXY INDEX:PX_LAST"),
+}
+
 
 logger = get_logger(__name__)
 

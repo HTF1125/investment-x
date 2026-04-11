@@ -7,7 +7,6 @@ from .rsi import *  # noqa: F401,F403
 from .trend import *  # noqa: F401,F403
 from .moving_average import *  # noqa: F401,F403
 from .regime import *  # noqa: F401,F403
-from .force_index_composite import *  # noqa: F401,F403
 from .weekly_regime import *  # noqa: F401,F403
 from .trend_momentum_composite import *  # noqa: F401,F403
 from .elliott_wave import *  # noqa: F401,F403

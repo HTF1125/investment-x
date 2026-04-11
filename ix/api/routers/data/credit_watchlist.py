@@ -7,9 +7,9 @@ from typing import Optional, List
 from pydantic import BaseModel
 from datetime import datetime
 from sqlalchemy.orm import Session as SessionType
-from sqlalchemy import or_
+from sqlalchemy import case, or_
 
-from ix.api.dependencies import get_db, get_current_admin_user
+from ix.api.dependencies import get_db, get_current_admin_user, get_current_user
 from ix.db.models.credit_event import CreditWatchlist
 from ix.db.models.user import User
 from ix.db.conn import ensure_connection
@@ -104,9 +104,9 @@ def list_watchlist(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: SessionType = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """List credit watchlist entities with search and pagination."""
+    """List credit watchlist entities with search and pagination. Readable by any authenticated user; mutations remain admin-only."""
     ensure_connection()
 
     query = db.query(CreditWatchlist)
@@ -130,11 +130,19 @@ def list_watchlist(
     if risk_level:
         query = query.filter(CreditWatchlist.risk_level == risk_level.lower())
 
+    # Sort: risk level (critical → high → medium → low), then most recently updated
+    risk_order = case(
+        (CreditWatchlist.risk_level == "critical", 0),
+        (CreditWatchlist.risk_level == "high", 1),
+        (CreditWatchlist.risk_level == "medium", 2),
+        (CreditWatchlist.risk_level == "low", 3),
+        else_=4,
+    )
     items = (
         query.order_by(
-            # critical first, then high, medium, low
             CreditWatchlist.active.desc(),
-            CreditWatchlist.signal_count.desc(),
+            risk_order.asc(),
+            CreditWatchlist.updated_at.desc().nulls_last(),
             CreditWatchlist.created_at.desc(),
         )
         .offset(offset)

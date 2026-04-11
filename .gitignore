@@ -44,7 +44,6 @@ share/python-wheels/
 *.db
 *.ipynb
 *.bat
-!dev.bat
 # *.csv
 # *.feather
 files/

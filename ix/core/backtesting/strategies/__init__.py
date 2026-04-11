@@ -16,13 +16,6 @@ from .dollar_cycle import SB_Auto_DollarCycle  # noqa: F401
 from .portfolio_ortho import SB_Portfolio_Top3Ortho  # noqa: F401
 from .macro_regime import SB_Macro_GrowthInflation  # noqa: F401
 
-# Archived (kept for reference)
-from ._archive import (  # noqa: F401
-    UsGicsEarningsImpulse, SectorRotationMom90, SectorRotationCESI,
-    UsIsmPmiManuEB, UsOecdLeiEB, UsOecdLeiEB2, MAM60CF, SPX_Earnings,
-    Classic6040, AllWeather, GoldenButterfly,
-)
-
 
 # ── Strategy Registry ────────────────────────────────────────────
 
@@ -39,17 +32,6 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "SB_Auto_DollarCycle": SB_Auto_DollarCycle,
     "SB_Portfolio_Top3Ortho": SB_Portfolio_Top3Ortho,
     "SB_Macro_GrowthInflation": SB_Macro_GrowthInflation,
-    "UsGicsEarningsImpulse": UsGicsEarningsImpulse,
-    "SectorRotationMom90": SectorRotationMom90,
-    "SectorRotationCESI": SectorRotationCESI,
-    "UsIsmPmiManuEB": UsIsmPmiManuEB,
-    "UsOecdLeiEB": UsOecdLeiEB,
-    "UsOecdLeiEB2": UsOecdLeiEB2,
-    "MAM60CF": MAM60CF,
-    "SPX_Earnings": SPX_Earnings,
-    "Classic6040": Classic6040,
-    "AllWeather": AllWeather,
-    "GoldenButterfly": GoldenButterfly,
 }
 
 STRATEGY_META: dict[str, dict] = {
@@ -64,17 +46,6 @@ STRATEGY_META: dict[str, dict] = {
     "SB_Auto_DollarCycle":    {"family": "dollar", "mode": "auto", "sharpe": 0.78, "active": True},
     "SB_Portfolio_Top3Ortho":    {"family": "ensemble", "mode": "ensemble", "sharpe": 1.01, "active": True},
     "SB_Macro_GrowthInflation": {"family": "macro", "mode": "synthesize", "sharpe": None, "active": True},
-    "UsGicsEarningsImpulse":     {"family": "sector", "mode": "legacy", "active": False},
-    "SectorRotationMom90":    {"family": "sector", "mode": "legacy", "active": False},
-    "SectorRotationCESI":     {"family": "sector", "mode": "legacy", "active": False},
-    "UsIsmPmiManuEB":         {"family": "macro", "mode": "legacy", "active": False},
-    "UsOecdLeiEB":            {"family": "macro", "mode": "legacy", "active": False},
-    "UsOecdLeiEB2":           {"family": "macro", "mode": "legacy", "active": False},
-    "MAM60CF":                {"family": "macro", "mode": "legacy", "active": False},
-    "SPX_Earnings":           {"family": "earnings", "mode": "legacy", "active": False},
-    "Classic6040":            {"family": "static", "mode": "benchmark", "active": False},
-    "AllWeather":             {"family": "static", "mode": "benchmark", "active": False},
-    "GoldenButterfly":        {"family": "static", "mode": "benchmark", "active": False},
 }
 
 

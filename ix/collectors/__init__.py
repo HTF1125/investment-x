@@ -1,3 +1,5 @@
+from .crawler import *
+
 """Investment research data collectors."""
 
 

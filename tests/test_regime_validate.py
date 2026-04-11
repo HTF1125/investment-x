@@ -67,20 +67,20 @@ class ValidateCompositionTests(unittest.TestCase):
             "CL1 COMDTY:PX_LAST",
             6,
             train_window=24,
-            exclude_indicators={"i_WTI"},
+            exclude_indicators={"i_Commodities"},
         )
 
         if without_exclude is None or with_exclude is None:
-            self.skipTest("DB / WTI series unavailable")
+            self.skipTest("DB / commodities series unavailable")
 
         # Either spread or Cohen's d must differ — excluding a constituent
-        # indicator changes the composite z, which changes H_Dominant, which
+        # indicator changes the composite z, which changes Dominant, which
         # changes the per-state aggregation.
         self.assertTrue(
             (without_exclude.spread != with_exclude.spread)
             or (without_exclude.cohens_d != with_exclude.cohens_d),
-            "exclude_indicators={'i_WTI'} produced an identical result — "
-            "the exclude path is not actually reaching the composite.",
+            "exclude_indicators={'i_Commodities'} produced an identical "
+            "result — the exclude path is not actually reaching the composite.",
         )
 
     def test_single_regime_baseline_matches_tier1(self):

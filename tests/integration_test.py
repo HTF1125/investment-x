@@ -10,7 +10,7 @@ import traceback
 from playwright.sync_api import sync_playwright
 
 FRONTEND = "http://localhost:3000"
-BACKEND = "http://localhost:8001"
+BACKEND = "http://localhost:8000"
 
 results = []
 

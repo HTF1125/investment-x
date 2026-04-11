@@ -11,7 +11,7 @@ import time
 
 import pandas as pd
 
-from ix.core.macro.vams import (
+from ix.core.technical.vams import (
     compute_vams_series,
     score_to_regime,
     weeks_in_regime,
@@ -33,6 +33,8 @@ _CACHE_TTL = 60  # seconds
 # CACRI cache (separate — only depends on 8 cross-asset proxies)
 _cacri_cache: dict | None = None         # {cacri, cross_asset_vams}
 _cacri_cache_ts: float = 0.0
+_cacri_compute_lock = threading.Lock()
+_cacri_computing: bool = False
 
 INDEX_YF: dict[str, str] = {
     "S&P 500":      "ES=F",
@@ -300,6 +302,65 @@ def get_or_compute_index(name: str) -> dict | None:
     return result
 
 
+_indices_compute_lock = threading.Lock()
+_indices_computing: bool = False
+
+
+def ensure_cacri_background() -> None:
+    """Kick off a background thread to populate CACRI cache if not already running."""
+    global _cacri_computing
+    with _cacri_compute_lock:
+        if _cacri_computing:
+            return
+        _cacri_computing = True
+
+    def _worker() -> None:
+        global _cacri_computing
+        try:
+            _compute_cacri_snapshot()
+        except Exception:
+            logger.exception("Background CACRI compute failed")
+        finally:
+            with _cacri_compute_lock:
+                _cacri_computing = False
+
+    threading.Thread(target=_worker, name="cacri-compute", daemon=True).start()
+
+
+def ensure_indices_background() -> None:
+    """Kick off a background thread to warm up the per-index cache."""
+    global _indices_computing
+    with _indices_compute_lock:
+        if _indices_computing:
+            return
+        now = time.monotonic()
+        stale = [
+            name for name in INDEX_YF
+            if name not in _index_cache
+            or (now - _index_cache_ts.get(name, 0.0)) >= _CACHE_TTL
+        ]
+        if not stale:
+            return
+        _indices_computing = True
+
+    def _worker() -> None:
+        global _indices_computing
+        try:
+            for name in stale:
+                try:
+                    result = compute_single(name)
+                    if result is not None:
+                        _index_cache[name] = result
+                        _index_cache_ts[name] = time.monotonic()
+                except Exception:
+                    logger.exception(f"Background compute failed for {name}")
+        finally:
+            with _indices_compute_lock:
+                _indices_computing = False
+
+    threading.Thread(target=_worker, name="indices-compute", daemon=True).start()
+
+
 def _strip_heavy(idx: dict) -> dict:
     """Remove chart-weight fields from an index dict."""
     light = {k: v for k, v in idx.items() if k not in ("daily_prices", "weekly_vams")}
@@ -323,8 +384,17 @@ def get_summary() -> dict:
             # Stub entry — frontend uses this for the dropdown
             light_indices.append({"name": name})
 
-    # CACRI: return cached value only (no blocking fetch)
+    # CACRI: return cached value; kick off background compute if stale/missing
+    cacri_stale = (
+        _cacri_cache is None
+        or (time.monotonic() - _cacri_cache_ts) >= _CACHE_TTL
+    )
+    if cacri_stale:
+        ensure_cacri_background()
     cacri_snap = _cacri_cache if _cacri_cache is not None else {"cacri": 0.0, "cross_asset_vams": {}}
+
+    # Indices: kick off background warm-up for any missing/stale entries
+    ensure_indices_background()
 
     return {
         "indices": light_indices,

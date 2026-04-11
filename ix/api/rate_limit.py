@@ -47,15 +47,7 @@ def _rate_limit_key(request: Request) -> str:
             if role in _EXEMPT_ROLES:
                 return ""
     except Exception:
-        pass  # Fall back to IP-based or API-key-based rate limiting
-
-    # Check X-API-Key header (no DB lookup — just hash for identity)
-    api_key_raw = request.headers.get("x-api-key")
-    if api_key_raw:
-        import hashlib
-
-        key_hash = hashlib.sha256(api_key_raw.encode()).hexdigest()
-        return f"apikey:{key_hash[:16]}"
+        pass  # Fall back to IP-based rate limiting
 
     return get_remote_address(request)
 
