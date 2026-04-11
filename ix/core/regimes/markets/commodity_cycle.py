@@ -31,9 +31,15 @@ States
   Global demand weakening. Forward SPY 3m: negative, defensive
   sectors outperform.
 
-Indicators (2, all cc_*)
-    cc_CopperGold     — Copper/Gold ratio 6M momentum
+Indicators (1, all cc_*)
     cc_Copper_6M      — Copper 6M momentum (IC +0.105, stable pre/post)
+
+2026-04-12 rebuild: dropped cc_CopperGold after the all-regimes triage
+found r=+0.73 with cc_Copper_6M — both measure copper momentum on
+a slightly different normalization (raw vs divided by gold). Kept
+cc_Copper_6M because it has slightly higher post-2010 IC (+0.092 vs
++0.063) and the copper/gold ratio redundancy adds volatility from
+gold's own cycle without contributing cyclical information.
 
 Publication lag: zero (futures markets).
 Target: SPY 3M fwd. Locked. Coincident mapping.
@@ -62,34 +68,27 @@ class CommodityCycleRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # 1. cc_CopperGold — 6-month momentum of copper/gold ratio.
-        #    Copper is cyclical, gold is counter-cyclical — the ratio
-        #    rising means risk-on demand growth; falling means the
-        #    opposite.
+        # cc_Copper_6M — Copper 6-month momentum. Industrial bellwether.
+        # IC: full +0.105, pre +0.090, post +0.139 — stable and strong.
         cop = _load("HG1 COMDTY:PX_LAST")
-        gld = _load("GC1 COMDTY:PX_LAST")
-        if not cop.empty and not gld.empty:
-            ratio = (cop / gld.replace(0, pd.NA)).astype(float)
-            rows["cc_CopperGold"] = zscore(ratio.pct_change(6) * 100.0, z_window).rename(
-                "cc_CopperGold"
-            )
-
-        # [DROPPED: cc_XME — post IC -0.030 (DYING). Full IC only +0.007.
-        #  XME vs 200DMA is too noisy — mining equities have stock-specific
-        #  risk that dilutes the commodity cycle signal. CopperGold alone
-        #  is cleaner (full IC +0.040, pre +0.126, post +0.055).]
-
-        # 2. cc_Copper_6M — Copper 6-month momentum. Industrial bellwether.
-        #    IC: full +0.105, pre +0.090, post +0.139 — stable and strong.
         if not cop.empty:
             rows["cc_Copper_6M"] = zscore(
                 cop.pct_change(6, fill_method=None) * 100.0, z_window
             ).rename("cc_Copper_6M")
 
+        # [DROPPED 2026-04-12: cc_CopperGold (copper/gold ratio 6M
+        #  momentum) — triage found r=+0.73 with cc_Copper_6M. Both are
+        #  copper-momentum signals; the ratio normalization added gold-
+        #  cycle noise without cyclical information. cc_Copper_6M has
+        #  slightly higher post-2010 IC (+0.092 vs +0.063).]
+        # [DROPPED earlier: cc_XME — post IC -0.030 (DYING).
+        #  XME vs 200DMA is too noisy — mining equities have stock-specific
+        #  risk that dilutes the commodity cycle signal.]
+
         if not rows:
             log.warning(
-                "CommodityCycle: no indicators loaded. Check HG1 / GC1 / CL1 / "
-                "BCOMIN Bloomberg codes."
+                "CommodityCycle: no indicators loaded. Check HG1 COMDTY:PX_LAST "
+                "seed data."
             )
         return rows
 

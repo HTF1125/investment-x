@@ -65,23 +65,26 @@ log = logging.getLogger(__name__)
 
 
 def _load_level_indicators(z_window: int) -> dict[str, pd.Series]:
-    """Pure level z-scores for HY/IG/BBB option-adjusted spreads."""
+    """Pure level z-score for HY option-adjusted spread.
+
+    2026-04-12 rebuild: dropped the IG and BBB level variants after the
+    all-regimes triage found:
+    - lv_IG_OAS ↔ lv_BBB_OAS: r = +0.99 (IG and BBB indices are
+      effectively identical as level z-scores)
+    - lv_HY_OAS ↔ lv_BBB_OAS: r = +0.94
+    - lv_HY_OAS ↔ lv_IG_OAS:  r = +0.93
+    All three had strong individual IC on HYG 6M (+0.44 to +0.48) but
+    they were triple-counting the same credit-spread level signal.
+    Kept lv_HY_OAS because (a) it's the highest |IC| at +0.482 and
+    (b) HY is the highest-beta credit segment so it's the most sensitive
+    to cycle turning points.
+    """
     rows: dict[str, pd.Series] = {}
 
     hy_daily = _load("BAMLH0A0HYM2")
     if not hy_daily.empty:
         hy = hy_daily.resample("ME").last()
         rows["lv_HY_OAS"] = zscore(hy, z_window).rename("lv_HY_OAS")
-
-    ig_daily = _load("BAMLC0A0CM")
-    if not ig_daily.empty:
-        ig = ig_daily.resample("ME").last()
-        rows["lv_IG_OAS"] = zscore(ig, z_window).rename("lv_IG_OAS")
-
-    bbb_daily = _load("BAMLC0A4CBBB")
-    if not bbb_daily.empty:
-        bbb = bbb_daily.resample("ME").last()
-        rows["lv_BBB_OAS"] = zscore(bbb, z_window).rename("lv_BBB_OAS")
 
     return rows
 

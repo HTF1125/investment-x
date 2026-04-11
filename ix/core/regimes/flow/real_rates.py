@@ -19,11 +19,19 @@ States
   Gold has already rallied off the prior High turning point — from here
   forward-12M returns are muted (post-rally consolidation).
 
-Indicators (4, all rr_*)
+Indicators (3, all rr_*)
     rr_TIPS10Y       — 10Y TIPS constant-maturity yield (FRED DFII10, since 2003)
-    rr_TIPS5Y        — 5Y TIPS constant-maturity yield  (FRED DFII5,  since 2003)
     rr_Cleveland1Y   — Cleveland Fed Haubrich-Pennacchi-Ritchken 1Y real rate (since 1982)
     rr_Synth10Y      — TRYUS10Y minus trailing 12M CPI YoY (synthetic, since 1954)
+
+2026-04-12 rebuild: dropped rr_TIPS5Y after the all-regimes triage
+found r=+0.97 with rr_TIPS10Y (the 5y and 10y TIPS points move
+essentially in lockstep except at the very short end of yield cycles).
+Both had strong IC on GC1 12M (+0.531 and +0.556) but were double-
+counting the TIPS market signal. Kept TIPS10Y — marginally higher IC
+and the canonical tenor for "10Y real rate." rr_Cleveland1Y still
+carries the short-end policy-sensitive signal that TIPS5Y would have
+added, so no information is lost.
 
 Each is a PURE level z-score of the real rate vs rolling 8-year history.
 Mirrors the CreditLevelRegime / DollarLevelRegime / YieldCurveRegime
@@ -102,27 +110,27 @@ class RealRatesRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # 1. rr_TIPS10Y — 10Y TIPS constant-maturity yield (since 2003)
-        #    Direct market measure of real rates. Daily FRED DFII10,
-        #    resampled to month-end.
+        # rr_TIPS10Y — 10Y TIPS constant-maturity yield (since 2003)
+        # Direct market measure of real rates. Daily FRED DFII10,
+        # resampled to month-end.
         tips10 = _load("DFII10:PX_LAST")
         if not tips10.empty:
             rows["rr_TIPS10Y"] = zscore(tips10, z_window).rename("rr_TIPS10Y")
 
-        # 2. rr_TIPS5Y — 5Y TIPS (since 2003)
-        #    Shorter tenor — more policy-sensitive.
-        tips5 = _load("DFII5:PX_LAST")
-        if not tips5.empty:
-            rows["rr_TIPS5Y"] = zscore(tips5, z_window).rename("rr_TIPS5Y")
+        # [DROPPED 2026-04-12: rr_TIPS5Y — r=+0.97 with rr_TIPS10Y.
+        #  Same underlying TIPS market signal at a nearby tenor; adding
+        #  it double-counted the market-based real rate. Cleveland1Y
+        #  below carries the short-end policy-sensitive signal the 5y
+        #  TIPS would have contributed.]
 
-        # 3. rr_Cleveland1Y — Cleveland Fed 1Y real rate (since 1982)
-        #    Model-based blend (TIPS + survey + nominal). Extends history
-        #    back to 1982 — pre-TIPS era coverage.
+        # rr_Cleveland1Y — Cleveland Fed 1Y real rate (since 1982)
+        # Model-based blend (TIPS + survey + nominal). Extends history
+        # back to 1982 — pre-TIPS era coverage.
         cle1y = _load("REAINTRATREARAT1YE:PX_LAST")
         if not cle1y.empty:
             rows["rr_Cleveland1Y"] = zscore(cle1y, z_window).rename("rr_Cleveland1Y")
 
-        # 4. rr_Synth10Y — Synthetic 10Y real rate (since 1976)
+        # rr_Synth10Y — Synthetic 10Y real rate (since 1976)
         #    TRYUS10Y nominal minus trailing 12M headline CPI YoY.
         #    Provides the longest history and is the "classical" (pre-TIPS)
         #    way to think about the real rate. Lagged by 1 month to respect
