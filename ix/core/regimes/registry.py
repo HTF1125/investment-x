@@ -192,6 +192,7 @@ def _register_builtins() -> None:
     from .risk.dispersion import DispersionRegime
     from .fundamentals.cb_surprise import CBSurpriseRegime
     from .fundamentals.housing import HousingRegime
+    from .markets.korea import KoreaRegime
 
     # 1. LiquidityRegime (2 states) — AXIS regime, composable
     # Rebuilt 2026-04-10 as US-focused CB quantity + private credit regime.
@@ -1008,6 +1009,53 @@ def _register_builtins() -> None:
         state_descriptions={
             "Expansion":   "Housing starts, permits, and new-home sales accelerating over 12M. Residential investment adding to GDP. Historically SPY Sharpe 1.3 over 12M.",
             "Contraction": "Housing flows decelerating over 12M — permits falling, starts weakening. Leading indicator for equity drawdowns per Leamer (2007). Historically SPY Sharpe 0.25 over 12M.",
+        },
+    ))
+
+    # 21. KoreaRegime — Korea-specific equity cycle (2 states)
+    register_regime(RegimeRegistration(
+        key="korea",
+        display_name="Korea (Expansion × Contraction)",
+        description=(
+            "2-state Korean equity regime — 3-indicator composite of global "
+            "semi cycle (SOX 6M momentum), China demand (FXI 6M momentum), "
+            "and KRW FX regime (USDKRW 3M inverted). Target: KOSPI INDEX "
+            "3M fwd (d=+0.222, voln=+0.47). KOSPI chosen over EWY because "
+            "EWY adds KRW/USD FX variance on top of the economic signal, "
+            "diluting cohen's d from 0.22 to 0.09. Captures Korea-specific "
+            "drivers the generic EM / dollar regimes miss: ~30% of KOSPI "
+            "cap is semi (Samsung + SK Hynix), and China is Korea's largest "
+            "trading partner. Complements global_liquidity (broad EM) and "
+            "dollar_trend (FX) rather than duplicating them — compose with "
+            "dollar_trend when a dollar dimension is needed."
+        ),
+        states=["Expansion", "Contraction"],
+        dimensions=["Korea"],
+        regime_class=KoreaRegime,
+        default_params=_DEFAULT_PARAMS.copy(),
+        has_strategy=False,
+        category="axis",
+        target="KOSPI INDEX:PX_LAST",
+        horizon_months=3,
+        asset_tickers={
+            "KOSPI": "KOSPI INDEX:PX_LAST",    # primary target, local-currency
+            "EWY":  "EWY US EQUITY:PX_LAST",   # USD-tradeable proxy
+            "EEM":  "EEM US EQUITY:PX_LAST",   # broad EM comparison
+            "FXI":  "FXI US EQUITY:PX_LAST",   # China (Korea's trading partner)
+            "SOXX": "SOXX US EQUITY:PX_LAST",  # semi cycle proxy
+            "SPY":  "SPY US EQUITY:PX_LAST",   # global risk
+            "TLT":  "TLT US EQUITY:PX_LAST",   # safe-haven
+            "GLD":  "GLD US EQUITY:PX_LAST",   # hedge
+            "BIL":  "BIL US EQUITY:PX_LAST",   # risk-free proxy
+        },
+        color_map={
+            "Expansion":   "#22c55e",
+            "Contraction": "#ef5350",
+        },
+        dimension_colors={"Korea": "#3b82f6"},
+        state_descriptions={
+            "Expansion":   "Semi cycle rising (SOX 6M momentum positive), China demand expanding (FXI rising), KRW strengthening (USDKRW falling), DXY weakening. Strong tailwind for Korean exporters and EM flows into EWY.",
+            "Contraction": "Semi cycle rolling over, China demand weakening, KRW depreciating under EM outflows, DXY strengthening. Forward EWY 3M strongly negative.",
         },
     ))
 
