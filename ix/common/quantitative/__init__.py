@@ -1,4 +1,4 @@
-"""Quantitative analytics: correlation, regression, PCA, VaR, preprocessing, statistics, estimators, optimization, factor lens."""
+"""Quantitative analytics: correlation, regression, PCA, VaR, preprocessing, statistics, estimators, optimization."""
 
 from .correlation import correlation_matrix, rolling_correlation, hierarchical_cluster
 from .regression import ols_regression, rolling_beta, multi_factor_regression
@@ -31,13 +31,6 @@ from .optimizer import (
     risk_contribution,
     inverse_variance_weights,
     tracking_error,
-)
-from .factor_lens import (
-    FactorLens,
-    rolling_factor_regression,
-    factor_attribution,
-    excess_performance,
-    risk_weighted_performance,
 )
 from .pattern_search import find_similar_patterns
 
@@ -93,12 +86,6 @@ __all__ = [
     "risk_contribution",
     "inverse_variance_weights",
     "tracking_error",
-    # Factor Lens
-    "FactorLens",
-    "rolling_factor_regression",
-    "factor_attribution",
-    "excess_performance",
-    "risk_weighted_performance",
     # Pattern search
     "find_similar_patterns",
 ]

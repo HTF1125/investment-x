@@ -205,7 +205,7 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept", "X-API-Key"],
+    allow_headers=["Content-Type", "Authorization", "Accept"],
 )
 
 
@@ -357,13 +357,12 @@ async def global_exception_handler(request, exc):
 
 # Include routers with error handling
 try:
-    from ix.api.routers.auth import auth_router, admin_router, user_router, api_keys_router
+    from ix.api.routers.auth import auth_router, admin_router, user_router
     from ix.api.routers.data import (
         timeseries_router,
         series_router,
         evaluation_router,
         collectors_router,
-        sources_router,
         credit_watchlist_router,
     )
     from ix.api.routers.charts import (
@@ -387,7 +386,6 @@ try:
         library_router,
     )
     from ix.api.routers.risk import risk_router
-    from ix.api.routers.reports import router as reports_router
 
     logger.info("Importing routers...")
 
@@ -395,14 +393,12 @@ try:
     app.include_router(auth_router, prefix="/api", tags=["Authentication"])
     app.include_router(admin_router, prefix="/api", tags=["Admin"])
     app.include_router(user_router, prefix="/api", tags=["User"])
-    app.include_router(api_keys_router, prefix="/api", tags=["API Keys"])
 
     # Data Management
     app.include_router(timeseries_router, prefix="/api", tags=["Timeseries"])
     app.include_router(series_router, prefix="/api", tags=["Series"])
     app.include_router(evaluation_router, prefix="/api", tags=["Evaluation"])
     app.include_router(collectors_router, prefix="/api", tags=["Collectors"])
-    app.include_router(sources_router, prefix="/api", tags=["Sources"])
     app.include_router(credit_watchlist_router, prefix="/api", tags=["Credit Watchlist"])
 
     # Charts & Visualization
@@ -426,9 +422,6 @@ try:
     app.include_router(library_router, prefix="/api", tags=["Research Library"])
 
     app.include_router(risk_router, prefix="/api", tags=["Risk"])
-
-    # Reports
-    app.include_router(reports_router, prefix="/api", tags=["Reports"])
 
     logger.info("Routers registered successfully")
 

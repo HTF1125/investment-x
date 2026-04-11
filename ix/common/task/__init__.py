@@ -233,7 +233,7 @@ def run_macro_research():
     try:
         result = subprocess.run(
             [sys.executable, "scripts/macro_research.py",
-             "--skip-youtube", "--skip-drive", "--skip-telegram",
+             "--skip-youtube", "--skip-drive",
              "--days", "3"],
             capture_output=True, text=True, timeout=1800,  # 30 min max
             cwd=str(__import__("pathlib").Path(__file__).resolve().parents[3]),
