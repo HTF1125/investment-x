@@ -912,23 +912,30 @@ def _register_builtins() -> None:
         key="cb_surprise",
         display_name="CB Surprise (Dovish × Neutral × Hawkish)",
         description=(
-            "3-state central bank policy surprise regime — z-score of "
-            "30-day change in 2y/1y Treasury yields, SOFR, and 2y-FF "
-            "terminal spread. Target: SPY 3M fwd. Fast signal with 1-3M "
-            "transmission horizon (p=0.011, d=0.58, voln=1.18 at SPY 3M). "
-            "Also strong on duration: IEF 3M d=0.70, TLT 3M d=0.62. "
-            "Best composed with `dispersion` or `liquidity`. DO NOT compose "
-            "with `vol_term` — joint collapses tail states below n=30."
+            "3-state central bank policy surprise regime — 5-indicator "
+            "composite of Treasury yield changes (1y, 2y), SOFR, 2y-FF "
+            "spread 3M change, and 10y-2y curve slope change. Target: "
+            "SPY 3M fwd; also strong on duration (IEF/TLT 3M). Fast signal "
+            "with 1-3M transmission horizon. Top indicator `cb_FFSpread_3M` "
+            "carries post-2010 IC +0.249 on SPY 3M. Publication lag: zero "
+            "— validators should pass `data_lag_months=0` (default lag=1 "
+            "costs ~0.26 d on duration). Rebuilt 2026-04-12 after audit "
+            "found the hl=3 baseline was degenerate (98% Neutral, <5 tail "
+            "observations). Best composed with `dispersion` or `liquidity`. "
+            "DO NOT compose with `vol_term`."
         ),
         states=["Dovish", "Neutral", "Hawkish"],
         dimensions=["CBSurprise"],
         regime_class=CBSurpriseRegime,
         default_params={
-            "z_window": 60,    # 5y — policy regimes are shorter
+            "z_window": 60,     # 5y — policy regimes are shorter
             "sensitivity": 2.0,
-            # hl=3 — sweep showed 3x improvement in SPY fwd-3m spread
-            # (+5.2% → +19.0%) vs the prior hl=1 + confirm_months=1 setup.
-            "smooth_halflife": 3,
+            # hl=1 — the ONLY smoothing level in the audit that produces a
+            # non-degenerate state distribution. At hl≥2 the smoothed
+            # P_Dovish/P_Hawkish rarely exceed 0.50, so argmax collapses to
+            # Neutral 95%+ of the time. See scripts/_cb_surprise_audit_report.md
+            # section 0 for the full state balance sweep.
+            "smooth_halflife": 1,
         },
         has_strategy=False,
         category="axis",
