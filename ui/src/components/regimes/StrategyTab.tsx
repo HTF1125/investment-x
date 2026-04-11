@@ -194,6 +194,63 @@ export function StrategyTab({ strategy, model }: Props) {
         />
       </PanelCard>
 
+      {/* Holdings history (stacked area) */}
+      {strategy.holdings_history && strategy.holdings_history.dates.length > 0 && (() => {
+        const hh = strategy.holdings_history!;
+        // Collect all tickers that appear in any month
+        const tickerSet: Record<string, true> = {};
+        for (const h of hh.holdings) {
+          for (const t of Object.keys(h)) tickerSet[t] = true;
+        }
+        const holdTickers = Object.keys(tickerSet).sort();
+        // Build stacked area traces
+        const traces = holdTickers.map((ticker) => ({
+          x: hh.dates,
+          y: hh.holdings.map((h) => (h[ticker] ?? 0) * 100),
+          name: ticker,
+          type: 'scatter' as const,
+          mode: 'lines' as const,
+          stackgroup: 'one',
+          line: { width: 0.5, color: ASSET_COLORS[ticker] || '#9AA4B2' },
+          fillcolor: ASSET_COLORS[ticker]
+            ? `rgba(${hexToRgb(ASSET_COLORS[ticker])}, 0.6)`
+            : 'rgba(154,164,178,0.4)',
+        }));
+        return (
+          <PanelCard>
+            <StatLabel>
+              Historical Holdings
+              {strategy.cost_bps != null && (
+                <span className="text-muted-foreground/50 font-normal ml-2">
+                  · {strategy.cost_bps}bps round-trip cost
+                </span>
+              )}
+            </StatLabel>
+            <Plot
+              data={traces}
+              layout={{
+                height: 300,
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { family: 'Space Mono, monospace', size: 10, color: '#9AA4B2' },
+                margin: { l: 40, r: 20, t: 20, b: 36 },
+                yaxis: {
+                  title: { text: 'Weight %' },
+                  range: [0, 100],
+                  gridcolor: 'rgba(148,163,184,0.07)',
+                  zeroline: false,
+                },
+                xaxis: { gridcolor: 'rgba(148,163,184,0.07)', zeroline: false },
+                legend: { orientation: 'h', y: 1.12, x: 0, font: { size: 9 } },
+                shapes,
+              }}
+              config={PLOTLY_CONFIG}
+              style={{ width: '100%', height: '300px' }}
+            />
+          </PanelCard>
+        );
+      })()}
+
       {/* Yearly returns */}
       {strategy.yearly_returns.length > 0 && (
         <PanelCard>
@@ -237,37 +294,30 @@ export function StrategyTab({ strategy, model }: Props) {
         </PanelCard>
       )}
 
-      {/* 8-state allocation table */}
-      <PanelCard>
-        <StatLabel>8-State Allocation Templates (Macro × Liquidity)</StatLabel>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-[11px]">
-            <thead>
-              <tr className="border-b border-border/30 text-muted-foreground/60 uppercase tracking-wider text-[10px]">
-                <th className="text-left py-2 px-2">Regime</th>
-                <th className="text-left py-2 px-2">Liquidity</th>
-                {['SPY', 'IEF', 'GLD', 'TIP', 'BIL'].map((a) => (
-                  <th key={a} className="text-center py-2 px-2">{a}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {stateOrder.flatMap((r) =>
-                ['Easing', 'Tightening'].map((liq) => {
-                  const key = `${r}+${liq}`;
-                  const tmpl = strategy.allocation_templates[key];
-                  if (!tmpl) return null;
-                  const rColor = getRegimeColor(r, model);
-                  const lColor = liq === 'Easing' ? '#48A86E' : '#D65656';
+      {/* Allocation templates by regime state */}
+      {strategy.allocation_templates && Object.keys(strategy.allocation_templates).length > 0 && (
+        <PanelCard>
+          <StatLabel>Allocation Templates by Regime State</StatLabel>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-border/30 text-muted-foreground/60 uppercase tracking-wider text-[10px]">
+                  <th className="text-left py-2 px-2">Regime State</th>
+                  {(strategy.assets || []).map((a) => (
+                    <th key={a} className="text-center py-2 px-2">{a}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(strategy.allocation_templates).map(([state, tmpl]) => {
+                  if (!tmpl || Object.keys(tmpl).length === 0) return null;
+                  const rColor = getRegimeColor(state, model);
                   return (
-                    <tr key={key} className="border-b border-border/20">
-                      <td className="py-1.5 px-2 font-semibold" style={{ color: rColor }}>
-                        {r}
+                    <tr key={state} className="border-b border-border/20">
+                      <td className="py-1.5 px-2 font-semibold whitespace-nowrap" style={{ color: rColor }}>
+                        {state}
                       </td>
-                      <td className="py-1.5 px-2" style={{ color: lColor }}>
-                        {liq}
-                      </td>
-                      {['SPY', 'IEF', 'GLD', 'TIP', 'BIL'].map((a) => {
+                      {(strategy.assets || []).map((a) => {
                         const w = tmpl[a] ?? 0;
                         const pct = Math.round(w * 100);
                         return (
@@ -286,12 +336,12 @@ export function StrategyTab({ strategy, model }: Props) {
                       })}
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </PanelCard>
+                })}
+              </tbody>
+            </table>
+          </div>
+        </PanelCard>
+      )}
     </div>
   );
 }

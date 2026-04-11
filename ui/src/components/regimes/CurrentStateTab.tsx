@@ -11,12 +11,22 @@ import {
   getDimensionColor,
   getRegimeDescription,
 } from './constants';
-import { fmtPct, fmtZ, hexToRgb } from './helpers';
-import { Plot, PanelCard, StatLabel } from './SharedComponents';
+import { fmtPct, fmtZ, hexToRgb, retColor } from './helpers';
+import { Plot, PanelCard, RobustnessCard, ForwardValidationCard, CompositeRobustnessStrip, CompositeForwardStrip, StatLabel } from './SharedComponents';
 
 interface Props {
   state: CurrentState;
   model?: RegimeModel;
+  /** Probability-weighted expected annual return per asset, sourced
+   *  from `asset_analytics.expected_returns`. When provided, the
+   *  Decision Card swaps its symbolic Tilt Long / Avoid lists for the
+   *  same asset row that anchors the bottom of the Asset Performance
+   *  tab — concrete numbers beat tickers-as-labels. */
+  expectedReturns?: Record<string, number>;
+  /** Per-axis registered models for the active composition. When set
+   *  and > 1 entry, the composite Robustness strip renders one mini
+   *  tier badge per input axis. Ignored in single-regime mode. */
+  inputModels?: RegimeModel[];
 }
 
 /** Inline SVG sparkline for dimension Z history. Renders a single
@@ -99,7 +109,7 @@ function JointStateChips({ dom, model }: { dom: string; model?: RegimeModel }) {
   );
 }
 
-export function CurrentStateTab({ state, model }: Props) {
+export function CurrentStateTab({ state, model, expectedReturns, inputModels }: Props) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const [gatesExplainerOpen, setGatesExplainerOpen] = useState(false);
@@ -195,44 +205,78 @@ export function CurrentStateTab({ state, model }: Props) {
                 )}
               </div>
 
-              {/* Tilt long */}
-              {dc.tilt_long.length > 0 && (
-                <div className="flex items-baseline gap-1.5">
-                  <StatLabel>Tilt Long</StatLabel>
-                  {dc.tilt_long.map((t) => (
-                    <span
-                      key={t}
-                      className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-semibold"
-                      style={{
-                        color: 'rgb(var(--success))',
-                        background: 'rgb(var(--success) / 0.08)',
-                        border: '1px solid rgb(var(--success) / 0.30)',
-                      }}
-                    >
-                      {t}
-                    </span>
-                  ))}
+              {/* Probability-weighted expected annual returns —
+                  same data and formatting as the row at the bottom of
+                  the Asset Performance tab. Sorted descending so the
+                  best-positioned asset reads first. Falls back to the
+                  legacy Tilt Long / Avoid badges only when expected
+                  returns are not yet loaded. */}
+              {expectedReturns && Object.keys(expectedReturns).length > 0 ? (
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <StatLabel>Expected (1Y)</StatLabel>
+                  {Object.entries(expectedReturns)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([ticker, ret]) => {
+                      const color = retColor(ret);
+                      return (
+                        <span
+                          key={ticker}
+                          className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-semibold inline-flex items-baseline gap-1.5"
+                          style={{
+                            color,
+                            background: 'rgb(var(--surface) / 0.6)',
+                            border: '1px solid rgb(var(--border) / 0.5)',
+                          }}
+                          title={`${ticker} · probability-weighted expected annual return`}
+                        >
+                          <span className="text-foreground/90">{ticker}</span>
+                          <span>
+                            {ret >= 0 ? '+' : ''}
+                            {(ret * 100).toFixed(1)}%
+                          </span>
+                        </span>
+                      );
+                    })}
                 </div>
-              )}
-
-              {/* Tilt short */}
-              {dc.tilt_short.length > 0 && (
-                <div className="flex items-baseline gap-1.5">
-                  <StatLabel>Avoid</StatLabel>
-                  {dc.tilt_short.map((t) => (
-                    <span
-                      key={t}
-                      className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-semibold"
-                      style={{
-                        color: 'rgb(var(--destructive))',
-                        background: 'rgb(var(--destructive) / 0.08)',
-                        border: '1px solid rgb(var(--destructive) / 0.30)',
-                      }}
-                    >
-                      {t}
-                    </span>
-                  ))}
-                </div>
+              ) : (
+                <>
+                  {dc.tilt_long.length > 0 && (
+                    <div className="flex items-baseline gap-1.5">
+                      <StatLabel>Tilt Long</StatLabel>
+                      {dc.tilt_long.map((t) => (
+                        <span
+                          key={t}
+                          className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-semibold"
+                          style={{
+                            color: 'rgb(var(--success))',
+                            background: 'rgb(var(--success) / 0.08)',
+                            border: '1px solid rgb(var(--success) / 0.30)',
+                          }}
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {dc.tilt_short.length > 0 && (
+                    <div className="flex items-baseline gap-1.5">
+                      <StatLabel>Avoid</StatLabel>
+                      {dc.tilt_short.map((t) => (
+                        <span
+                          key={t}
+                          className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-semibold"
+                          style={{
+                            color: 'rgb(var(--destructive))',
+                            background: 'rgb(var(--destructive) / 0.08)',
+                            border: '1px solid rgb(var(--destructive) / 0.30)',
+                          }}
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
 
               {/* DC gates */}
@@ -432,7 +476,7 @@ export function CurrentStateTab({ state, model }: Props) {
                 </span>
               </div>
               {state.transitioning && (
-                <p className="text-[10px] text-amber-500 uppercase tracking-wider mt-1">
+                <p className="text-[10px] text-warning uppercase tracking-wider mt-1">
                   ⚠ Regime transitioning
                 </p>
               )}

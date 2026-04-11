@@ -9,14 +9,11 @@ import { X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetchJson } from '@/lib/api';
+import { DynamicImportLoader } from '@/components/shared/LoadingSpinner';
 
 const ChartGrid = dynamic(() => import('@/components/dashboard/ChartGrid'), {
   ssr: false,
-  loading: () => (
-    <div className="h-full flex items-center justify-center">
-      <div className="w-3.5 h-3.5 border-2 border-border/50 border-t-foreground/60 rounded-full animate-spin" />
-    </div>
-  ),
+  loading: () => <DynamicImportLoader />,
 });
 
 export default function Home() {

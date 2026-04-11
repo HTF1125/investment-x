@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import AppShell from '@/components/layout/AppShell';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import {
   Loader2, AlertTriangle, FileText, ExternalLink, Upload, Trash2,
   Search, X, Pencil, Check, Shield, Activity, ChevronRight,
@@ -78,10 +79,7 @@ const TABS: { key: ResearchTab; label: string; shortLabel: string; icon: React.R
 function LazyFallback({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="flex flex-col items-center gap-3 animate-fade-in">
-        <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
-        <span className="stat-label text-muted-foreground/40">{label}</span>
-      </div>
+      <LoadingSpinner label={label} size="section" />
     </div>
   );
 }
@@ -623,12 +621,7 @@ function FilesContent() {
           </AnimatePresence>
 
           {showLoading ? (
-            <div className="flex items-center justify-center py-24">
-              <div className="flex flex-col items-center gap-3 animate-fade-in">
-                <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
-                <span className="stat-label text-muted-foreground/40">Loading research files</span>
-              </div>
-            </div>
+            <LoadingSpinner label="Loading research files" size="section" />
           ) : isError ? (
             <div className="flex items-center justify-center py-24">
               <div className="flex flex-col items-center gap-3 text-center max-w-xs animate-fade-in">

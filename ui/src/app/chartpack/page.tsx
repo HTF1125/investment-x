@@ -3,6 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -150,12 +151,7 @@ export default function ChartPackPage() {
   return (
     <Suspense fallback={
       <AppShell hideFooter>
-        <div className="h-[calc(100vh-56px)] flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3 animate-fade-in">
-            <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
-            <span className="stat-label text-muted-foreground/40">Loading chart packs</span>
-          </div>
-        </div>
+        <LoadingSpinner label="Loading chart packs" size="page" />
       </AppShell>
     }>
       <ChartPacksPageInner />

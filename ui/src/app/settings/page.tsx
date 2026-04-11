@@ -13,7 +13,7 @@ const PYTHON_CODE = `import requests
 import pandas as pd
 from io import StringIO
 
-BASE_URL = "http://localhost:8001"
+BASE_URL = "http://localhost:8000"
 EMAIL = "you@example.com"
 PASSWORD = "your_password"
 

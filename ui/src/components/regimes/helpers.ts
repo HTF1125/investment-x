@@ -27,6 +27,17 @@ export function safeNum(v: number | null | undefined, fallback = 0): number {
   return v;
 }
 
+/** Theme-aware color for an annual return value. Banded:
+ *  > +5%  → success, > −5% → warning, otherwise destructive. */
+export function retColor(ret: number | null | undefined): string {
+  if (ret === null || ret === undefined || Number.isNaN(ret)) {
+    return 'rgb(var(--muted-foreground) / 0.4)';
+  }
+  if (ret > 0.05) return 'rgb(var(--success))';
+  if (ret > -0.05) return 'rgb(var(--warning))';
+  return 'rgb(var(--destructive))';
+}
+
 /** Convert hex color to rgb string. */
 export function hexToRgb(hex: string): string {
   const h = hex.replace('#', '');

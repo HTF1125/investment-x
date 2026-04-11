@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, AlertCircle, Info } from 'lucide-react';
+import { AlertCircle, Info } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useTheme } from '@/context/ThemeContext';
 import { THEME_TOKENS } from '@/lib/chartTheme';
@@ -8,25 +8,18 @@ import { PLOTLY_CONFIG, CHART_M, REGIME_ORDER, REGIME_COLORS } from './constants
 import { fmtPct } from './helpers';
 import type { PlotlyFigure } from '@/lib/chartTheme';
 import type { SummaryIndex } from './types';
+import CanonicalLoadingSpinner, {
+  DynamicImportLoader,
+} from '@/components/shared/LoadingSpinner';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
-  loading: () => (
-    <div className="h-full w-full flex items-center justify-center bg-background/50">
-      <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
-    </div>
-  ),
+  loading: () => <DynamicImportLoader />,
 }) as any;
 
+/** @deprecated — re-export of the canonical loader in `components/shared/`. */
 export function LoadingSpinner({ label }: { label?: string }) {
-  return (
-    <div className="flex items-center justify-center py-10">
-      <div className="flex flex-col items-center gap-2">
-        <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
-        <span className="text-[11.5px] text-muted-foreground/50 tracking-widest uppercase">{label ?? 'Loading'}</span>
-      </div>
-    </div>
-  );
+  return <CanonicalLoadingSpinner label={label} size="section" />;
 }
 
 export function ErrorBox({ message }: { message: string }) {

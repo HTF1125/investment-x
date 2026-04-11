@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { apiFetchJson } from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 import { Loader2, ArrowLeft, Activity, AlertTriangle, BarChart3 } from 'lucide-react';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import type { ApiIndex } from './Technicals';
 import VomoSparkline from './VomoSparkline';
 
@@ -51,22 +52,23 @@ function regimeColor(regime: string): string {
 
 const MarketStatusBar = memo(function MarketStatusBar({
   summary,
+  displayIndices,
   detailsLoading,
   indexCount,
   onOpenBriefing,
 }: {
   summary: VamsSummary | undefined;
+  displayIndices: ApiIndex[];
   detailsLoading: boolean;
   indexCount: number;
   onOpenBriefing?: () => void;
 }) {
   if (!summary) return null;
 
-  const indices = summary.indices ?? [];
-  const bulls = indices.filter(i => i.regime === 'Bull').length;
-  const bears = indices.filter(i => i.regime === 'Bear').length;
-  const neutrals = indices.filter(i => i.regime === 'Neutral').length;
-  const cacri = summary.cacri;
+  const bulls = displayIndices.filter(i => i.regime === 'Bull').length;
+  const bears = displayIndices.filter(i => i.regime === 'Bear').length;
+  const neutrals = displayIndices.filter(i => i.regime === 'Neutral').length;
+  const cacri = summary.cacri ?? 0;
   const cacriPositive = cacri >= 0;
 
   return (
@@ -337,10 +339,7 @@ export default function ChartGrid({ onOpenBriefing }: { onOpenBriefing?: () => v
   if (summaryLoading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3 animate-fade-in">
-          <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
-          <span className="stat-label text-muted-foreground/40">Loading market data</span>
-        </div>
+        <LoadingSpinner label="Loading market data" size="section" />
       </div>
     );
   }
@@ -364,6 +363,7 @@ export default function ChartGrid({ onOpenBriefing }: { onOpenBriefing?: () => v
       {/* Market Status Bar */}
       <MarketStatusBar
         summary={summary}
+        displayIndices={displayIndices}
         detailsLoading={detailsLoading}
         indexCount={displayIndices.length}
         onOpenBriefing={onOpenBriefing}

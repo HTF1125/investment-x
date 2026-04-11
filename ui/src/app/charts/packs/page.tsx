@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { ChartErrorBoundary } from '@/components/shared/ChartErrorBoundary';
 import { apiFetchJson } from '@/lib/api';
 import { getApiCode, buildChartFigure } from '@/lib/buildChartFigure';
@@ -584,12 +585,7 @@ export default function ChartPacksPage() {
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
           {packsLoading && !packs ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3 animate-fade-in">
-                <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
-                <span className="stat-label text-muted-foreground/40">Loading chart packs</span>
-              </div>
-            </div>
+            <LoadingSpinner label="Loading chart packs" size="section" className="h-full" />
           ) : packsError && !packs ? (
             <div className="h-full flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-center max-w-xs animate-fade-in">

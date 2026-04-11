@@ -4,6 +4,7 @@ export { IndicatorsTab } from './IndicatorsTab';
 export { AssetPerformanceTab } from './AssetPerformanceTab';
 export { PlaybookTab } from './PlaybookTab';
 export { StrategyTab } from './StrategyTab';
+export { EnsembleView } from './EnsembleView';
 export { ModelTab } from './ModelTab';
 export { AxisDock } from './AxisDock';
 export { LoadingSpinner, ErrorBox, PanelCard, StatLabel } from './SharedComponents';

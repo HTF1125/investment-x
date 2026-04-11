@@ -10,18 +10,20 @@ import {
   CurrentStateTab,
   HistoryTab,
   AssetPerformanceTab,
+  StrategyTab,
+  EnsembleView,
   ModelTab,
   LoadingSpinner,
-  REGIME_TABS,
   COMPOSITION_PRESETS,
 } from '@/components/regimes';
 import type {
-  RegimeTab,
   RegimeModel,
   ModelsResponse,
   CurrentStateResponse,
   TimeseriesResponse,
   AssetAnalyticsResponse,
+  StrategyResponse,
+  EnsembleResponse,
   MetaResponse,
   ComposeResponse,
 } from '@/components/regimes/types';
@@ -31,15 +33,9 @@ export default function MacroRegimePage() {
     document.title = 'Macro Regime | Investment-X';
   }, []);
 
-  const [activeTab, setActiveTab] = useState<RegimeTab>('current');
-
-  // ── Default selection: growth + inflation ──
-  // The page lands on the classic two-axis macro composition immediately,
-  // since it's the most common starting point for macro research. User can
-  // add/remove axes to customize. The composite is generated mechanically —
-  // states are joint-named (e.g. "Expansion+Falling") with no prior labels.
+  // ── No default selection ── user picks from the AxisDock.
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
-    () => new Set(['growth', 'inflation']),
+    () => new Set(),
   );
 
   // ── Models list ──
@@ -83,12 +79,12 @@ export default function MacroRegimePage() {
     staleTime: 600_000,
   });
 
-  // ── Single-mode tab queries ──
+  // ── Single-mode queries (all sections render at once, no tab gating) ──
   const currentQuery = useQuery({
     queryKey: ['regime-current', singleKey],
     queryFn: () =>
       apiFetchJson<CurrentStateResponse>(`/api/regimes/${singleKey}/current`),
-    enabled: mode === 'single' && activeTab === 'current',
+    enabled: mode === 'single',
     staleTime: 120_000,
   });
 
@@ -96,7 +92,7 @@ export default function MacroRegimePage() {
     queryKey: ['regime-timeseries', singleKey],
     queryFn: () =>
       apiFetchJson<TimeseriesResponse>(`/api/regimes/${singleKey}/timeseries`),
-    enabled: mode === 'single' && activeTab === 'history',
+    enabled: mode === 'single',
     staleTime: 120_000,
   });
 
@@ -104,8 +100,28 @@ export default function MacroRegimePage() {
     queryKey: ['regime-assets', singleKey],
     queryFn: () =>
       apiFetchJson<AssetAnalyticsResponse>(`/api/regimes/${singleKey}/assets`),
-    enabled: mode === 'single' && activeTab === 'assets',
+    enabled: mode === 'single',
     staleTime: 120_000,
+  });
+
+  const strategyQuery = useQuery({
+    queryKey: ['regime-strategy', singleKey],
+    queryFn: () =>
+      apiFetchJson<StrategyResponse>(`/api/regimes/${singleKey}/strategy`),
+    enabled: mode === 'single',
+    staleTime: 120_000,
+    retry: false,
+  });
+
+  const [ensembleUniverse, setEnsembleUniverse] = useState<'broad' | 'equity'>('broad');
+
+  const ensembleQuery = useQuery({
+    queryKey: ['regime-ensemble', ensembleUniverse],
+    queryFn: () =>
+      apiFetchJson<EnsembleResponse>(`/api/regimes/ensemble?universe=${ensembleUniverse}`),
+    enabled: mode === 'empty',
+    staleTime: 600_000,
+    retry: false,
   });
 
   // Methodology popover toggle (must be declared before metaQuery so it
@@ -120,18 +136,10 @@ export default function MacroRegimePage() {
     staleTime: 600_000,
   });
 
+  // Primary query for top-level loading/error state. In single mode, the
+  // current-state endpoint is the cheapest and arrives first.
   const activeQuery =
-    mode === 'composite'
-      ? composeQuery
-      : activeTab === 'current'
-      ? currentQuery
-      : activeTab === 'history'
-      ? tsQuery
-      : activeTab === 'assets'
-      ? assetsQuery
-      : activeTab === 'model'
-      ? metaQuery
-      : currentQuery;
+    mode === 'composite' ? composeQuery : currentQuery;
 
   // Methodology query — always uses the active mode's metadata
   const methodologyMeta =
@@ -145,6 +153,16 @@ export default function MacroRegimePage() {
     : undefined;
   const composedModel = mode === 'composite' ? composeQuery.data?.model : undefined;
   const effectiveModel = mode === 'composite' ? composedModel : singleModel;
+
+  // Per-axis input models for the composite Robustness strip — preserves
+  // the full quality snapshot (tier, overlaps, t14 flag) that the
+  // synthesized composedModel does not carry.
+  const inputModels: RegimeModel[] = useMemo(() => {
+    if (mode !== 'composite') return [];
+    return selectedKeyList
+      .map((k) => allModels.find((m) => m.key === k))
+      .filter((m): m is RegimeModel => Boolean(m));
+  }, [mode, selectedKeyList, allModels]);
 
   // ── Hero state extraction (works for both modes) — used for the
   // "as of" timestamp in the header. Regime colors are applied inside
@@ -290,9 +308,13 @@ export default function MacroRegimePage() {
             );
           })()}
 
-          {/* ── Axis Dock ── anchored in a sub-band rail ── */}
+        </div>
+
+        {/* ── Main split: AxisDock sidebar (left) + content column (right) ── */}
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+          {/* Left sidebar — AxisDock */}
           {selectableModels.length > 0 && (
-            <div className="border-t border-border/40 bg-[rgb(var(--surface))]/50 px-3 sm:px-5 lg:px-6 py-2">
+            <aside className="md:w-[260px] lg:w-[280px] md:shrink-0 md:h-full md:min-h-0 md:border-r md:border-border/40 border-b border-border/40 md:border-b-0 bg-[rgb(var(--surface))]/40">
               <AxisDock
                 models={selectableModels}
                 selectedKeys={selectedKeys}
@@ -303,51 +325,38 @@ export default function MacroRegimePage() {
                     : undefined
                 }
               />
-            </div>
+            </aside>
           )}
-        </div>
 
-        {/* ── Tab bar ── segmented monospace with vertical rules ── */}
-        <div className="shrink-0 border-b border-border/40 bg-background px-3 sm:px-5 lg:px-6 sticky top-[56px] z-20 md:static md:z-auto">
-          <div className="flex overflow-x-auto no-scrollbar">
-            {REGIME_TABS.map((tab, idx) => {
-              const isActive = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`relative whitespace-nowrap px-4 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-[0.10em] transition-colors ${
-                    isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-                  } ${idx > 0 ? 'border-l border-border/30' : ''}`}
-                >
-                  {tab.label}
-                  {isActive && (
-                    <span className="absolute left-0 right-0 bottom-0 h-[2px] bg-accent" aria-hidden />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── Tab content ── natural flow on mobile, scroll container on md+ ── */}
+          {/* Right main column — all sections stacked (no tabs) */}
+          <div className="flex-1 min-h-0 flex flex-col">
         <div className="md:flex-1 md:min-h-0 md:overflow-y-auto">
           <div className="max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4">
             {mode === 'empty' ? (
-              <div className="h-full flex items-center justify-center py-20">
-                <div className="flex flex-col items-center gap-3 text-center max-w-md">
-                  <Sparkles className="w-6 h-6 text-muted-foreground/40" />
-                  <p className="text-[13px] font-medium text-foreground">
-                    Pick one or more regimes above
-                  </p>
-                  <p className="text-[12px] text-muted-foreground">
-                    Click any tile in the dock to view that single 1D regime,
-                    or pick 2+ to compose them on the fly. Composite states
-                    are generated mechanically from the cartesian product of
-                    each axis (e.g. growth × inflation → 4 joint states).
-                  </p>
+              ensembleQuery.isLoading ? (
+                <div className="h-full flex items-center justify-center py-20">
+                  <LoadingSpinner label="Computing IC-weighted ensemble" />
                 </div>
-              </div>
+              ) : ensembleQuery.data ? (
+                <EnsembleView
+                  data={ensembleQuery.data}
+                  universe={ensembleUniverse}
+                  onUniverseChange={setEnsembleUniverse}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center py-20">
+                  <div className="flex flex-col items-center gap-3 text-center max-w-md">
+                    <Sparkles className="w-6 h-6 text-muted-foreground/40" />
+                    <p className="text-[13px] font-medium text-foreground">
+                      Pick one or more regimes
+                    </p>
+                    <p className="text-[12px] text-muted-foreground">
+                      Click any tile in the dock to view that single 1D regime,
+                      or pick 2+ to compose them on the fly.
+                    </p>
+                  </div>
+                </div>
+              )
             ) : activeQuery.isError ? (
               <div className="h-full flex items-center justify-center py-20">
                 <div className="flex flex-col items-center gap-3 text-center max-w-xs">
@@ -368,49 +377,66 @@ export default function MacroRegimePage() {
                 label={
                   mode === 'composite'
                     ? `Composing ${selectedKeyList.join(' × ')}`
-                    : `Loading ${REGIME_TABS.find((t) => t.key === activeTab)?.label}`
+                    : 'Loading regime'
                 }
               />
             ) : mode === 'composite' && composeQuery.data ? (
-              <>
-                {activeTab === 'current' && (
-                  <CurrentStateTab
-                    state={composeQuery.data.current_state}
-                    model={composedModel}
-                  />
-                )}
-                {activeTab === 'history' && (
-                  <HistoryTab
-                    ts={composeQuery.data.timeseries}
-                    model={composedModel}
-                  />
-                )}
-                {activeTab === 'assets' && composeQuery.data.asset_analytics && (
+              <div className="flex flex-col gap-6">
+                <CurrentStateTab
+                  state={composeQuery.data.current_state}
+                  model={composedModel}
+                  expectedReturns={
+                    composeQuery.data.asset_analytics?.expected_returns
+                  }
+                  inputModels={inputModels}
+                />
+                <HistoryTab
+                  ts={composeQuery.data.timeseries}
+                  model={composedModel}
+                />
+                {composeQuery.data.asset_analytics && (
                   <AssetPerformanceTab
                     analytics={composeQuery.data.asset_analytics}
                     model={composedModel}
                   />
                 )}
-              </>
+                {composeQuery.data.strategy && (
+                  <StrategyTab
+                    strategy={composeQuery.data.strategy}
+                    model={composedModel}
+                  />
+                )}
+              </div>
             ) : (
-              <>
-                {activeTab === 'current' && currentQuery.data && (
+              <div className="flex flex-col gap-6">
+                {currentQuery.data && (
                   <CurrentStateTab
                     state={currentQuery.data.current_state}
                     model={singleModel}
+                    expectedReturns={
+                      assetsQuery.data?.asset_analytics?.expected_returns
+                    }
                   />
                 )}
-                {activeTab === 'history' && tsQuery.data && (
+                {tsQuery.data && (
                   <HistoryTab ts={tsQuery.data.timeseries} model={singleModel} />
                 )}
-                {activeTab === 'assets' && assetsQuery.data && (
+                {assetsQuery.data && (
                   <AssetPerformanceTab
                     analytics={assetsQuery.data.asset_analytics}
                     model={singleModel}
                   />
                 )}
-              </>
+                {strategyQuery.data?.strategy && (
+                  <StrategyTab
+                    strategy={strategyQuery.data.strategy}
+                    model={singleModel}
+                  />
+                )}
+              </div>
             )}
+          </div>
+        </div>
           </div>
         </div>
 

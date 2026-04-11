@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchJson } from '@/lib/api';
 import AppShell from '@/components/layout/AppShell';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ExcalidrawEditor from '@/components/whiteboard/ExcalidrawEditor';
 import {
   Plus, ArrowLeft, Loader2, Trash2, PenTool, Clock, LayoutTemplate,
@@ -350,11 +351,7 @@ function WhiteboardEditorView({ whiteboardId }: { whiteboardId: string }) {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
-      </div>
-    );
+    return <LoadingSpinner size="section" className="h-full" />;
   }
 
   if (error || !wb) {
@@ -456,11 +453,7 @@ function WhiteboardContent() {
 export default function WhiteboardPage() {
   return (
     <Suspense
-      fallback={
-        <div className="flex items-center justify-center h-screen bg-background">
-          <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
-        </div>
-      }
+      fallback={<LoadingSpinner size="page" />}
     >
       <WhiteboardContent />
     </Suspense>

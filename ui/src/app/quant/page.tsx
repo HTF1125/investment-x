@@ -12,17 +12,11 @@ import { applyChartTheme } from '@/lib/chartTheme';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useResponsiveSidebar } from '@/hooks/useResponsiveSidebar';
 import { ChartErrorBoundary } from '@/components/shared/ChartErrorBoundary';
+import LoadingSpinner, { DynamicImportLoader } from '@/components/shared/LoadingSpinner';
 
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
-  loading: () => (
-    <div className="h-full w-full flex items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
-        <span className="text-[12.5px] text-muted-foreground/50 tracking-widest uppercase">Loading Chart</span>
-      </div>
-    </div>
-  ),
+  loading: () => <DynamicImportLoader />,
 }) as any;
 
 // ─── Types & Constants ────────────────────────────────────────────────────────
@@ -438,12 +432,7 @@ export default function QuantPage() {
       >
         <div ref={plotContainerRef} className="h-full w-full">
           {isLoading ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="flex flex-col items-center gap-2.5">
-                <Loader2 className="w-5 h-5 animate-spin text-primary/50" />
-                <span className="stat-label">Running analysis...</span>
-              </div>
-            </div>
+            <LoadingSpinner label="Running analysis" size="section" className="h-full" />
           ) : isError ? (
             <div className="h-full flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-center max-w-xs animate-fade-in">

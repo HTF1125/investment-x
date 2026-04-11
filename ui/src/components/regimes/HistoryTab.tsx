@@ -25,18 +25,22 @@ export function HistoryTab({ ts, model }: Props) {
   const stateOrder = getRegimeOrder(model);
   const dimOrder = model?.dimensions ?? ['Growth', 'Inflation', 'Liquidity'];
 
-  // Stacked area for raw probabilities
+  // Stacked area — use smoothed probabilities so the last data point
+  // matches the CurrentStateTab hero probability (both read S_P_*).
+  // Fall back to raw_probabilities for backward compatibility with
+  // snapshots computed before the rename.
+  const probSource = ts.smoothed_probabilities ?? ts.raw_probabilities ?? ts.probabilities ?? {};
   const probTraces = stateOrder
-    .filter((r) => ts.probabilities[r])
+    .filter((r) => probSource[r])
     .map((r) => ({
       x: ts.dates,
-      y: ts.probabilities[r],
+      y: probSource[r],
       name: r,
       stackgroup: 'one',
       groupnorm: 'fraction' as const,
       fillcolor: `rgba(${hexToRgb(getRegimeColor(r, model))}, 0.65)`,
       line: { width: 0.8, color: getRegimeColor(r, model), shape: 'spline', smoothing: 0.6 },
-      hovertemplate: '%{y:.0%}<extra></extra>',
+      hovertemplate: '<b>%{data.name}</b>  %{y:.2f}<extra></extra>',
     }));
 
   // Composite z-scores — use model's dimensions
@@ -52,7 +56,7 @@ export function HistoryTab({ ts, model }: Props) {
         line: { color, width: 2, shape: 'spline', smoothing: 0.6 },
         fill: 'tozeroy' as const,
         fillcolor: `rgba(${hexToRgb(color)}, 0.08)`,
-        hovertemplate: '%{y:+.2f}σ<extra></extra>',
+        hovertemplate: '<b>%{data.name}</b>  %{y:+.2f}σ<extra></extra>',
       };
     });
 
@@ -63,10 +67,11 @@ export function HistoryTab({ ts, model }: Props) {
   const STEEL_TICK = 'rgba(128,136,148,0.25)';
   const STEEL_PAPER = 'rgb(20,23,28)';
 
+  const BODY_FONT = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   const hoverlabel = {
     bgcolor: 'rgba(20,23,28,0.94)',
     bordercolor: 'rgba(128,136,148,0.35)',
-    font: { family: 'Space Mono, monospace', size: 11, color: STEEL_TEXT },
+    font: { family: BODY_FONT, size: 11, color: STEEL_TEXT },
     align: 'left' as const,
   };
   const spikeAxis = {
@@ -87,12 +92,13 @@ export function HistoryTab({ ts, model }: Props) {
             height: 320,
             paper_bgcolor: 'rgba(0,0,0,0)',
             plot_bgcolor: 'rgba(0,0,0,0)',
-            font: { family: 'Space Mono, monospace', size: 10, color: STEEL_MUTED },
+            font: { family: BODY_FONT, size: 10, color: STEEL_MUTED },
             margin: { l: 52, r: 16, t: 36, b: 36 },
             hovermode: 'x unified',
             hoverlabel,
             yaxis: {
-              title: { text: 'Probability', font: { size: 10, color: STEEL_MUTED }, standoff: 8 },
+              title: { text: 'Probability', font: { family: BODY_FONT, size: 10, color: STEEL_MUTED }, standoff: 8 },
+              tickfont: { family: BODY_FONT },
               tickformat: '.0%',
               range: [0, 1],
               gridcolor: STEEL_GRID,
@@ -103,6 +109,7 @@ export function HistoryTab({ ts, model }: Props) {
               tickcolor: STEEL_TICK,
             },
             xaxis: {
+              tickfont: { family: BODY_FONT },
               gridcolor: STEEL_GRID,
               zeroline: false,
               hoverformat: '%b %Y',
@@ -117,7 +124,7 @@ export function HistoryTab({ ts, model }: Props) {
               y: 1.12,
               x: 0,
               xanchor: 'left',
-              font: { size: 10, color: STEEL_TEXT },
+              font: { family: BODY_FONT, size: 10, color: STEEL_TEXT },
               bgcolor: 'rgba(0,0,0,0)',
               itemsizing: 'constant',
               traceorder: 'normal',
@@ -263,7 +270,7 @@ export function HistoryTab({ ts, model }: Props) {
                     `${(ts.durations![r]?.avg_months ?? 0).toFixed(1)}mo (${ts.durations![r]?.episodes ?? 0} ep)`
                   ),
                   textposition: 'outside',
-                  textfont: { size: 10, family: 'Space Mono' },
+                  textfont: { size: 10, family: BODY_FONT },
                   hovertemplate: '<b>%{y}</b>: %{text}<extra></extra>',
                 },
               ]}
@@ -271,14 +278,15 @@ export function HistoryTab({ ts, model }: Props) {
                 height: 260,
                 paper_bgcolor: 'rgba(0,0,0,0)',
                 plot_bgcolor: 'rgba(0,0,0,0)',
-                font: { family: 'Space Mono, monospace', size: 10, color: STEEL_MUTED },
+                font: { family: BODY_FONT, size: 10, color: STEEL_MUTED },
                 margin: { l: 90, r: 100, t: 30, b: 30 },
                 xaxis: {
-                  title: { text: 'Avg Duration (months)' },
+                  title: { text: 'Avg Duration (months)', font: { family: BODY_FONT } },
+                  tickfont: { family: BODY_FONT },
                   gridcolor: STEEL_GRID,
                   zeroline: false,
                 },
-                yaxis: { autorange: 'reversed' },
+                yaxis: { autorange: 'reversed', tickfont: { family: BODY_FONT } },
                 showlegend: false,
               }}
               config={PLOTLY_CONFIG}

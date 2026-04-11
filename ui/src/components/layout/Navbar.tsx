@@ -27,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/chartpack', label: 'ChartPack' },
   { href: '/research', label: 'Research' },
   { href: '/macro', label: 'Macro' },
+  { href: '/credit', label: 'Credit' },
   { href: '/whiteboard', label: 'Whiteboard' },
   { href: '/admin', label: 'System', adminOnly: true },
 ];

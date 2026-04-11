@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { AssetAnalytics, RegimeModel, AssetStat } from './types';
 import { getRegimeColor, getRegimeOrder } from './constants';
-import { hexToRgb } from './helpers';
+import { hexToRgb, retColor } from './helpers';
 import { PanelCard, StatLabel } from './SharedComponents';
 
 interface Props {
@@ -27,13 +27,6 @@ const COLOR_POSITIVE = 'rgb(var(--success))';
 const COLOR_NEGATIVE = 'rgb(var(--destructive))';
 const COLOR_NEUTRAL = 'rgb(var(--warning))';
 const COLOR_MUTED = 'rgb(var(--muted-foreground) / 0.4)';
-
-function retColor(ret: number | null | undefined): string {
-  if (ret === null || ret === undefined) return COLOR_MUTED;
-  if (ret > 0.05) return COLOR_POSITIVE;
-  if (ret > -0.05) return COLOR_NEUTRAL;
-  return COLOR_NEGATIVE;
-}
 
 function sharpeColor(sharpe: number | null | undefined): string {
   if (sharpe === null || sharpe === undefined) return COLOR_MUTED;
@@ -92,6 +85,20 @@ function ddColor(v: number | null | undefined): string {
   return COLOR_NEGATIVE;
 }
 
+/** IC color tiers — 3-tier semantic (institutional). */
+function icColor(ic: number | null | undefined): string {
+  if (ic === null || ic === undefined) return COLOR_MUTED;
+  const abs = Math.abs(ic);
+  if (abs >= 0.10) return COLOR_POSITIVE;
+  if (abs >= 0.05) return COLOR_NEUTRAL;
+  return COLOR_NEGATIVE;
+}
+
+function fmtIC(ic: number | null | undefined): string {
+  if (ic === null || ic === undefined) return '—';
+  return (ic >= 0 ? '+' : '') + ic.toFixed(3);
+}
+
 function getMetricValue(a: AssetStat | undefined, m: MetricKey): number | null | undefined {
   if (!a) return undefined;
   return a[m];
@@ -145,6 +152,7 @@ export function AssetPerformanceTab({ analytics, model }: Props) {
   const hasLiqSplits = Object.keys(liqSplits).length > 0;
   const regimeCounts = analytics.regime_counts || {};
   const separation = analytics.regime_separation || {};
+  const signalIC = analytics.signal_ic || null;
 
   // Build a lookup: {asset -> {state -> AssetStat}}
   const lookup: Record<string, Record<string, AssetStat>> = {};
@@ -195,7 +203,7 @@ export function AssetPerformanceTab({ analytics, model }: Props) {
             })}
           </div>
           <span className="text-[10.5px] text-muted-foreground/60 basis-full md:basis-auto">
-            Sorted by |Cohen&apos;s d| · showing {activeMetric.label} · n&lt;12 dimmed
+            Sorted by |Cohen&apos;s d|{signalIC ? ' · IC = Spearman rank correlation' : ''} · showing {activeMetric.label} · n&lt;12 dimmed
           </span>
         </div>
         <div className="overflow-x-auto">
@@ -211,6 +219,14 @@ export function AssetPerformanceTab({ analytics, model }: Props) {
                 >
                   Cohen d
                 </th>
+                {signalIC && (
+                  <th
+                    className="py-2 px-2 text-right text-[9.5px] uppercase tracking-wider text-muted-foreground/50 border-l border-border/40 align-bottom"
+                    title="Spearman IC — rank correlation between the regime's composite Z-score and the asset's forward return at the designed horizon. |IC|>0.10 moderate, |IC|>0.15 strong."
+                  >
+                    IC
+                  </th>
+                )}
                 {stateOrder.map((state) => {
                   const color = getRegimeColor(state, model);
                   const rgb = hexToRgb(color);
@@ -218,13 +234,20 @@ export function AssetPerformanceTab({ analytics, model }: Props) {
                   return (
                     <th
                       key={state}
-                      className="py-2 px-2 text-center text-[10px] font-bold uppercase tracking-[0.06em] border-l border-border/30 align-bottom whitespace-nowrap leading-tight min-w-[92px]"
+                      className="py-2 px-2 text-center text-[10px] font-bold uppercase tracking-[0.06em] border-l border-border/30 align-bottom leading-tight min-w-[92px]"
                       style={{
                         color,
                         background: `rgba(${rgb}, 0.04)`,
                       }}
                     >
-                      <div className="truncate" title={state}>{state}</div>
+                      <div className="whitespace-normal leading-tight" title={state}>
+                        {state.split('+').map((part, i, arr) => (
+                          <span key={i}>
+                            {part}
+                            {i < arr.length - 1 && <br />}
+                          </span>
+                        ))}
+                      </div>
                       <div className="text-[9px] font-mono tabular-nums text-muted-foreground mt-0.5 normal-case tracking-normal">
                         {count} mo
                       </div>
@@ -260,6 +283,30 @@ export function AssetPerformanceTab({ analytics, model }: Props) {
                         </span>
                       )}
                     </td>
+                    {signalIC && (() => {
+                      const aic = signalIC[ticker];
+                      const icVal = aic?.ic;
+                      const icP = aic?.ic_pvalue;
+                      const icStars = pValueTier(icP);
+                      return (
+                        <td
+                          className="py-1.5 px-2 text-right font-mono font-semibold border-l border-border/40"
+                          style={{ color: icColor(icVal) }}
+                          title={
+                            aic
+                              ? `IC = ${fmtIC(icVal)} · p = ${icP?.toExponential(2) ?? '—'} · n = ${aic.n} · ${aic.horizon}M horizon`
+                              : 'no IC data'
+                          }
+                        >
+                          {fmtIC(icVal)}
+                          {icStars && (
+                            <span className="text-[9px] ml-0.5 text-muted-foreground">
+                              {icStars}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })()}
                     {stateOrder.map((state) => {
                       const a = lookup[ticker]?.[state];
                       const rgb = hexToRgb(getRegimeColor(state, model));
@@ -294,37 +341,6 @@ export function AssetPerformanceTab({ analytics, model }: Props) {
           </table>
         </div>
 
-        {/* Expected returns row — separate because it's across-regime */}
-        {Object.keys(analytics.expected_returns || {}).length > 0 && (
-          <div className="mt-4 pt-3 border-t border-border/30">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2">
-              Current Probability-Weighted Expected Annual Return
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(analytics.expected_returns)
-                .sort((a, b) => b[1] - a[1])
-                .map(([ticker, ret]) => (
-                  <div
-                    key={ticker}
-                    className="rounded-[var(--radius)] border border-border/40 px-2.5 py-1.5 text-[11px]"
-                    style={{
-                      background: `rgba(${hexToRgb(retColor(ret))}, 0.06)`,
-                      borderColor: `rgba(${hexToRgb(retColor(ret))}, 0.25)`,
-                    }}
-                  >
-                    <span className="font-mono font-semibold">{ticker}</span>
-                    <span
-                      className="font-mono ml-2"
-                      style={{ color: retColor(ret) }}
-                    >
-                      {ret >= 0 ? '+' : ''}
-                      {(ret * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
       </PanelCard>
 
       {/* ── 3D Liquidity split table (macro regimes only) ── */}

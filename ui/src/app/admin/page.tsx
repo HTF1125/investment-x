@@ -7,21 +7,19 @@ import UserManager from '@/components/admin/UserManager';
 import AdminLogViewer from '@/components/admin/AdminLogViewer';
 import ProjectStructure from '@/components/admin/ProjectStructure';
 import DataToolsTab from '@/components/admin/DataToolsTab';
-import CreditWatchlistTab from '@/components/admin/CreditWatchlistTab';
 import AppShell from '@/components/layout/AppShell';
 import { useAuth } from '@/context/AuthContext';
-import { Database, ShieldAlert, Users, ScrollText, Terminal, FolderTree, FileSpreadsheet, Shield } from 'lucide-react';
+import { Database, ShieldAlert, Users, ScrollText, Terminal, FolderTree, FileSpreadsheet } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type AdminTab = 'timeseries' | 'users' | 'logs' | 'data' | 'watchlist' | 'system';
+type AdminTab = 'timeseries' | 'users' | 'logs' | 'data' | 'system';
 
 const TABS: { id: AdminTab; label: string; icon: typeof Database; shortcut: string }[] = [
   { id: 'timeseries', label: 'Timeseries', icon: Database,        shortcut: '1' },
   { id: 'users',      label: 'Users',      icon: Users,           shortcut: '2' },
   { id: 'logs',       label: 'Logs',       icon: ScrollText,      shortcut: '3' },
   { id: 'data',       label: 'Data Tools',  icon: FileSpreadsheet, shortcut: '4' },
-  { id: 'watchlist',  label: 'Watchlist',  icon: Shield,          shortcut: '5' },
-  { id: 'system',     label: 'System',     icon: FolderTree,      shortcut: '6' },
+  { id: 'system',     label: 'System',     icon: FolderTree,      shortcut: '5' },
 ];
 
 export default function AdminPage() {
@@ -121,7 +119,6 @@ export default function AdminPage() {
                     {activeTab === 'users' && <UserManager />}
                     {activeTab === 'logs' && <AdminLogViewer />}
                     {activeTab === 'data' && <DataToolsTab />}
-                    {activeTab === 'watchlist' && <CreditWatchlistTab />}
                     {activeTab === 'system' && <ProjectStructure />}
                   </motion.div>
                 </AnimatePresence>

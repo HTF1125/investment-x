@@ -41,18 +41,22 @@ export const REGIME_COLORS: Record<string, string> = {
   // Real Rates (High × Low)
   High:        '#D65656',
   Low:         '#48A86E',
+  // Housing Cycle (Expansion × Contraction) — Expansion already mapped above
+  Contraction: '#D65656',
 };
 
 export const DIMENSION_COLORS: Record<string, string> = {
-  Growth:    '#48A86E',
-  Inflation: '#D65656',
-  Liquidity: '#6B8EAE',
-  Credit:    '#6B8EAE',
-  Dollar:    '#48A86E',
-  Level:     '#D65656',
-  Trend:     '#E0A848',
-  YieldCurve: '#6B8EAE',
-  RealRates:  '#E0A848',
+  Growth:          '#48A86E',
+  Inflation:       '#D65656',
+  Liquidity:       '#6B8EAE',
+  GlobalLiquidity: '#4895B0',
+  Credit:          '#6B8EAE',
+  Dollar:          '#48A86E',
+  Level:           '#D65656',
+  Trend:           '#E0A848',
+  YieldCurve:      '#6B8EAE',
+  RealRates:       '#E0A848',
+  Housing:         '#48A86E',
 };
 
 export const ASSET_COLORS: Record<string, string> = {
@@ -71,9 +75,9 @@ export const REGIME_DESCRIPTIONS: Record<string, string> = {
   Deflation:   'Growth ↓ · Inflation ↓ — recessionary',
   Stagflation: 'Growth ↓ · Inflation ↑ — worst environment',
   Mixed:       'No regime > 30% confidence — ambiguous backdrop',
-  // Liquidity
-  Easing:      'Liquidity conditions supportive — spreads tight, curve positive',
-  Tightening:  'Liquidity conditions stressed — spreads wide, curve inverted',
+  // Liquidity (US domestic)
+  Easing:      'US liquidity easing — Fed expanding, private credit growing, TGA draining',
+  Tightening:  'US liquidity tightening — Fed contracting, credit slowing, TGA refilling',
   // Credit Cycle
   Expansion:   'Spreads tight & falling — healthy credit cycle continuation',
   LateCycle:   'Spreads tight but rising — top-of-cycle warning',
@@ -93,6 +97,8 @@ export const REGIME_DESCRIPTIONS: Record<string, string> = {
   // Real Rates
   High:        'Real rates above rolling 8y history — late-tightening. Contrarian setup for gold 12M fwd.',
   Low:         'Real rates below rolling 8y history — mid-easing. Post-rally consolidation for gold.',
+  // Housing Cycle (Leamer) — Expansion description already set by credit section above
+  Contraction: 'Housing starts/permits/new-sales decelerating — Leamer leading indicator for equity drawdowns',
 };
 
 export const REGIME_TABS: { key: RegimeTab; label: string }[] = [
@@ -129,9 +135,9 @@ export const COMPOSITION_PRESETS: {
     keys: ['credit_level', 'credit_trend'],
   },
   {
-    label: 'Verdad Dollar',
-    description: 'Dollar Level × Dollar Trend — the dollar cycle',
-    keys: ['dollar_level', 'dollar_trend'],
+    label: 'Dollar × Credit',
+    description: 'Dollar Trend × Credit Level — FX-credit crossover',
+    keys: ['dollar_trend', 'credit_level'],
   },
   {
     label: 'Yield Curve',
@@ -142,6 +148,16 @@ export const COMPOSITION_PRESETS: {
     label: 'Risk Triad',
     description: 'Growth × Inflation × Liquidity — the macro risk triad',
     keys: ['growth', 'inflation', 'liquidity'],
+  },
+  {
+    label: 'Liquidity Pair',
+    description: 'US Liquidity × Global Liquidity — domestic plumbing vs global CB cycle',
+    keys: ['liquidity', 'global_liquidity'],
+  },
+  {
+    label: 'EM Driver',
+    description: 'Global Liquidity × Dollar Trend — the twin EM drivers',
+    keys: ['global_liquidity', 'dollar_trend'],
   },
   {
     label: 'Gold Driver',
