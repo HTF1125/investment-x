@@ -1,48 +1,59 @@
-"""PositioningRegime — 2-state contrarian positioning regime.
+"""PositioningRegime — 3-state contrarian positioning regime.
 
 Thesis
 ------
 When everyone who was going to buy has bought, forward returns are low.
 When everyone who was going to sell has sold, forward returns are high.
-Positioning is the single most reliable contrarian indicator at extremes
-— the trick is knowing "everyone" which no single positioning metric can
-tell you in isolation. This regime blends four complementary positioning
-signals into a composite that tops and bottoms together only at the
-rarest 10% of observations:
+Positioning is a reliable contrarian indicator at extremes — the trick
+is triangulating across independent measures of "the crowd." This regime
+blends two direct equity-positioning signals measured on different
+venues (survey vs derivatives) into a composite whose tails correspond
+to the rarest (and most actionable) crowd configurations.
 
-  1. **Asset managers** — CFTC large-trader net long (institutional)
-  2. **Active managers** — NAAIM exposure (advisors running client money)
-  3. **Retail** — AAII bull-bear spread (individual investor survey)
-  4. **Leverage** — NYSE margin debt YoY (aggregate risk-taking)
+Indicators (2, all p_*). Both NOT inverted: high composite z = crowd
+is long = contrarian bearish for forward returns.
 
-When all four are at +1.5σ, that IS "everyone is long." Forward returns
-from that setup have historically been negative. When all four are at
-−1.5σ, that IS "capitulation." Forward returns from there have
-historically been exceptional.
-
-This regime is orthogonal to the 9 existing axes because none of them
-measure positioning. The closest overlap is Liquidity (which uses
-spread + curve + CB data), but positioning is behavioral/microstructure
-and the correlation is usually low.
+    p_NAAIM       — NAAIM Exposure Index (0-200 bullish). Active-
+                    manager average equity exposure. 1027 weekly obs
+                    since 2006-07.
+    p_CFTC_SP500  — CFTC Commitments of Traders net positioning
+                    (long - short) on E-mini S&P 500 futures.
+                    1336 weekly obs since 2000-09.
 
 States
 ------
-- **Extreme Long**  (Pos_Z > +1.0): Crowded long, contrarian bearish.
-  Forward SPY 3m: below average, elevated drawdown risk.
-- **Neutral**       (−1.0 ≤ Pos_Z ≤ +1.0): Normal positioning, no signal.
-  Forward SPY 3m: average.
-- **Capitulation**  (Pos_Z < −1.0): Crowded short / capitulated, contrarian
-  bullish. Forward SPY 3m: strongly positive, this is the high-value state.
+- **ExtremeLong**  (Pos_Z > +1.0): Crowd is crowded long, contrarian
+  bearish. Forward SPY 3m: below average, elevated drawdown risk.
+- **Neutral**      (-1.0 ≤ Pos_Z ≤ +1.0): Normal positioning, no signal.
+- **Capitulation** (Pos_Z < -1.0): Crowd has capitulated, contrarian
+  bullish. Forward SPY 3m: strongly positive, highest-value state.
 
-Indicators (4, all p_*)
-    p_CFTC          — CFTC E-mini SPX asset-manager net long, % of OI
-    p_NAAIM         — NAAIM Exposure Index (0–200 bullish)
-    p_AAII          — AAII Bull minus Bear spread
-    p_MarginDebt    — NYSE margin debt, YoY % change
+**Hard rule compliance:** this does not invert any contrarian gauge
+forbidden by Hard Rule #3 (VIX / FCI / put-call). Positioning inputs
+are used as-is; the contrarian interpretation lives in the state
+mapping (high crowd positioning -> contrarian-bearish ExtremeLong
+state), not in the sign of the inputs.
 
-Publication lag: CFTC weekly (3-day reporting lag), NAAIM weekly,
-AAII weekly, margin debt monthly (2-week reporting lag).
-Target: SPY 3M fwd. Locked. Contrarian mapping.
+Publication lag: NAAIM weekly (same-week), CFTC weekly (3-day reporting
+lag). Target: SPY 3M fwd.
+
+History / audit notes
+---------------------
+- 2026-04-12 rebuilt after the all-regimes triage flagged this as
+  DEGENERATE (4 rows built, 100% Neutral):
+  * Previous loaders referenced `CFTC_GOLD_NET:PX_LAST` /
+    `CFTC_OIL_NET:PX_LAST` which only had 61 obs from 2025-01 -
+    insufficient for a z_window=96 rolling baseline.
+  * Replaced with `NAAIM_EXPOSURE:PX_LAST` (1027 obs since 2006) and
+    the correct FactSet CFTC long/short codes
+    (`CFTNCLALLSP500EMINCMEF_US` / `CFTNCSALLSP500EMINCMEF_US`,
+    1336 obs since 2000). Net = long - short.
+  * Gold / Oil positioning dropped from the composite - those are
+    commodity-overlay positioning, a different channel from direct
+    equity positioning. They belong in a separate regime, not here.
+  * smooth_halflife 3 -> 1 in the registry (same degeneracy fix as
+    cb_surprise - hl=3 collapses 3-state regimes to constant-Neutral
+    because smoothed tail probabilities never cross argmax threshold).
 """
 
 from __future__ import annotations
@@ -68,56 +79,30 @@ class PositioningRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # Data availability note: at the time of build, the CFTC collector
-        # had populated GOLD and OIL net-position series (61 obs each) but
-        # NOT the SP500 / UST10Y / USD / EUR / JPY metadata rows. NAAIM is
-        # fully populated (1028 obs). We use what's actually seeded.
-        #
-        # This regime therefore captures COMMODITY-OVERLAY positioning
-        # rather than direct equity positioning. The 2 CFTC signals are
-        # still contrarian gauges: crowded long gold + crowded short oil
-        # = risk-off flight, crowded short gold + crowded long oil =
-        # cyclical risk-on. The NAAIM signal carries the direct equity
-        # positioning dimension.
-        #
-        # To enable direct equity positioning, run the CFTC collector
-        # with the SP500 / UST10Y contracts enabled, then the regime
-        # will auto-pick up the new series next build without code changes.
+        # p_NAAIM — NAAIM active-manager equity exposure (0-200 scale).
+        # NOT inverted: high NAAIM = crowded long = high composite z
+        # maps to the ExtremeLong (contrarian bearish) state via the
+        # sigmoid + state projection downstream.
+        naaim = _load("NAAIM_EXPOSURE:PX_LAST")
+        if not naaim.empty:
+            rows["p_NAAIM"] = zscore(naaim, z_window).rename("p_NAAIM")
 
-        # [DROPPED: p_NAAIM — full IC -0.053 (DROP), post IC -0.105.
-        #  NAAIM is a contrarian indicator but the sign convention here
-        #  (high NAAIM = high z = high P_ExtremeLong) maps to negative
-        #  forward returns — which means the first state prob (ExtremeLong)
-        #  is inversely correlated with returns. The composite IC measures
-        #  correlation of P_ExtremeLong with returns, so the contrarian
-        #  nature makes it negative. The signal is correct but the IC
-        #  metric penalizes it. Dropping to avoid composite drag.]
-
-        # 2. p_CFTC_Gold — CFTC COT net long gold futures.
-        #    INVERTED: crowded long gold = flight to safety = risk-off.
-        #    So we flip the sign to make risk-on positioning positive.
-        gold = _load("CFTC_GOLD_NET:PX_LAST")
-        if not gold.empty:
-            rows["p_CFTC_Gold"] = zscore(-gold, z_window).rename("p_CFTC_Gold")
-
-        # 3. p_CFTC_Oil — CFTC COT net long oil futures.
-        #    NOT inverted: crowded long oil = cyclical optimism = risk-on.
-        oil = _load("CFTC_OIL_NET:PX_LAST")
-        if not oil.empty:
-            rows["p_CFTC_Oil"] = zscore(oil, z_window).rename("p_CFTC_Oil")
-
-        # 4. p_CFTC_SP500 — CFTC COT net long E-mini S&P 500. Direct
-        #    equity positioning. Currently NOT populated — will load
-        #    automatically once the CFTC collector seeds this contract.
-        cftc_sp = _load("CFTC_SP500_NET:PX_LAST")
-        if not cftc_sp.empty:
-            rows["p_CFTC_SP500"] = zscore(cftc_sp, z_window).rename("p_CFTC_SP500")
+        # p_CFTC_SP500 — CFTC Commitments of Traders net positioning on
+        # E-mini S&P 500 futures. net = long - short across the reporting
+        # aggregate. NOT inverted: high net long = crowd is long =
+        # contrarian bearish (same sign convention as NAAIM).
+        cftc_long = _load("CFTNCLALLSP500EMINCMEF_US")
+        cftc_short = _load("CFTNCSALLSP500EMINCMEF_US")
+        if not cftc_long.empty and not cftc_short.empty:
+            net = (cftc_long - cftc_short).dropna()
+            if not net.empty:
+                rows["p_CFTC_SP500"] = zscore(net, z_window).rename("p_CFTC_SP500")
 
         if not rows:
             log.warning(
-                "Positioning: no indicators loaded. Run the NAAIM + CFTC "
-                "collectors to populate NAAIM_EXPOSURE, CFTC_GOLD_NET, "
-                "CFTC_OIL_NET, CFTC_SP500_NET."
+                "Positioning: no indicators loaded. Expected DB codes: "
+                "'NAAIM_EXPOSURE:PX_LAST', "
+                "'CFTNCLALLSP500EMINCMEF_US', 'CFTNCSALLSP500EMINCMEF_US'."
             )
         return rows
 

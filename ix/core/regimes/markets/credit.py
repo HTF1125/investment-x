@@ -87,22 +87,28 @@ def _load_level_indicators(z_window: int) -> dict[str, pd.Series]:
 
 
 def _load_trend_indicators(z_window: int) -> dict[str, pd.Series]:
-    """3-month absolute ROC z-scores for the HY/IG/BBB OAS series.
+    """3-month absolute ROC z-scores for IG OAS.
 
     Captures the turning-point signal that drives forward-return
     separation. Longer windows go stale; shorter windows are noisy;
     acceleration (2nd derivative) introduces more variance than signal.
     The 3-month diff is empirically the best single-window choice —
     tested against 1m, 6m, and acceleration.
+
+    2026-04-12 rebuild: dropped the HY and BBB ROC variants after the
+    all-regimes triage found:
+    - tr_IG_OAS ↔ tr_BBB_OAS: r = +1.00 (IG and BBB indices are
+      effectively identical at the ROC level)
+    - tr_HY_OAS ↔ tr_BBB_OAS: r = +0.93
+    - tr_HY_OAS ↔ tr_IG_OAS:  r = +0.93
+    Three near-duplicate inputs were triple-counting the same credit-
+    spread turning-point signal. The regime is a known-weak standalone
+    signal (post-2010 IC -0.032 on HYG 6M, all three below the
+    |IC| ≥ 0.03 floor) designed to pair with CreditLevelRegime via the
+    phase_pair mechanism; this single-input trend dimension keeps the
+    building-block semantics without the redundant IC drag.
     """
     rows: dict[str, pd.Series] = {}
-
-    hy_daily = _load("BAMLH0A0HYM2")
-    if not hy_daily.empty:
-        hy = hy_daily.resample("ME").last()
-        rows["tr_HY_OAS"] = zscore_roc(
-            hy, z_window, use_pct=False
-        ).rename("tr_HY_OAS")
 
     ig_daily = _load("BAMLC0A0CM")
     if not ig_daily.empty:
@@ -110,13 +116,6 @@ def _load_trend_indicators(z_window: int) -> dict[str, pd.Series]:
         rows["tr_IG_OAS"] = zscore_roc(
             ig, z_window, use_pct=False
         ).rename("tr_IG_OAS")
-
-    bbb_daily = _load("BAMLC0A4CBBB")
-    if not bbb_daily.empty:
-        bbb = bbb_daily.resample("ME").last()
-        rows["tr_BBB_OAS"] = zscore_roc(
-            bbb, z_window, use_pct=False
-        ).rename("tr_BBB_OAS")
 
     return rows
 

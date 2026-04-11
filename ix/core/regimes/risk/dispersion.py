@@ -73,8 +73,8 @@ class DispersionRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # Sector ETFs (SPDR GICS sectors) — used to compute two dispersion
-        # signals: range (best − worst) and stdev (cross-sectional).
+        # Sector ETFs (SPDR GICS sectors) — used to compute the cross-
+        # sectional dispersion signal below.
         sector_codes = [
             "XLE US EQUITY:PX_LAST", "XLF US EQUITY:PX_LAST",
             "XLK US EQUITY:PX_LAST", "XLV US EQUITY:PX_LAST",
@@ -89,30 +89,28 @@ class DispersionRegime(Regime):
             if not s.empty:
                 sector_data[code] = s.pct_change(3) * 100.0  # 3m return %
 
+        # ds_SectorStdev — cross-sectional standard deviation of 3m sector
+        # returns. High stdev = dispersed (stock-picker's market). Low
+        # stdev = compressed (macro-driven). Stdev is preferred over the
+        # range statistic because it's less sensitive to single-sector
+        # outliers.
         if len(sector_data) >= 5:
             df = pd.DataFrame(sector_data)
-
-            # 1. ds_SectorRange — range of 3m sector returns (best − worst).
-            #    When large, dispersion is high (stock-picking regime).
-            #    When small, everything moved together (macro regime).
-            spread = df.max(axis=1) - df.min(axis=1)
-            rows["ds_SectorRange"] = zscore(spread, z_window).rename(
-                "ds_SectorRange"
-            )
-
-            # 2. ds_SectorStdev — cross-sectional standard deviation of
-            #    3m sector returns. Same intuition as Range but less
-            #    sensitive to one outlier sector dominating. Slower and
-            #    more stable signal.
             stdev = df.std(axis=1)
             rows["ds_SectorStdev"] = zscore(stdev, z_window).rename(
                 "ds_SectorStdev"
             )
 
-        # 3. ds_VIXVol — 30-day stdev of daily VIX changes. When VIX itself
-        #    is volatile, the market is experiencing dispersion in risk
-        #    pricing. When VIX is calm, correlations are high. Proxy for
-        #    the implied-correlation signal that isn't in the DB.
+        # [DROPPED 2026-04-12: ds_SectorRange — triage found r=+0.97 with
+        #  ds_SectorStdev (both are derivatives of the same sector-return
+        #  cross-section). Dropped the range statistic because it's more
+        #  sensitive to single-sector outliers; stdev is the more stable
+        #  of the two.]
+
+        # ds_VIXVol — 30-day stdev of daily VIX changes. When VIX itself
+        # is volatile, the market is experiencing dispersion in risk
+        # pricing. Orthogonal channel from the sector dispersion above
+        # (r=+0.07 in the triage) — genuinely adds information.
         vix = _load("VIX INDEX:PX_LAST")
         if not vix.empty:
             vv = vix.pct_change().rolling(30).std()

@@ -717,16 +717,26 @@ def _register_builtins() -> None:
         key="positioning",
         display_name="Positioning (Extreme Long × Neutral × Capitulation)",
         description=(
-            "3-state contrarian positioning regime — blended z-score of CFTC "
-            "asset manager net long, NAAIM exposure, AAII bull-bear, NYSE "
-            "margin debt YoY. Target: SPY 3M fwd. Signal only fires at the "
-            "tails (|z| > 1). Contrarian mapping: Capitulation state is "
-            "historically the highest-return state."
+            "3-state contrarian positioning regime — composite z-score of "
+            "NAAIM active-manager equity exposure and CFTC net positioning "
+            "on E-mini S&P 500 futures. Target: SPY 3M fwd. Contrarian "
+            "mapping: Capitulation state (crowd is short/capitulated) is "
+            "historically the highest-return state; ExtremeLong (crowd is "
+            "crowded long) is contrarian bearish. Rebuilt 2026-04-12 after "
+            "audit found the prior CFTC_GOLD_NET / CFTC_OIL_NET loaders "
+            "had only 61 observations, producing a degenerate regime."
         ),
         states=["ExtremeLong", "Neutral", "Capitulation"],
         dimensions=["Positioning"],
         regime_class=PositioningRegime,
-        default_params=_DEFAULT_PARAMS.copy(),
+        default_params={
+            **_DEFAULT_PARAMS,
+            # hl=1: same degeneracy fix as cb_surprise. 3-state regimes
+            # with hl >= 2 + sensitivity=2 collapse to constant-Neutral
+            # because the smoothed tail state probabilities never win
+            # argmax. See scripts/_cb_surprise_audit_report.md section 0.
+            "smooth_halflife": 1,
+        },
         has_strategy=False,
         category="axis",
         target="SPY US EQUITY:PX_LAST",
@@ -879,16 +889,19 @@ def _register_builtins() -> None:
         key="dispersion",
         display_name="Dispersion (Macro × Stock-Picking × Crisis)",
         description=(
-            "3-state cross-sectional dispersion regime — z-score of SPX "
-            "constituent dispersion, CBOE implied correlation (inverted), "
-            "and sector-spread breadth. Primarily a STRATEGY-SELECTION "
-            "signal (index beta vs single-name rotation), directional only "
-            "at the Crisis extreme. Orthogonal to all macro axes."
+            "3-state cross-sectional dispersion regime — z-score of sector-"
+            "return cross-sectional stdev and VIX vol-of-vol. Primarily a "
+            "STRATEGY-SELECTION signal (index beta vs single-name rotation), "
+            "directional only at the Crisis extreme. Orthogonal to all macro "
+            "axes. Rebuilt 2026-04-12 after triage dropped the collinear "
+            "ds_SectorRange (r=+0.97 with ds_SectorStdev) and lowered "
+            "smooth_halflife from 5 to 1 to fix the degeneracy seen in all "
+            "3-state regimes at hl >= 2."
         ),
         states=["MacroDriven", "StockPicking", "Crisis"],
         dimensions=["Dispersion"],
         regime_class=DispersionRegime,
-        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 5},
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 1},
         has_strategy=False,
         category="axis",
         target="SPY US EQUITY:PX_LAST",

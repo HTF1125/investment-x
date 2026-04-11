@@ -68,19 +68,10 @@ class GlobalLiquidityRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # 1. G4 balance sheet YoY (aggregate Fed + ECB + BoJ + PBoC)
-        try:
-            from ix.core.indicators.central_bank import g4_balance_sheet_yoy
-
-            g4_yoy = g4_balance_sheet_yoy().resample("ME").last()
-            if not g4_yoy.empty:
-                rows["gl_G4_BS_YoY"] = zscore(g4_yoy, z_window).rename(
-                    "gl_G4_BS_YoY"
-                )
-        except Exception as exc:
-            log.warning("G4 balance sheet load failed: %s", exc)
-
-        # 2. Global Liquidity Index YoY (13 CB balance sheets, USD)
+        # gl_GlobalLiqIdx_YoY — Cross Border Capital style 13-CB global
+        # liquidity index YoY. Includes Fed + ECB + BoJ + PBoC + 9 more,
+        # so it strictly subsumes the old gl_G4_BS_YoY signal. Post-2010
+        # IC +0.119 on EEM 3M fwd (top of the set).
         try:
             from ix.core.indicators.liquidity import global_liquidity_index_yoy
 
@@ -92,12 +83,19 @@ class GlobalLiquidityRegime(Regime):
         except Exception as exc:
             log.warning("Global liquidity index YoY failed: %s", exc)
 
+        # [DROPPED 2026-04-12: gl_G4_BS_YoY — triage found r=+0.98 with
+        #  gl_GlobalLiqIdx_YoY (which already includes the G4 balance
+        #  sheets plus 9 additional CBs). Keeping both double-counts the
+        #  same aggregate. Kept the broader index since it has higher
+        #  post-2010 IC on EEM 3M (+0.119 vs +0.090) and wider coverage.]
+
         # [DROPPED: gl_GlobalLiqCycle — pre IC -0.131 (DROP). Full IC +0.024.
         #  The 3M momentum of global liquidity oscillated chaotically pre-2010
-        #  (pre-GFC global CB coordination was weak). The YoY measures
-        #  (G4_BS and GlobalLiqIdx) capture the cycle without the noise.]
+        #  (pre-GFC global CB coordination was weak). The YoY measure above
+        #  captures the cycle without the noise.]
 
-        # Monitor-only DXY (strong dollar = global tightening proxy)
+        # Monitor-only DXY (strong dollar = global tightening proxy).
+        # Excluded from composite — display only.
         dxy = load_series("DXY Curncy:PX_LAST")
         if dxy.empty:
             dxy = load_series("DX-Y.NYB:PX_LAST")

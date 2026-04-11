@@ -68,37 +68,29 @@ class BreadthRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # 1. b_Above200DMA — % of S&P 500 constituents above their 200-day
-        #    moving average. Primary long-term participation gauge.
+        # b_Above200DMA — % of S&P 500 constituents above their 200-day
+        # moving average. Primary long-term participation gauge. Top |IC|
+        # post-2010 (-0.129 on SPY 3M — contrarian, high breadth = rally
+        # exhaustion).
         p200 = _load("SPX INDEX:PCT_ABOVE_MAVG_200")
         if not p200.empty:
             rows["b_Above200DMA"] = zscore(p200, z_window).rename("b_Above200DMA")
 
-        # 2. b_Above50DMA — % of S&P 500 above 50-day MA. Faster-reacting
-        #    near-term participation gauge.
-        p50 = _load("SP50:FMA_PCT_ABOVE_50")
-        if not p50.empty:
-            rows["b_Above50DMA"] = zscore(p50, z_window).rename("b_Above50DMA")
-
-        # 3. b_DivergenceSpread — synthetic breadth divergence signal.
-        #    (% above 50DMA) − (% above 200DMA). When positive the near-term
-        #    trend is healthier than the long-term trend (early-cycle
-        #    recovery) or when extreme the long-term trend is weakening
-        #    (late-cycle rally masking deterioration). When negative the
-        #    long-term trend is intact but near-term has rolled over
-        #    (intermediate correction). Captures the divergence between
-        #    the two participation windows without needing McClellan data.
-        if not p200.empty and not p50.empty:
-            p200_m = p200.reindex(p50.index, method="ffill")
-            spread = p50 - p200_m
-            rows["b_DivergenceSpread"] = zscore(spread, z_window).rename(
-                "b_DivergenceSpread"
-            )
+        # [DROPPED 2026-04-12: b_Above50DMA and b_DivergenceSpread — the
+        #  all-regimes triage showed r=+0.98 (b_Above200DMA ↔ b_Above50DMA),
+        #  r=+0.99 (b_Above50DMA ↔ b_DivergenceSpread), and r=+0.95
+        #  (b_Above200DMA ↔ b_DivergenceSpread). All three are derivatives
+        #  of the same underlying % above moving average signal — adding
+        #  them triple-counts the same information in the composite
+        #  without orthogonal content. b_Above200DMA alone carries the
+        #  full signal. If McClellan / NHNL / A-D data ever lands in the
+        #  DB, add those (genuinely orthogonal dimensions) as the second
+        #  and third inputs instead.]
 
         if not rows:
             log.warning(
-                "Breadth: no indicators loaded. Expected DB codes: "
-                "'SPX INDEX:PCT_ABOVE_MAVG_200' and 'SP50:FMA_PCT_ABOVE_50'."
+                "Breadth: no indicators loaded. Expected DB code: "
+                "'SPX INDEX:PCT_ABOVE_MAVG_200'."
             )
         return rows
 

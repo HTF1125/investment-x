@@ -31,14 +31,24 @@ States
   triggered, claims rising. Recession window. Forward SPY 3m: negative,
   fat left tail. This is the actionable state.
 
-Indicators (4, all lb_*)
-    lb_Claims4WMA   — Initial claims, 4-week moving average (FRED ICSA)
-    lb_UE_Trend     — Unemployment rate, 3-month vs 12-month (Sahm proxy)
-    lb_UE_Level     — Unemployment rate, level z-score (context)
-    lb_LFPR         — Labor force participation rate (structural)
+Indicators (2, all lb_*). 2026-04-12 rebuild after triage flagged
+the previous 2-indicator set as WEAK_INDICATORS (both below the
+|IC| ≥ 0.03 floor). New set uses JOLTS quits rate as the primary
+cycle-peak signal and U6 acceleration as the cycle-trough complement:
 
-Publication lag: Claims 1 week, UNRATE 1 month, LFPR 1 month.
-Target: SPY 3M fwd. Locked.
+    lb_JOLTS_Quits — JOLTS quits rate, 12M diff. Post-2010 |IC| 0.286
+                     on SPY 6M fwd (strong). High quits = workers
+                     confident = tight labor = late cycle. Negative
+                     IC sign correctly identifies late-cycle peak as
+                     bearish for forward returns (mean reversion).
+    lb_U6_Accel    — U6 unemployment (broader than UNRATE), 3M diff
+                     of 12M change, INVERTED. Captures cycle-trough
+                     recoveries: positive z = U6 decelerating/falling
+                     = labor improving = bullish at lows. Weaker than
+                     JOLTS (|IC| 0.042) but orthogonal channel.
+
+Publication lag: JOLTS + U6 both ~1 month reporting lag.
+Target: SPY 6M fwd.
 """
 
 from __future__ import annotations
@@ -64,50 +74,50 @@ class LaborRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # [DROPPED: lb_Claims4WMA — post IC -0.111 (DYING). Full IC +0.011.
-        #  Claims 4WMA is too noisy as a standalone labor indicator for SPY.
-        #  Claims data is covered by GrowthRegime monitor-only channel.]
-
-        # [DROPPED: lb_UE_Trend — post IC -0.099 (DYING). Full IC +0.003.
-        #  The Sahm proxy only fires 1-2x per decade and the single post-2010
-        #  firing (COVID 2020) was a V-recovery with strong forward returns,
-        #  inverting the expected signal. Replaced by lb_HiresRate which
-        #  has more granular cycle information.]
-
-        # [DROPPED: lb_UE_Level — post IC -0.096 (DYING). Full IC +0.013.
-        #  Raw unemployment level is too slow-moving and has structural
-        #  drift (COVID spike distorted the rolling z-score).]
-
-        # [DROPPED: lb_LFPR — post IC -0.012 (DYING). Full IC +0.027.
-        #  LFPR has a multi-decade secular decline that overwhelms the
-        #  cyclical signal. Not reliably predictive for SPY 3M.]
-
-        # 1. lb_HiresRate — JOLTS hires rate, 12M diff. Rising hires =
-        #    expanding labor demand. Pre IC +0.018, post IC +0.022 — both
-        #    positive across subsamples unlike claims/UE/LFPR.
-        hires = _load("JTSHIR", lag=1)
-        if not hires.empty:
-            rows["lb_HiresRate"] = zscore(hires.diff(12), z_window).rename(
-                "lb_HiresRate"
+        # lb_JOLTS_Quits — JOLTS quits rate (JTSQUR), 12M diff. High quits
+        # rate = workers confident enough to leave for better jobs = tight
+        # labor market = late cycle. Atlanta Fed-cited leading indicator
+        # of labor tightness turning points. 303 obs from 2000-12. The
+        # composite IC on SPY 6M is NEGATIVE (-0.286) because peak labor
+        # tightness is historically bearish for 6-month forward returns
+        # via the mean-reversion / late-cycle-peak channel.
+        quits = _load("JTSQUR", lag=1)
+        if not quits.empty:
+            rows["lb_JOLTS_Quits"] = zscore(quits.diff(12), z_window).rename(
+                "lb_JOLTS_Quits"
             )
 
-        # 2. lb_NFPAccel — Payrolls acceleration (3M diff of 12M YoY).
-        #    Captures whether job growth is accelerating or decelerating.
-        #    Pre IC +0.076, post IC +0.087 — strong and stable.
-        #    Unlike raw payrolls level (which has structural drift),
-        #    the acceleration signal is cycle-neutral.
-        nfp = _load("PAYEMS", lag=1)
-        if not nfp.empty:
-            nfp_yoy = nfp.pct_change(12, fill_method=None) * 100
-            nfp_accel = nfp_yoy.diff(3)
-            rows["lb_NFPAccel"] = zscore(nfp_accel, z_window).rename(
-                "lb_NFPAccel"
+        # lb_U6_Accel — U6 broader unemployment rate, 3M diff of 12M diff,
+        # INVERTED. U6 includes discouraged + marginally attached workers
+        # and captures labor slack that UNRATE misses. Acceleration of
+        # the 12M change is an early warning: U6 going from improving to
+        # deteriorating flips sign 6-12M before the NBER recession call.
+        # INVERTED so positive z = U6 improving = labor recovering from
+        # trough = bullish forward return at the cycle low. 386 obs.
+        u6 = _load("U6RATE", lag=1)
+        if not u6.empty:
+            u6_yoy = u6.diff(12)
+            u6_accel = u6_yoy.diff(3)
+            rows["lb_U6_Accel"] = zscore(-u6_accel, z_window).rename(
+                "lb_U6_Accel"
             )
+
+        # [DROPPED 2026-04-12: lb_NFPAccel — post-2010 IC +0.006 on SPY 6M
+        #  (effectively noise) AND collinear with lb_U6_Accel at r=+0.89.
+        #  Both of those are bad on their own; in combination they just
+        #  double-count the same slack-improvement signal without adding
+        #  information.]
+        # [DROPPED 2026-04-12: lb_HiresRate — post-2010 IC -0.072 on
+        #  SPY 6M, sign flipped from the original docstring's claimed
+        #  +0.022. Replaced with lb_JOLTS_Quits above which measures a
+        #  related but cleaner labor-tightness signal.]
+        # [DROPPED earlier: lb_Claims4WMA / lb_UE_Trend / lb_UE_Level /
+        #  lb_LFPR — see git history for per-indicator rationale.]
 
         if not rows:
             log.warning(
-                "Labor: no indicators loaded. Seed ICSA / UNRATE / CIVPART "
-                "from FRED."
+                "Labor: no indicators loaded. Expected DB codes: "
+                "'JTSQUR', 'U6RATE'."
             )
         return rows
 

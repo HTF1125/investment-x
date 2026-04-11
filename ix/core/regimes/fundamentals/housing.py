@@ -30,20 +30,21 @@ dominated by multi-decade demographic trends (starts fell ~60% between the
 the long-lead transmission (housing turns 12-18 months before equity),
 not rolling-mean anchored z-scores.
 
-Indicators (all ``h_*``)
-    h_Permits         PERMIT       12M diff z   (leads starts by ~1-2 months)
-    h_Starts          HOUST        12M diff z   (IC +0.122 full, +0.153 pre, +0.087 post)
-    h_CaseShillerAccel CSUSHPINSA  3M diff of 12M YoY z (IC +0.261 full, +0.213 pre, +0.353 post)
-    h_MortgageRate    MORTGAGE30US 12M diff inv z (affordability channel)
+Indicators (2, all ``h_*``). Rebuilt 2026-04-12 after the all-regimes
+triage found 2 of the prior 4 indicators below the |IC| ≥ 0.03 floor
+on the registered SPY 12M fwd target:
 
-Excluded (iteration-2 diagnostics)
-    - CSUSHPINSA YoY: IC has WRONG SIGN (-0.12 vs SPY 12M) — Case-Shiller
-      price momentum is contemporaneous/lagging, peaks AT cycle tops (2006,
-      2021) not before. Dropping improves composite IC from +0.01 to +0.22.
-    - MORTGAGE30US 12M diff: near-zero IC (+0.04). Affordability matters in
-      theory but the rate-change signal is already captured by the flow
-      slowdown — mortgages rise → starts fall. Dropping raises composite IC
-      without losing information.
+    h_CaseShillerAccel CSUSHPINSA  3M diff of 12M YoY z — post-2010 IC +0.227
+    h_MortgageRate    MORTGAGE30US 12M diff inverted z — post-2010 IC +0.130
+
+Dropped (2026-04-12 triage)
+    - h_Starts (HOUST 12M diff): post-2010 IC -0.014 (sign flipped from
+      the prior docstring's claimed +0.087). Starts data is captured
+      upstream by the Case-Shiller acceleration signal and the mortgage
+      rate channel; keeping it added collinearity without incremental IC.
+    - h_Permits (PERMIT 12M diff): post-2010 IC -0.006. Permits lead
+      starts by 1-2 months but at the 12M horizon that lead is washed
+      out. Same story as Starts — redundant with the surviving two.
 
 Target & justification
 ----------------------
@@ -80,26 +81,11 @@ class HousingRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # 1. Building permits — leads starts by 1-2 months
-        permits = load_series("PERMIT")
-        if not permits.empty:
-            rows["h_Permits"] = zscore(permits.diff(12), z_window).rename("h_Permits")
-
-        # [DROPPED: h_NewSales — post IC -0.034 (DYING). Full IC +0.003.
-        #  New home sales 12M diff lost predictive power post-2010 due to
-        #  the structural shift in housing (lower construction, more
-        #  existing home turnover). Permits alone is cleaner.]
-
-        # 2. Housing starts — 12M diff z-score.
-        #    IC: full +0.122, pre +0.153, post +0.087 — stable across subsamples.
-        starts = load_series("HOUST", lag=1)
-        if not starts.empty:
-            rows["h_Starts"] = zscore(starts.diff(12), z_window).rename("h_Starts")
-
-        # 3. Case-Shiller price acceleration — 3M diff of 12M YoY.
-        #    Not price level (which has wrong sign) but the acceleration of
-        #    price momentum. IC: full +0.261, pre +0.213, post +0.353 — strongest
-        #    single housing indicator.
+        # h_CaseShillerAccel — Case-Shiller home price acceleration
+        # (3M diff of 12M YoY %). Not price level (which has the WRONG
+        # sign — Case-Shiller peaks AT cycle tops, not before), but the
+        # ACCELERATION of price momentum. Post-2010 IC +0.227 on SPY 12M
+        # fwd — the strongest housing indicator in the set.
         cs = load_series("CSUSHPINSA", lag=1)
         if not cs.empty:
             cs_yoy = cs.pct_change(12, fill_method=None) * 100
@@ -108,14 +94,23 @@ class HousingRegime(Regime):
                 "h_CaseShillerAccel"
             )
 
-        # 4. Mortgage rate 12M change (INVERTED: falling rates = expansion)
-        #    Pre IC +0.014, post IC +0.072 — stable across subsamples.
-        #    Captures the affordability channel that drives housing demand.
+        # h_MortgageRate — 30y fixed mortgage rate, 12M change, INVERTED.
+        # Falling rates = rising affordability = housing expansion.
+        # Post-2010 IC +0.130 on SPY 12M fwd (second-strongest).
         mortgage = load_series("MORTGAGE30US")
         if not mortgage.empty:
             rows["h_MortgageRate"] = zscore(
                 -mortgage.diff(12), z_window
             ).rename("h_MortgageRate")
+
+        # [DROPPED 2026-04-12: h_Permits / h_Starts — see module docstring
+        #  for triage rationale. Both below the 0.03 |IC| floor on SPY 12M
+        #  fwd post-2010 (Permits -0.006, Starts -0.014) and redundant with
+        #  the surviving two indicators via the permits→starts→prices→rates
+        #  transmission chain.]
+        # [DROPPED earlier: h_NewSales — post IC -0.034, structural shift
+        #  in housing turnover post-2010 (less construction, more existing-
+        #  home sales).]
 
         return rows
 
