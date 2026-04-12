@@ -194,7 +194,7 @@ export function StrategyTab({ strategy, model }: Props) {
         />
       </PanelCard>
 
-      {/* Holdings history (stacked area) */}
+      {/* Holdings history (stacked bar) */}
       {strategy.holdings_history && strategy.holdings_history.dates.length > 0 && (() => {
         const hh = strategy.holdings_history!;
         // Collect all tickers that appear in any month
@@ -203,19 +203,22 @@ export function StrategyTab({ strategy, model }: Props) {
           for (const t of Object.keys(h)) tickerSet[t] = true;
         }
         const holdTickers = Object.keys(tickerSet).sort();
-        // Build stacked area traces
-        const traces = holdTickers.map((ticker) => ({
-          x: hh.dates,
-          y: hh.holdings.map((h) => (h[ticker] ?? 0) * 100),
-          name: ticker,
-          type: 'scatter' as const,
-          mode: 'lines' as const,
-          stackgroup: 'one',
-          line: { width: 0.5, color: ASSET_COLORS[ticker] || '#9AA4B2' },
-          fillcolor: ASSET_COLORS[ticker]
-            ? `rgba(${hexToRgb(ASSET_COLORS[ticker])}, 0.6)`
-            : 'rgba(154,164,178,0.4)',
-        }));
+        // Build stacked bar traces. Solid colors (no alpha) so
+        // single-ticker spikes in the WF strategy render distinctly
+        // instead of washing out against the card background.
+        const traces = holdTickers.map((ticker) => {
+          const base = ASSET_COLORS[ticker] || '#9AA4B2';
+          return {
+            x: hh.dates,
+            y: hh.holdings.map((h) => (h[ticker] ?? 0) * 100),
+            name: ticker,
+            type: 'bar' as const,
+            marker: {
+              color: base,
+              line: { width: 0 },
+            },
+          };
+        });
         return (
           <PanelCard>
             <StatLabel>
@@ -230,6 +233,8 @@ export function StrategyTab({ strategy, model }: Props) {
               data={traces}
               layout={{
                 height: 300,
+                barmode: 'stack',
+                bargap: 0,
                 paper_bgcolor: 'rgba(0,0,0,0)',
                 plot_bgcolor: 'rgba(0,0,0,0)',
                 font: { family: 'Space Mono, monospace', size: 10, color: '#9AA4B2' },
