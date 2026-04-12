@@ -124,16 +124,6 @@ class RiskAppetiteRegime(Regime):
     def _dimension_prefixes(self) -> dict[str, str]:
         return {"Risk": "r_"}
 
-    def indicator_weights(self) -> dict[str, float]:
-        """Post-2010 |IC| on SPY 3M fwd (from all-regimes triage)."""
-        return {
-            "r_VIX":         0.219,
-            "r_EEM_SPY":     0.154,
-            "r_DXY":         0.151,
-            "r_MOVE_inv":    0.034,
-            "r_HYIG_spread": 0.025,
-        }
-
     # ── State probabilities ──────────────────────────────────────────────
 
     def _state_probabilities(
