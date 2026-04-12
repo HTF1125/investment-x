@@ -170,6 +170,16 @@ class CBSurpriseRegime(Regime):
     def _dimension_prefixes(self) -> dict[str, str]:
         return {"CBSurprise": "cb_"}
 
+    def indicator_weights(self) -> dict[str, float]:
+        """Post-2010 |IC| on SPY 3M fwd (from scripts/audit_cb_surprise.py)."""
+        return {
+            "cb_FFSpread_3M": 0.249,
+            "cb_TRY1Y":       0.197,
+            "cb_TRY2Y":       0.161,
+            "cb_YCSpread":    0.148,
+            "cb_SOFR":        0.017,
+        }
+
     # ── State probabilities ──────────────────────────────────────────────
 
     def _state_probabilities(

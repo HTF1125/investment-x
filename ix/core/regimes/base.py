@@ -168,6 +168,24 @@ class Regime(ABC):
         """
         return set()
 
+    def indicator_weights(self) -> dict[str, float] | None:
+        """Per-indicator weights for the dimension composite z-score.
+
+        Return a dict mapping indicator column names (e.g. ``"k_KRW_Vol"``)
+        to non-negative weights. Indicators not in the dict get weight 1.0.
+        Return ``None`` (default) for equal-weight mean — backward compatible.
+
+        Weights are typically set to the post-2010 |IC| (Spearman rank
+        correlation with the regime's registered target at its registered
+        horizon) from the regime's own audit script. They are STATIC —
+        computed offline from walk-forward IC and baked into the subclass.
+        The build pipeline does NOT recompute IC at build time.
+
+        Hard Rule #5: "IC-weight indicators by empirical predictive power
+        — never equal-weight." This hook is the mechanism for that rule.
+        """
+        return None
+
     # ── Public API ───────────────────────────────────────────────────────
 
     def regime_states(
@@ -220,9 +238,10 @@ class Regime(ABC):
         indicators = self._load_indicators(z_window)
         df = pd.DataFrame(indicators).dropna(how="all")
 
-        # 2. Composite z per dimension
+        # 2. Composite z per dimension (IC-weighted when weights provided)
         prefixes = self._dimension_prefixes()
         exclude = self._exclude_from_composite() | (exclude or set())
+        ic_weights = self.indicator_weights()
         for dim in self.dimensions:
             prefix = prefixes[dim]
             parts = [
@@ -231,12 +250,14 @@ class Regime(ABC):
                 if c.startswith(prefix) and c not in exclude
             ]
             if parts:
-                # mean(axis=1) skips NaN per-indicator — if 2 of 3 published,
-                # the composite is the mean of those 2. Then ffill so the last
-                # known composite carries forward into months where no indicators
-                # have published yet. This ensures every regime always has a
-                # current state, even if its data lags by a month.
-                df[f"{dim}_Z"] = pd.concat(parts, axis=1).mean(axis=1).ffill()
+                parts_df = pd.concat(parts, axis=1)
+                if ic_weights:
+                    w = np.array([ic_weights.get(c, 1.0) for c in parts_df.columns])
+                    weighted = parts_df.mul(w).sum(axis=1)
+                    w_sum = parts_df.notna().astype(float).mul(w).sum(axis=1).clip(lower=1e-9)
+                    df[f"{dim}_Z"] = (weighted / w_sum).ffill()
+                else:
+                    df[f"{dim}_Z"] = parts_df.mean(axis=1).ffill()
 
         # 3. Sigmoid probabilities per dimension
         dim_probs: dict[str, pd.Series] = {}

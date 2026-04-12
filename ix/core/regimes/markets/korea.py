@@ -163,6 +163,15 @@ class KoreaRegime(Regime):
     def _dimension_prefixes(self) -> dict[str, str]:
         return {"Korea": "k_"}
 
+    def indicator_weights(self) -> dict[str, float]:
+        """Post-2010 |IC| on KOSPI INDEX 3M fwd (from scripts/audit_korea.py)."""
+        return {
+            "k_KRW_Vol":     0.279,
+            "k_MCHI_6M":     0.227,
+            "k_KR_YC_3M":   0.195,
+            "k_HYOAS_level": 0.192,
+        }
+
     # ── State probabilities ──────────────────────────────────────────────
 
     def _state_probabilities(

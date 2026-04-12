@@ -156,6 +156,14 @@ class RealRatesRegime(Regime):
     def _dimension_prefixes(self) -> dict[str, str]:
         return {"RealRates": "rr_"}
 
+    def indicator_weights(self) -> dict[str, float]:
+        """Post-2010 |IC| on GC1 Comdty 12M fwd (from all-regimes triage)."""
+        return {
+            "rr_TIPS10Y":    0.556,
+            "rr_Synth10Y":   0.444,
+            "rr_Cleveland1Y": 0.420,
+        }
+
     # ── State probabilities ──────────────────────────────────────────────
 
     def _state_probabilities(
