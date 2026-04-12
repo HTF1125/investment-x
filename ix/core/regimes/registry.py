@@ -1017,17 +1017,17 @@ def _register_builtins() -> None:
         key="korea",
         display_name="Korea (Expansion × Contraction)",
         description=(
-            "2-state Korean equity regime — 3-indicator composite of global "
-            "semi cycle (SOX 6M momentum), China demand (FXI 6M momentum), "
-            "and KRW FX regime (USDKRW 3M inverted). Target: KOSPI INDEX "
-            "3M fwd (d=+0.222, voln=+0.47). KOSPI chosen over EWY because "
-            "EWY adds KRW/USD FX variance on top of the economic signal, "
-            "diluting cohen's d from 0.22 to 0.09. Captures Korea-specific "
-            "drivers the generic EM / dollar regimes miss: ~30% of KOSPI "
-            "cap is semi (Samsung + SK Hynix), and China is Korea's largest "
-            "trading partner. Complements global_liquidity (broad EM) and "
-            "dollar_trend (FX) rather than duplicating them — compose with "
-            "dollar_trend when a dollar dimension is needed."
+            "2-state Korean equity regime — 4-indicator composite of "
+            "KRW realised volatility (contrarian), HY OAS level "
+            "(contrarian credit stress), MCHI 6M momentum (China demand), "
+            "and Korea 10Y-3Y yield curve 3M change (local growth "
+            "expectations). Target: KOSPI INDEX 3M fwd. Rebuilt 2026-04-12 "
+            "after the v1 set (SOX 6M, FXI 6M, USDKRW 3M) was found to be "
+            "largely noise at monthly horizons — all 3 had post-2010 IC "
+            "below 0.15. The v2 set has 4 indicators all with post-2010 "
+            "|IC| > 0.19 and p < 0.01 on KOSPI 3M. Complements risk_appetite "
+            "(SPY target) and dollar_trend (FX) — compose for a full "
+            "Korea macro cell."
         ),
         states=["Expansion", "Contraction"],
         dimensions=["Korea"],

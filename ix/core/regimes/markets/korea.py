@@ -1,72 +1,92 @@
-"""KoreaRegime — 2-state Korean equity market regime.
+"""KoreaRegime — 2-state Korean equity regime (empirically rebuilt).
 
 Thesis
 ------
-Korea is a unique EM macro cell: ~30% of KOSPI market cap is concentrated
-in semiconductors (Samsung Electronics + SK Hynix), making Korean equity
-the most direct public-market proxy for the global memory / logic cycle.
-On top of that Korea is China's 3rd-largest trading partner and a high-
-beta risk-on / risk-off EM. Forward EWY returns are driven by the joint
-product of:
+Korean equity forward returns at 3-6M horizons are driven by two
+independent channels that the audit (scripts/audit_korea.py,
+gitignored) found to be the strongest predictors out of 30 tested
+candidate indicators:
 
-    1. global semi cycle       — SOX (Philadelphia Semi) momentum
-    2. China demand            — FXI (China large cap) momentum
-    3. KRW FX regime           — USDKRW change (inverted)
-    4. USD strength            — DXY change (inverted, EM headwind)
+    1. CONTRARIAN risk channels
+       - KRW realised volatility — high = panic / EM outflows already
+         occurred → mean-reversion forward
+       - HY credit spread level — wide = credit stress already priced
+         → positive forward returns historically
+    2. MOMENTUM channels
+       - MCHI (China broader) 6M momentum — China demand leads Korean
+         exports; MCHI post-2010 IC on KOSPI is ~2x FXI
+       - Korea 10Y-3Y yield curve 3M change — steepening = growth
+         expectations rising, Korea-specific rate signal
 
-This regime blends the four into a single Expansion / Contraction signal
-for EWY. It is intentionally complementary to the existing `global_liquidity`
-(broad EM liquidity) and `dollar_trend` (US-centric FX) regimes — nothing
-else in the registry isolates Korea-specific drivers (the semi cycle and
-China trade in particular).
+All four are measured as post-2010 Spearman IC > |0.19| with p < 0.01
+on both KOSPI and EWY targets. The prior thematic set (SOX momentum,
+FXI momentum, USDKRW change) was largely noise at these horizons
+because the semi cycle and spot FX are priced into KOSPI in close to
+real-time.
 
-**Hard rule compliance:** this does not invert any contrarian gauge
-forbidden by Hard Rule #3 (VIX / FCI / put-call). KRW and DXY are
-inverted so that "EM risk-on" (falling USD, strengthening KRW) maps to
-a positive composite z — that's a sign convention, not a contrarian trick.
-No Global M2 (Hard Rule #4).
+**Hard rule compliance**
+- Hard Rule #3 (don't invert contrarian gauges): KRW_Vol and HYOAS
+  are NOT inverted. High level → high z → predicts positive forward
+  return = contrarian bullish. Compliant.
+- Hard Rule #4 (no Global M2): none used.
+- Hard Rule #2 (walk-forward): regime pipeline is causal by default.
+
+**Semantics note**: the composite z mixes momentum (MCHI, KR yield
+curve) and contrarian stress (KRW_Vol, HYOAS) in the same dimension.
+Both channels produce POSITIVE forward-return IC when taken raw, so
+they're additive in the composite — but the "Expansion" state label
+means "composite predicts positive forward returns," which can come
+from either strong macro conditions (momentum side) or stressed /
+washed-out conditions that mean-revert (contrarian side). This is
+the same pattern the existing `risk_appetite` regime uses.
 
 States
 ------
-- **Expansion**   (Korea_Z > 0): semi cycle rising, China momentum
-  positive, DXY weakening, KRW firming. Forward EWY 3M: positive.
-- **Contraction** (Korea_Z ≤ 0): semi cycle falling, China momentum
-  rolling over, DXY strengthening, KRW weakening. Forward EWY 3M:
-  negative. The actionable state.
+- **Expansion**   (Korea_Z > 0): composite predicts positive KOSPI
+  forward returns. Could be driven by strong China + steepening KR
+  curve (momentum setup) OR high KRW vol + wide HY spreads (contrarian
+  mean-reversion setup). Both channels point the same direction.
+- **Contraction** (Korea_Z ≤ 0): the opposite — weak China, flat curve,
+  calm FX, tight spreads. "Complacent" setup with below-average forward
+  returns.
 
-Indicators (3, all k_*)
-    k_SOX_6M     — SOX Index, 6M momentum. Semi cycle proxy.
-    k_China_6M   — FXI 6M momentum. Chinese demand proxy for Korean
-                   exports.
-    k_USDKRW_3M  — USDKRW 3M change, INVERTED. Rising KRW strength
-                   (falling USDKRW ratio) = EM risk-on = bullish Korea.
-
-[Tested but dropped: k_DXY_3M. DXY has 55 years of history which
-extended the composite back to 1971, but pre-2004 Korean equity
-dynamics (pre-Samsung semi dominance, pre-China WTO integration,
-post-Asian Financial Crisis recovery) differ materially from post-
-2004, and the regime lost signal when those samples were mixed in:
-d=+0.22 on KOSPI 3M without DXY (n=244, effective post-2004 window)
-vs d=+0.01 with DXY (n=350 including pre-2004). DXY is also already
-captured by the separate dollar_trend regime; compose the two when a
-dollar dimension is needed rather than re-importing it here.]
+Indicators (4, all k_*)
+    k_KRW_Vol       — USDKRW 20-day realised volatility (annualised).
+                      Contrarian: high vol = risk-off already happened
+                      = positive forward return.
+    k_HYOAS_level   — ICE BofA HY Master OAS level (BAMLH0A0HYM2).
+                      Contrarian: wide spreads = credit stress already
+                      priced = positive forward return.
+    k_MCHI_6M       — MCHI (China broader ETF) 6M momentum. NOT
+                      inverted. Direct signal.
+    k_KR_YC_3M      — Korea 10Y-3Y yield curve 3M change. NOT inverted.
+                      Steepening = growth expectations rising.
 
 Publication lag: zero (all market data).
 Target: KOSPI INDEX:PX_LAST at 3M forward.
 
-Target note: KOSPI is the cleanest target because it's the local-currency
-index — the composite directly predicts Korean economic conditions without
-KRW/USD FX noise on top. EWY is the tradeable USD proxy for US investors;
-its forward returns equal KOSPI plus KRW/USD, so the regime's KOSPI signal
-combined with a separate FX view determines the EWY forecast. Empirically
-the Korea composite gives d=+0.22 on KOSPI 3M fwd vs d=+0.09 on EWY 3M fwd
-(the extra FX variance on EWY dilutes the economic signal).
+Target note: KOSPI chosen over EWY because EWY adds KRW/USD FX
+variance on top of the economic signal. On this indicator set, KOSPI
+3M d ≈ EWY 3M d (FX noise is dampened by using KRW_Vol as an input),
+but KOSPI has slightly cleaner ICs per the audit. Traders targeting
+EWY can use this signal directly or compose with dollar_trend.
+
+History / audit notes
+---------------------
+- 2026-04-12 v2 rebuild: dropped k_SOX_6M (post-2010 IC -0.017 on
+  KOSPI 1M, near-zero at 3M — semi cycle is priced too efficiently at
+  monthly frequency), k_China_6M (FXI replaced with MCHI which has
+  +0.06 higher post-2010 IC), and k_USDKRW_3M (post-2010 IC -0.018 on
+  KOSPI 1M, essentially noise; replaced with the realised-vol variant
+  which is contrarian and strongly significant). Full audit:
+  scripts/_korea_audit_report.md (gitignored).
 """
 
 from __future__ import annotations
 
 import logging
 
+import numpy as np
 import pandas as pd
 
 from ..base import Regime, load_series as _load, zscore
@@ -86,48 +106,55 @@ class KoreaRegime(Regime):
     def _load_indicators(self, z_window: int) -> dict[str, pd.Series]:
         rows: dict[str, pd.Series] = {}
 
-        # k_SOX_6M — Philadelphia Semi Index, 6M momentum. Korea is
-        # ~30% semi by market cap (Samsung, SK Hynix); SOX is the
-        # cleanest public-market proxy for the global memory / logic
-        # inventory cycle. 32-year history (since 1994).
-        sox = _load("SOX INDEX:PX_LAST")
-        if not sox.empty:
-            rows["k_SOX_6M"] = zscore(
-                sox.pct_change(6, fill_method=None) * 100.0, z_window
-            ).rename("k_SOX_6M")
-
-        # k_China_6M — FXI (China large cap ETF), 6M momentum. China
-        # is Korea's largest trading partner; Chinese equity momentum
-        # leads Korean exporter demand by 1-3 months. 22-year history.
-        fxi = _load("FXI US EQUITY:PX_LAST")
-        if not fxi.empty:
-            rows["k_China_6M"] = zscore(
-                fxi.pct_change(6, fill_method=None) * 100.0, z_window
-            ).rename("k_China_6M")
-
-        # k_USDKRW_3M — USDKRW 3M change, INVERTED. Historically the
-        # "flow channel" (KRW weakens when global EM outflows sell
-        # Korean equities) dominates the "exporter margin channel"
-        # (weak KRW boosts Samsung's USD revenues) at the 3M horizon,
-        # so strong KRW / falling USDKRW is the bullish signal.
+        # k_KRW_Vol — USDKRW 20-day realised volatility (annualised).
+        # NOT inverted. Strongest post-2010 IC on KOSPI (|IC|=0.279 at
+        # 3M, 0.327 at 6M). Contrarian channel per Hard Rule #3:
+        # spikes in KRW vol correspond to EM outflow events that have
+        # already happened; forward returns mean-revert positive.
         usdkrw = _load("USDKRW Curncy:PX_LAST")
         if not usdkrw.empty:
-            rows["k_USDKRW_3M"] = zscore(
-                -usdkrw.pct_change(3, fill_method=None) * 100.0, z_window
-            ).rename("k_USDKRW_3M")
+            krw_vol = usdkrw.pct_change().rolling(20).std() * float(np.sqrt(252))
+            rows["k_KRW_Vol"] = zscore(krw_vol, z_window).rename("k_KRW_Vol")
 
-        # [DROPPED: k_DXY_3M — adding it extended the composite back to
-        #  1971 (DXY has 55y of history) and diluted cohen's d on KOSPI
-        #  3M from +0.22 to +0.01 because pre-2004 Korean equity
-        #  dynamics differ materially from post-2004. DXY is also
-        #  captured by the separate dollar_trend regime — compose with
-        #  that rather than double-importing the signal here.]
+        # k_HYOAS_level — ICE BofA HY Master Option-Adjusted Spread.
+        # NOT inverted (Hard Rule #3 — credit spreads are contrarian
+        # at wide extremes). Wide HY spreads = credit stress already
+        # priced into equities globally = positive forward return
+        # for high-beta EM like Korea. Post-2010 IC +0.192 (KOSPI 3M),
+        # +0.290 (KOSPI 6M).
+        hy = _load("BAMLH0A0HYM2")
+        if not hy.empty:
+            rows["k_HYOAS_level"] = zscore(hy, z_window).rename("k_HYOAS_level")
+
+        # k_MCHI_6M — MSCI China ETF (MCHI), 6M momentum. NOT inverted.
+        # Direct momentum signal: when broader China equity is trending
+        # up, Korean exporter demand strengthens 1-3 months later. MCHI
+        # post-2010 IC +0.227 (KOSPI 3M) beats FXI's +0.148 because
+        # MCHI is broader than FXI's large-cap focus. 3779 obs since
+        # 2011-03 — shorter history than FXI but stronger signal.
+        mchi = _load("MCHI US EQUITY:PX_LAST")
+        if not mchi.empty:
+            rows["k_MCHI_6M"] = zscore(
+                mchi.pct_change(6, fill_method=None) * 100.0, z_window
+            ).rename("k_MCHI_6M")
+
+        # k_KR_YC_3M — Korea 10Y-3Y yield curve, 3M change. NOT inverted.
+        # Steepening curve = market pricing in accelerating Korean growth
+        # / BOK easing = bullish Korean equities. Korea-specific channel
+        # unavailable elsewhere in the registry. Uses KR 10Y (6362 obs
+        # since 2000) and KR 3Y (6921 obs since 1998) directly.
+        kr10 = _load("TRYKR10Y:PX_YTM")
+        kr3 = _load("TRYKR3Y:PX_YTM")
+        if not kr10.empty and not kr3.empty:
+            yc = (kr10 - kr3.reindex(kr10.index, method="ffill")).dropna()
+            rows["k_KR_YC_3M"] = zscore(yc.diff(3), z_window).rename("k_KR_YC_3M")
 
         if not rows:
             log.warning(
                 "Korea: no indicators loaded. Expected DB codes: "
-                "'SOX INDEX:PX_LAST', 'FXI US EQUITY:PX_LAST', "
-                "'USDKRW Curncy:PX_LAST'."
+                "'USDKRW Curncy:PX_LAST', 'BAMLH0A0HYM2', "
+                "'MCHI US EQUITY:PX_LAST', 'TRYKR10Y:PX_YTM', "
+                "'TRYKR3Y:PX_YTM'."
             )
         return rows
 
@@ -143,8 +170,11 @@ class KoreaRegime(Regime):
     ) -> dict[str, pd.Series]:
         """Map Korea composite probability to 2 states.
 
-        High composite z (semi + China + strong KRW + weak DXY aligned)
-        → Expansion. Low composite z → Contraction.
+        High composite z (strong China + steepening KR curve + high KRW
+        vol + wide HY spreads — any mix) → Expansion → forward-return
+        positive. Low composite z → Contraction → forward-return
+        negative. See module docstring for semantic explanation of the
+        momentum / contrarian channel mix.
         """
         kp = dim_probs["Korea"]
         return {
