@@ -732,11 +732,11 @@ def _register_builtins() -> None:
         regime_class=PositioningRegime,
         default_params={
             **_DEFAULT_PARAMS,
-            # hl=1: same degeneracy fix as cb_surprise. 3-state regimes
-            # with hl >= 2 + sensitivity=2 collapse to constant-Neutral
-            # because the smoothed tail state probabilities never win
-            # argmax. See scripts/_cb_surprise_audit_report.md section 0.
-            "smooth_halflife": 1,
+            # hl=3: the original degeneracy was from bad DATA (61-obs CFTC
+            # series), not from hl. With the rebuilt NAAIM + CFTC SP500
+            # indicators, hl=3 gives min_tail=31 (sufficient) at 1.5
+            # flips/yr. hl=1 was over-aggressive (3.8 flips/yr).
+            "smooth_halflife": 3,
         },
         has_strategy=False,
         category="axis",
@@ -902,7 +902,7 @@ def _register_builtins() -> None:
         states=["MacroDriven", "StockPicking", "Crisis"],
         dimensions=["Dispersion"],
         regime_class=DispersionRegime,
-        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 1},
+        default_params={**_DEFAULT_PARAMS, "smooth_halflife": 2},
         has_strategy=False,
         category="axis",
         target="SPY US EQUITY:PX_LAST",
@@ -944,12 +944,11 @@ def _register_builtins() -> None:
         default_params={
             "z_window": 60,     # 5y — policy regimes are shorter
             "sensitivity": 2.0,
-            # hl=1 — the ONLY smoothing level in the audit that produces a
-            # non-degenerate state distribution. At hl≥2 the smoothed
-            # P_Dovish/P_Hawkish rarely exceed 0.50, so argmax collapses to
-            # Neutral 95%+ of the time. See scripts/_cb_surprise_audit_report.md
-            # section 0 for the full state balance sweep.
-            "smooth_halflife": 1,
+            # hl=2 — min_tail=21 (borderline but usable) at 1.1 flips/yr.
+            # hl=1 had min_tail=65 but 3.3 flips/yr (excessive turnover).
+            # hl=3 is still degenerate (min_tail=7). hl=2 is the best
+            # trade-off between state balance and flip frequency.
+            "smooth_halflife": 2,
         },
         has_strategy=False,
         category="axis",
